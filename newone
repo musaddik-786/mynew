@@ -1,3 +1,307 @@
+import os
+import time
+import json
+from io import BytesIO
+from datetime import datetime
+from typing import Optional, Dict, Any, List, Tuple
+
+import pandas as pd
+from dotenv import load_dotenv
+
+# Load env
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+load_dotenv(os.path.join(BASE_DIR, ".env"))
+
+from module.utils import get_logger, is_blankish
+from module.risk_calculator import RiskCalculator
+from module.genai_handler import explain_risk, recommend_mitigations, score_risk_llm
+from module.api_integration import get_providers
+
+# Optional FastAPI (kept only for integration/orchestration)
+try:
+    from fastapi import FastAPI, HTTPException, Query
+    from fastapi.responses import JSONResponse, StreamingResponse
+    from starlette.middleware.cors import CORSMiddleware
+    FASTAPI_AVAILABLE = True
+except Exception:
+    FASTAPI_AVAILABLE = False
+
+logger = get_logger("risk_agent")
+
+# Directories (configurable via env, not hardcoded)
+EXTRACTED_DATA_DIR = os.getenv("EXTRACTED_DATA_DIR", os.path.join(BASE_DIR, "data", "extracted_data"))
+OUTPUT_DIR = os.getenv("OUTPUT_DIR", os.path.join(BASE_DIR, "data", "output"))
+os.makedirs(EXTRACTED_DATA_DIR, exist_ok=True)
+os.makedirs(OUTPUT_DIR, exist_ok=True)
+
+# Optional behavior toggles
+RISK_USE_LLM_SCORING = (os.getenv("RISK_USE_LLM_SCORING", "").strip().lower() in {"1", "true", "yes"})
+
+
+# ---------------------------
+# Helper functions (unchanged)
+# ---------------------------
+def _sanitize_owm_key(skip_owm: bool) -> str:
+    raw = (os.getenv("OPENWEATHERMAP_API_KEY") or "").strip()
+    if skip_owm:
+        return ""
+    if raw in {"", "YOUR_OWM_KEY", "placeholder", "xxx"}:
+        return ""
+    return raw
+
+
+def _default_cfg(radius_km: Optional[float], days_back: Optional[int], min_magnitude: Optional[float], country_hint: Optional[str]) -> Dict[str, Any]:
+    rk = radius_km if radius_km is not None else float(os.getenv("USGS_RADIUS_KM", "300"))
+    db = days_back if days_back is not None else int(os.getenv("USGS_DAYS_BACK", "7"))
+    mm = min_magnitude if min_magnitude is not None else float(os.getenv("USGS_MIN_MAG", "3.0"))
+    ch = (country_hint or os.getenv("COUNTRY_HINT") or "").strip() or None
+    return {
+        "radius_km": rk,
+        "days_back": db,
+        "min_magnitude": mm,
+        "country_hint": ch,
+        "weights": {
+            "flood": 0.25,
+            "earthquake": 0.20,
+            "fire_protection": 0.20,
+            "building_age": 0.15,
+            "crime_index": 0.20,
+        },
+    }
+
+
+def _timestamped_output_name(prefix: str = "risk_results") -> str:
+    ts = datetime.now().strftime("%Y%m%d_%H%M%S")
+    return f"{prefix}_{ts}.xlsx"
+
+
+def _is_lock_or_temp_excel(name: str) -> bool:
+    base = os.path.basename(name)
+    return base.startswith("~$")
+
+
+def _pick_input_file(explicit_filename: Optional[str]) -> str:
+    if explicit_filename:
+        path = os.path.join(EXTRACTED_DATA_DIR, explicit_filename)
+        if not os.path.exists(path):
+            raise FileNotFoundError(f"Input file not found: {path}")
+        if _is_lock_or_temp_excel(path):
+            raise PermissionError(f"Refusing to read Excel lock/temp file: {path}. Close the workbook and try again.")
+        try:
+            with open(path, "rb") as _fh:
+                _fh.read(1)
+        except PermissionError:
+            raise PermissionError(f"File is in use or locked: {path}. Close it and try again.")
+        return path
+    candidates = [
+        os.path.join(EXTRACTED_DATA_DIR, f)
+        for f in os.listdir(EXTRACTED_DATA_DIR)
+        if f.lower().endswith(".xlsx") and not _is_lock_or_temp_excel(f)
+    ]
+    if not candidates:
+        raise FileNotFoundError(f"No .xlsx files found under {EXTRACTED_DATA_DIR}")
+    candidates.sort(key=os.path.getmtime, reverse=True)
+    for path in candidates:
+        try:
+            with open(path, "rb") as _fh:
+                _fh.read(1)
+            return path
+        except PermissionError:
+            logger.warning(f"Input Excel appears locked/in-use, skipping: {path}")
+            continue
+    raise PermissionError("All Excel files under extracted_data appear locked.")
+
+
+def _read_extracted_excel(path: str) -> pd.DataFrame:
+    df = pd.read_excel(path)
+    logger.info(f"Loaded {len(df)} rows from {path}")
+    return df
+
+
+def _ensure_columns_exist(df: pd.DataFrame, cols: List[str]) -> pd.DataFrame:
+    for c in cols:
+        if c not in df.columns:
+            df[c] = None
+    return df
+
+
+def _get_first_nonempty(row: pd.Series, keys: List[str]) -> Optional[str]:
+    for k in keys:
+        v = row.get(k)
+        if v is None:
+            continue
+        if is_blankish(v):
+            continue
+        return str(v).strip()
+    return None
+
+
+def _row_is_noise(row: pd.Series) -> bool:
+    addr = _get_first_nonempty(row, ["ADDRESS:", "ADDRESS"])
+    postal = _get_first_nonempty(row, ["POSTAL CODE:", "POSTAL CODE"])
+    return addr is None and postal is None
+
+
+def _compute_risk(row: pd.Series, floods: List[Dict[str, Any]], quakes: List[Dict[str, Any]], fire_dist_km: Optional[float], weights: Dict[str, float]) -> Tuple[float, Dict[str, float]]:
+    if RISK_USE_LLM_SCORING:
+        try:
+            score, breakdown = score_risk_llm(
+                row_data=row.to_dict(),
+                hazards={"flood_alerts": floods, "earthquakes": quakes, "fire_station_distance_km": fire_dist_km},
+            )
+            if score is not None:
+                return float(score), breakdown or {}
+        except Exception as exc:
+            logger.warning(f"LLM scoring failed, falling back to rule-based: {exc}")
+
+    rc = RiskCalculator(weights=weights)
+    return rc.compute(row=row.to_dict(), flood_alerts=floods, earthquakes=quakes, fire_station_distance_km=fire_dist_km)
+
+
+def process_row(row: pd.Series, cfg: Dict[str, Any], owm_key: Optional[str], providers: Dict[str, Any], use_geocoding: bool, use_places: bool, enforce_api_geocode: bool) -> pd.Series:
+    # (unchanged — same as Version 1)
+    # ...
+    # At the end returns row
+    return row
+
+
+def _write_status_json(status: bool) -> str:
+    payload = {"status": bool(status)}
+    out_path = os.path.join(OUTPUT_DIR, "last_run_status.json")
+    try:
+        with open(out_path, "w", encoding="utf-8") as f:
+            json.dump(payload, f, ensure_ascii=False)
+        logger.info(f"Wrote run status JSON: {out_path}")
+    except Exception as exc:
+        logger.warning(f"Failed to write run status JSON: {exc}")
+    return out_path
+
+
+def run_risk_assessment(
+    input_filename: Optional[str] = None,
+    radius_km: Optional[float] = None,
+    days_back: Optional[int] = None,
+    min_magnitude: Optional[float] = None,
+    country_hint: Optional[str] = None,
+    no_geocode: bool = False,
+    use_places: bool = False,
+    skip_owm: bool = False,
+    geocoder_provider: Optional[str] = None,
+    earthquake_provider: Optional[str] = None,
+    flood_provider: Optional[str] = None,
+    enforce_api_geocode: bool = True,
+) -> Dict[str, Any]:
+    # (unchanged main logic — same as Version 1)
+    return run_summary
+
+
+# ---------------------------
+# FastAPI App Definition
+# ---------------------------
+if FASTAPI_AVAILABLE:
+    app = FastAPI(title="Risk Assessment Agent API", version="2.2.2")
+
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=["*"],
+        allow_credentials=True,
+        allow_methods=["*"],
+        allow_headers=["*"],
+    )
+
+    @app.get("/health")
+    async def health():
+        return {"status": "ok"}
+
+    @app.post("/risk/run", summary="Run Risk Assessment Agent")
+    async def run_risk_agent_api(
+        input_filename: Optional[str] = Query(None),
+        radius_km: Optional[float] = Query(None),
+        days_back: Optional[int] = Query(None),
+        min_magnitude: Optional[float] = Query(None),
+        country_hint: Optional[str] = Query(None),
+        no_geocode: bool = Query(False),
+        use_places: bool = Query(False),
+        skip_owm: bool = Query(False),
+        geocoder_provider: Optional[str] = Query(None),
+        earthquake_provider: Optional[str] = Query(None),
+        flood_provider: Optional[str] = Query(None),
+        enforce_api_geocode: bool = Query(True),
+    ):
+        try:
+            result = run_risk_assessment(
+                input_filename=input_filename,
+                radius_km=radius_km,
+                days_back=days_back,
+                min_magnitude=min_magnitude,
+                country_hint=country_hint,
+                no_geocode=no_geocode,
+                use_places=use_places,
+                skip_owm=skip_owm,
+                geocoder_provider=geocoder_provider,
+                earthquake_provider=earthquake_provider,
+                flood_provider=flood_provider,
+                enforce_api_geocode=enforce_api_geocode,
+            )
+            return result
+        except FileNotFoundError as e:
+            _write_status_json(False)
+            return JSONResponse(status_code=404, content={"success": False, "message": str(e)})
+        except Exception as exc:
+            logger.exception("Risk agent failed")
+            _write_status_json(False)
+            return JSONResponse(status_code=500, content={"success": False, "message": f"Risk agent failed: {str(exc)}"})
+
+
+# ---------------------------
+# Entry Point
+# ---------------------------
+if __name__ == "__main__":
+    import uvicorn
+
+    if not FASTAPI_AVAILABLE:
+        raise RuntimeError("FastAPI is not installed. Please install it with `pip install fastapi uvicorn`")
+
+    port = int(os.getenv("PORT_NUMBER_Risk", 8677))
+    uvicorn.run(app, host="0.0.0.0", port=port)
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 this is my risk assesment code lets call it Version 1 
 
 import os
