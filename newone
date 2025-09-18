@@ -1,3 +1,28 @@
+import requests
+
+def trigger_risk_assessment():
+    url = "http://127.0.0.1:8677/risk/run"  # API endpoint of Risk Agent
+    try:
+        response = requests.post(url, timeout=20)
+        print("Status Code:", response.status_code)
+        print("Response JSON:", response.json())
+    except Exception as e:
+        print("Error while triggering Risk Assessment:", e)
+
+if __name__ == "__main__":
+    trigger_risk_assessment()
+
+
+
+
+
+
+
+
+
+
+
+
 import os
 import time
 import json
