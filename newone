@@ -1,0 +1,1095 @@
+this is my risk assesment code lets call it Version 1 
+
+import os
+import time
+import json
+from io import BytesIO
+from datetime import datetime
+from typing import Optional, Dict, Any, List, Tuple
+
+import pandas as pd
+from dotenv import load_dotenv
+
+# Load env
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+load_dotenv(os.path.join(BASE_DIR, ".env"))
+
+from module.utils import get_logger, is_blankish
+from module.risk_calculator import RiskCalculator
+from module.genai_handler import explain_risk, recommend_mitigations, score_risk_llm
+from module.api_integration import get_providers
+
+# Optional FastAPI (kept only for integration/orchestration)
+try:
+    from fastapi import FastAPI, HTTPException, Query
+    from fastapi.responses import JSONResponse, StreamingResponse
+    from starlette.middleware.cors import CORSMiddleware
+    FASTAPI_AVAILABLE = True
+except Exception:
+    FASTAPI_AVAILABLE = False
+
+logger = get_logger("risk_agent")
+
+# Directories (configurable via env, not hardcoded)
+EXTRACTED_DATA_DIR = os.getenv("EXTRACTED_DATA_DIR", os.path.join(BASE_DIR, "data", "extracted_data"))
+OUTPUT_DIR = os.getenv("OUTPUT_DIR", os.path.join(BASE_DIR, "data", "output"))
+os.makedirs(EXTRACTED_DATA_DIR, exist_ok=True)
+os.makedirs(OUTPUT_DIR, exist_ok=True)
+
+# Optional behavior toggles
+RISK_USE_LLM_SCORING = (os.getenv("RISK_USE_LLM_SCORING", "").strip().lower() in {"1", "true", "yes"})
+
+def _sanitize_owm_key(skip_owm: bool) -> str:
+    raw = (os.getenv("OPENWEATHERMAP_API_KEY") or "").strip()
+    if skip_owm:
+        return ""
+    if raw in {"", "YOUR_OWM_KEY", "placeholder", "xxx"}:
+        return ""
+    return raw
+
+def _default_cfg(
+    radius_km: Optional[float],
+    days_back: Optional[int],
+    min_magnitude: Optional[float],
+    country_hint: Optional[str],
+) -> Dict[str, Any]:
+    rk = radius_km if radius_km is not None else float(os.getenv("USGS_RADIUS_KM", "300"))
+    db = days_back if days_back is not None else int(os.getenv("USGS_DAYS_BACK", "7"))
+    mm = min_magnitude if min_magnitude is not None else float(os.getenv("USGS_MIN_MAG", "3.0"))
+    ch = (country_hint or os.getenv("COUNTRY_HINT") or "").strip() or None
+    return {
+        "radius_km": rk,
+        "days_back": db,
+        "min_magnitude": mm,
+        "country_hint": ch,
+        "weights": {
+            "flood": 0.25,
+            "earthquake": 0.20,
+            "fire_protection": 0.20,
+            "building_age": 0.15,
+            "crime_index": 0.20,
+        },
+    }
+
+def _timestamped_output_name(prefix: str = "risk_results") -> str:
+    ts = datetime.now().strftime("%Y%m%d_%H%M%S")
+    return f"{prefix}_{ts}.xlsx"
+
+def _is_lock_or_temp_excel(name: str) -> bool:
+    base = os.path.basename(name)
+    return base.startswith("~$")
+
+def _pick_input_file(explicit_filename: Optional[str]) -> str:
+    if explicit_filename:
+        path = os.path.join(EXTRACTED_DATA_DIR, explicit_filename)
+        if not os.path.exists(path):
+            raise FileNotFoundError(f"Input file not found: {path}")
+        if _is_lock_or_temp_excel(path):
+            raise PermissionError(f"Refusing to read Excel lock/temp file: {path}. Close the workbook and try again.")
+        try:
+            with open(path, "rb") as _fh:
+                _fh.read(1)
+        except PermissionError:
+            raise PermissionError(f"File is in use or locked: {path}. Close it and try again.")
+        return path
+    candidates = [
+        os.path.join(EXTRACTED_DATA_DIR, f)
+        for f in os.listdir(EXTRACTED_DATA_DIR)
+        if f.lower().endswith(".xlsx") and not _is_lock_or_temp_excel(f)
+    ]
+    if not candidates:
+        raise FileNotFoundError(f"No .xlsx files found under {EXTRACTED_DATA_DIR}")
+    candidates.sort(key=os.path.getmtime, reverse=True)
+    for path in candidates:
+        try:
+            with open(path, "rb") as _fh:
+                _fh.read(1)
+            return path
+        except PermissionError:
+            logger.warning(f"Input Excel appears locked/in-use, skipping: {path}")
+            continue
+    raise PermissionError(
+        f"All Excel files under {EXTRACTED_DATA_DIR} appear to be locked (often '~$' files). "
+        "Close the workbook(s) and try again."
+    )
+
+def _read_extracted_excel(path: str) -> pd.DataFrame:
+    df = pd.read_excel(path)
+    logger.info(f"Loaded {len(df)} rows from {path}")
+    return df
+
+def _ensure_columns_exist(df: pd.DataFrame, cols: List[str]) -> pd.DataFrame:
+    for c in cols:
+        if c not in df.columns:
+            df[c] = None
+    return df
+
+def _get_first_nonempty(row: pd.Series, keys: List[str]) -> Optional[str]:
+    for k in keys:
+        v = row.get(k)
+        if v is None:
+            continue
+        if is_blankish(v):
+            continue
+        return str(v).strip()
+    return None
+
+def _row_is_noise(row: pd.Series) -> bool:
+    addr = _get_first_nonempty(row, ["ADDRESS:", "ADDRESS"])
+    postal = _get_first_nonempty(row, ["POSTAL CODE:", "POSTAL CODE"])
+    return addr is None and postal is None
+
+def _compute_risk(
+    row: pd.Series,
+    floods: List[Dict[str, Any]],
+    quakes: List[Dict[str, Any]],
+    fire_dist_km: Optional[float],
+    weights: Dict[str, float],
+) -> Tuple[float, Dict[str, float]]:
+    if RISK_USE_LLM_SCORING:
+        try:
+            score, breakdown = score_risk_llm(
+                row_data=row.to_dict(),
+                hazards={"flood_alerts": floods, "earthquakes": quakes, "fire_station_distance_km": fire_dist_km},
+            )
+            if score is not None:
+                return float(score), breakdown or {}
+        except Exception as exc:
+            logger.warning(f"LLM scoring failed, falling back to rule-based: {exc}")
+
+    rc = RiskCalculator(weights=weights)
+    return rc.compute(
+        row=row.to_dict(),
+        flood_alerts=floods,
+        earthquakes=quakes,
+        fire_station_distance_km=fire_dist_km,
+    )
+
+def process_row(
+    row: pd.Series,
+    cfg: Dict[str, Any],
+    owm_key: Optional[str],
+    providers: Dict[str, Any],
+    use_geocoding: bool,
+    use_places: bool,
+    enforce_api_geocode: bool,
+) -> pd.Series:
+    lat = None
+    lon = None
+    geocoded_success = False
+
+    addr1 = _get_first_nonempty(row, ["ADDRESS:", "ADDRESS"])
+    city = _get_first_nonempty(row, ["CITY:", "CITY"])
+    state = _get_first_nonempty(row, ["STATE:", "STATE"])
+    postal = _get_first_nonempty(row, ["POSTAL CODE:", "POSTAL CODE"])
+    country_col = _get_first_nonempty(row, ["COUNTRY:", "COUNTRY"])
+    country = cfg.get("country_hint") or country_col
+
+    address_joined = ", ".join([p for p in [addr1, city, state] if p])
+
+    if use_geocoding and providers.get("geocode") and (addr1 or postal or country):
+        glat, glon = providers["geocode"](
+            address=address_joined or "",
+            postal_code=postal or "",
+            country=country or None,
+        )
+        if glat is not None and glon is not None:
+            lat, lon = glat, glon
+            row["LATITUDE"] = lat
+            row["LONGITUDE"] = lon
+            geocoded_success = True
+            logger.info(f"Geocoded via {providers.get('geocoder_name')} -> ({lat}, {lon}) for '{address_joined}' (postal='{postal}', country='{country}')")
+        else:
+            logger.info(f"Geocoding failed for '{address_joined}' (postal='{postal}', country='{country}')")
+
+    if not geocoded_success and enforce_api_geocode:
+        row["LATITUDE"] = None
+        row["LONGITUDE"] = None
+        lat, lon = None, None
+    elif not geocoded_success and not enforce_api_geocode:
+        lat = row.get("LATITUDE")
+        lon = row.get("LONGITUDE")
+
+    floods: List[Dict[str, Any]] = []
+    quakes: List[Dict[str, Any]] = []
+    fire_dist_km: Optional[float] = None
+
+    if lat is not None and lon is not None and not pd.isna(lat) and not pd.isna(lon):
+        if owm_key and providers.get("floods"):
+            floods = providers["floods"](latitude=float(lat), longitude=float(lon), api_key=owm_key, hours=72)
+        if providers.get("earthquakes"):
+            quakes = providers["earthquakes"](
+                latitude=float(lat),
+                longitude=float(lon),
+                radius_km=cfg.get("radius_km", 300.0),
+                days_back=cfg.get("days_back", 7),
+                min_magnitude=cfg.get("min_magnitude", 3.0),
+            )
+        if use_places and providers.get("nearest_fire_station_distance_km"):
+            fire_dist_km = providers["nearest_fire_station_distance_km"](float(lat), float(lon))
+
+    risk_score, factor_breakdown = _compute_risk(row, floods, quakes, fire_dist_km, cfg.get("weights", {}))
+
+    row["FLOOD ALERTS COUNT"] = len(floods)
+    row["RECENT QUAKES COUNT"] = len(quakes)
+    row["MAX QUAKE MAGNITUDE"] = max([q.get("magnitude") for q in quakes if q.get("magnitude") is not None], default=None)
+    row["NEAREST FIRE STATION KM"] = fire_dist_km
+    row["RISK SCORE"] = round(float(risk_score), 2)
+
+    try:
+        explanation = explain_risk(
+            row_data=row.to_dict(),
+            hazards={"flood_alerts": floods, "earthquakes": quakes, "fire_station_distance_km": fire_dist_km},
+            factor_breakdown=factor_breakdown,
+            final_score=risk_score,
+        )
+    except Exception as exc:
+        logger.warning(f"GenAI explanation failed: {exc}")
+        explanation = "Explanation unavailable."
+
+    try:
+        recommendations = recommend_mitigations(
+            row_data=row.to_dict(),
+            hazards={"flood_alerts": floods, "earthquakes": quakes, "fire_station_distance_km": fire_dist_km},
+            factor_breakdown=factor_breakdown,
+            final_score=risk_score,
+        )
+    except Exception as exc:
+        logger.warning(f"GenAI recommendations failed: {exc}")
+        recommendations = "Recommendations unavailable."
+
+    row["RISK EXPLANATION"] = explanation
+    row["RISK RECOMMENDATIONS"] = recommendations
+
+    return row
+
+def _write_status_json(status: bool) -> str:
+    """
+    Writes a minimal status JSON under OUTPUT_DIR/last_run_status.json:
+    {"status": true} or {"status": false}
+    """
+    payload = {"status": bool(status)}
+    out_path = os.path.join(OUTPUT_DIR, "last_run_status.json")
+    try:
+        with open(out_path, "w", encoding="utf-8") as f:
+            json.dump(payload, f, ensure_ascii=False)
+        logger.info(f"Wrote run status JSON: {out_path}")
+    except Exception as exc:
+        logger.warning(f"Failed to write run status JSON: {exc}")
+    return out_path
+
+def run_risk_assessment(
+    input_filename: Optional[str] = None,
+    radius_km: Optional[float] = None,
+    days_back: Optional[int] = None,
+    min_magnitude: Optional[float] = None,
+    country_hint: Optional[str] = None,
+    no_geocode: bool = False,
+    use_places: bool = False,
+    skip_owm: bool = False,
+    geocoder_provider: Optional[str] = None,
+    earthquake_provider: Optional[str] = None,
+    flood_provider: Optional[str] = None,
+    enforce_api_geocode: bool = True,
+) -> Dict[str, Any]:
+    """
+    Programmatic entry point. Reads from data/extracted_data, writes to data/output, returns a run summary.
+    Also writes OUTPUT_DIR/last_run_status.json with minimal {"status": true} or {"status": false}.
+    """
+    input_path = _pick_input_file(input_filename)
+    df = _read_extracted_excel(input_path)
+
+    # Filter out obvious non-property rows (e.g., trailing TRUE/FALSE flags)
+    if len(df) > 0:
+        try:
+            df = df[~df.apply(_row_is_noise, axis=1)].reset_index(drop=True)
+        except Exception:
+            pass
+
+    # Ensure exact input-document columns exist (do not rename)
+    df = _ensure_columns_exist(
+        df,
+        [
+            "ADDRESS:",
+            "POSTAL CODE:",
+            "YEAR BUILT",
+            "ROOF AGE:",
+            "FIRE PROTECTION:",
+            "CRIME INDEX:",
+            "LATITUDE",
+            "LONGITUDE",
+        ],
+    )
+
+    cfg = _default_cfg(radius_km, days_back, min_magnitude, country_hint)
+    owm_key = _sanitize_owm_key(skip_owm)
+
+    providers = get_providers(
+        geocoder_name=geocoder_provider or os.getenv("GEOCODER_PROVIDER") or None,
+        earthquake_name=earthquake_provider or os.getenv("EARTHQUAKE_PROVIDER") or None,
+        flood_name=flood_provider or os.getenv("FLOOD_PROVIDER") or None,
+    )
+
+    rows = []
+    logger.info(f"Risk Agent: processing {len(df)} rows...")
+    for _, row in df.iterrows():
+        processed = process_row(
+            row=row,
+            cfg=cfg,
+            owm_key=owm_key,
+            providers=providers,
+            use_geocoding=(not no_geocode),
+            use_places=use_places,
+            enforce_api_geocode=enforce_api_geocode,
+        )
+        rows.append(processed)
+        time.sleep(0.15)  # polite pacing for external APIs
+
+    out_df = pd.DataFrame(rows)
+    out_name = _timestamped_output_name()
+    out_path = os.path.join(OUTPUT_DIR, out_name)
+    with pd.ExcelWriter(out_path, engine="openpyxl") as writer:
+        out_df.to_excel(writer, index=False, sheet_name="Results")
+
+    logger.info(f"Risk Agent: wrote {out_path}")
+
+    run_summary = {
+        "success": True,
+        "message": "Risk assessment completed",
+        "extracted_input": input_path,
+        "output_file": out_path,
+        "rows_processed": int(len(out_df)),
+        "llm_scoring_enabled": RISK_USE_LLM_SCORING,
+        "providers": {
+            "geocoder": providers.get("geocoder_name"),
+            "earthquakes": providers.get("earthquake_name"),
+            "floods": providers.get("flood_name"),
+        },
+        "policy": {
+            "enforce_api_geocode": enforce_api_geocode,
+        },
+    }
+
+    # Write minimal status JSON (true)
+    _write_status_json(True)
+
+    return run_summary
+
+# Optional FastAPI surface (for integration only)
+if FASTAPI_AVAILABLE:
+    app = FastAPI(title="Risk Assessment Agent API", version="2.2.1")
+
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=["*"],
+        allow_credentials=True,
+        allow_methods=["*"],
+        allow_headers=["*"],
+    )
+
+    @app.get("/health")
+    async def health():
+        return {"status": "ok"}
+
+    @app.post("/risk/run", summary="Run Risk Assessment Agent (integration). Under the hood calls run_risk_assessment().")
+    async def run_risk_agent_api(
+        input_filename: Optional[str] = Query(None),
+        radius_km: Optional[float] = Query(None),
+        days_back: Optional[int] = Query(None),
+        min_magnitude: Optional[float] = Query(None),
+        country_hint: Optional[str] = Query(None),
+        no_geocode: bool = Query(False),
+        use_places: bool = Query(False),
+        skip_owm: bool = Query(False),
+        geocoder_provider: Optional[str] = Query(None, description="Provider key; e.g., 'osm'"),
+        earthquake_provider: Optional[str] = Query(None, description="Provider key; e.g., 'usgs'"),
+        flood_provider: Optional[str] = Query(None, description="Provider key; e.g., 'owm_forecast'"),
+        enforce_api_geocode: bool = Query(True, description="If true, ignore input LAT/LON and always geocode via API"),
+    ):
+        try:
+            result = run_risk_assessment(
+                input_filename=input_filename,
+                radius_km=radius_km,
+                days_back=days_back,
+                min_magnitude=min_magnitude,
+                country_hint=country_hint,
+                no_geocode=no_geocode,
+                use_places=use_places,
+                skip_owm=skip_owm,
+                geocoder_provider=geocoder_provider,
+                earthquake_provider=earthquake_provider,
+                flood_provider=flood_provider,
+                enforce_api_geocode=enforce_api_geocode,
+            )
+            # Minimal status JSON already written inside run_risk_assessment
+            return result
+        except FileNotFoundError as e:
+            _write_status_json(False)
+            return JSONResponse(status_code=404, content={"success": False, "message": str(e)})
+        except Exception as exc:
+            logger.exception("Risk agent failed")
+            _write_status_json(False)
+            return JSONResponse(status_code=500, content={"success": False, "message": f"Risk agent failed: {str(exc)}"})
+
+    @app.get("/risk/outputs", summary="List generated risk outputs")
+    async def list_outputs():
+        files = sorted([f for f in os.listdir(OUTPUT_DIR) if f.lower().endswith(".xlsx")])
+        return {"count": len(files), "files": files}
+
+    @app.get("/risk/outputs/{filename}", summary="Download a specific risk output file")
+    async def get_output(filename: str):
+        path = os.path.join(OUTPUT_DIR, filename)
+        if not os.path.exists(path):
+            from fastapi import HTTPException as _HTTPException
+            raise _HTTPException(status_code=404, detail="Output file not found")
+        with open(path, "rb") as f:
+            data = f.read()
+        buf = BytesIO(data)
+        headers = {"Content-Disposition": f'attachment; filename="{filename}"'}
+        return StreamingResponse(
+            buf,
+            media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            headers=headers,
+        )
+
+# Allow direct execution without FastAPI
+if __name__ == "__main__":
+    try:
+        result = run_risk_assessment(enforce_api_geocode=True)
+        print(f"Risk assessment completed. Output: {result.get('output_file')}")
+    except Exception as e:
+        logger.exception("Direct run failed")
+        # Write minimal status JSON (false)
+        _write_status_json(False)
+        raise
+
+
+
+
+
+
+
+
+
+
+
+
+
+the Version1 above code i want it to run in such a way that once i type pytohn main.py ie the main file of it
+then the fast api should start 
+
+something like this
+if __name__ == "__main__":
+     # Read PORT_NUMBER from environment variables
+     port = int(os.getenv("PORT_NUMBER_Risk", 8677))  # Default to 8677 if not set
+     uvicorn.run(app, host="0.0.0.0", port=port)
+
+and once i run this in the terminal deifnitely it will say something like this
+INFO:     Started server process [26239]
+INFO:     Waiting for application startup.
+INFO:     Application startup complete.
+INFO:     Uvicorn running on http://0.0.0.0:8677 (Press CTRL+C to quit)
+
+
+and then there is orchestration agent code and once i run that orchestration agent code, it is supposed to trigger the above version 1 risk assesment code 
+
+below is the orchestration code see the part where risk assesment code is getting triggered in the orchestration agent (this is the part of code that will trigger the risk assesment agent 
+if chosen == "RiskAssessmentAgent":
+            try:
+                url = "http://127.0.0.1:8677/risk/run"
+                response = requests.post(url, timeout=10)
+                if response.status_code == 200:
+                    print("Risk Assesment Agent triggered successfully.")
+                else:
+                    print(f"Failed to trigger Risk Assesment Agent. Status code: {response.status_code}")
+            except Exception as e:
+                print(f"Error triggering Risk Assesment Agent: {e}")
+
+            time.sleep(10)   )
+
+
+
+
+
+import subprocess
+import requests
+import argparse
+import json
+import os
+import time
+from typing import Dict
+import sys
+from dotenv import load_dotenv
+
+load_dotenv()
+
+# OpenAI SDK
+from openai import OpenAI, AzureOpenAI
+
+# Local agents
+# from agents import data_extraction_agent, eligibility_agent, risk_assessment_agent
+
+
+def create_client_from_env() -> OpenAI:
+    """Return an OpenAI client that's pre-configured for Azure if the
+    AZURE_OPENAI_* variables are set; otherwise return a default client that
+    talks to api.openai.com.
+    """
+    azure_key = os.getenv("AZURE_OPENAI_API_KEY")
+    azure_endpoint = os.getenv("AZURE_OPENAI_ENDPOINT")
+    azure_version = os.getenv("AZURE_OPENAI_API_VERSION")
+    deployment = os.getenv("AZURE_OPENAI_CHAT_DEPLOYMENT")
+
+    if azure_key and azure_endpoint and azure_version and deployment:
+        client: OpenAI = AzureOpenAI(
+            api_key=azure_key,
+            azure_endpoint=azure_endpoint,
+            api_version=azure_version,
+        )
+        client._is_azure = True
+        client._azure_deployment = deployment
+        return client
+
+    if not os.getenv("OPENAI_API_KEY"):
+        raise RuntimeError(
+            "OPENAI_API_KEY must be set for OpenAI-platform mode "
+            "or provide all AZURE_OPENAI_* variables for Azure mode."
+        )
+
+    client = OpenAI()
+    client._is_azure = False
+    client._azure_deployment = None
+    return client
+
+
+# Create the client once, globally
+client = create_client_from_env()
+
+ALLOWED_AGENTS = ["RiskAssessmentAgent", "DataExtractionAgent", "EligibilityCheckAgent", "NONE"]
+
+PROMPT_TEMPLATE = (
+    "You are an orchestration-decider."
+    "Available agents (do NOT create new ones):"
+    "1) RiskAssessmentAgent – reads eligibility.json, writes risk_scores.json."
+    "2) DataExtractionAgent – writes data_extraction.json."
+    "3) EligibilityCheckAgent – reads data_extraction.json, writes eligibility.json."
+    "Your task is to decide which agent should run next, based on the current state of the files and their contents. "
+    "Evaluate the outcome of each agent's operation as reflected in the file contents and ensure that the operation is valid and complete before proceeding to the next agent."
+    "Important considerations:"
+    "1) Each agent's operation depends on the validity and completeness of the previous agent's output. If an agent's output indicates that further processing is not required or possible, you must stop and not proceed to the next agent."
+    "2) If an agent's output is incomplete, invalid, or indicates that further processing should not occur, provide a reason for why the next agent cannot be activated and stop further processing."
+    "3) If an agent's output is complete and valid, proceed to the next agent."
+    "Input: a JSON object called 'state' listing files in the data folder and their contents."
+    "Reply with ONE JSON object, schema:"
+    '{ "next_agent": "RiskAssessmentAgent|DataExtractionAgent|EligibilityCheckAgent|NONE", '
+    '"reason": "short explanation" }'
+)
+
+
+def ask_llm_for_next_agent(state: Dict, model: str = "gpt-4o") -> Dict:
+    """Query the LLM and return its JSON choice."""
+    system_msg = {"role": "system", "content": PROMPT_TEMPLATE}
+    user_msg = {"role": "user", "content": json.dumps({"state": state}, indent=2)}
+
+    # Choose correct model / deployment
+    if getattr(client, "_is_azure", False):
+        model_to_call = client._azure_deployment
+    else:
+        model_to_call = model
+
+    try:
+        resp = client.chat.completions.create(
+            model=model_to_call,
+            messages=[system_msg, user_msg],
+            temperature=0.0,
+            max_tokens=300
+        )
+        print(resp)
+    except Exception as e:
+        raise RuntimeError(f"LLM call failed: {e}")
+
+    try:
+        text = resp.choices[0].message.content.strip()
+    except Exception:
+        text = str(resp)
+
+    try:
+        start, end = text.find("{"), text.rfind("}")
+        parsed = json.loads(text[start:end + 1])
+    except Exception as e:
+        raise RuntimeError(f"LLM did not return valid JSON. Raw: {text} Error: {e}")
+
+    return parsed
+
+
+def run_orchestration(data_dir: str, model: str = "gpt-4") -> None:
+    """Main loop."""
+    state = {"data_dir": data_dir}
+    os.makedirs(data_dir, exist_ok=True)
+
+    # Define the extracted data folder path
+    extracted_data_dir = os.path.join(data_dir, "Extracted_Data")
+    os.makedirs(extracted_data_dir, exist_ok=True)
+
+    print("Starting orchestration loop. Data folder:", data_dir)
+
+    # Track the number of times the same agent is suggested
+    consecutive_agent_suggestions = 0
+    last_suggested_agent = None
+
+    while True:
+        # Get the current state of files in both data_dir and extracted_data_dir
+        try:
+            files_now = os.listdir(data_dir)
+        except Exception:
+            files_now = []
+        try:
+            extracted_files_now = os.listdir(extracted_data_dir)
+        except Exception:
+            extracted_files_now = []
+
+        llm_state = {"files": files_now, "extracted_files": extracted_files_now}
+
+        # Read the contents of each file in data_dir and add to state
+        for file in files_now:
+            full = os.path.join(data_dir, file)
+            try:
+                with open(full, "r", encoding="utf-8") as f:
+                    llm_state[file] = json.load(f)
+            except Exception:
+                llm_state[file] = None  # If file is unreadable, set its content to None
+
+        # Read the contents of each file in extracted_data_dir and add to state
+        for file in extracted_files_now:
+            full = os.path.join(extracted_data_dir, file)
+            try:
+                with open(full, "r", encoding="utf-8") as f:
+                    llm_state[file] = json.load(f)
+            except Exception:
+                llm_state[file] = None  # If file is unreadable, set its content to None
+
+        # Ask the LLM for the next agent
+        try:
+            parsed = ask_llm_for_next_agent(llm_state, model=model)
+        except Exception as e:
+            print("LLM call failed – falling back to rule-based choice.", e)
+            parsed = {"next_agent": "NONE", "reason": "llm-failed"}
+
+        chosen = parsed.get("next_agent")
+        reason = parsed.get("reason", "No reason provided.")
+        print(f"LLM suggested: {chosen} | Reason: {reason}")
+
+        # Check for repeated agent suggestions
+        if chosen == last_suggested_agent:
+            consecutive_agent_suggestions += 1
+        else:
+            consecutive_agent_suggestions = 0
+        last_suggested_agent = chosen
+
+        if consecutive_agent_suggestions > 5:
+            print("The same agent has been suggested multiple times without progress. Exiting.")
+            break
+
+        if chosen == "DataExtractionAgent":
+            try:
+                url = "http://127.0.0.1:8661/start-processing"
+                response = requests.post(url, timeout=10)
+                if response.status_code == 200:
+                    print("Data Extraction Agent triggered successfully.")
+                else:
+                    print(f"Failed to trigger Data Extraction Agent. Status code: {response.status_code}")
+            except Exception as e:
+                print(f"Error triggering Data Extraction Agent: {e}")
+
+        # elif chosen == "NONE":
+        #     print("No further agents to run. Exiting orchestration loop.")
+        #     break
+
+        time.sleep(10)
+
+        if chosen == "EligibilityCheckAgent":
+            try:
+                url = "http://127.0.0.1:8022/start-processing"
+                response = requests.post(url, timeout=10)
+                if response.status_code == 200:
+                    print("Eligibility Agent triggered successfully.")
+                else:
+                    print(f"Failed to trigger Eligibility Agent. Status code: {response.status_code}")
+            except Exception as e:
+                print(f"Error triggering Eligibility Agent: {e}")
+
+            time.sleep(10)
+
+
+        if chosen == "RiskAssessmentAgent":
+            try:
+                url = "http://127.0.0.1:8677/risk/run"
+                response = requests.post(url, timeout=10)
+                if response.status_code == 200:
+                    print("Risk Assesment Agent triggered successfully.")
+                else:
+                    print(f"Failed to trigger Risk Assesment Agent. Status code: {response.status_code}")
+            except Exception as e:
+                print(f"Error triggering Risk Assesment Agent: {e}")
+
+            time.sleep(10)   
+
+
+
+        elif chosen == "NONE":
+            print("No further agents to run. Exiting orchestration loop.")
+            break
+
+        time.sleep(5)
+
+        
+
+
+
+#-----------------------------------------------------------------------------------------------------------------------------------
+
+
+
+
+if __name__ == "__main__":
+    parser = argparse.ArgumentParser(description="Run orchestration agent (demo)")
+    parser.add_argument("--data-dir", default="./data",
+                        help="Folder used to read/write JSON files")
+    parser.add_argument("--model", default="gpt-4o",
+                        help="Model name for OpenAI-platform mode (ignored for Azure)")
+    args = parser.parse_args()
+
+    if getattr(client, "_is_azure", False):
+        print("Using Azure OpenAI deployment:", client._azure_deployment)
+    else:
+        if not os.getenv("OPENAI_API_KEY"):
+            print("Warning: OPENAI_API_KEY not set – first LLM call will fail.")
+
+    run_orchestration(args.data_dir, model=args.model)
+
+, below is the eligibility agent code that is getting triggered in the same way similarly i want risk assesmnet code version 1 to get trigerred by orchestration agent (as we already have our orcehstration agent code where it is trigerring the risk assesmnet , we just want risk assesmnet code)
+import json
+import os
+import sys
+import argparse
+import shutil
+import webbrowser
+from dataclasses import dataclass
+from datetime import datetime
+from http.server import ThreadingHTTPServer, SimpleHTTPRequestHandler
+from pathlib import Path
+from typing import Dict, List, Optional, Tuple
+import uvicorn
+import pandas as pd
+from fastapi import FastAPI, BackgroundTasks
+import asyncio
+
+# Define the FastAPI application instance
+app = FastAPI()
+
+BASE_DIR = Path(__file__).resolve().parent
+MOUNT_DATA_DIR = Path("/home/jarvis/jarvis_mu_Orchestration_Agent/Orchestration_Agent/data")
+COMMON_DIR = Path("/home/jarvis/jarvis_mu_Database/Database")
+OUTPUT_DIR = MOUNT_DATA_DIR / "Extracted_Data"
+INPUT_DIR = COMMON_DIR
+RESOURCES_DIR = BASE_DIR / "resources"
+SANCTIONS_FILE = RESOURCES_DIR / "sanctions_list.csv"
+
+# Ensure all directories exist
+MOUNT_DATA_DIR.mkdir(parents=True, exist_ok=True)
+OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
+INPUT_DIR.mkdir(parents=True, exist_ok=True)
+RESOURCES_DIR.mkdir(parents=True, exist_ok=True)
+
+@dataclass
+class EligibilityResult:
+    eligible: bool
+    reasons: List[str]
+    checks: Dict[str, bool]
+    input_file: str
+    evaluated_at: str
+    entities_checked: List[str]
+    sanctions_hits: List[str]
+    rule_evaluations: Dict[str, bool]
+
+def ensure_directories() -> None:
+    INPUT_DIR.mkdir(parents=True, exist_ok=True)
+    OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
+    RESOURCES_DIR.mkdir(parents=True, exist_ok=True)
+
+def load_latest_input_excel() -> Path:
+    excel_files = sorted(
+        Path(INPUT_DIR).glob("*.xlsx"),
+        key=lambda p: (p.stat().st_mtime, p.name),
+        reverse=True,
+    )
+    if not excel_files:
+        raise FileNotFoundError(
+            f"No .xlsx files found in {Path(INPUT_DIR).resolve()}. "
+            "Place the previous agent's Excel output in the 'input' folder."
+        )
+    return excel_files[0]
+
+def read_input_dataframe(path: Path) -> pd.DataFrame:
+    try:
+        df = pd.read_excel(path)
+        if df.empty:
+            raise ValueError("Input Excel has no rows")
+        return df
+    except Exception as exc:
+        raise RuntimeError(f"Failed to read Excel '{path}': {exc}") from exc
+
+def load_sanctions_list() -> List[str]:
+    if not SANCTIONS_FILE.exists():
+        # Create a starter sanctions list file with header if missing
+        SANCTIONS_FILE.write_text("entity_name", encoding="utf-8")
+    try:
+        sdf = pd.read_csv(SANCTIONS_FILE)
+        if "entity_name" not in sdf.columns:
+            raise ValueError("Sanctions file must have a column named 'entity_name'")
+        return [str(x).strip().lower() for x in sdf["entity_name"].dropna().unique()]
+    except Exception as exc:
+        raise RuntimeError(f"Failed to read sanctions file '{SANCTIONS_FILE}': {exc}") from exc
+
+def extract_entity_names(df: pd.DataFrame) -> List[str]:
+    def is_probable_person(name: str) -> bool:
+        s = name.strip()
+        if len(s) < 3 or len(s) > 100:
+            return False
+        if "@" in s or any(ch.isdigit() for ch in s):
+            return False
+        words = [w for w in s.replace(",", " ").split() if w]
+        if len(words) < 2 or len(words) > 6:
+            return False
+        upper_like = sum(1 for w in words if w[:1].isupper() or w.isupper())
+        return upper_like >= max(1, len(words) - 1)
+
+    def is_probable_org(name: str) -> bool:
+        s = name.strip()
+        if len(s) < 3 or len(s) > 120:
+            return False
+        if "@" in s:
+            return False
+        org_tokens = {"inc", "ltd", "llc", "plc", "corp", "corporation", "company", "limited", "bank", "group", "insurance", "ins."}
+        tokens = {t.strip(".,").lower() for t in s.split()}
+        return any(t in tokens for t in org_tokens)
+
+    candidate_values: List[str] = []
+    try:
+        if df.shape[1] == 2:
+            value_series = df.iloc[:, 1]
+            candidate_values = value_series.dropna().astype(str).tolist()
+        else:
+            candidate_values = pd.Series(df.values.ravel()).dropna().astype(str).tolist()
+    except Exception:
+        try:
+            return [str(df.iloc[0].to_dict())]
+        except Exception:
+            return []
+
+    people = []
+    orgs = []
+    for v in candidate_values:
+        vs = v.strip()
+        if not vs:
+            continue
+        if is_probable_person(vs):
+            people.append(vs)
+        elif is_probable_org(vs):
+            orgs.append(vs)
+
+    def dedupe_keep_order(items: List[str]) -> List[str]:
+        seen = set()
+        out: List[str] = []
+        for it in items:
+            key = it.lower()
+            if key not in seen:
+                seen.add(key)
+                out.append(it)
+        return out
+
+    ordered = dedupe_keep_order(people) + dedupe_keep_order(orgs)
+    if ordered:
+        return ordered[:10]
+
+    try:
+        return [str(df.iloc[0].to_dict())]
+    except Exception:
+        return []
+
+def perform_sanctions_check(entity_names: List[str], sanctions_list: List[str]) -> Tuple[bool, List[str], List[str]]:
+    reasons: List[str] = []
+    sanctions_set = set(sanctions_list)
+    flagged = []
+    for name in entity_names:
+        if not name:
+            continue
+        if name.strip().lower() in sanctions_set:
+            flagged.append(name)
+    is_clean = len(flagged) == 0
+    if not is_clean:
+        reasons.append(f"Entity on sanctions list: {', '.join(flagged)}")
+    else:
+        reasons.append("Passed sanctions check (no matches)")
+    return is_clean, reasons, flagged
+
+def perform_eligibility_rules(df: pd.DataFrame) -> Tuple[bool, List[str], Dict[str, bool]]:
+    reasons: List[str] = []
+    passed = True
+    rule_results: Dict[str, bool] = {}
+
+    def get_col(ci: List[str]) -> Optional[str]:
+        lower_cols = {c.lower(): c for c in df.columns}
+        for x in ci:
+            if x in lower_cols:
+                return lower_cols[x]
+        return None
+
+    revenue_col = get_col(["revenue", "annual_revenue", "gross_revenue"])
+    if revenue_col is not None:
+        try:
+            min_revenue = 50000
+            rule_ok = not (pd.to_numeric(df[revenue_col], errors="coerce") < min_revenue).any()
+            rule_results["min_revenue"] = bool(rule_ok)
+            if not rule_ok:
+                passed = False
+                reasons.append(f"Revenue below minimum threshold {min_revenue}")
+        except Exception:
+            rule_results["min_revenue"] = True
+
+    losses_col = get_col(["losses", "claims_last_3y", "num_losses"])
+    if losses_col is not None:
+        try:
+            max_losses = 3
+            rule_ok = not (pd.to_numeric(df[losses_col], errors="coerce") > max_losses).any()
+            rule_results["max_losses"] = bool(rule_ok)
+            if not rule_ok:
+                passed = False
+                reasons.append(f"Loss count exceeds maximum {max_losses}")
+        except Exception:
+            rule_results["max_losses"] = True
+
+    years_col = get_col(["years_in_business", "yib", "years_active"])
+    if years_col is not None:
+        try:
+            min_years = 1
+            rule_ok = not (pd.to_numeric(df[years_col], errors="coerce") < min_years).any()
+            rule_results["min_years_in_business"] = bool(rule_ok)
+            if not rule_ok:
+                passed = False
+                reasons.append(f"Years in business below {min_years}")
+        except Exception:
+            rule_results["min_years_in_business"] = True
+
+    industry_col = get_col(["industry", "naics", "sic"])
+    if industry_col is not None:
+        try:
+            restricted = {"weapons manufacturing", "gambling", "adult entertainment"}
+            rule_ok = not df[industry_col].astype(str).str.strip().str.lower().isin(restricted).any()
+            rule_results["restricted_industry"] = bool(rule_ok)
+            if not rule_ok:
+                passed = False
+                reasons.append("Restricted industry")
+        except Exception:
+            rule_results["restricted_industry"] = True
+
+    if passed:
+        reasons.append("Passed eligibility rules")
+
+    return passed, reasons, rule_results
+
+def build_result(
+    input_file: Path,
+    sanctions_ok: bool,
+    sanctions_reasons: List[str],
+    rules_ok: bool,
+    rules_reasons: List[str],
+    entities_checked: List[str],
+    sanctions_hits: List[str],
+    rule_evaluations: Dict[str, bool],
+) -> EligibilityResult:
+    eligible = sanctions_ok and rules_ok
+    reasons = sanctions_reasons + rules_reasons
+    return EligibilityResult(
+        eligible=eligible,
+        reasons=reasons,
+        checks={
+            "sanctions_check": sanctions_ok,
+            "eligibility_rules_check": rules_ok,
+        },
+        input_file=str(input_file.resolve()),
+        evaluated_at=datetime.utcnow().isoformat() + "Z",
+        entities_checked=entities_checked[:20],
+        sanctions_hits=sanctions_hits,
+        rule_evaluations=rule_evaluations,
+    )
+
+def write_outputs(result: EligibilityResult) -> Tuple[Path, Path]:
+    OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
+    timestamp = datetime.utcnow().strftime("%Y%m%d-%H%M%S")
+    json_path = OUTPUT_DIR / "eligibility.json"
+    xlsx_path = OUTPUT_DIR / f"eligibility_result_{timestamp}.xlsx"
+
+    with json_path.open("w", encoding="utf-8") as f:
+        json.dump({"eligible": result.eligible}, f, indent=2)
+
+    out_df = pd.DataFrame([{"eligible": result.eligible}])
+    with pd.ExcelWriter(xlsx_path, engine="openpyxl") as writer:
+        out_df.to_excel(writer, index=False, sheet_name="eligibility")
+
+    return json_path, xlsx_path
+
+def process_input_file(input_excel: Path, output_dir: Optional[Path] = None) -> Tuple[EligibilityResult, Path, Path]:
+    """Process a specific Excel file and write results to output directory.
+
+    Returns (result, json_path, xlsx_path)
+    """
+    ensure_directories()
+    if output_dir is not None:
+        global OUTPUT_DIR
+        OUTPUT_DIR = Path(output_dir)
+        OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
+
+    df = read_input_dataframe(input_excel)
+    sanctions_list = load_sanctions_list()
+    entity_names = extract_entity_names(df)
+
+    sanctions_ok, sanctions_reasons, sanctions_hits = perform_sanctions_check(entity_names, sanctions_list)
+    rules_ok, rules_reasons, rule_evals = perform_eligibility_rules(df)
+
+    result = build_result(
+        input_excel,
+        sanctions_ok,
+        sanctions_reasons,
+        rules_ok,
+        rules_reasons,
+        entity_names,
+        sanctions_hits,
+        rule_evals,
+    )
+    json_path, xlsx_path = write_outputs(result)
+    return result, json_path, xlsx_path
+
+
+async def process_eligibility():
+    try:
+        input_excel = load_latest_input_excel()
+        result, json_path, xlsx_path = process_input_file(input_excel)
+        print(json.dumps({"eligible": result.eligible}, indent=2))
+        print(f"Wrote JSON: {json_path.resolve()}")
+        print(f"Wrote Excel: {xlsx_path.resolve()}")
+    except Exception as e:
+        print(f"Error during eligibility processing: {e}")
+
+@app.post("/start-processing")
+async def start_processing(background_tasks: BackgroundTasks):
+    """
+    This endpoint is triggered by the orchestration agent to start the eligibility process.
+    """
+    background_tasks.add_task(process_eligibility)
+    return {"message": "Eligibility processing started."}
+
+if __name__ == "__main__":
+    port = int(os.getenv("PORT_NUMBER_ELIGIBILITY", 8022))  # Default to 8023 if not set
+    uvicorn.run(app, host="0.0.0.0", port=port)
+
