@@ -1,3 +1,32 @@
+(venv) jarvis@Jarvis-agent-vm:~/jarvis_mu_RiskAssesment_Agent/RiskNewAssesment$ python3 testscript.py
+Status Code: 200
+Response JSON: {'success': True, 'message': 'Risk assessment completed', 'extracted_input': '/home/jarvis/jarvis_mu_RiskAssesment_Agent/RiskNewAssesment/data/extracted_data/extracted.xlsx', 'output_file': '/home/jarvis/jarvis_mu_RiskAssesment_Agent/RiskNewAssesment/data/output/risk_results_20250918161735.xlsx', 'rows_processed': 0, 'llm_scoring_enabled': False, 'providers': {'geocoder': 'osm', 'earthquakes': 'usgs', 'floods': 'owm_forecast'}, 'policy': {'enforce_api_geocode': True}}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 #!/usr/bin/env python3
 # main.py - Risk Assessment Agent (starts FastAPI when executed)
 
