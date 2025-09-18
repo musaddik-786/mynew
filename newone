@@ -1,6 +1,986 @@
+
+
+the risk assesmnet code
+
+import os
+import time
+import json
+from io import BytesIO
+from datetime import datetime
+from typing import Optional, Dict, Any, List, Tuple
+
+import pandas as pd
+from dotenv import load_dotenv
+
+# Load environment
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+load_dotenv(os.path.join(BASE_DIR, ".env"))
+
+# Project modules (must exist in your project)
+from module.utils import get_logger, is_blankish
+from module.risk_calculator import RiskCalculator
+from module.genai_handler import explain_risk, recommend_mitigations, score_risk_llm
+from module.api_integration import get_providers
+
+# Try to import FastAPI (optional)
+try:
+    from fastapi import FastAPI, HTTPException, Query
+    from fastapi.responses import JSONResponse, StreamingResponse
+    from starlette.middleware.cors import CORSMiddleware
+    FASTAPI_AVAILABLE = True
+except Exception:
+    FASTAPI_AVAILABLE = False
+
+logger = get_logger("risk_agent")
+
+# Directories (configurable via env)
+EXTRACTED_DATA_DIR = os.getenv("EXTRACTED_DATA_DIR", os.path.join(BASE_DIR, "data", "extracted_data"))
+OUTPUT_DIR = os.getenv("OUTPUT_DIR", os.path.join(BASE_DIR, "data", "output"))
+os.makedirs(EXTRACTED_DATA_DIR, exist_ok=True)
+os.makedirs(OUTPUT_DIR, exist_ok=True)
+
+# Optional behavior toggles
+RISK_USE_LLM_SCORING = (os.getenv("RISK_USE_LLM_SCORING", "").strip().lower() in {"1", "true", "yes"})
+
+def _sanitize_owm_key(skip_owm: bool) -> str:
+    raw = (os.getenv("OPENWEATHERMAP_API_KEY") or "").strip()
+    if skip_owm:
+        return ""
+    if raw in {"", "YOUR_OWM_KEY", "placeholder", "xxx"}:
+        return ""
+    return raw
+
+def _default_cfg(
+    radius_km: Optional[float],
+    days_back: Optional[int],
+    min_magnitude: Optional[float],
+    country_hint: Optional[str],
+) -> Dict[str, Any]:
+    rk = radius_km if radius_km is not None else float(os.getenv("USGS_RADIUS_KM", "300"))
+    db = days_back if days_back is not None else int(os.getenv("USGS_DAYS_BACK", "7"))
+    mm = min_magnitude if min_magnitude is not None else float(os.getenv("USGS_MIN_MAG", "3.0"))
+    ch = (country_hint or os.getenv("COUNTRY_HINT") or "").strip() or None
+    return {
+        "radius_km": rk,
+        "days_back": db,
+        "min_magnitude": mm,
+        "country_hint": ch,
+        "weights": {
+            "flood": 0.25,
+            "earthquake": 0.20,
+            "fire_protection": 0.20,
+            "building_age": 0.15,
+            "crime_index": 0.20,
+        },
+    }
+
+def _timestamped_output_name(prefix: str = "risk_results") -> str:
+    ts = datetime.now().strftime("%Y%m%d%H%M%S")
+    return f"{prefix}_{ts}.xlsx"
+
+def _is_lock_or_temp_excel(name: str) -> bool:
+    base = os.path.basename(name)
+    return base.startswith("~$")
+
+def _pick_input_file(explicit_filename: Optional[str]) -> str:
+    if explicit_filename:
+        path = os.path.join(EXTRACTED_DATA_DIR, explicit_filename)
+        if not os.path.exists(path):
+            raise FileNotFoundError(f"Input file not found: {path}")
+        if _is_lock_or_temp_excel(path):
+            raise PermissionError(f"Refusing to read Excel lock/temp file: {path}. Close the workbook and try again.")
+        try:
+            with open(path, "rb") as _fh:
+                _fh.read(1)
+        except PermissionError:
+            raise PermissionError(f"File is in use or locked: {path}. Close it and try again.")
+        return path
+
+    candidates = [
+        os.path.join(EXTRACTED_DATA_DIR, f)
+        for f in os.listdir(EXTRACTED_DATA_DIR)
+        if f.lower().endswith(".xlsx") and not _is_lock_or_temp_excel(f)
+    ]
+    if not candidates:
+        raise FileNotFoundError(f"No .xlsx files found under {EXTRACTED_DATA_DIR}")
+    candidates.sort(key=os.path.getmtime, reverse=True)
+    for path in candidates:
+        try:
+            with open(path, "rb") as _fh:
+                _fh.read(1)
+            return path
+        except PermissionError:
+            logger.warning(f"Input Excel appears locked/in-use, skipping: {path}")
+            continue
+    raise PermissionError(
+        f"All Excel files under {EXTRACTED_DATA_DIR} appear to be locked (often '~$' files). Close the workbook(s) and try again."
+    )
+
+def _read_extracted_excel(path: str) -> pd.DataFrame:
+    df = pd.read_excel(path)
+    logger.info(f"Loaded {len(df)} rows from {path}")
+    return df
+
+def _ensure_columns_exist(df: pd.DataFrame, cols: List[str]) -> pd.DataFrame:
+    for c in cols:
+        if c not in df.columns:
+            df[c] = None
+    return df
+
+def _get_first_nonempty(row: pd.Series, keys: List[str]) -> Optional[str]:
+    for k in keys:
+        v = row.get(k)
+        if v is None:
+            continue
+        if is_blankish(v):
+            continue
+        return str(v).strip()
+    return None
+
+def _row_is_noise(row: pd.Series) -> bool:
+    addr = _get_first_nonempty(row, ["ADDRESS:", "ADDRESS"])
+    postal = _get_first_nonempty(row, ["POSTAL CODE:", "POSTAL CODE"])
+    return addr is None and postal is None
+
+def _compute_risk(
+    row: pd.Series,
+    floods: List[Dict[str, Any]],
+    quakes: List[Dict[str, Any]],
+    fire_dist_km: Optional[float],
+    weights: Dict[str, float],
+) -> Tuple[float, Dict[str, float]]:
+    if RISK_USE_LLM_SCORING:
+        try:
+            score, breakdown = score_risk_llm(
+                row_data=row.to_dict(),
+                hazards={"flood_alerts": floods, "earthquakes": quakes, "fire_station_distance_km": fire_dist_km},
+            )
+            if score is not None:
+                return float(score), breakdown or {}
+        except Exception as exc:
+            logger.warning(f"LLM scoring failed, falling back to rule-based: {exc}")
+
+    rc = RiskCalculator(weights=weights)
+    return rc.compute(
+        row=row.to_dict(),
+        flood_alerts=floods,
+        earthquakes=quakes,
+        fire_station_distance_km=fire_dist_km,
+    )
+
+def process_row(
+    row: pd.Series,
+    cfg: Dict[str, Any],
+    owm_key: Optional[str],
+    providers: Dict[str, Any],
+    use_geocoding: bool,
+    use_places: bool,
+    enforce_api_geocode: bool,
+) -> pd.Series:
+    lat = None
+    lon = None
+    geocoded_success = False
+
+    addr1 = _get_first_nonempty(row, ["ADDRESS:", "ADDRESS"])
+    city = _get_first_nonempty(row, ["CITY:", "CITY"])
+    state = _get_first_nonempty(row, ["STATE:", "STATE"])
+    postal = _get_first_nonempty(row, ["POSTAL CODE:", "POSTAL CODE"])
+    country_col = _get_first_nonempty(row, ["COUNTRY:", "COUNTRY"])
+    country = cfg.get("country_hint") or country_col
+
+    address_joined = ", ".join([p for p in [addr1, city, state] if p])
+
+    if use_geocoding and providers.get("geocode") and (addr1 or postal or country):
+        glat, glon = providers["geocode"](
+            address=address_joined or "",
+            postal_code=postal or "",
+            country=country or None,
+        )
+        if glat is not None and glon is not None:
+            lat, lon = glat, glon
+            row["LATITUDE"] = lat
+            row["LONGITUDE"] = lon
+            geocoded_success = True
+            logger.info(f"Geocoded via {providers.get('geocoder_name')} -> ({lat}, {lon}) for '{address_joined}' (postal='{postal}', country='{country}')")
+        else:
+            logger.info(f"Geocoding failed for '{address_joined}' (postal='{postal}', country='{country}')")
+
+    if not geocoded_success and enforce_api_geocode:
+        row["LATITUDE"] = None
+        row["LONGITUDE"] = None
+        lat, lon = None, None
+    elif not geocoded_success and not enforce_api_geocode:
+        lat = row.get("LATITUDE")
+        lon = row.get("LONGITUDE")
+
+    floods: List[Dict[str, Any]] = []
+    quakes: List[Dict[str, Any]] = []
+    fire_dist_km: Optional[float] = None
+
+    if lat is not None and lon is not None and not pd.isna(lat) and not pd.isna(lon):
+        if owm_key and providers.get("floods"):
+            floods = providers["floods"](latitude=float(lat), longitude=float(lon), api_key=owm_key, hours=72)
+        if providers.get("earthquakes"):
+            quakes = providers["earthquakes"](
+                latitude=float(lat),
+                longitude=float(lon),
+                radius_km=cfg.get("radius_km", 300.0),
+                days_back=cfg.get("days_back", 7),
+                min_magnitude=cfg.get("min_magnitude", 3.0),
+            )
+        if use_places and providers.get("nearest_fire_station_distance_km"):
+            fire_dist_km = providers["nearest_fire_station_distance_km"](float(lat), float(lon))
+
+    risk_score, factor_breakdown = _compute_risk(row, floods, quakes, fire_dist_km, cfg.get("weights", {}))
+
+    row["FLOOD ALERTS COUNT"] = len(floods)
+    row["RECENT QUAKES COUNT"] = len(quakes)
+    row["MAX QUAKE MAGNITUDE"] = max([q.get("magnitude") for q in quakes if q.get("magnitude") is not None], default=None)
+    row["NEAREST FIRE STATION KM"] = fire_dist_km
+    row["RISK SCORE"] = round(float(risk_score), 2)
+
+    try:
+        explanation = explain_risk(
+            row_data=row.to_dict(),
+            hazards={"flood_alerts": floods, "earthquakes": quakes, "fire_station_distance_km": fire_dist_km},
+            factor_breakdown=factor_breakdown,
+            final_score=risk_score,
+        )
+    except Exception as exc:
+        logger.warning(f"GenAI explanation failed: {exc}")
+        explanation = "Explanation unavailable."
+
+    try:
+        recommendations = recommend_mitigations(
+            row_data=row.to_dict(),
+            hazards={"flood_alerts": floods, "earthquakes": quakes, "fire_station_distance_km": fire_dist_km},
+            factor_breakdown=factor_breakdown,
+            final_score=risk_score,
+        )
+    except Exception as exc:
+        logger.warning(f"GenAI recommendations failed: {exc}")
+        recommendations = "Recommendations unavailable."
+
+    row["RISK EXPLANATION"] = explanation
+    row["RISK RECOMMENDATIONS"] = recommendations
+
+    return row
+
+def _write_status_json(status: bool) -> str:
+    """
+    Writes a minimal status JSON under OUTPUT_DIR/last_run_status.json:
+    {"status": true} or {"status": false}
+    """
+    payload = {"status": bool(status)}
+    out_path = os.path.join(OUTPUT_DIR, "last_run_status.json")
+    try:
+        with open(out_path, "w", encoding="utf-8") as f:
+            json.dump(payload, f, ensure_ascii=False)
+        logger.info(f"Wrote run status JSON: {out_path}")
+    except Exception as exc:
+        logger.warning(f"Failed to write run status JSON: {exc}")
+    return out_path
+
+def run_risk_assessment(
+    input_filename: Optional[str] = None,
+    radius_km: Optional[float] = None,
+    days_back: Optional[int] = None,
+    min_magnitude: Optional[float] = None,
+    country_hint: Optional[str] = None,
+    no_geocode: bool = False,
+    use_places: bool = False,
+    skip_owm: bool = False,
+    geocoder_provider: Optional[str] = None,
+    earthquake_provider: Optional[str] = None,
+    flood_provider: Optional[str] = None,
+    enforce_api_geocode: bool = True,
+) -> Dict[str, Any]:
+    """
+    Programmatic entry point. Reads from EXTRACTED_DATA_DIR, writes to OUTPUT_DIR, returns a run summary.
+    Also writes OUTPUT_DIR/last_run_status.json with minimal {"status": true} or {"status": false}.
+    """
+    input_path = _pick_input_file(input_filename)
+    df = _read_extracted_excel(input_path)
+
+    # Filter out obvious non-property rows
+    if len(df) > 0:
+        try:
+            df = df[~df.apply(_row_is_noise, axis=1)].reset_index(drop=True)
+        except Exception:
+            pass
+
+    # Ensure exact input-document columns exist (do not rename)
+    df = _ensure_columns_exist(
+        df,
+        [
+            "ADDRESS:",
+            "POSTAL CODE:",
+            "YEAR BUILT",
+            "ROOF AGE:",
+            "FIRE PROTECTION:",
+            "CRIME INDEX:",
+            "LATITUDE",
+            "LONGITUDE",
+        ],
+    )
+
+    cfg = _default_cfg(radius_km, days_back, min_magnitude, country_hint)
+    owm_key = _sanitize_owm_key(skip_owm)
+
+    providers = get_providers(
+        geocoder_name=geocoder_provider or os.getenv("GEOCODER_PROVIDER") or None,
+        earthquake_name=earthquake_provider or os.getenv("EARTHQUAKE_PROVIDER") or None,
+        flood_name=flood_provider or os.getenv("FLOOD_PROVIDER") or None,
+    )
+
+    rows = []
+    logger.info(f"Risk Agent: processing {len(df)} rows...")
+    for _, row in df.iterrows():
+        processed = process_row(
+            row=row,
+            cfg=cfg,
+            owm_key=owm_key,
+            providers=providers,
+            use_geocoding=(not no_geocode),
+            use_places=use_places,
+            enforce_api_geocode=enforce_api_geocode,
+        )
+        rows.append(processed)
+        # polite pacing for external APIs
+        time.sleep(0.15)
+
+    out_df = pd.DataFrame(rows)
+    out_name = _timestamped_output_name()
+    out_path = os.path.join(OUTPUT_DIR, out_name)
+    with pd.ExcelWriter(out_path, engine="openpyxl") as writer:
+        out_df.to_excel(writer, index=False, sheet_name="Results")
+
+    logger.info(f"Risk Agent: wrote {out_path}")
+
+    run_summary = {
+        "success": True,
+        "message": "Risk assessment completed",
+        "extracted_input": input_path,
+        "output_file": out_path,
+        "rows_processed": int(len(out_df)),
+        "llm_scoring_enabled": RISK_USE_LLM_SCORING,
+        "providers": {
+            "geocoder": providers.get("geocoder_name"),
+            "earthquakes": providers.get("earthquake_name"),
+            "floods": providers.get("flood_name"),
+        },
+        "policy": {
+            "enforce_api_geocode": enforce_api_geocode,
+        },
+    }
+
+    # Write minimal status JSON (true)
+    _write_status_json(True)
+
+    return run_summary
+
+# --- FastAPI endpoints (only created if FastAPI is available) ---
+app = None
+if FASTAPI_AVAILABLE:
+    app = FastAPI(title="Risk Assessment Agent API", version="2.2.1")
+
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=["*"],
+        allow_credentials=True,
+        allow_methods=["*"],
+        allow_headers=["*"],
+    )
+
+    @app.get("/health")
+    async def health():
+        return {"status": "ok"}
+
+    @app.post("/risk/run", summary="Run Risk Assessment Agent (integration). Under the hood calls run_risk_assessment().")
+    async def run_risk_agent_api(
+        input_filename: Optional[str] = Query(None),
+        radius_km: Optional[float] = Query(None),
+        days_back: Optional[int] = Query(None),
+        min_magnitude: Optional[float] = Query(None),
+        country_hint: Optional[str] = Query(None),
+        no_geocode: bool = Query(False),
+        use_places: bool = Query(False),
+        skip_owm: bool = Query(False),
+        geocoder_provider: Optional[str] = Query(None, description="Provider key; e.g., 'osm'"),
+        earthquake_provider: Optional[str] = Query(None, description="Provider key; e.g., 'usgs'"),
+        flood_provider: Optional[str] = Query(None, description="Provider key; e.g., 'owm_forecast'"),
+        enforce_api_geocode: bool = Query(True, description="If true, ignore input LAT/LON and always geocode via API"),
+    ):
+        try:
+            result = run_risk_assessment(
+                input_filename=input_filename,
+                radius_km=radius_km,
+                days_back=days_back,
+                min_magnitude=min_magnitude,
+                country_hint=country_hint,
+                no_geocode=no_geocode,
+                use_places=use_places,
+                skip_owm=skip_owm,
+                geocoder_provider=geocoder_provider,
+                earthquake_provider=earthquake_provider,
+                flood_provider=flood_provider,
+                enforce_api_geocode=enforce_api_geocode,
+            )
+            # Minimal status JSON already written inside run_risk_assessment
+            return result
+        except FileNotFoundError as e:
+            _write_status_json(False)
+            return JSONResponse(status_code=404, content={"success": False, "message": str(e)})
+        except Exception as exc:
+            logger.exception("Risk agent failed")
+            _write_status_json(False)
+            return JSONResponse(status_code=500, content={"success": False, "message": f"Risk agent failed: {str(exc)}"})
+
+    @app.get("/risk/outputs", summary="List generated risk outputs")
+    async def list_outputs():
+        files = sorted([f for f in os.listdir(OUTPUT_DIR) if f.lower().endswith(".xlsx")])
+        return {"count": len(files), "files": files}
+
+    @app.get("/risk/outputs/{filename}", summary="Download a specific risk output file")
+    async def get_output(filename: str):
+        path = os.path.join(OUTPUT_DIR, filename)
+        if not os.path.exists(path):
+            raise HTTPException(status_code=404, detail="Output file not found")
+        with open(path, "rb") as f:
+            data = f.read()
+        buf = BytesIO(data)
+        headers = {"Content-Disposition": f'attachment; filename="{filename}"'}
+        return StreamingResponse(
+            buf,
+            media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            headers=headers,
+        )
+
+# Allow direct execution: start uvicorn if FastAPI is available; otherwise run once
+if __name__ == "__main__":
+    port = int(os.getenv("PORT_NUMBER_Risk", "8677"))
+
+    if FASTAPI_AVAILABLE and app is not None:
+        try:
+            import uvicorn
+            # Run the FastAPI app; orchestration can POST to /risk/run
+            uvicorn.run(app, host="0.0.0.0", port=port, log_level="info")
+        except Exception:
+            logger.exception("Failed to start uvicorn; falling back to direct run of run_risk_assessment()")
+            try:
+                result = run_risk_assessment(enforce_api_geocode=True)
+                print(f"Risk assessment completed. Output: {result.get('output_file')}")
+            except Exception:
+                logger.exception("Direct run failed")
+                _write_status_json(False)
+                raise
+    else:
+        # No FastAPI: single-shot execution
+        try:
+            result = run_risk_assessment(enforce_api_geocode=True)
+            print(f"Risk assessment completed. Output: {result.get('output_file')}")
+        except Exception:
+            logger.exception("Direct run failed")
+            _write_status_json(False)
+            raise
+
+
+
+
+
+below is test scripts .py
+import requests
+
+def trigger_risk_assessment():
+    url = "http://127.0.0.1:8677/risk/run"  # API endpoint of Risk Agent
+    try:
+        response = requests.post(url, timeout=20)
+        print("Status Code:", response.status_code)
+        print("Response JSON:", response.json())
+    except Exception as e:
+        print("Error while triggering Risk Assessment:", e)
+
+if __name__ == "__main__":
+    trigger_risk_assessment()
 (venv) jarvis@Jarvis-agent-vm:~/jarvis_mu_RiskAssesment_Agent/RiskNewAssesment$ python3 testscript.py
 Status Code: 200
 Response JSON: {'success': True, 'message': 'Risk assessment completed', 'extracted_input': '/home/jarvis/jarvis_mu_RiskAssesment_Agent/RiskNewAssesment/data/extracted_data/extracted.xlsx', 'output_file': '/home/jarvis/jarvis_mu_RiskAssesment_Agent/RiskNewAssesment/data/output/risk_results_20250918161735.xlsx', 'rows_processed': 0, 'llm_scoring_enabled': False, 'providers': {'geocoder': 'osm', 'earthquakes': 'usgs', 'floods': 'owm_forecast'}, 'policy': {'enforce_api_geocode': True}}
+
+
+so i am seeing an emopty excel whcih is not correct because our earlier code was giving the correct excel as output 
+
+below is our earlier code for risk assesmnet
+
+import os
+import time
+import json
+from io import BytesIO
+from datetime import datetime
+from typing import Optional, Dict, Any, List, Tuple
+
+import pandas as pd
+from dotenv import load_dotenv
+
+# Load env
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+load_dotenv(os.path.join(BASE_DIR, ".env"))
+
+from module.utils import get_logger, is_blankish
+from module.risk_calculator import RiskCalculator
+from module.genai_handler import explain_risk, recommend_mitigations, score_risk_llm
+from module.api_integration import get_providers
+
+# Optional FastAPI (kept only for integration/orchestration)
+try:
+    from fastapi import FastAPI, HTTPException, Query
+    from fastapi.responses import JSONResponse, StreamingResponse
+    from starlette.middleware.cors import CORSMiddleware
+    FASTAPI_AVAILABLE = True
+except Exception:
+    FASTAPI_AVAILABLE = False
+
+logger = get_logger("risk_agent")
+
+# Directories (configurable via env, not hardcoded)
+EXTRACTED_DATA_DIR = os.getenv("EXTRACTED_DATA_DIR", os.path.join(BASE_DIR, "data", "extracted_data"))
+OUTPUT_DIR = os.getenv("OUTPUT_DIR", os.path.join(BASE_DIR, "data", "output"))
+os.makedirs(EXTRACTED_DATA_DIR, exist_ok=True)
+os.makedirs(OUTPUT_DIR, exist_ok=True)
+
+# Optional behavior toggles
+RISK_USE_LLM_SCORING = (os.getenv("RISK_USE_LLM_SCORING", "").strip().lower() in {"1", "true", "yes"})
+
+def _sanitize_owm_key(skip_owm: bool) -> str:
+    raw = (os.getenv("OPENWEATHERMAP_API_KEY") or "").strip()
+    if skip_owm:
+        return ""
+    if raw in {"", "YOUR_OWM_KEY", "placeholder", "xxx"}:
+        return ""
+    return raw
+
+def _default_cfg(
+    radius_km: Optional[float],
+    days_back: Optional[int],
+    min_magnitude: Optional[float],
+    country_hint: Optional[str],
+) -> Dict[str, Any]:
+    rk = radius_km if radius_km is not None else float(os.getenv("USGS_RADIUS_KM", "300"))
+    db = days_back if days_back is not None else int(os.getenv("USGS_DAYS_BACK", "7"))
+    mm = min_magnitude if min_magnitude is not None else float(os.getenv("USGS_MIN_MAG", "3.0"))
+    ch = (country_hint or os.getenv("COUNTRY_HINT") or "").strip() or None
+    return {
+        "radius_km": rk,
+        "days_back": db,
+        "min_magnitude": mm,
+        "country_hint": ch,
+        "weights": {
+            "flood": 0.25,
+            "earthquake": 0.20,
+            "fire_protection": 0.20,
+            "building_age": 0.15,
+            "crime_index": 0.20,
+        },
+    }
+
+def _timestamped_output_name(prefix: str = "risk_results") -> str:
+    ts = datetime.now().strftime("%Y%m%d_%H%M%S")
+    return f"{prefix}_{ts}.xlsx"
+
+def _is_lock_or_temp_excel(name: str) -> bool:
+    base = os.path.basename(name)
+    return base.startswith("~$")
+
+def _pick_input_file(explicit_filename: Optional[str]) -> str:
+    if explicit_filename:
+        path = os.path.join(EXTRACTED_DATA_DIR, explicit_filename)
+        if not os.path.exists(path):
+            raise FileNotFoundError(f"Input file not found: {path}")
+        if _is_lock_or_temp_excel(path):
+            raise PermissionError(f"Refusing to read Excel lock/temp file: {path}. Close the workbook and try again.")
+        try:
+            with open(path, "rb") as _fh:
+                _fh.read(1)
+        except PermissionError:
+            raise PermissionError(f"File is in use or locked: {path}. Close it and try again.")
+        return path
+    candidates = [
+        os.path.join(EXTRACTED_DATA_DIR, f)
+        for f in os.listdir(EXTRACTED_DATA_DIR)
+        if f.lower().endswith(".xlsx") and not _is_lock_or_temp_excel(f)
+    ]
+    if not candidates:
+        raise FileNotFoundError(f"No .xlsx files found under {EXTRACTED_DATA_DIR}")
+    candidates.sort(key=os.path.getmtime, reverse=True)
+    for path in candidates:
+        try:
+            with open(path, "rb") as _fh:
+                _fh.read(1)
+            return path
+        except PermissionError:
+            logger.warning(f"Input Excel appears locked/in-use, skipping: {path}")
+            continue
+    raise PermissionError(
+        f"All Excel files under {EXTRACTED_DATA_DIR} appear to be locked (often '~$' files). "
+        "Close the workbook(s) and try again."
+    )
+
+def _read_extracted_excel(path: str) -> pd.DataFrame:
+    df = pd.read_excel(path)
+    logger.info(f"Loaded {len(df)} rows from {path}")
+    return df
+
+def _ensure_columns_exist(df: pd.DataFrame, cols: List[str]) -> pd.DataFrame:
+    for c in cols:
+        if c not in df.columns:
+            df[c] = None
+    return df
+
+def _get_first_nonempty(row: pd.Series, keys: List[str]) -> Optional[str]:
+    for k in keys:
+        v = row.get(k)
+        if v is None:
+            continue
+        if is_blankish(v):
+            continue
+        return str(v).strip()
+    return None
+
+def _row_is_noise(row: pd.Series) -> bool:
+    addr = _get_first_nonempty(row, ["ADDRESS:", "ADDRESS"])
+    postal = _get_first_nonempty(row, ["POSTAL CODE:", "POSTAL CODE"])
+    return addr is None and postal is None
+
+def _compute_risk(
+    row: pd.Series,
+    floods: List[Dict[str, Any]],
+    quakes: List[Dict[str, Any]],
+    fire_dist_km: Optional[float],
+    weights: Dict[str, float],
+) -> Tuple[float, Dict[str, float]]:
+    if RISK_USE_LLM_SCORING:
+        try:
+            score, breakdown = score_risk_llm(
+                row_data=row.to_dict(),
+                hazards={"flood_alerts": floods, "earthquakes": quakes, "fire_station_distance_km": fire_dist_km},
+            )
+            if score is not None:
+                return float(score), breakdown or {}
+        except Exception as exc:
+            logger.warning(f"LLM scoring failed, falling back to rule-based: {exc}")
+
+    rc = RiskCalculator(weights=weights)
+    return rc.compute(
+        row=row.to_dict(),
+        flood_alerts=floods,
+        earthquakes=quakes,
+        fire_station_distance_km=fire_dist_km,
+    )
+
+def process_row(
+    row: pd.Series,
+    cfg: Dict[str, Any],
+    owm_key: Optional[str],
+    providers: Dict[str, Any],
+    use_geocoding: bool,
+    use_places: bool,
+    enforce_api_geocode: bool,
+) -> pd.Series:
+    lat = None
+    lon = None
+    geocoded_success = False
+
+    addr1 = _get_first_nonempty(row, ["ADDRESS:", "ADDRESS"])
+    city = _get_first_nonempty(row, ["CITY:", "CITY"])
+    state = _get_first_nonempty(row, ["STATE:", "STATE"])
+    postal = _get_first_nonempty(row, ["POSTAL CODE:", "POSTAL CODE"])
+    country_col = _get_first_nonempty(row, ["COUNTRY:", "COUNTRY"])
+    country = cfg.get("country_hint") or country_col
+
+    address_joined = ", ".join([p for p in [addr1, city, state] if p])
+
+    if use_geocoding and providers.get("geocode") and (addr1 or postal or country):
+        glat, glon = providers["geocode"](
+            address=address_joined or "",
+            postal_code=postal or "",
+            country=country or None,
+        )
+        if glat is not None and glon is not None:
+            lat, lon = glat, glon
+            row["LATITUDE"] = lat
+            row["LONGITUDE"] = lon
+            geocoded_success = True
+            logger.info(f"Geocoded via {providers.get('geocoder_name')} -> ({lat}, {lon}) for '{address_joined}' (postal='{postal}', country='{country}')")
+        else:
+            logger.info(f"Geocoding failed for '{address_joined}' (postal='{postal}', country='{country}')")
+
+    if not geocoded_success and enforce_api_geocode:
+        row["LATITUDE"] = None
+        row["LONGITUDE"] = None
+        lat, lon = None, None
+    elif not geocoded_success and not enforce_api_geocode:
+        lat = row.get("LATITUDE")
+        lon = row.get("LONGITUDE")
+
+    floods: List[Dict[str, Any]] = []
+    quakes: List[Dict[str, Any]] = []
+    fire_dist_km: Optional[float] = None
+
+    if lat is not None and lon is not None and not pd.isna(lat) and not pd.isna(lon):
+        if owm_key and providers.get("floods"):
+            floods = providers["floods"](latitude=float(lat), longitude=float(lon), api_key=owm_key, hours=72)
+        if providers.get("earthquakes"):
+            quakes = providers["earthquakes"](
+                latitude=float(lat),
+                longitude=float(lon),
+                radius_km=cfg.get("radius_km", 300.0),
+                days_back=cfg.get("days_back", 7),
+                min_magnitude=cfg.get("min_magnitude", 3.0),
+            )
+        if use_places and providers.get("nearest_fire_station_distance_km"):
+            fire_dist_km = providers["nearest_fire_station_distance_km"](float(lat), float(lon))
+
+    risk_score, factor_breakdown = _compute_risk(row, floods, quakes, fire_dist_km, cfg.get("weights", {}))
+
+    row["FLOOD ALERTS COUNT"] = len(floods)
+    row["RECENT QUAKES COUNT"] = len(quakes)
+    row["MAX QUAKE MAGNITUDE"] = max([q.get("magnitude") for q in quakes if q.get("magnitude") is not None], default=None)
+    row["NEAREST FIRE STATION KM"] = fire_dist_km
+    row["RISK SCORE"] = round(float(risk_score), 2)
+
+    try:
+        explanation = explain_risk(
+            row_data=row.to_dict(),
+            hazards={"flood_alerts": floods, "earthquakes": quakes, "fire_station_distance_km": fire_dist_km},
+            factor_breakdown=factor_breakdown,
+            final_score=risk_score,
+        )
+    except Exception as exc:
+        logger.warning(f"GenAI explanation failed: {exc}")
+        explanation = "Explanation unavailable."
+
+    try:
+        recommendations = recommend_mitigations(
+            row_data=row.to_dict(),
+            hazards={"flood_alerts": floods, "earthquakes": quakes, "fire_station_distance_km": fire_dist_km},
+            factor_breakdown=factor_breakdown,
+            final_score=risk_score,
+        )
+    except Exception as exc:
+        logger.warning(f"GenAI recommendations failed: {exc}")
+        recommendations = "Recommendations unavailable."
+
+    row["RISK EXPLANATION"] = explanation
+    row["RISK RECOMMENDATIONS"] = recommendations
+
+    return row
+
+def _write_status_json(status: bool) -> str:
+    """
+    Writes a minimal status JSON under OUTPUT_DIR/last_run_status.json:
+    {"status": true} or {"status": false}
+    """
+    payload = {"status": bool(status)}
+    out_path = os.path.join(OUTPUT_DIR, "last_run_status.json")
+    try:
+        with open(out_path, "w", encoding="utf-8") as f:
+            json.dump(payload, f, ensure_ascii=False)
+        logger.info(f"Wrote run status JSON: {out_path}")
+    except Exception as exc:
+        logger.warning(f"Failed to write run status JSON: {exc}")
+    return out_path
+
+def run_risk_assessment(
+    input_filename: Optional[str] = None,
+    radius_km: Optional[float] = None,
+    days_back: Optional[int] = None,
+    min_magnitude: Optional[float] = None,
+    country_hint: Optional[str] = None,
+    no_geocode: bool = False,
+    use_places: bool = False,
+    skip_owm: bool = False,
+    geocoder_provider: Optional[str] = None,
+    earthquake_provider: Optional[str] = None,
+    flood_provider: Optional[str] = None,
+    enforce_api_geocode: bool = True,
+) -> Dict[str, Any]:
+    """
+    Programmatic entry point. Reads from data/extracted_data, writes to data/output, returns a run summary.
+    Also writes OUTPUT_DIR/last_run_status.json with minimal {"status": true} or {"status": false}.
+    """
+    input_path = _pick_input_file(input_filename)
+    df = _read_extracted_excel(input_path)
+
+    # Filter out obvious non-property rows (e.g., trailing TRUE/FALSE flags)
+    if len(df) > 0:
+        try:
+            df = df[~df.apply(_row_is_noise, axis=1)].reset_index(drop=True)
+        except Exception:
+            pass
+
+    # Ensure exact input-document columns exist (do not rename)
+    df = _ensure_columns_exist(
+        df,
+        [
+            "ADDRESS:",
+            "POSTAL CODE:",
+            "YEAR BUILT",
+            "ROOF AGE:",
+            "FIRE PROTECTION:",
+            "CRIME INDEX:",
+            "LATITUDE",
+            "LONGITUDE",
+        ],
+    )
+
+    cfg = _default_cfg(radius_km, days_back, min_magnitude, country_hint)
+    owm_key = _sanitize_owm_key(skip_owm)
+
+    providers = get_providers(
+        geocoder_name=geocoder_provider or os.getenv("GEOCODER_PROVIDER") or None,
+        earthquake_name=earthquake_provider or os.getenv("EARTHQUAKE_PROVIDER") or None,
+        flood_name=flood_provider or os.getenv("FLOOD_PROVIDER") or None,
+    )
+
+    rows = []
+    logger.info(f"Risk Agent: processing {len(df)} rows...")
+    for _, row in df.iterrows():
+        processed = process_row(
+            row=row,
+            cfg=cfg,
+            owm_key=owm_key,
+            providers=providers,
+            use_geocoding=(not no_geocode),
+            use_places=use_places,
+            enforce_api_geocode=enforce_api_geocode,
+        )
+        rows.append(processed)
+        time.sleep(0.15)  # polite pacing for external APIs
+
+    out_df = pd.DataFrame(rows)
+    out_name = _timestamped_output_name()
+    out_path = os.path.join(OUTPUT_DIR, out_name)
+    with pd.ExcelWriter(out_path, engine="openpyxl") as writer:
+        out_df.to_excel(writer, index=False, sheet_name="Results")
+
+    logger.info(f"Risk Agent: wrote {out_path}")
+
+    run_summary = {
+        "success": True,
+        "message": "Risk assessment completed",
+        "extracted_input": input_path,
+        "output_file": out_path,
+        "rows_processed": int(len(out_df)),
+        "llm_scoring_enabled": RISK_USE_LLM_SCORING,
+        "providers": {
+            "geocoder": providers.get("geocoder_name"),
+            "earthquakes": providers.get("earthquake_name"),
+            "floods": providers.get("flood_name"),
+        },
+        "policy": {
+            "enforce_api_geocode": enforce_api_geocode,
+        },
+    }
+
+    # Write minimal status JSON (true)
+    _write_status_json(True)
+
+    return run_summary
+
+# Optional FastAPI surface (for integration only)
+if FASTAPI_AVAILABLE:
+    app = FastAPI(title="Risk Assessment Agent API", version="2.2.1")
+
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=["*"],
+        allow_credentials=True,
+        allow_methods=["*"],
+        allow_headers=["*"],
+    )
+
+    @app.get("/health")
+    async def health():
+        return {"status": "ok"}
+
+    @app.post("/risk/run", summary="Run Risk Assessment Agent (integration). Under the hood calls run_risk_assessment().")
+    async def run_risk_agent_api(
+        input_filename: Optional[str] = Query(None),
+        radius_km: Optional[float] = Query(None),
+        days_back: Optional[int] = Query(None),
+        min_magnitude: Optional[float] = Query(None),
+        country_hint: Optional[str] = Query(None),
+        no_geocode: bool = Query(False),
+        use_places: bool = Query(False),
+        skip_owm: bool = Query(False),
+        geocoder_provider: Optional[str] = Query(None, description="Provider key; e.g., 'osm'"),
+        earthquake_provider: Optional[str] = Query(None, description="Provider key; e.g., 'usgs'"),
+        flood_provider: Optional[str] = Query(None, description="Provider key; e.g., 'owm_forecast'"),
+        enforce_api_geocode: bool = Query(True, description="If true, ignore input LAT/LON and always geocode via API"),
+    ):
+        try:
+            result = run_risk_assessment(
+                input_filename=input_filename,
+                radius_km=radius_km,
+                days_back=days_back,
+                min_magnitude=min_magnitude,
+                country_hint=country_hint,
+                no_geocode=no_geocode,
+                use_places=use_places,
+                skip_owm=skip_owm,
+                geocoder_provider=geocoder_provider,
+                earthquake_provider=earthquake_provider,
+                flood_provider=flood_provider,
+                enforce_api_geocode=enforce_api_geocode,
+            )
+            # Minimal status JSON already written inside run_risk_assessment
+            return result
+        except FileNotFoundError as e:
+            _write_status_json(False)
+            return JSONResponse(status_code=404, content={"success": False, "message": str(e)})
+        except Exception as exc:
+            logger.exception("Risk agent failed")
+            _write_status_json(False)
+            return JSONResponse(status_code=500, content={"success": False, "message": f"Risk agent failed: {str(exc)}"})
+
+    @app.get("/risk/outputs", summary="List generated risk outputs")
+    async def list_outputs():
+        files = sorted([f for f in os.listdir(OUTPUT_DIR) if f.lower().endswith(".xlsx")])
+        return {"count": len(files), "files": files}
+
+    @app.get("/risk/outputs/{filename}", summary="Download a specific risk output file")
+    async def get_output(filename: str):
+        path = os.path.join(OUTPUT_DIR, filename)
+        if not os.path.exists(path):
+            from fastapi import HTTPException as _HTTPException
+            raise _HTTPException(status_code=404, detail="Output file not found")
+        with open(path, "rb") as f:
+            data = f.read()
+        buf = BytesIO(data)
+        headers = {"Content-Disposition": f'attachment; filename="{filename}"'}
+        return StreamingResponse(
+            buf,
+            media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            headers=headers,
+        )
+
+# Allow direct execution without FastAPI
+if __name__ == "__main__":
+    try:
+        result = run_risk_assessment(enforce_api_geocode=True)
+        print(f"Risk assessment completed. Output: {result.get('output_file')}")
+    except Exception as e:
+        logger.exception("Direct run failed")
+        # Write minimal status JSON (false)
+        _write_status_json(False)
+        raise
+
+
+
+
+
+
+
+
 
 
 
