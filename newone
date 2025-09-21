@@ -1,6 +1,27 @@
 
-This is the code for Risk Assesment I want it to be written in such a way that the orchestration agent triggers this risk assesmnet agent 
-so let me explain you the flow i will go in this risk assesmnet and run it in the terminal there it gives that 
+This is the code for Data extraction agent I want it to be written in such a way that the orchestration agent triggers this data extraction agent 
+as we can see in orchestration code that i shared here it triggeres the data extraction agent (   if chosen == "DataExtractionAgent":
+            try:
+                url = "http://127.0.0.1:8661/start-processing"
+                response = requests.post(url, timeout=10)
+                if response.status_code == 200:
+                    print("Data Extraction Agent triggered successfully.")
+                else:
+                    print(f"Failed to trigger Data Extraction Agent. Status code: {response.status_code}")
+            except Exception as e:
+                print(f"Error triggering Data Extraction Agent: {e}")
+
+        # elif chosen == "NONE":
+        #     print("No further agents to run. Exiting orchestration loop.")
+        #     break
+
+        time.sleep(10)
+   )
+
+so let me explain how the  flow should be,
+ i will go in this data extraction agent and run it in the terminal there it should give that fast api server is running and nothing should happen it should only start its fast api server
+after that i will go to Orchestration agent there i will run it in the terminal and once llm suggests data extraction (as mentioned in the code) the data extraction agent should get triggered so we need a  url = "http://127.0.0.1:8661/start-processing" this api only after which the Data extraction agent should start the actual process 
+so you dont need to change anything in orchestration agent , rather i think the changes are required in data extraction agent , please ask me if you have any questions
 
 import uvicorn
 from fastapi import FastAPI, UploadFile, File, BackgroundTasks
