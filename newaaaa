@@ -1,60 +1,409 @@
-Submission — Business Interruption & Contingent BI — Cruise Resort (Sunflower Hotel Group) 
+ "Insured": {
+    "Name And Mailing Address": "GreenGen, 100 East Avenue, New York City, New York, USA, confidence - 0.947",
 
 
-Dear Underwriting Team, 
+handler.py
 
- 
 
-Please find the attached ACORD 125 and the Property Detail Report in support of this Business Interruption and Contingent Business Interruption submission for Sunflower Hotel Group LLC (dba Cruise Resort). 
+#Working code after metadata filling
+import os
+import json
+from typing import Optional, Dict, Any
+import pandas as pd
+from azure.storage.blob.aio import BlobServiceClient
+from azure.core.exceptions import ResourceNotFoundError
+from dotenv import load_dotenv
+from io import BytesIO
+import openpyxl
+from datetime import datetime
+from zoneinfo import ZoneInfo
+import traceback
+import sys
 
- 
+from .service import _require_env, _parse_blob_url
 
-Key details 
+load_dotenv()
 
-- Named insured: Sunflower Hotel Group LLC (dba Cruise Resort)   
+AZURE_STORAGE_CONNECTION_STRING = os.environ.get("AZURE_STORAGE_CONNECTION_STRING", "")
 
-- Location: Cruise Resort, 100 Harbor View Drive, Seabreeze, FL 33101   
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+LOCAL_CSV_PATH = os.path.join(BASE_DIR, "input", "sanctions.csv")
+# LOCAL_CSV_PATH = os.path.join(os.getcwd(),"input", "sanctions.csv")
 
-- Line requested: Business Interruption & Contingent Business Interruption (including Extra Expense / Civil Authority where available)   
+FETCHED_EMAILS_EXCEL_BLOB_URL = "https://agenticai1.blob.core.windows.net/fetched-emails-data/Fetched_emails_data_new.xlsx"
+TARGET_BLOB_EXCEL_URL = "https://agenticail.blob.core.windows.net/eligibility-results/eligibility.xlsx"
+LOCAL_STUBBED_EXCEL_PATH = os.path.join(BASE_DIR,"input", "stubbed.xlsx")
 
-- Requested effective date: 2026-01-01   
 
-- Limit requested: $40,000,000 with 24 months indemnity (open to insurer presentation)   
+async def compare_name_with_sanctions(json_file_url: str) -> Dict[str, Any]:
+    """
+    Main flow. Always returns a dict with at least 'status' key.
+    """
+    try:
+        _require_env()
+    except Exception as e:
+        return {"status": False, "error": str(e)}
 
-- Annual gross revenue: $40,000,000   
+    # Step 1: parse blob url
+    try:
+        container_name, blob_name = _parse_blob_url(json_file_url)
+    except Exception as e:
+        return {"status": False, "error": f"Invalid jsonfilepath: {e}"}
 
-- Annual payroll: $6,500,000 
+    # Step 2: download json blob (async)
+    try:
+        async with BlobServiceClient.from_connection_string(AZURE_STORAGE_CONNECTION_STRING) as blob_service:
+            container_client = blob_service.get_container_client(container_name)
+            blob_client = container_client.get_blob_client(blob_name)
+            try:
+                await blob_client.get_blob_properties()
+            except ResourceNotFoundError:
+                return {"status": False, "error": f"JSON blob not found: container='{container_name}', blob='{blob_name}'"}
+            stream = await blob_client.download_blob()
+            raw_bytes = await stream.readall()
+    except Exception as e:
+        tb = traceback.format_exc()
+        print("Error connecting to Azure Blob Storage:", file=sys.stderr)
+        print(tb, file=sys.stderr)
+        return {"status": False, "error": f"Error connecting to Azure Blob Storage: {e}", "trace": tb}
 
- 
+    # Step 3: parse JSON
+    try:
+        data = json.loads(raw_bytes.decode("utf-8"))
+    except Exception as e:
+        tb = traceback.format_exc()
+        print("Failed to parse JSON:", file=sys.stderr)
+        print(tb, file=sys.stderr)
+        return {"status": False, "error": f"Failed to parse JSON: {e}", "trace": tb}
 
-Requested feedback 
+    # Step 4: search for name
+    # target_labels = {"ownername", "insuredname", "contactname", "primarycontactname","namedinsured(s)",
+    #                  "applicant/firstnameinsured", "insured/applicant", "namedinsured",
+    #                  "namedinsureds", "firstnameinsured", "applicantname"}
+    target_labels = {"nameandmailingaddress"}
+    extracted_name: Optional[str] = None
 
-- Please confirm appetite and capacity for BI with Contingent BI for this account.   
+    def search_nested(data_obj: Any) -> Optional[str]:
+        if isinstance(data_obj, dict):
+            for key, value in data_obj.items():
+                if isinstance(value, dict):
+                    res = search_nested(value)
+                    if res:
+                        return res
+                elif isinstance(value, list):
+                    for elem in value:
+                        if isinstance(elem, dict):
+                            res = search_nested(elem)
+                            if res:
+                                return res
+                elif isinstance(key, str):
+                    normalized_key = key.lower().replace(" ", "").replace(":", "")
+                    if normalized_key in target_labels:
+                        val = str(value)
+                        return val.split(",")[0].strip()
+        return None
 
-- Advise preferred indemnity basis (Gross Revenue vs. Gross Profit), typical waiting period options, and any immediate underwriting requirements.   
+    try:
+        extracted_name = search_nested(data)
+    except Exception as e:
+        tb = traceback.format_exc()
+        print("Error while searching nested JSON:", file=sys.stderr)
+        print(tb, file=sys.stderr)
+        return {"status": False, "error": f"Error while searching nested JSON: {e}", "trace": tb}
 
-- Confirm preferred secure channel for any additional documentation (monthly revenue schedules, P&L, payroll breakdown, loss runs, BCP/IT DR) and I will forward the files promptly. 
+    # If not found, still attempt excel append (consistent with your earlier design)
+    if not extracted_name:
+        try:
+            excel_status = await _append_and_copy_columns_to_target_blob(extracted_flag=None)
+        except Exception as e:
+            tb = traceback.format_exc()
+            print("Error in excel append after missing name:", file=sys.stderr)
+            print(tb, file=sys.stderr)
+            excel_status = {"status": False, "error": f"Excel append failed: {e}", "trace": tb}
+        return {"status": False, "error": "No matching name field found in JSON.", "excel_update": excel_status}
 
- 
+    # Step 5: read and compare with local CSV
+    if not os.path.exists(LOCAL_CSV_PATH):
+        try:
+            excel_status = await _append_and_copy_columns_to_target_blob(extracted_flag=None)
+        except Exception as e:
+            tb = traceback.format_exc()
+            excel_status = {"status": False, "error": f"Excel append failed: {e}", "trace": tb}
+        return {"status": False, "error": f"Local CSV not found at '{LOCAL_CSV_PATH}'", "excel_update": excel_status}
 
-Attachments 
+    try:
+        csv_df = pd.read_csv(LOCAL_CSV_PATH)
+    except Exception as e:
+        tb = traceback.format_exc()
+        print("Failed to read CSV:", file=sys.stderr)
+        print(tb, file=sys.stderr)
+        excel_status = await _append_and_copy_columns_to_target_blob(extracted_flag=None)
+        return {"status": False, "error": f"Failed to read CSV '{LOCAL_CSV_PATH}': {e}", "trace": tb, "excel_update": excel_status}
 
-- ACORD 125 (completed)   
+    if "entity_name" not in csv_df.columns:
+        excel_status = await _append_and_copy_columns_to_target_blob(extracted_flag=None)
+        return {"status": False, "error": "CSV must contain 'entity_name' column", "excel_update": excel_status}
 
-- Property Detail Report 
+    def norm(s: str) -> str:
+        return s.strip().lower() if isinstance(s, str) else ""
 
- 
+    entity_set = {norm(x) for x in csv_df["entity_name"].dropna() if isinstance(x, str) and x.strip()}
+    is_unique = norm(extracted_name) in entity_set
 
-Broker contact   
+    results = [{"Extracted Name": extracted_name, "is_Sanctioned": is_unique}]
 
-Olivia Park   
+    # save comparison result (best-effort)
+    try:
+        os.makedirs("./output", exist_ok=True)
+        json_output = "./output/comparison_results.json"
+        with open(json_output, "w", encoding="utf-8") as f:
+            json.dump({"results": results}, f, indent=4, ensure_ascii=False)
+    except Exception as e:
+        tb = traceback.format_exc()
+        print("Failed saving results:", file=sys.stderr)
+        print(tb, file=sys.stderr)
+        excel_status = await _append_and_copy_columns_to_target_blob(extracted_flag=is_unique)
+        return {"status": False, "error": f"Failed saving results: {e}", "trace": tb, "excel_update": excel_status}
 
-Senior Hospitality Broker, Meridian Shoreline Insurance Partners   
+    # final step: append/copy to target blob excel
+    try:
+        excel_status = await _append_and_copy_columns_to_target_blob(extracted_flag=is_unique)
+    except Exception as e:
+        tb = traceback.format_exc()
+        print("Error in final excel append:", file=sys.stderr)
+        print(tb, file=sys.stderr)
+        excel_status = {"status": False, "error": f"Excel append failed: {e}", "trace": tb}
 
-olivia.park@meridianship.com   
+    return {"status": True, "results": results, "excel_update": excel_status}
 
-+1 (555) 214-7802 
 
- 
+async def _append_and_copy_columns_to_target_blob(extracted_flag: Optional[bool]) -> Dict[str, Any]:
+    """
+    Steps:
+      1) Download fetched-emails excel and find last non-empty value in column A (scan upward).
+      2) Download target blob excel (or create new), find last non-empty in column A (scan upward),
+         compute write_row = last_non_empty + 1 (or 2 if none).
+      3) Write reference into column A and timestamp into column B.
+      4) Using local stubbed.xlsx, copy columns C->J from row2 (if extracted_flag True) or row3 (if False),
+         into the write_row of the target blob workbook at columns C->J.
+      5) Upload workbook back to blob (overwrite).
+    Notes:
+      - No duplicate-checking of reference number.
+      - extracted_flag: if None, won't copy C->J and will return a message explaining why.
+      - Errors copying columns will be returned in excel_update but reference+timestamp will still be saved.
+    """
+    if not AZURE_STORAGE_CONNECTION_STRING:
+        return {"status": False, "error": "Missing AZURE_STORAGE_CONNECTION_STRING for Excel blob operations."}
 
-Thank you,  I look forward to your confirmation and any initial guidance. 
+    # --- 1) Download fetched-emails excel and extract last value in col A ---
+    try:
+        src_container, src_blob = _parse_blob_url(FETCHED_EMAILS_EXCEL_BLOB_URL)
+    except Exception as e:
+        return {"status": False, "error": f"Invalid fetched emails excel blob URL: {e}"}
+
+    try:
+        async with BlobServiceClient.from_connection_string(AZURE_STORAGE_CONNECTION_STRING) as blob_service:
+            src_container_client = blob_service.get_container_client(src_container)
+            src_blob_client = src_container_client.get_blob_client(src_blob)
+            try:
+                await src_blob_client.get_blob_properties()
+            except ResourceNotFoundError:
+                return {"status": False, "error": f"Fetched emails Excel blob not found: container='{src_container}', blob='{src_blob}'"}
+
+            src_stream = await src_blob_client.download_blob()
+            src_bytes = await src_stream.readall()
+    except Exception as e:
+        tb = traceback.format_exc()
+        print("Error downloading fetched emails Excel from blob:", file=sys.stderr)
+        print(tb, file=sys.stderr)
+        return {"status": False, "error": f"Error downloading fetched emails Excel from blob: {e}", "trace": tb}
+
+    try:
+        src_bio = BytesIO(src_bytes)
+        src_wb = openpyxl.load_workbook(filename=src_bio, read_only=True, data_only=True)
+        src_ws = src_wb[src_wb.sheetnames[0]]
+        last_value = None
+        src_max_row = src_ws.max_row or 0
+        for r in range(src_max_row, 0, -1):
+            v = src_ws.cell(row=r, column=1).value
+            if v is not None and str(v).strip() != "":
+                last_value = str(v).strip()
+                break
+        src_wb.close()
+        if last_value is None:
+            return {"status": False, "error": "No non-empty values found in column A of fetched emails Excel."}
+    except Exception as e:
+        tb = traceback.format_exc()
+        print("Failed parsing fetched emails Excel:", file=sys.stderr)
+        print(tb, file=sys.stderr)
+        return {"status": False, "error": f"Failed parsing fetched emails Excel: {e}", "trace": tb}
+
+    # --- 2) Download target blob excel to modify (or create new) ---
+    try:
+        tgt_container, tgt_blob = _parse_blob_url(TARGET_BLOB_EXCEL_URL)
+    except Exception as e:
+        return {"status": False, "error": f"Invalid target blob excel URL: {e}"}
+
+    try:
+        async with BlobServiceClient.from_connection_string(AZURE_STORAGE_CONNECTION_STRING) as blob_service:
+            tgt_container_client = blob_service.get_container_client(tgt_container)
+            tgt_blob_client = tgt_container_client.get_blob_client(tgt_blob)
+            try:
+                # If exists, download into memory
+                await tgt_blob_client.get_blob_properties()
+                tgt_stream = await tgt_blob_client.download_blob()
+                tgt_bytes = await tgt_stream.readall()
+                targ_bio = BytesIO(tgt_bytes)
+                wb = openpyxl.load_workbook(filename=targ_bio)
+            except ResourceNotFoundError:
+                # create a new workbook if blob missing
+                wb = openpyxl.Workbook()
+            except Exception as e:
+                tb = traceback.format_exc()
+                print("Error accessing target blob excel:", file=sys.stderr)
+                print(tb, file=sys.stderr)
+                return {"status": False, "error": f"Error accessing target blob excel: {e}", "trace": tb}
+
+            ws = wb[wb.sheetnames[0]]
+
+            # Find last non-empty row in column A by scanning upwards
+            last_non_empty_local = 0
+            local_max = ws.max_row or 0
+            for r in range(local_max, 0, -1):
+                val = ws.cell(row=r, column=1).value
+                if val is not None and str(val).strip() != "":
+                    last_non_empty_local = r
+                    break
+
+            # compute write row following the "append after last non-empty" rule
+            if last_non_empty_local >= 1:
+                write_row = last_non_empty_local + 1
+            else:
+                # no values present -> write to row 2 (reserve A1 for header)
+                write_row = 2
+
+            # Write the reference into column A
+            ws.cell(row=write_row, column=1, value=last_value)
+
+            # Create timestamp in Asia/Kolkata timezone with format "MM/DD/YYYY hh:mm:ss AM/PM"
+            try:
+                tz = ZoneInfo("Asia/Kolkata")
+            except Exception:
+                tz = None
+            now = datetime.now(tz) if tz is not None else datetime.now()
+            timestamp_str = now.strftime("%m/%d/%Y %I:%M:%S %p")
+            ws.cell(row=write_row, column=2, value=timestamp_str)
+
+            # --- 3) Copy columns C->J from local stubbed.xlsx based on extracted_flag ---
+            copy_result = {"copied": False, "message": None}
+            if extracted_flag is None:
+                copy_result = {"copied": False, "message": "No sanction boolean provided; skipped copying C->J from local stubbed.xlsx."}
+            else:
+                # determine source row in stubbed.xlsx: True -> row2 (Not Cleared), False -> row3 (Cleared)
+                source_row = 3 if extracted_flag else 2
+
+                # Read local stubbed workbook synchronously
+                try:
+                    if not os.path.exists(LOCAL_STUBBED_EXCEL_PATH):
+                        copy_result = {"copied": False, "message": f"Local stubbed excel not found at '{LOCAL_STUBBED_EXCEL_PATH}'."}
+                    else:
+                        wb_local = openpyxl.load_workbook(LOCAL_STUBBED_EXCEL_PATH, data_only=True)
+                        ws_local = wb_local[wb_local.sheetnames[0]]
+
+                        # Copy columns C (3) -> J (10)
+                        copied_any = False
+                        for col_idx in range(3, 11):  # 3..10 inclusive
+                            val = ws_local.cell(row=source_row, column=col_idx).value
+                            ws.cell(row=write_row, column=col_idx, value=val)
+                            if val is not None and str(val).strip() != "":
+                                copied_any = True
+                        wb_local.close()
+                        copy_result = {"copied": True, "message": f"Copied columns C->J from local stubbed.xlsx row {source_row} into target blob row {write_row}.", "copied_any": copied_any}
+                except Exception as e:
+                    tb = traceback.format_exc()
+                    print("Error copying columns from local stubbed.xlsx:", file=sys.stderr)
+                    print(tb, file=sys.stderr)
+                    copy_result = {"copied": False, "message": f"Error copying columns from local stubbed.xlsx: {e}", "trace": tb}
+
+            # Save workbook to bytes and upload back to blob (overwrite)
+            out_bio = BytesIO()
+            try:
+                wb.save(out_bio)
+            except Exception as e:
+                tb = traceback.format_exc()
+                print("Error saving workbook to bytes:", file=sys.stderr)
+                print(tb, file=sys.stderr)
+                wb.close()
+                return {"status": False, "error": f"Failed to save modified workbook: {e}", "copy_result": copy_result, "trace": tb}
+
+            out_bio.seek(0)
+            try:
+                await tgt_blob_client.upload_blob(out_bio.getvalue(), overwrite=True)
+            except Exception as e:
+                tb = traceback.format_exc()
+                print("Failed uploading modified target excel back to blob:", file=sys.stderr)
+                print(tb, file=sys.stderr)
+                wb.close()
+                return {"status": False, "error": f"Failed uploading modified target excel back to blob: {e}", "copy_result": copy_result, "trace": tb}
+
+            wb.close()
+            return {"status": True, "message": f"Wrote reference '{last_value}' to target blob excel at row {write_row} and timestamp '{timestamp_str}' in column B.", "copy_result": copy_result}
+    except Exception as e:
+        tb = traceback.format_exc()
+        print("General error during target blob excel handling:", file=sys.stderr)
+        print(tb, file=sys.stderr)
+        return {"status": False, "error": f"General error during target blob excel handling: {e}", "trace": tb}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+service.py
+
+
+#Working code after metadata filling
+import os
+from urllib.parse import urlparse, unquote
+from dotenv import load_dotenv
+
+load_dotenv()
+
+AZURE_STORAGE_CONNECTION_STRING = os.environ.get("AZURE_STORAGE_CONNECTION_STRING", "")
+
+
+def _require_env() -> None:
+    """Ensure required environment variables exist."""
+    if not AZURE_STORAGE_CONNECTION_STRING:
+        raise RuntimeError("Missing AZURE_STORAGE_CONNECTION_STRING in .env")
+
+
+def _parse_blob_url(url: str) -> tuple[str, str]:
+    """
+    Parse an Azure Blob URL and return (container_name, blob_path).
+    Example URL:
+      https://account.blob.core.windows.net/output-results/folder/name.json
+    Returns:
+      ("output-results", "folder/name.json")
+    """
+    parsed = urlparse(url)
+    if not parsed.scheme.startswith("http"):
+        raise ValueError("jsonfilepath must be a valid http(s) URL to Azure Blob Storage.")
+
+    path = parsed.path.lstrip("/")
+    if "/" not in path:
+        raise ValueError("jsonfilepath must include both container and blob path.")
+    parts = path.split("/", 1)
+    container = parts[0]
+    blob_path = parts[1]
+    return unquote(container), unquote(blob_path)
+
+
