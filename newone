@@ -1,574 +1,276 @@
-
-This is the code for Data extraction agent I want it to be written in such a way that the orchestration agent triggers this data extraction agent 
-as we can see in orchestration code that i shared here it triggeres the data extraction agent (   if chosen == "DataExtractionAgent":
-            try:
-                url = "http://127.0.0.1:8661/start-processing"
-                response = requests.post(url, timeout=10)
-                if response.status_code == 200:
-                    print("Data Extraction Agent triggered successfully.")
-                else:
-                    print(f"Failed to trigger Data Extraction Agent. Status code: {response.status_code}")
-            except Exception as e:
-                print(f"Error triggering Data Extraction Agent: {e}")
-
-        # elif chosen == "NONE":
-        #     print("No further agents to run. Exiting orchestration loop.")
-        #     break
-
-        time.sleep(10)
-   )
-
-so let me explain how the  flow should be,
- i will go in this data extraction agent and run it in the terminal there it should give that fast api server is running and nothing should happen it should only start its fast api server
-after that i will go to Orchestration agent there i will run it in the terminal and once llm suggests data extraction (as mentioned in the code) the data extraction agent should get triggered so we need a  url = "http://127.0.0.1:8661/start-processing" this api only after which the Data extraction agent should start the actual process 
-so you dont need to change anything in orchestration agent , rather i think the changes are required in data extraction agent , please ask me if you have any questions
-
-import uvicorn
-from fastapi import FastAPI, UploadFile, File, BackgroundTasks
-from fastapi.responses import FileResponse, JSONResponse
-from dotenv import load_dotenv
-import os
-import pandas as pd
-import tempfile
-import json
-from datetime import datetime
-from image_processor import analyze_document
-import asyncio
- 
-# Load environment variables
-load_dotenv()
-ENDPOINT = os.getenv("AZURE_FORMRECOG_ENDPOINT")
-API_KEY = os.getenv("AZURE_FORMRECOG_KEY")
-
-COMMON_DIR =  os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "Eligibilty_check_UW", "input")
-# Ensure output and input directories exist
-MOUNT_DATA_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))), "data")
-os.makedirs(MOUNT_DATA_DIR, exist_ok=True)  # Ensure the Mount_Data directory exists
-
-# Define the path to the Extracted_Data folder inside Mount_Data
-OUTPUT_DIR = os.path.join(MOUNT_DATA_DIR, "Extracted_Data")
-os.makedirs(OUTPUT_DIR, exist_ok=True)  # Ensure the Extracted_Data directory exists
-
-
-
-
-BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-# OUTPUT_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))), "output")
-INPUT_DIR = os.path.join(BASE_DIR, "input")
-os.makedirs(OUTPUT_DIR, exist_ok=True)
-os.makedirs(INPUT_DIR, exist_ok=True)
- 
-app = FastAPI()
- 
-@app.post("/extract")
-async def extract_fields(image: UploadFile = File(...), excel: UploadFile = File(...), background_tasks: BackgroundTasks = None):
-    try:
-        image_data = await image.read()
- 
-        # Save and read Excel file
-        with tempfile.NamedTemporaryFile(delete=False, suffix=".xlsx") as tmp_excel:
-            tmp_excel.write(await excel.read())
-            tmp_excel_path = tmp_excel.name
- 
-        df = pd.read_excel(tmp_excel_path, engine="openpyxl", header=None)
- 
-        if df.empty or df.shape[1] < 1:
-            try:
-                os.remove(tmp_excel_path)
-            except Exception:
-                pass
-            return JSONResponse(
-                status_code=400,
-                content={"error": "Excel file must have at least one column with fields to extract."},
-            )
- 
-        fields = df[0].dropna().astype(str).tolist()
-        categories = {"Uncategorized": fields}
- 
-        result = analyze_document(
-            ENDPOINT, API_KEY, image_data=image_data, fields_to_extract=fields, categories=categories
-        )
- 
-        rows = []
-        fields_with_values = result.get("fields_with_values", {})
-        selected_fields = set(result.get("selected_fields", []))
- 
-        for key, val in fields_with_values.items():
-            rows.append({
-                "Field": key,
-                "Value": val,
-                "Selected": key in selected_fields
-            })
- 
-        for key in selected_fields:
-            if key not in fields_with_values:
-                rows.append({
-                    "Field": key,
-                    "Value": "",
-                    "Selected": True
-                })
- 
-        df_out = pd.DataFrame(rows, columns=["Field", "Value", "Selected"])
- 
-        with tempfile.NamedTemporaryFile(delete=False, suffix=".xlsx") as tmp_out:
-            tmp_out_path = tmp_out.name
-        df_out.to_excel(tmp_out_path, index=False, engine="openpyxl")
- 
-        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        # excel_filename = f"extracted_{timestamp}.xlsx"
-        # excel_filename = OUTPUT_DIR / "extracted.xlsx"
-
-        excel_filename = "extracted.xlsx"
-        # excel_filename = OUTPUT_DIR / f"extracted.xlsx"
-        json_filename = f"extracted_{timestamp}.json"
- 
-        # excel_path = os.path.join(OUTPUT_DIR, excel_filename) - I commented
-        excel_path = os.path.join(COMMON_DIR, excel_filename)
-        df_out.to_excel(excel_path, index=False, engine="openpyxl")
- 
-        json_path = os.path.join(OUTPUT_DIR, json_filename)
-        with open(json_path, "w", encoding="utf-8") as json_file:
-            json.dump(rows, json_file, indent=4)
- 
-        test_json_path = os.path.join(OUTPUT_DIR, "data_extraction.json")
-        status_payload = {"status": "completed"} if rows else {"status": "not completed"}
-        with open(test_json_path, "w", encoding="utf-8") as test_file:
-            json.dump(status_payload, test_file, indent=4)
- 
-        if background_tasks:
-            background_tasks.add_task(lambda p: os.path.exists(p) and os.remove(p), tmp_out_path)
-            background_tasks.add_task(lambda p: os.path.exists(p) and os.remove(p), tmp_excel_path)
-        else:
-            try:
-                os.remove(tmp_excel_path)
-            except Exception:
-                pass
- 
-        return JSONResponse(
-            status_code=200,
-            content={
-                "message": "Extraction successful.",
-                "excel_file": excel_path,
-                "json_file": json_path,
-                "status_file": test_json_path
-            }
-        )
- 
-    except Exception as e:
-        return JSONResponse(status_code=500, content={"error": str(e)})
- 
-# ------------------ Manual Folder Processing Logic ------------------
- 
-def find_file_pairs(input_dir):
-    print("🔍 Scanning input folder...")
-   
-    # List all files in input directory
-    files = os.listdir(input_dir)
-   
-    # Find excel files
-    excel_files = [f for f in files if f.endswith('.xlsx')]
-    # Find document files
-    doc_files = [f for f in files if f.lower().endswith(('.pdf', '.png', '.jpg', '.jpeg'))]
-   
-    print(f" Found {len(excel_files)} Excel files and {len(doc_files)} document files")
-   
-    pairs = []
-    for excel in excel_files:
-        base_name = os.path.splitext(excel)[0]
-       
-        # Look for matching document files
-        for doc in doc_files:
-            doc_base = os.path.splitext(doc)[0]
-           
-            # Match if document name starts with excel name or vice versa
-            if doc_base.startswith(base_name) or base_name.startswith(doc_base):
-                pairs.append((
-                    os.path.join(input_dir, doc),
-                    os.path.join(input_dir, excel)
-                ))
-                print(f"✓ Matched: {doc} ↔ {excel}")
-                break
-   
-    print(f" Matched {len(pairs)} file pairs")
-    return pairs
- 
-async def process_input_folder():
-    pairs = find_file_pairs(INPUT_DIR)
-    for image_path, excel_path in pairs:
-        try:
-            print(f"Processing: {os.path.basename(image_path)} + {os.path.basename(excel_path)}")
- 
-            with open(image_path, "rb") as img_file:
-                image_data = img_file.read()
- 
-            df = pd.read_excel(excel_path, engine="openpyxl", header=None)
-            if df.empty or df.shape[1] < 1:
-                print(" Skipped: Excel file is empty or invalid.")
-                continue
- 
-            fields = df[0].dropna().astype(str).tolist()
-            categories = {"Uncategorized": fields}
- 
-            print(" Sending to Document Intelligence API...")
-            result = analyze_document(
-                ENDPOINT, API_KEY, image_data=image_data, fields_to_extract=fields, categories=categories
-            )
- 
-            rows = []
-            fields_with_values = result.get("fields_with_values", {})
-            selected_fields = set(result.get("selected_fields", []))
- 
-            for key, val in fields_with_values.items():
-                rows.append({"Field": key, "Value": val, "Selected": key in selected_fields})
-            for key in selected_fields:
-                if key not in fields_with_values:
-                    rows.append({"Field": key, "Value": "", "Selected": True})
- 
-            # Create the original DataFrame
-            df_out = pd.DataFrame(rows, columns=["Field", "Value", "Selected"])
-           
-            # Create a transposed version for Excel
-            df_excel = pd.DataFrame({
-                'Field': df_out['Field'].values,
-                'Value': df_out['Value'].values,
-                'Selected': df_out['Selected'].values
-            })
-           
-            # Transpose the DataFrame and use the 'Field' column as headers
-            df_excel_transposed = pd.DataFrame([df_excel['Value'].values, df_excel['Selected'].values],
-                                             columns=df_excel['Field'].values)
- 
-            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-            # excel_filename = f"extracted_{timestamp}.xlsx"
-            excel_filename = "extracted.xlsx"
-            json_filename = f"extracted_{timestamp}.json"
- 
-            # excel_path = os.path.join(OUTPUT_DIR, excel_filename) - I Commented and adde a new line below
-            excel_path = os.path.join(COMMON_DIR, excel_filename)
-            json_path = os.path.join(OUTPUT_DIR, json_filename)
-            test_json_path = os.path.join(OUTPUT_DIR, "data_extraction.json")
- 
-            print("Saving extracted data...")
-            # Save Excel file in transposed format
-            df_excel_transposed.to_excel(excel_path, index=False, engine="openpyxl")
-            print(f"Excel saved: {excel_filename}")
-           
-            # Save JSON files (keeping original format)
-            with open(json_path, "w", encoding="utf-8") as json_file:
-                json.dump(rows, json_file, indent=4)
-            print(f"JSON saved: {json_filename}")
-           
-            with open(test_json_path, "w", encoding="utf-8") as test_file:
-                json.dump({"status": "completed" if rows else "not completed"}, test_file, indent=4)
- 
-            print(" Extraction complete. Files saved to output folder.")
- 
-        except Exception as e:
-            print(f" Error processing {image_path} and {excel_path}: {e}")
- 
-
- 
-@app.on_event("startup")
-async def startup_event():
-    print(" FastAPI server starting...")
-    asyncio.create_task(process_input_folder())
-
-
-
-# if __name__ == "__main__":
-#     uvicorn.run(app, host="0.0.0.0", port=env.get(Port_Number)
-if __name__ == "__main__":
-    # Read PORT_NUMBER from environment variables
-    port = int(os.getenv("PORT_NUMBER", 8056))  # Default to 8000 if not set
-    uvicorn.run(app, host="0.0.0.0", port=port)
-
-
-
-
-below is orchestration code
-
-import subprocess
-import requests
-import argparse
-import json
-import os
-import time
-from typing import Dict
-import sys
-from dotenv import load_dotenv
-
-load_dotenv()
-
-# OpenAI SDK
-from openai import OpenAI, AzureOpenAI
-
-# Local agents
-# from agents import data_extraction_agent, eligibility_agent, risk_assessment_agent
-
-
-def create_client_from_env() -> OpenAI:
-    """Return an OpenAI client that's pre-configured for Azure if the
-    AZURE_OPENAI_* variables are set; otherwise return a default client that
-    talks to api.openai.com.
-    """
-    azure_key = os.getenv("AZURE_OPENAI_API_KEY")
-    azure_endpoint = os.getenv("AZURE_OPENAI_ENDPOINT")
-    azure_version = os.getenv("AZURE_OPENAI_API_VERSION")
-    deployment = os.getenv("AZURE_OPENAI_CHAT_DEPLOYMENT")
-
-    if azure_key and azure_endpoint and azure_version and deployment:
-        client: OpenAI = AzureOpenAI(
-            api_key=azure_key,
-            azure_endpoint=azure_endpoint,
-            api_version=azure_version,
-        )
-        client._is_azure = True
-        client._azure_deployment = deployment
-        return client
-
-    if not os.getenv("OPENAI_API_KEY"):
-        raise RuntimeError(
-            "OPENAI_API_KEY must be set for OpenAI-platform mode "
-            "or provide all AZURE_OPENAI_* variables for Azure mode."
-        )
-
-    client = OpenAI()
-    client._is_azure = False
-    client._azure_deployment = None
-    return client
-
-
-# Create the client once, globally
-client = create_client_from_env()
-
-ALLOWED_AGENTS = ["RiskAssessmentAgent", "DataExtractionAgent", "EligibilityCheckAgent", "NONE"]
-
-PROMPT_TEMPLATE = (
-    "You are an orchestration-decider."
-    "Available agents (do NOT create new ones):"
-    "1) RiskAssessmentAgent – reads eligibility.json, writes risk_scores.json."
-    "2) DataExtractionAgent – writes data_extraction.json."
-    "3) EligibilityCheckAgent – reads data_extraction.json, writes eligibility.json."
-    "Your task is to decide which agent should run next, based on the current state of the files and their contents. "
-    "Evaluate the outcome of each agent's operation as reflected in the file contents and ensure that the operation is valid and complete before proceeding to the next agent."
-    "Important considerations:"
-    "1) Each agent's operation depends on the validity and completeness of the previous agent's output. If an agent's output indicates that further processing is not required or possible, you must stop and not proceed to the next agent."
-    "2) If an agent's output is incomplete, invalid, or indicates that further processing should not occur, provide a reason for why the next agent cannot be activated and stop further processing."
-    "3) If an agent's output is complete and valid, proceed to the next agent."
-    "Input: a JSON object called 'state' listing files in the data folder and their contents."
-    "Reply with ONE JSON object, schema:"
-    '{ "next_agent": "RiskAssessmentAgent|DataExtractionAgent|EligibilityCheckAgent|NONE", '
-    '"reason": "short explanation" }'
-)
-
-
-def ask_llm_for_next_agent(state: Dict, model: str = "gpt-4o") -> Dict:
-    """Query the LLM and return its JSON choice."""
-    system_msg = {"role": "system", "content": PROMPT_TEMPLATE}
-    user_msg = {"role": "user", "content": json.dumps({"state": state}, indent=2)}
-
-    # Choose correct model / deployment
-    if getattr(client, "_is_azure", False):
-        model_to_call = client._azure_deployment
-    else:
-        model_to_call = model
-
-    try:
-        resp = client.chat.completions.create(
-            model=model_to_call,
-            messages=[system_msg, user_msg],
-            temperature=0.0,
-            max_tokens=300
-        )
-        print(resp)
-    except Exception as e:
-        raise RuntimeError(f"LLM call failed: {e}")
-
-    try:
-        text = resp.choices[0].message.content.strip()
-    except Exception:
-        text = str(resp)
-
-    try:
-        start, end = text.find("{"), text.rfind("}")
-        parsed = json.loads(text[start:end + 1])
-    except Exception as e:
-        raise RuntimeError(f"LLM did not return valid JSON. Raw: {text} Error: {e}")
-
-    return parsed
-
-
-def run_orchestration(data_dir: str, model: str = "gpt-4") -> None:
-    """Main loop."""
-    state = {"data_dir": data_dir}
-    os.makedirs(data_dir, exist_ok=True)
-
-    # Define the extracted data folder path
-    extracted_data_dir = os.path.join(data_dir, "Extracted_Data")
-    os.makedirs(extracted_data_dir, exist_ok=True)
-
-    print("Starting orchestration loop. Data folder:", data_dir)
-
-    # Track the number of times the same agent is suggested
-    consecutive_agent_suggestions = 0
-    last_suggested_agent = None
-
-    while True:
-        # Get the current state of files in both data_dir and extracted_data_dir
-        try:
-            files_now = os.listdir(data_dir)
-        except Exception:
-            files_now = []
-        try:
-            extracted_files_now = os.listdir(extracted_data_dir)
-        except Exception:
-            extracted_files_now = []
-
-        llm_state = {"files": files_now, "extracted_files": extracted_files_now}
-
-        # Read the contents of each file in data_dir and add to state
-        for file in files_now:
-            full = os.path.join(data_dir, file)
-            try:
-                with open(full, "r", encoding="utf-8") as f:
-                    llm_state[file] = json.load(f)
-            except Exception:
-                llm_state[file] = None  # If file is unreadable, set its content to None
-
-        # Read the contents of each file in extracted_data_dir and add to state
-        for file in extracted_files_now:
-            full = os.path.join(extracted_data_dir, file)
-            try:
-                with open(full, "r", encoding="utf-8") as f:
-                    llm_state[file] = json.load(f)
-            except Exception:
-                llm_state[file] = None  # If file is unreadable, set its content to None
-
-        # Ask the LLM for the next agent
-        try:
-            parsed = ask_llm_for_next_agent(llm_state, model=model)
-        except Exception as e:
-            print("LLM call failed – falling back to rule-based choice.", e)
-            parsed = {"next_agent": "NONE", "reason": "llm-failed"}
-
-        chosen = parsed.get("next_agent")
-        reason = parsed.get("reason", "No reason provided.")
-        print(f"LLM suggested: {chosen} | Reason: {reason}")
-
-        # Check for repeated agent suggestions
-        if chosen == last_suggested_agent:
-            consecutive_agent_suggestions += 1
-        else:
-            consecutive_agent_suggestions = 0
-        last_suggested_agent = chosen
-
-        if consecutive_agent_suggestions > 5:
-            print("The same agent has been suggested multiple times without progress. Exiting.")
-            break
-
-        if chosen == "DataExtractionAgent":
-            try:
-                url = "http://127.0.0.1:8661/start-processing"
-                response = requests.post(url, timeout=10)
-                if response.status_code == 200:
-                    print("Data Extraction Agent triggered successfully.")
-                else:
-                    print(f"Failed to trigger Data Extraction Agent. Status code: {response.status_code}")
-            except Exception as e:
-                print(f"Error triggering Data Extraction Agent: {e}")
-
-        # elif chosen == "NONE":
-        #     print("No further agents to run. Exiting orchestration loop.")
-        #     break
-
-        time.sleep(10)
-
-        if chosen == "EligibilityCheckAgent":
-            try:
-                url = "http://127.0.0.1:8022/start-processing"
-                response = requests.post(url, timeout=10)
-                if response.status_code == 200:
-                    print("Eligibility Agent triggered successfully.")
-                else:
-                    print(f"Failed to trigger Eligibility Agent. Status code: {response.status_code}")
-            except Exception as e:
-                print(f"Error triggering Eligibility Agent: {e}")
-
-            time.sleep(10)
-
-
-        if chosen == "RiskAssessmentAgent":
-            try:
-                url = "http://127.0.0.1:8677/risk/run"
-                response = requests.post(url, timeout=10)
-                if response.status_code == 200:
-                    print("Risk Assesment Agent triggered successfully.")
-                else:
-                    print(f"Failed to trigger Risk Assesment Agent. Status code: {response.status_code}")
-            except Exception as e:
-                print(f"Error triggering Risk Assesment Agent: {e}")
-
-            time.sleep(10)   
-
-
-
-        elif chosen == "NONE":
-            print("No further agents to run. Exiting orchestration loop.")
-            break
-
-        time.sleep(5)
-
-        
-
-
-
-#-----------------------------------------------------------------------------------------------------------------------------------
-
-
-
-
-if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="Run orchestration agent (demo)")
-    parser.add_argument("--data-dir", default="./data",
-                        help="Folder used to read/write JSON files")
-    parser.add_argument("--model", default="gpt-4o",
-                        help="Model name for OpenAI-platform mode (ignored for Azure)")
-    args = parser.parse_args()
-
-    if getattr(client, "_is_azure", False):
-        print("Using Azure OpenAI deployment:", client._azure_deployment)
-    else:
-        if not os.getenv("OPENAI_API_KEY"):
-            print("Warning: OPENAI_API_KEY not set – first LLM call will fail.")
-
-    run_orchestration(args.data_dir, model=args.model)
-
-    
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+{
+  "Broker": {
+    "Agency Customer Id": "542198, confidence - 0.972",
+    "Agency": "Prime Brokers Ltd., confidence - 0.95",
+    "Contact Name": "William Grey, confidence - 0.964",
+    "Email Address": "greywilliam@primebrokers.com, confidence - 0.969",
+    "Phone": "+1 202 406 789, confidence - 0.831",
+    "total_confidence": 0.915
+  },
+  "Carrier": {
+    "Carrier": "Phoenix Insurers Ltd., confidence - 0.931",
+    "total_confidence": 0.931
+  },
+  "Policy": {
+    "Program Code": "P1, confidence - 0.969",
+    "Company Policy Or Program Name": "Program 1, confidence - 0.973",
+    "Proposed Effective Date": "07/15/2025, confidence - 0.971",
+    "Proposed Expiration Date": "07/15/2028, confidence - 0.975",
+    "Billing Plan - Direct": ":unselected:, confidence - 0.676",
+    "Billing Plan - Agency": ":selected:, confidence - 0.961",
+    "Deposit": "$, confidence - 0.695",
+    "Minimum Premium": "$\n$, confidence - 0.405",
+    "total_confidence": 0.7798333333333334
+  },
+  "Transaction Status": {
+    "Status Of Transaction-Quote": ":unselected:, confidence - 0.678",
+    "Status Of Transaction-Bound": ":unselected:, confidence - 0.684",
+    "Status Of Transaction-Change": ":unselected:, confidence - 0.684",
+    "Status Of Transaction-Cancel": ":unselected:, confidence - 0.685",
+    "Status Of Transaction-Issue Policy": ":selected:, confidence - 0.961",
+    "Status Of Transaction-Renew": ":unselected:, confidence - 0.754",
+    "Status Of Transaction-Date": "07/15/2025, confidence - 0.98",
+    "Status Of Transaction-Time": "6:15 PM, confidence - 0.981",
+    "total_confidence": 0.800875
+  },
+  "Line of Business": {
+    "Boiler And Machinery": ":unselected:, confidence - 0.757",
+    "Boiler And Machinery Premium": "$, confidence - 0.832",
+    "Business Auto": ":unselected:, confidence - 0.755",
+    "Business Auto Premium": "$, confidence - 0.495",
+    "Business Owners": ":unselected:, confidence - 0.7",
+    "Business Owners Premium": "$, confidence - 0.509",
+    "Commercial General Liability": ":unselected:, confidence - 0.702",
+    "Commercial General Liability Premium": "$, confidence - 0.6",
+    "Commercial Inland Marine": ":unselected:, confidence - 0.824",
+    "Commercial Inland Marine Premium": "$, confidence - 0.616",
+    "Commercial Property": ":selected:, confidence - 0.975",
+    "Commercial Property Premium": "$, confidence - 0.502",
+    "Crime": ":unselected:, confidence - 0.822",
+    "Crime Premium": "$, confidence - 0.519",
+    "Fiduciary Liability": ":unselected:, confidence - 0.524",
+    "Garage And Dealers": ":unselected:, confidence - 0.633",
+    "Liquor Liability": ":unselected:, confidence - 0.525",
+    "Motor Carrier": ":unselected:, confidence - 0.484",
+    "Umbrella": ":unselected:, confidence - 0.519",
+    "Other Lob 2 Premium": "$\n$, confidence - 0.38",
+    "Other Lob 3 Premium": "$\n$, confidence - 0.357",
+    "Other Lob 5 Premium": "$, confidence - 0.166",
+    "total_confidence": 0.6033809523809522
+  },
+  "Attachments": {
+    "Attachment - Accounts Receivable/Valuable Papers": ":selected:, confidence - 0.978",
+    "Attachment - Additional Interest Schedule": ":unselected:, confidence - 0.884",
+    "Attachment - Additional Premises Information Schedule": ":unselected:, confidence - 0.857",
+    "Attachment - Apartment Building Supplement": ":selected:, confidence - 0.98",
+    "Attachment - Condo Assn Bylaws": ":unselected:, confidence - 0.884",
+    "Attachment - Contractors Supplement": ":selected:, confidence - 0.98",
+    "Attachment - Coverages Schedule": ":unselected:, confidence - 0.857",
+    "Attachment - Dealers Section": ":unselected:, confidence - 0.826",
+    "Attachment - Driver Information Schedule": ":unselected:, confidence - 0.758",
+    "Attachment - Electronic Data Processing Section": ":unselected:, confidence - 0.839",
+    "Attachment - Glass And Sign Section": ":unselected:, confidence - 0.673",
+    "Attachment - Hotel/Motel Supplement": ":unselected:, confidence - 0.685",
+    "Attachment - Installation/Builders Risk Section": ":selected:, confidence - 0.98",
+    "Attachment - International Liability Exposure Supplement": ":unselected:, confidence - 0.685",
+    "Attachment - International Property Exposure Supplement": ":unselected:, confidence - 0.673",
+    "Attachment - Loss Summary": ":unselected:, confidence - 0.673",
+    "Attachment - Open Cargo Section": ":unselected:, confidence - 0.673",
+    "Attachment - Premium Payment Supplement": ":unselected:, confidence - 0.673",
+    "Attachment - Professional Liability Supplement": ":unselected:, confidence - 0.673",
+    "Attachment - Restraunt/Tavern Supplement": ":unselected:, confidence - 0.672",
+    "Attachment - Statement/Schedule Of Values": ":unselected:, confidence - 0.486",
+    "Attachment - State Supplement": ":unselected:, confidence - 0.529",
+    "Attachment - Vacant Building Supplement": ":unselected:, confidence - 0.51",
+    "Attachment - Vehicle Schedule": ":unselected:, confidence - 0.486",
+    "total_confidence": 0.7429545454545455
+  },
+  "Insured": {
+    "Name And Mailing Address": "GreenGen, 100 East Avenue, New York City, New York, USA, confidence - 0.947",
+    "Applicant's Initials": "BH, confidence - 0.981",
+    "Loss History Check If None": ":selected:, confidence - 0.856",
+    "Entity Type": {
+      "Individual": ":unselected:, confidence - 0.882",
+      "Joint Venture": ":unselected:, confidence - 0.656",
+      "LLC": ":unselected:, confidence - 0.685",
+      "Not For Profit Org": ":unselected:, confidence - 0.684",
+      "Partnership": ":unselected:, confidence - 0.682",
+      "Subchapter S Corporation": ":unselected:, confidence - 0.685",
+      "Trust": ":unselected:, confidence - 0.738",
+      "Other Corporation": ":unselected:, confidence - 0.368",
+      "Corporation": ":selected:, confidence - 0.978",
+      "Subchapter S Corporation 2": ":unselected:, confidence - 0.607",
+      "LLC 2": ":unselected:, confidence - 0.661",
+      "Partnership 2": ":unselected:, confidence - 0.595"
+    },
+    "total_confidence": 0.9015
+  },
+  "Contacts": {
+    "Primary Contact": {
+      "Contact Type": "Primary, confidence - 0.983",
+      "Contact Name": "Michael Hill, confidence - 0.969",
+      "Primary Email Address": "hillmichael@bhway.com, confidence - 0.948",
+      "Primary Phone": "+1 987612342, confidence - 0.852",
+      "Primary Phone Home": ":unselected:, confidence - 0.97",
+      "Primary Phone Bus": ":unselected:, confidence - 0.962",
+      "Primary Phone Cell": ":selected:, confidence - 0.658",
+      "Secondary Phone Home": ":unselected:, confidence - 0.956",
+      "Secondary Phone Bus": ":unselected:, confidence - 0.96",
+      "Secondary Phone Cell": ":unselected:, confidence - 0.952"
+    },
+    "Secondary Contact": {
+      "Contact Type": "Secondary, confidence - 0.979",
+      "Contact Name": "Bill Deeney, confidence - 0.963",
+      "Primary Email Address": "deeneybill@bhway.com, confidence - 0.973",
+      "Primary Phone Home": ":unselected:, confidence - 0.952",
+      "Primary Phone Bus": ":unselected:, confidence - 0.958",
+      "Primary Phone Cell": ":unselected:, confidence - 0.945",
+      "Secondary Phone Home": ":unselected:, confidence - 0.945",
+      "Secondary Phone Bus": ":unselected:, confidence - 0.961",
+      "Secondary Phone Cell": ":unselected:, confidence - 0.961"
+    }
+  },
+  "Premises Information": {
+    "Premises 1": {
+      "Street": "123 Penny Lane, confidence - 0.939",
+      "City": "Springfield, confidence - 0.981",
+      "State": "Illinois, confidence - 0.82",
+      "Zip": "ZIP:62629, confidence - 0.406",
+      "City Limits Inside": ":selected:, confidence - 0.964",
+      "City Limits Outside": ":unselected:, confidence - 0.638",
+      "City Limits Other": ":unselected:, confidence - 0.343",
+      "Interest Owner": ":selected:, confidence - 0.972",
+      "Interest Tenant": ":unselected:, confidence - 0.685",
+      "Annual Revenues": "$ 725000, confidence - 0.705",
+      "Occupied Area": "17000 SQ FT, confidence - 0.941",
+      "Open To Public Area": "3000 SQ FT, confidence - 0.821",
+      "Total Building Area": "26520 SQ FT, confidence - 0.755",
+      "Any Area Leased To Others?": "Y / N N, confidence - 0.464",
+      "Description Of Operations": "IT Services and Operations, confidence - 0.976"
+    },
+    "Premises 2": {
+      "City Limits Inside": ":unselected:, confidence - 0.545",
+      "City Limits Outside": ":unselected:, confidence - 0.429",
+      "Interest Owner": ":unselected:, confidence - 0.665",
+      "Interest Tenant": ":unselected:, confidence - 0.682",
+      "Total Building Area": "SQ FT, confidence - 0.438"
+    },
+    "Premises 3": {
+      "City Limits Inside": ":unselected:, confidence - 0.524",
+      "City Limits Outside": ":unselected:, confidence - 0.485",
+      "City Limits Other": ":unselected:, confidence - 0.311",
+      "Interest Owner": ":unselected:, confidence - 0.676",
+      "Interest Tenant": ":unselected:, confidence - 0.678",
+      "Annual Revenues": "$, confidence - 0.301",
+      "Occupied Area": "SQ FT, confidence - 0.828",
+      "Open To Public Area": "SQ FT, confidence - 0.825",
+      "Total Building Area": "SQ FT, confidence - 0.86",
+      "Any Area Leased To Others?": "Y N, confidence - 0.301"
+    },
+    "Premises Info Four City Limits Inside": ":unselected:, confidence - 0.546",
+    "Premises Info Four City Limits Outside": ":unselected:, confidence - 0.528",
+    "Premises Info Four City Limits Other": ":unselected:, confidence - 0.408",
+    "Premises Info Four Interest Owner": ":unselected:, confidence - 0.666",
+    "Premises Info Four Interest Tenant": ":unselected:, confidence - 0.668",
+    "Premises Info Four Occupied Area": "SQ FT, confidence - 0.807",
+    "Premises Info Four Open To Public Area": "SQ FT, confidence - 0.944",
+    "Premises Info Four Total Building Area": "SQ FT, confidence - 0.921",
+    "Premises Info Four Any Area Leased To Others?": "Y\nN, confidence - 0.222",
+    "total_confidence": 0.6344444444444446
+  },
+  "Producer": {
+    "Producer's Signature": "William Grey, confidence - 0.569",
+    "Producer's Name Please Print": "William Grey, confidence - 0.448"
+  },
+  "Nature of Business": {
+    "Nature Of Business Apartments": ":unselected:, confidence - 0.685",
+    "Nature Of Business Condominiums": ":unselected:, confidence - 0.683",
+    "Nature Of Business Contractor": ":unselected:, confidence - 0.672",
+    "Nature Of Business Institutional": ":unselected:, confidence - 0.682",
+    "Nature Of Business Manufacturing": ":unselected:, confidence - 0.529",
+    "Nature Of Business Office": ":selected:, confidence - 0.98",
+    "Nature Of Business Restaurant": ":unselected:, confidence - 0.51",
+    "Nature Of Business Retail": ":unselected:, confidence - 0.638",
+    "Nature Of Business Service": ":unselected:, confidence - 0.507",
+    "Nature Of Business Wholesale": ":unselected:, confidence - 0.638",
+    "Date Business Started (Mm/Dd/Yyyy)": "02/12/1964, confidence - 0.961",
+    "total_confidence": 0.6804545454545454
+  },
+  "Additional Interest": {
+    "Additional Interest Evidence Certificate": ":unselected:, confidence - 0.396",
+    "Additional Interest Evidence Policy": ":unselected:, confidence - 0.486",
+    "Additional Interest Evidence Send Bill": ":unselected:, confidence - 0.098",
+    "Additional Interest Additional Insured": ":unselected:, confidence - 0.825",
+    "Additional Interest Breach Of Warranty": ":unselected:, confidence - 0.756",
+    "Additional Interest Co-Owner": ":unselected:, confidence - 0.813",
+    "Additional Interest Employee As Lessor": ":unselected:, confidence - 0.732",
+    "Additional Interest Leaseback Owner": ":unselected:, confidence - 0.827",
+    "Additional Interest Lienholder": ":unselected:, confidence - 0.826",
+    "Additional Interest Loss Payee": ":unselected:, confidence - 0.749",
+    "Additional Interest Mortgagee": ":unselected:, confidence - 0.742",
+    "Additional Interest Owner": ":unselected:, confidence - 0.752",
+    "Additional Interest Registrant": ":unselected:, confidence - 0.747",
+    "Additional Interest Lender'S Loss Payable": ":unselected:, confidence - 0.703",
+    "Additional Interest Trustee": ":unselected:, confidence - 0.758",
+    "total_confidence": 0.6806666666666665
+  },
+  "Signature and Date": {
+    "Signature": "Applicable in AL, AR, DC, LA, MD, NM, RI and WV: Any person who knowingly (or willfully)* presents a false or fraudulent claim for payment of a loss or benefit or knowingly (or willfully)* presents false information in an application for insurance is guilty of a crime and may be subject to fines and confinement in prison. * Applies in MD Only.\nApplicable in CO: It is unlawful to knowingly provide false, incomplete,\nmisleading\ninformation\nan insurance company for the purpose\ndefrauding or attempting to defraud the company. Penalties may include imprisonment, fines, denial of insurance and civil damages. Any insurance company or agent of an insurance company who knowingly provides false, incomplete, or misleading\nor information\na policyholder or claimant\npurpose of defrauding or attempting to defraud the policyholder or claimant with regard to a settlement or award payable from insurance proceeds shall be reported to the Colorado Division of Insurance within the Department of Regulatory Agencies.\nApplicable in FL and OK: Any person who knowingly and with intent to injure, defraud, or deceive any insurer files a statement of claim or an application containing any false, incomplete, or misleading information is guilty of a felony (of the third degree) *. * Applies in FL Only.\nApplicable in KS: Any person who, knowingly and with intent to defraud, presents, causes to be presented or prepares with knowledge or belief that it will be presented to or by an insurer, purported insurer, broker or any agent thereof, any written statement as part of, or in support of, an application for the issuance of, or the rating of an insurance policy for personal or commercial insurance, or a claim for payment or other benefit pursuant to an insurance policy for commercial or personal insurance which such person knows to contain materially false information concerning any fact material thereto; or conceals, for the purpose of misleading, information concerning any fact material thereto commits a fraudulent insurance act.\nApplicable in KY, NY, OH and PA: Any person who knowingly and with intent to defraud any insurance company or other person files an application for insurance or statement of claim containing any materially false information or conceals for the purpose of misleading, information concerning any fact material thereto commits a fraudulent insurance act, which is a crime and subjects such person to criminal and civil penalties (not to exceed five thousand dollars and the stated value of the claim for each such violation) *. * Applies in NY Only.\nApplicable in ME, TN, VA and WA: It is a crime to knowingly provide false, incomplete or misleading information to an insurance company for the purpose of defrauding the company. Penalties (may)* include imprisonment, fines and denial of insurance benefits. * Applies in ME Only.\nApplicable in NJ: Any person who includes any false or misleading information on an application for an insurance policy is subject to criminal and civil penalties.\nApplicable in OR: Any person who knowingly and with intent to defraud or solicit another to defraud the insurer by submitting an application containing a false statement as to any material fact may be violating state law.\nApplicable in PR: Any person who knowingly and with the intention of defrauding presents false information in an insurance application, or presents, helps, or causes the presentation of a fraudulent claim for the payment of a loss or any other benefit, or presents more than one claim for the same damage or loss, shall incur a felony and, upon conviction, shall be sanctioned for each violation by a fine of not less than five thousand dollars ($5,000) and not more than ten thousand dollars ($10,000), or a fixed term of imprisonment for three (3) years, or both penalties. Should aggravating circumstances [be] present, the penalty thus established may be increased to a maximum of five (5) years, if extenuating circumstances are present, it may be reduced to a minimum of two (2) years., confidence - 0",
+    "Date": "07/15/2025, confidence - 0.902",
+    "Applicant'S Signature 2": "Berkshire Hathaway, confidence - 0.209",
+    "total_confidence": 0.37033333333333335
+  },
+  "Loss History": {
+    "Loss History": "ENTER ALL CLAIMS OR LOSSES (REGARDLESS OF FAULT AND WHETHER OR NOT INSURED) OR OCCURRENCES THAT MAY GIVE RISE TO CLAIMS FOR THE LAST YEARS, confidence - 0.877",
+    "total_confidence": 0.877
+  },
+  "Applicant Entity Information": {
+    "Is The Applicant A Subsidiary Of Another Entity?": "N, confidence - 0.977",
+    "Does The Applicant Have Any Subsidiaries?": "N, confidence - 0.98",
+    "total_confidence": 0.9784999999999999
+  },
+  "Safety Program": {
+    "Is A Formal Safety Program In Operation? Safety Manual": ":selected:, confidence - 0.98",
+    "Is A Formal Safety Program In Operation? Monthly Meetings": ":selected:, confidence - 0.978",
+    "Is A Formal Safety Program In Operation? Osha": ":unselected:, confidence - 0.899",
+    "Is A Formal Safety Program In Operation?": "Y, confidence - 0.974",
+    "total_confidence": 0.9577500000000001
+  },
+  "Risk and Exposure": {
+    "Any Exposure To Flamables, Explosives, Chemicals? Y/N": "N, confidence - 0.589",
+    "Any Other Insurance With This Company?": "N, confidence - 0.941",
+    "Any Policy Or Coverage Declined, Cancelled Or Non-Renewed During The Prior Three Years For Any Premises Or Operations?": "N, confidence - 0.979",
+    "Reason For Policy Declined In Prior Three Years - Non-Payment": ":unselected:, confidence - 0.972",
+    "Reason For Policy Declined In Prior Three Years - Non-Renewal": ":unselected:, confidence - 0.928",
+    "Reason For Policy Declined In Prior Three Years - Condition Corrected": ":unselected:, confidence - 0.908",
+    "Any Past Losses Or Claims Relating To Sexual Abuse Or Molestation Allegations, Discrimination Or Negligent Hiring? Y/N": "N, confidence - 0.712",
+    "During The Last Five Years (Ten In Ri), Has Any Applicant Been Indicted For Or Convicted Of Any Degree Of The Crime Of Fraud, Bribery, Arson Or Any Other  Arson-Related Crime In Connection With This Or Any Other Property? Y/N": "N, confidence - 0.841",
+    "Any Uncorrected Fire And/Or Safety Code Violations? Y/N": "N, confidence - 0.972",
+    "Has Applicant Had A Forclosure, Repossesion, Bankruptcy Or Filed For Bankruptcy During Thr Last Five Years?": "N, confidence - 0.83",
+    "Has Applicant Had A Judgement Or Lien During The Last Five Years? Y/N": "N, confidence - 0.838",
+    "Has Business Been Placed In A Trust?": "N, confidence - 0.942",
+    "Any Foreign Operations, Foreign Products Distributed In Usa, Or Us Products Sold/Distributed In Foreign Countries?": "N, confidence - 0.978",
+    "Does Applicant Have Other Business Ventures For Which Coverage Is Not Requested?": "N, confidence - 0",
+    "Does Applicant Own/Lease/Operate Any Drones? Y/N": "N, confidence - 0.649",
+    "Does Applicant Hire Others To Operate Drones? Y/N": "N, confidence - 0.602",
+    "total_confidence": 0.7925625000000001
+  },
+  "Prior Carrier Information": {
+    "Prior Carrier Information Year 1": "2024, confidence - 0.828",
+    "Prior Carrier Information General Liability Policy Number 1": "$, confidence - 0.163",
+    "Prior Carrier Information Automobile Premium 1": "$, confidence - 0.148",
+    "Prior Carrier Information Automobile Expiration Date 1": "05/19/2025, confidence - 0.391",
+    "Prior Carrier Information Property Carrier 1": "Travelers Insurance, confidence - 0.495",
+    "Prior Carrier Information Property Policy Number 1": "TP1987621, confidence - 0.467",
+    "Prior Carrier Information Property Premium 1": "$ 48000, confidence - 0.344",
+    "Prior Carrier Information Property Effective Date 1": "05/19/2024, confidence - 0.491",
+    "Prior Carrier Information Other Carrier 1": "$, confidence - 0.182",
+    "total_confidence": 0.3898888888888889
+  },
+  "Producer Information": {
+    "State Producer License No": "NA, confidence - 0.488",
+    "National Producer Number 2": "100-002541, confidence - 0.696",
+    "total_confidence": 0.592
+  },
+  "Document_Confidence_Score": 0.9387867043847258
+}
