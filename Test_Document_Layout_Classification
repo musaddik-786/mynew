@@ -1,1 +1,385 @@
+Yes, we can and we should use pytest with this project 😊
+I’ll show you exactly where pytest fits, what to test, and give you ready-to-use test files.
 
+We’ll start with simple, safe parts (no real Azure calls), then show how to test the OpenAI classifier.
+
+⸻
+
+0. Project + tests folder structure
+
+Imagine your files are in a folder like this:
+
+your_project/
+    classifier.py
+    document_loader.py
+    handler.py
+    service.py
+    storage_utils.py
+    tests/
+        test_service.py
+        test_classifier.py
+
+	•	Your existing code stays as-is.
+	•	We just add a new folder: tests/
+	•	All pytest test files go inside tests/, and their names start with test_....
+
+⸻
+
+1. Install pytest
+
+One time only, in terminal / command prompt:
+
+pip install pytest
+
+(If you already have it, no need again.)
+
+⸻
+
+2. What should we test in this project?
+
+Look at your files:
+	•	service.py
+	•	_parse_blob_url → pure Python logic ✅ perfect for unit tests.
+	•	_require_env → checks env variable; also testable.
+	•	classifier.py
+	•	classify_document → calls Azure OpenAI. We don’t want real API calls in tests, so we mock (fake) the client response.
+	•	handler.py
+	•	classify_blob_pdf_layout → async function that coordinates everything.
+This can also be tested (with pytest-asyncio), but let’s first master simpler ones.
+
+We’ll start with:
+	1.	service._parse_blob_url
+	2.	classifier.classify_document (with a fake Azure response)
+
+⸻
+
+3. Test 1 – service._parse_blob_url (pure logic)
+
+Why test this?
+
+This function is critical: if URL parsing is wrong, your blob download will fail later.
+Also it’s pure logic → no Azure, no network → very easy and fast to test.
+
+Your existing code (for reference)
+
+# service.py
+
+import os
+from urllib.parse import urlparse, unquote
+from dotenv import load_dotenv
+
+load_dotenv()
+
+AZURE_STORAGE_CONNECTION_STRING = os.environ.get("AZURE_STORAGE_CONNECTION_STRING", "")
+
+def _require_env() -> None:
+    """Ensure required environment variables exist."""
+    if not AZURE_STORAGE_CONNECTION_STRING:
+        raise RuntimeError("Missing AZURE_STORAGE_CONNECTION_STRING in environment/.env")
+
+def _parse_blob_url(url: str) -> tuple[str, str]:
+    """
+    Parse an Azure Blob URL and return (container_name, blob_path).
+    Example URL:
+      https://account.blob.core.windows.net/output-results/folder/name.pdf
+    Returns:
+      ("output-results", "folder/name.pdf")
+    """
+    parsed = urlparse(url)
+    if not parsed.scheme.startswith("http"):
+        raise ValueError("url must be a valid http(s) Azure Blob URL.")
+
+    path = parsed.path.lstrip("/")
+    if "/" not in path:
+        raise ValueError("url must include both container and blob path.")
+    parts = path.split("/", 1)
+    container = parts[0]
+    blob_path = parts[1]
+    return unquote(container), unquote(blob_path)
+
+New file: tests/test_service.py
+
+Create this file inside tests/:
+
+# tests/test_service.py
+
+import pytest
+import service  # because service.py is in the project root
+
+def test_parse_blob_url_valid():
+    """
+    Happy path:
+    A correct Azure Blob URL should return (container, blob_path)
+    """
+    url = "https://account.blob.core.windows.net/output-results/folder/name.pdf"
+
+    container, blob_path = service._parse_blob_url(url)
+
+    # Check container and path
+    assert container == "output-results"
+    assert blob_path == "folder/name.pdf"
+
+
+def test_parse_blob_url_invalid_scheme():
+    """
+    If URL is not http/https, function should raise ValueError.
+    """
+    url = "ftp://account.blob.core.windows.net/output-results/folder/name.pdf"
+
+    with pytest.raises(ValueError):
+        service._parse_blob_url(url)
+
+
+def test_parse_blob_url_missing_blob_path():
+    """
+    If URL doesn't have 'container/blob', raise ValueError.
+    Example: https://account.blob.core.windows.net/containeronly
+    """
+    url = "https://account.blob.core.windows.net/containeronly"
+
+    with pytest.raises(ValueError):
+        service._parse_blob_url(url)
+
+Explanation line by line (important parts)
+
+import pytest
+import service
+
+	•	import pytest → we use pytest tools like raises.
+	•	import service → imports your service.py so we can call _parse_blob_url inside tests.
+
+def test_parse_blob_url_valid():
+
+	•	Test function name starts with test_ → pytest will auto-detect and run it.
+
+url = "https://account.blob.core.windows.net/output-results/folder/name.pdf"
+container, blob_path = service._parse_blob_url(url)
+assert container == "output-results"
+assert blob_path == "folder/name.pdf"
+
+	•	We call your real function with a valid URL.
+	•	Then we check that the result is exactly what we expect using assert.
+
+with pytest.raises(ValueError):
+    service._parse_blob_url(url)
+
+	•	This is how we check “this function must raise an error”.
+	•	If _parse_blob_url does not raise ValueError → the test fails.
+
+⸻
+
+4. Test 2 – classifier.classify_document (mock Azure response)
+
+Why test this?
+	•	We want to check that our logic for classification is correct,
+without actually calling Azure OpenAI (which costs money, needs network, etc.).
+	•	So in tests, we fake the client.chat.completions.create method.
+
+Your existing code (for reference)
+
+# classifier.py
+
+from dotenv import load_dotenv
+import os
+from openai import AzureOpenAI
+
+load_dotenv()
+
+AZURE_OPENAI_ENDPOINT = os.getenv("AZURE_OPENAI_ENDPOINT")
+AZURE_OPENAI_API_VERSION = os.getenv("AZURE_OPENAI_API_VERSION")
+AZURE_OPENAI_API_KEY = os.getenv("AZURE_OPENAI_API_KEY")
+AZURE_OPENAI_CHAT_DEPLOYMENT = os.getenv("AZURE_OPENAI_CHAT_DEPLOYMENT")
+
+if not (AZURE_OPENAI_ENDPOINT and AZURE_OPENAI_API_VERSION and AZURE_OPENAI_API_KEY and AZURE_OPENAI_CHAT_DEPLOYMENT):
+    raise RuntimeError("Azure OpenAI env vars missing...")
+
+client = AzureOpenAI(
+    api_key=AZURE_OPENAI_API_KEY,
+    api_version=AZURE_OPENAI_API_VERSION,
+    azure_endpoint=AZURE_OPENAI_ENDPOINT,
+)
+
+def classify_document(document_content):
+    text = document_content.get("text", "")
+
+    prompt = f""" ... {text[:2000]} ... """
+
+    response = client.chat.completions.create(
+        model=AZURE_OPENAI_CHAT_DEPLOYMENT,
+        messages=[{"role": "user", "content": prompt}],
+        max_tokens=4,
+        temperature=0.0
+    )
+
+    try:
+        return response.choices[0].message.content.strip()
+    except Exception:
+        return getattr(response.choices[0].message, "content", "").strip()
+
+New file: tests/test_classifier.py
+
+Create this file inside tests/:
+
+# tests/test_classifier.py
+
+import types
+import classifier  # your classifier.py
+
+class DummyChoice:
+    """
+    A tiny object that looks like response.choices[0]
+    It has .message.content so our classify_document can use it.
+    """
+    def __init__(self, content: str):
+        # SimpleNamespace lets us create an object with attributes on the fly
+        self.message = types.SimpleNamespace(content=content)
+
+
+class DummyResponse:
+    """
+    This simulates the full response object from Azure OpenAI:
+    it has .choices, which is a list with one DummyChoice.
+    """
+    def __init__(self, content: str):
+        self.choices = [DummyChoice(content)]
+
+
+def test_classify_document_acord(monkeypatch):
+    """
+    If Azure returns 'ACORD', our function should return 'ACORD'.
+    We don't call real Azure here; we fake the client response.
+    """
+
+    def fake_create(**kwargs):
+        # This function ignores kwargs and returns our fake response
+        return DummyResponse("ACORD")
+
+    # Replace the real Azure client's .create method with our fake
+    monkeypatch.setattr(
+        classifier.client.chat.completions,
+        "create",
+        fake_create,
+    )
+
+    # Input document content
+    doc = {"text": "ACORD 25 (2016/03) CERTIFICATE OF LIABILITY INSURANCE"}
+
+    result = classifier.classify_document(doc)
+
+    assert result == "ACORD"
+
+
+def test_classify_document_non_acord(monkeypatch):
+    """
+    If Azure returns 'Non-ACORD', our function should return 'Non-ACORD'.
+    """
+
+    def fake_create(**kwargs):
+        return DummyResponse("Non-ACORD")
+
+    monkeypatch.setattr(
+        classifier.client.chat.completions,
+        "create",
+        fake_create,
+    )
+
+    doc = {"text": "Invoice for insurance consulting services, not an ACORD form."}
+
+    result = classifier.classify_document(doc)
+
+    assert result == "Non-ACORD"
+
+Explanation of important parts
+
+import types
+import classifier
+
+	•	types.SimpleNamespace helps us create simple objects with attributes like .content.
+	•	import classifier → we are testing your real function in classifier.py.
+
+class DummyChoice:
+    def __init__(self, content: str):
+        self.message = types.SimpleNamespace(content=content)
+
+	•	In your real code: response.choices[0].message.content
+	•	So our fake must have:
+	•	choices (a list)
+	•	Each choice has .message
+	•	.message has .content
+	•	DummyChoice builds exactly that structure.
+
+class DummyResponse:
+    def __init__(self, content: str):
+        self.choices = [DummyChoice(content)]
+
+	•	This pretends to be the whole response object from Azure.
+
+def fake_create(**kwargs):
+    return DummyResponse("ACORD")
+
+	•	This fake function replaces the real client.chat.completions.create.
+	•	When your code calls client.chat.completions.create(...) in the test,
+it actually calls this fake_create and gets our DummyResponse.
+
+monkeypatch.setattr(
+    classifier.client.chat.completions,
+    "create",
+    fake_create,
+)
+
+	•	monkeypatch is a pytest helper.
+	•	It temporarily says:
+“For this test, whenever someone calls classifier.client.chat.completions.create,
+actually call fake_create instead.”
+
+So:
+	•	No network
+	•	No Azure account needed
+	•	Test is fast and deterministic.
+
+⸻
+
+5. How to run these tests
+
+From your project root (where classifier.py, service.py, and tests/ live):
+
+pytest
+
+Or quieter output:
+
+pytest -q
+
+You should see something like:
+
+==================== test session starts ====================
+collected 5 items
+
+tests/test_service.py ...                         [ 60%]
+tests/test_classifier.py ..                       [100%]
+
+===================== 5 passed in 0.20s =====================
+
+If any assertion fails, pytest will show you:
+	•	which test failed
+	•	what was expected vs what was actually returned
+
+⸻
+
+6. Where to go next (when you’re ready)
+
+Once you’re comfortable with these:
+	1.	Add tests for _require_env
+	•	Use monkeypatch.setenv to control AZURE_STORAGE_CONNECTION_STRING.
+	2.	Test handler.classify_blob_pdf_layout
+	•	Use pytest-asyncio to test async functions.
+	•	Mock _require_env, download_blob_to_input_folder, load_document, classify_document to avoid real Azure calls.
+	3.	(Optional) document_loader tests
+	•	Either:
+	•	Treat as integration tests (actually hitting Form Recognizer), or
+	•	Wrap the Azure client so it’s easier to mock.
+
+⸻
+
+If you want, next message you can say:
+“Explain tests/test_service.py line by line like I am a beginner”
+and I’ll go through every single word just like we do for your project code.
