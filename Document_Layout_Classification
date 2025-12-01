@@ -1,0 +1,268 @@
+classifier.py
+
+
+
+from dotenv import load_dotenv
+import os
+from openai import AzureOpenAI  # ✅ Correct import for Azure OpenAI
+
+# Load environment variables
+load_dotenv()
+
+AZURE_OPENAI_ENDPOINT = os.getenv("AZURE_OPENAI_ENDPOINT")
+AZURE_OPENAI_API_VERSION = os.getenv("AZURE_OPENAI_API_VERSION")
+AZURE_OPENAI_API_KEY = os.getenv("AZURE_OPENAI_API_KEY")
+AZURE_OPENAI_CHAT_DEPLOYMENT = os.getenv("AZURE_OPENAI_CHAT_DEPLOYMENT")
+
+if not (AZURE_OPENAI_ENDPOINT and AZURE_OPENAI_API_VERSION and AZURE_OPENAI_API_KEY and AZURE_OPENAI_CHAT_DEPLOYMENT):
+    raise RuntimeError("Azure OpenAI env vars missing. Please set AZURE_OPENAI_ENDPOINT, AZURE_OPENAI_API_VERSION, AZURE_OPENAI_API_KEY and AZURE_OPENAI_CHAT_DEPLOYMENT")
+
+# ✅ Create Azure OpenAI client
+client = AzureOpenAI(
+    api_key=AZURE_OPENAI_API_KEY,
+    api_version=AZURE_OPENAI_API_VERSION,
+    azure_endpoint=AZURE_OPENAI_ENDPOINT,
+)
+
+def classify_document(document_content):
+    text = document_content.get("text", "")
+
+    prompt = f"""
+You are an expert in insurance documentation and intelligent document processing.
+
+Your task is to identify whether a given document is an ACORD insurance form or not.
+
+ACORD forms are standardized insurance documents published by the Association for Cooperative Operations Research and Development (ACORD).
+They include forms such as ACORD 25 (Certificate of Liability Insurance), ACORD 27 (Evidence of Property Insurance), ACORD 130 (Workers Compensation Application), etc.
+
+Classify the following document based on its content.
+Decide whether it is an ACORD Form or Non-ACORD Document.
+
+Definitions:
+
+ACORD Form:
+A standardized insurance form that typically includes the word “ACORD” followed by a form number (e.g., “ACORD 25 (2016/03)”),
+fields such as “Producer,” “Insured,” “Certificate Holder,” “Policy Number,” “Authorized Representative,” and often displays the ACORD logo or header.
+These documents summarize insurance coverage, liability, or property details.
+
+Non-ACORD Document:
+Any document that does not follow the ACORD format — e.g., invoices, contracts, letters, claims, proposals, or policy text.
+
+Document Content:
+{text[:2000]}
+
+Reply with only one word: ACORD or Non-ACORD.
+"""
+
+    response = client.chat.completions.create(
+        model=AZURE_OPENAI_CHAT_DEPLOYMENT,
+        messages=[{"role": "user", "content": prompt}],
+        max_tokens=4,
+        temperature=0.0
+    )
+
+    try:
+        return response.choices[0].message.content.strip()
+    except Exception:
+        return getattr(response.choices[0].message, "content", "").strip()
+
+
+
+
+document_loader.py
+
+
+
+
+from dotenv import load_dotenv
+import os
+from azure.ai.formrecognizer import DocumentAnalysisClient
+from azure.core.credentials import AzureKeyCredential
+
+# Load environment variables from .env file
+load_dotenv()
+
+# Fetch variables
+endpoint = os.getenv("AZURE_FORMRECOG_ENDPOINT")
+key = os.getenv("AZURE_FORMRECOG_KEY")
+# Fail fast if missing
+if not endpoint:
+    raise ValueError(" AZURE_FORMRECOG_ENDPOINT is not set. Check your .env file.")
+if not key:
+    raise ValueError(" AZURE_FORMRECOG_KEY is not set. Check your .env file.")
+
+# Create the client using the key and endpoint
+client = DocumentAnalysisClient(endpoint=endpoint, credential=AzureKeyCredential(key))
+
+def load_document(file_path):
+    """
+    Extracts text and layout information using Form Recognizer's prebuilt-layout model.
+    """
+    with open(file_path, "rb") as f:
+        poller = client.begin_analyze_document("prebuilt-layout", document=f)
+        result = poller.result()
+
+    # Debugging: Print available attributes in DocumentPage
+    print("Available attributes in DocumentPage:")
+    print(dir(result.pages[0]))
+    print("/n")
+    print("/n")
+
+    # Extract lines of text
+    lines = [line.content for page in result.pages for line in page.lines]
+
+    # Extract table information if available
+    tables = []
+    for page in result.pages:
+        if hasattr(page, "tables"):  # Check if 'tables' attribute exists
+            for table in page.tables:
+                table_data = []
+                for row in table.cells:
+                    table_data.append(row.content)
+                tables.append(table_data)
+
+    # Combine text and table information
+    document_content = {
+        "text": "n".join(lines),
+        "tables": tables if tables else "No tables detected"
+    }
+    return document_content
+
+
+
+handler.py
+
+
+import os
+import json
+from typing import Dict, Any
+from .service import _require_env
+from .storage_utils import download_blob_to_input_folder
+from .document_loader import load_document
+from .classifier import classify_document
+
+INPUT_FOLDER = "input"
+OUTPUT_FOLDER = "output"
+
+async def classify_blob_pdf_layout(blob_url: str) -> Dict[str, Any]:
+    """
+    - Download PDF into input/
+    - Use Form Recognizer to analyze layout
+    - Classify layout using extracted content
+    - Return minimal verdict
+    """
+    try:
+        _require_env()
+    except Exception as e:
+        return {"status": False, "error": f"Environment misconfigured: {e}"}
+
+    # 1) Download PDF
+    try:
+        local_pdf = await download_blob_to_input_folder(blob_url, input_folder=INPUT_FOLDER)
+    except Exception as e:
+        return {"status": False, "error": f"Failed to download blob: {e}"}
+
+    # 2) Use Form Recognizer to analyze the document
+    try:
+        document_content = load_document(local_pdf)
+    except Exception as e:
+        return {"status": False, "error": f"Form Recognizer failed: {e}"}
+
+    # 3) Classify layout using extracted content
+    try:
+        layout_type = classify_document(document_content)
+    except Exception as e:
+        return {"status": False, "error": f"Classification failed: {e}"}
+
+    result = {"status": True, "layout_type": layout_type, "details": document_content}
+
+    # 4) Save minimal output to ./output
+    try:
+        os.makedirs(OUTPUT_FOLDER, exist_ok=True)
+        out_path = os.path.join(OUTPUT_FOLDER, "layout_classification_result.json")
+        with open(out_path, "w", encoding="utf-8") as f:
+            json.dump(result, f, indent=2, ensure_ascii=False)
+    except Exception as e:
+        result["save_error"] = str(e)
+
+    return result
+
+
+
+service.py
+
+
+
+import os
+from urllib.parse import urlparse, unquote
+from dotenv import load_dotenv
+
+load_dotenv()
+
+AZURE_STORAGE_CONNECTION_STRING = os.environ.get("AZURE_STORAGE_CONNECTION_STRING", "")
+
+def _require_env() -> None:
+    """Ensure required environment variables exist."""
+    if not AZURE_STORAGE_CONNECTION_STRING:
+        raise RuntimeError("Missing AZURE_STORAGE_CONNECTION_STRING in environment/.env")
+
+def _parse_blob_url(url: str) -> tuple[str, str]:
+    """
+    Parse an Azure Blob URL and return (container_name, blob_path).
+    Example URL:
+      https://account.blob.core.windows.net/output-results/folder/name.pdf
+    Returns:
+      ("output-results", "folder/name.pdf")
+    """
+    parsed = urlparse(url)
+    if not parsed.scheme.startswith("http"):
+        raise ValueError("url must be a valid http(s) Azure Blob URL.")
+
+    path = parsed.path.lstrip("/")
+    if "/" not in path:
+        raise ValueError("url must include both container and blob path.")
+    parts = path.split("/", 1)
+    container = parts[0]
+    blob_path = parts[1]
+    return unquote(container), unquote(blob_path)
+
+
+
+
+storage_utils.py
+
+import os
+import aiofiles
+from azure.storage.blob.aio import BlobServiceClient
+from azure.core.exceptions import ResourceNotFoundError
+from .service import AZURE_STORAGE_CONNECTION_STRING, _parse_blob_url
+
+async def download_blob_to_input_folder(blob_url: str, input_folder: str = "input") -> str:
+    """
+    Downloads the blob at blob_url into input_folder (root-level) preserving filename.
+    Returns the local path to the downloaded file.
+    """
+    if not AZURE_STORAGE_CONNECTION_STRING:
+        raise RuntimeError("AZURE_STORAGE_CONNECTION_STRING not set")
+
+    container, blob_path = _parse_blob_url(blob_url)
+    filename = os.path.basename(blob_path)
+    os.makedirs(input_folder, exist_ok=True)
+    local_path = os.path.join(input_folder, filename)
+
+    async with BlobServiceClient.from_connection_string(AZURE_STORAGE_CONNECTION_STRING) as service:
+        container_client = service.get_container_client(container)
+        blob_client = container_client.get_blob_client(blob_path)
+        try:
+            await blob_client.get_blob_properties()
+        except ResourceNotFoundError:
+            raise FileNotFoundError(f"Blob not found: container={container} blob={blob_path}")
+        stream = await blob_client.download_blob()
+        data = await stream.readall()
+
+    # write file async
+    async with aiofiles.open(local_path, "wb") as f:
+        await f.write(data)
+
+    return local_path
+
