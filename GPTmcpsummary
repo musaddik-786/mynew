@@ -1,5 +1,271 @@
-classifier.py
+Yes, perfect, I get it now — you want the same pattern as that MCP main.py with:
+	•	FastApiMCP
+	•	create_sub_app(...)
+	•	include_operations=[...]
+	•	app.mount("/api/v1/...", sub_app)
 
+So let’s wire your summary project exactly like that.
+
+Below is the complete, updated code for all files you showed, adjusted for:
+	•	MCP style main.py
+	•	No relative imports (so python3 main.py works)
+	•	Multiple blob URLs → summaries of first page
+	•	prebuilt-read instead of prebuilt-layout (better for text)
+
+⸻
+
+main.py
+
+from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi_mcp import FastApiMCP
+import uvicorn
+
+from router import router as layout_router  # our layout summary router
+
+
+def apply_cors(app: FastAPI):
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=["*"],
+        allow_methods=["*"],
+        allow_headers=["*"],
+    )
+
+
+def create_sub_app(title: str, description: str, version: str = "0.1.0") -> FastAPI:
+    sub = FastAPI(title=title, description=description, version=version)
+    apply_cors(sub)
+    return sub
+
+
+# Root app
+app = FastAPI()
+apply_cors(app)
+
+# Sub-app for this MCP
+layout_app = create_sub_app(
+    title="Layout Summary MCP",
+    description="Downloads one or more PDFs from Azure Blob, extracts text using Form Recognizer, and summarizes the first page of each document."
+)
+
+# Attach our router to the sub-app
+layout_app.include_router(layout_router)
+
+# Expose ONLY this operation id via MCP HTTP (client will use transport='http')
+# NOTE: operation_id must match the one in router.py (@router.post(..., operation_id="layout_detection_mcp"))
+FastApiMCP(layout_app, include_operations=["layout_detection_mcp"]).mount_http()
+
+# Mount the sub-app under this prefix (similar to your other project)
+# Final HTTP endpoint: POST /api/v1/layout_agent/layout_detection_mcp
+app.mount("/api/v1/layout_agent", layout_app)
+
+
+if __name__ == "__main__":
+    uvicorn.run(app, host="0.0.0.0", port=8602)
+
+
+⸻
+
+router.py
+
+# router.py
+
+from typing import List
+from fastapi import APIRouter
+from fastapi.responses import JSONResponse
+from pydantic import BaseModel, Field
+
+from handler import summarize_blob_pdfs_layout  # ✅ no dot, plain import
+
+
+router = APIRouter()
+
+
+class LayoutDetectRequest(BaseModel):
+    """
+    Payload:
+    {
+      "attachment_urls": [
+        "https://<account>.blob.core.windows.net/<container>/<path>/file1.pdf",
+        "https://<account>.blob.core.windows.net/<container>/<path>/file2.pdf"
+      ]
+    }
+    """
+    attachment_urls: List[str] = Field(
+        ...,
+        description="List of full Azure Blob URLs to the PDF attachments."
+    )
+
+
+@router.post(
+    "/layout_detection_mcp",
+    operation_id="layout_detection_mcp",  # must match main.py include_operations
+    summary="Download one or more PDFs from blob, analyze first page and return summaries",
+)
+async def detect_layout(request: LayoutDetectRequest):
+    """
+    Analyze the documents to generate a summary of the *first page* of each document.
+
+    Returns JSON-RPC style result:
+    {
+      "jsonrpc": "2.0",
+      "id": 1,
+      "result": {
+        "status": true/false,
+        "summaries": [
+          {
+            "blob_url": "...",
+            "file_name": "...",
+            "summary": "...",
+            "error": null or "message"
+          },
+          ...
+        ],
+        "save_error": "..." (optional)
+      }
+    }
+    """
+    try:
+        result = await summarize_blob_pdfs_layout(request.attachment_urls)
+        return JSONResponse(
+            content={"jsonrpc": "2.0", "id": 1, "result": result},
+            status_code=200,
+        )
+    except Exception as e:
+        return JSONResponse(
+            content={
+                "jsonrpc": "2.0",
+                "id": 1,
+                "result": {"status": False, "error": str(e)},
+            },
+            status_code=200,
+        )
+
+
+⸻
+
+handler.py
+
+# handler.py
+
+import os
+import json
+from typing import Dict, Any, List
+
+from service import _require_env
+from storage_utils import download_blob_to_input_folder
+from document_loader import load_document
+from classifier import summarize_first_page
+
+INPUT_FOLDER = "input"
+OUTPUT_FOLDER = "output"
+
+
+async def summarize_blob_pdfs_layout(blob_urls: List[str]) -> Dict[str, Any]:
+    """
+    For each Blob URL:
+      - Download PDF into input/
+      - Use Form Recognizer to extract text (all pages)
+      - Use LLM to summarize the FIRST PAGE
+
+    Returns:
+      {
+        "status": True/False,
+        "summaries": [
+          {
+            "blob_url": "<url>",
+            "file_name": "file1.pdf",
+            "summary": "<summary text>" or None,
+            "error": "<error message>" or None
+          },
+          ...
+        ],
+        "save_error": "<error if we couldn't write output file>"  # optional
+      }
+    """
+    try:
+        _require_env()
+    except Exception as e:
+        return {"status": False, "error": f"Environment misconfigured: {e}"}
+
+    summaries: List[Dict[str, Any]] = []
+
+    for blob_url in blob_urls:
+        file_name = None
+
+        # 1) Download PDF
+        try:
+            local_pdf = await download_blob_to_input_folder(
+                blob_url, input_folder=INPUT_FOLDER
+            )
+            file_name = os.path.basename(local_pdf)
+        except Exception as e:
+            summaries.append(
+                {
+                    "blob_url": blob_url,
+                    "file_name": file_name,
+                    "summary": None,
+                    "error": f"Failed to download blob: {e}",
+                }
+            )
+            continue
+
+        # 2) Use Form Recognizer to analyze the document
+        try:
+            document_content = load_document(local_pdf)
+        except Exception as e:
+            summaries.append(
+                {
+                    "blob_url": blob_url,
+                    "file_name": file_name,
+                    "summary": None,
+                    "error": f"Form Recognizer failed: {e}",
+                }
+            )
+            continue
+
+        # 3) Summarize FIRST PAGE using LLM
+        try:
+            summary_text = summarize_first_page(document_content, file_name=file_name)
+        except Exception as e:
+            summaries.append(
+                {
+                    "blob_url": blob_url,
+                    "file_name": file_name,
+                    "summary": None,
+                    "error": f"Summarization failed: {e}",
+                }
+            )
+            continue
+
+        # 4) Success case for this document
+        summaries.append(
+            {
+                "blob_url": blob_url,
+                "file_name": file_name,
+                "summary": summary_text,
+                "error": None,
+            }
+        )
+
+    result: Dict[str, Any] = {"status": True, "summaries": summaries}
+
+    # 5) Save result to ./output (optional, same style as your earlier project)
+    try:
+        os.makedirs(OUTPUT_FOLDER, exist_ok=True)
+        out_path = os.path.join(OUTPUT_FOLDER, "layout_summaries_result.json")
+        with open(out_path, "w", encoding="utf-8") as f:
+            json.dump(result, f, indent=2, ensure_ascii=False)
+    except Exception as e:
+        result["save_error"] = str(e)
+
+    return result
+
+
+⸻
+
+classifier.py
 
 # classifier.py
 
@@ -85,11 +351,11 @@ Write:
         return getattr(response.choices[0].message, "content", "").strip()
 
 
-
-
+⸻
 
 document_loader.py
 
+# document_loader.py
 
 from dotenv import load_dotenv
 import os
@@ -115,7 +381,7 @@ client = DocumentAnalysisClient(endpoint=endpoint, credential=AzureKeyCredential
 
 def load_document(file_path: str) -> dict:
     """
-    Extracts text and layout information using Form Recognizer's prebuilt-layout model.
+    Extracts text information using Form Recognizer's prebuilt-read model.
 
     Returns a dict with:
       - "text": full text from all pages
@@ -123,7 +389,8 @@ def load_document(file_path: str) -> dict:
       - "tables": simple representation of tables (if detected), otherwise message
     """
     with open(file_path, "rb") as f:
-        poller = client.begin_analyze_document("prebuilt-layout", document=f)
+        # ✅ Use prebuilt-read since we only need text
+        poller = client.begin_analyze_document("prebuilt-read", document=f)
         result = poller.result()
 
     # Debugging: Print available attributes in DocumentPage (first page only)
@@ -140,10 +407,10 @@ def load_document(file_path: str) -> dict:
         pages_text.append("\n".join(page_lines))
         all_lines.extend(page_lines)
 
-    # Extract table information if available (very simplified)
+    # Extract table information if available (prebuilt-read might not give tables, but keeping)
     tables = []
     for page in result.pages:
-        if hasattr(page, "tables"):  # remains from your original logic
+        if hasattr(page, "tables"):
             for table in page.tables:
                 table_data = []
                 for row in table.cells:
@@ -159,235 +426,11 @@ def load_document(file_path: str) -> dict:
     return document_content
 
 
-handler.py
-
-import os
-import json
-from typing import Dict, Any, List
-
-from service import _require_env
-from storage_utils import download_blob_to_input_folder
-from document_loader import load_document
-from classifier import summarize_first_page
-
-INPUT_FOLDER = "input"
-OUTPUT_FOLDER = "output"
-
-
-async def summarize_blob_pdfs_layout(blob_urls: List[str]) -> Dict[str, Any]:
-    """
-    For each Blob URL:
-      - Download PDF into input/
-      - Use Form Recognizer to analyze layout and extract text
-      - Use LLM to summarize the FIRST PAGE
-    Returns:
-      {
-        "status": True/False,
-        "summaries": [
-          {
-            "blob_url": "<url>",
-            "file_name": "file1.pdf",
-            "summary": "<summary text>" or None,
-            "error": "<error message>" or None
-          },
-          ...
-        ],
-        "save_error": "<error if we couldn't write output file>"  # optional
-      }
-    """
-    try:
-        _require_env()
-    except Exception as e:
-        return {"status": False, "error": f"Environment misconfigured: {e}"}
-
-    summaries: List[Dict[str, Any]] = []
-
-    for blob_url in blob_urls:
-        file_name = None
-
-        # 1) Download PDF
-        try:
-            local_pdf = await download_blob_to_input_folder(
-                blob_url, input_folder=INPUT_FOLDER
-            )
-            file_name = os.path.basename(local_pdf)
-        except Exception as e:
-            summaries.append(
-                {
-                    "blob_url": blob_url,
-                    "file_name": file_name,
-                    "summary": None,
-                    "error": f"Failed to download blob: {e}",
-                }
-            )
-            continue
-
-        # 2) Use Form Recognizer to analyze the document
-        try:
-            document_content = load_document(local_pdf)
-        except Exception as e:
-            summaries.append(
-                {
-                    "blob_url": blob_url,
-                    "file_name": file_name,
-                    "summary": None,
-                    "error": f"Form Recognizer failed: {e}",
-                }
-            )
-            continue
-
-        # 3) Summarize FIRST PAGE using LLM
-        try:
-            summary_text = summarize_first_page(document_content, file_name=file_name)
-        except Exception as e:
-            summaries.append(
-                {
-                    "blob_url": blob_url,
-                    "file_name": file_name,
-                    "summary": None,
-                    "error": f"Summarization failed: {e}",
-                }
-            )
-            continue
-
-        # 4) Success case for this document
-        summaries.append(
-            {
-                "blob_url": blob_url,
-                "file_name": file_name,
-                "summary": summary_text,
-                "error": None,
-            }
-        )
-
-    result: Dict[str, Any] = {"status": True, "summaries": summaries}
-
-    # 5) Save result to ./output (optional but keeping your original style)
-    try:
-        os.makedirs(OUTPUT_FOLDER, exist_ok=True)
-        out_path = os.path.join(OUTPUT_FOLDER, "layout_summaries_result.json")
-        with open(out_path, "w", encoding="utf-8") as f:
-            json.dump(result, f, indent=2, ensure_ascii=False)
-    except Exception as e:
-        result["save_error"] = str(e)
-
-    return result
-
-
-main.py
-
-
-(this main.py is from other project take this as just for example)
-from fastapi import FastAPI
-from fastapi.middleware.cors import CORSMiddleware
-from fastapi_mcp import FastApiMCP
-import uvicorn
-
-from file_router import router as file_router
-
-
-def apply_cors(app: FastAPI):
-    app.add_middleware(
-        CORSMiddleware,
-        allow_origins=["*"],
-        allow_methods=["*"],
-        allow_headers=["*"],
-    )
-
-
-def create_sub_app(title: str, description: str, version: str = "0.1.0") -> FastAPI:
-    sub = FastAPI(title=title, description=description, version=version)
-    apply_cors(sub)
-    return sub
-
-
-app = FastAPI()
-apply_cors(app)
-
-file_app = create_sub_app(
-    title="Licensing & Sanction Checker MCP",
-    description="Receives JSON blob URL from Data Extraction Agent and compares extracted name with local sanctions CSV."
-)
-file_app.include_router(file_router)
-
-# Expose ONLY this operation id via MCP HTTP (client will use transport='http')
-FastApiMCP(file_app, include_operations=["Licensing_&_Sanction_Checker_MCP"]).mount_http()
-
-# Mount the sub-app under this prefix (keep as-is per your request)
-app.mount("/api/v1/eligibility_agent", file_app)
-
-
-if __name__ == "__main__":
-    uvicorn.run(app, host="0.0.0.0", port=8601)
-
-
-
-
-router.py
-
-
-
-# router.py
-
-from typing import List
-from fastapi import APIRouter
-from fastapi.responses import JSONResponse
-from pydantic import BaseModel, Field
-
-from .handler import summarize_blob_pdfs_layout
-
-router = APIRouter()
-
-
-class LayoutDetectRequest(BaseModel):
-    """
-    Payload:
-    {
-      "attachment_urls": [
-        "https://<account>.blob.core.windows.net/<container>/<path>/file1.pdf",
-        "https://<account>.blob.core.windows.net/<container>/<path>/file2.pdf"
-      ]
-    }
-    """
-    attachment_urls: List[str] = Field(
-        ...,
-        description="List of full Azure Blob URLs to the PDF attachments."
-    )
-
-
-@router.post(
-    "/layout_detection_mcp",
-    operation_id="layout_detection_mcp",
-    summary="Download one or more PDFs from blob, analyze first page and return summaries",
-)
-async def detect_layout(request: LayoutDetectRequest):
-    """
-    Analyze the documents to generate a summary of the *first page* of each document.
-
-    Args:
-        attachment_urls: List of Blob URLs returned by the email_attachment_mcp
-
-    Returns:
-        JSONResponse: JSON-RPC style response containing a list of summaries.
-    """
-    try:
-        result = await summarize_blob_pdfs_layout(request.attachment_urls)
-        return JSONResponse(
-            content={"jsonrpc": "2.0", "id": 1, "result": result},
-            status_code=200,
-        )
-    except Exception as e:
-        return JSONResponse(
-            content={
-                "jsonrpc": "2.0",
-                "id": 1,
-                "result": {"status": False, "error": str(e)},
-            },
-            status_code=200,
-        )
-
+⸻
 
 service.py
+
+# service.py
 
 import os
 from urllib.parse import urlparse, unquote
@@ -425,11 +468,11 @@ def _parse_blob_url(url: str) -> tuple[str, str]:
     return unquote(container), unquote(blob_path)
 
 
-
+⸻
 
 storage_utils.py
 
-
+# storage_utils.py
 
 import os
 import aiofiles
@@ -469,13 +512,74 @@ async def download_blob_to_input_folder(blob_url: str, input_folder: str = "inpu
     return local_path
 
 
+⸻
+
+testscripts.py
+
+# testscripts.py
+
+import os
+import json
+import requests
+
+# Base URL of your FastAPI service
+# After main.py starts, the root app listens on port 8602
+BASE_URL = os.getenv("LAYOUT_BASE_URL", "http://localhost:8602")
+
+# We mounted the sub-app at /api/v1/layout_agent
+# Router path is /layout_detection_mcp
+# So final endpoint is:
+#   POST http://localhost:8602/api/v1/layout_agent/layout_detection_mcp
+ENDPOINT = f"{BASE_URL}/api/v1/layout_agent/layout_detection_mcp"
 
 
-(summary_venv) jarvis@Jarvis-agent-vm:~/Musaddique/PracticeSummary$ python3 main.py
-Traceback (most recent call last):
-  File "/home/jarvis/Musaddique/PracticeSummary/main.py", line 8, in <module>
-    from router import router as router
-  File "/home/jarvis/Musaddique/PracticeSummary/router.py", line 9, in <module>
-    from .handler import summarize_blob_pdfs_layout
-ImportError: attempted relative import with no known parent package
-(summary_venv) jarvis@Jarvis-agent-vm:~/Musaddique/PracticeSummary$ 
+def run_test():
+    # Example payload: list of blob URLs
+    payload = {
+        "attachment_urls": [
+            "https://agenticail.blob.core.windows.net/attachment-downloader/19A81973900C46C9_attachment_Acord_125.pdf",
+            # Add more URLs to test multiple documents:
+            # "https://agenticail.blob.core.windows.net/attachment-downloader/another.pdf",
+        ]
+    }
+
+    print(f"Calling endpoint: {ENDPOINT}")
+    print("Request payload:")
+    print(json.dumps(payload, indent=2))
+
+    try:
+        resp = requests.post(ENDPOINT, json=payload, timeout=180)
+        print("\nHTTP Status:", resp.status_code)
+
+        try:
+            data = resp.json()
+            print("\nResponse JSON:")
+            print(json.dumps(data, indent=4))
+        except json.JSONDecodeError:
+            print("\nResponse is not valid JSON:")
+            print(resp.text)
+
+    except Exception as e:
+        print("Error calling API:", str(e))
+
+
+if __name__ == "__main__":
+    print("Testing /api/v1/layout_agent/layout_detection_mcp ...")
+    run_test()
+
+
+⸻
+
+How to run (just to recap):
+
+Terminal 1
+
+source summary_venv/bin/activate   # if you use a venv
+python3 main.py
+
+Terminal 2
+
+source summary_venv/bin/activate
+python3 testscripts.py
+
+If you get any new traceback after this, just paste the error and we’ll debug the next tiny piece.
