@@ -277,13 +277,14 @@ async def summarize_blob_pdfs_layout(blob_urls: List[str]) -> Dict[str, Any]:
 main.py
 
 
-
-#Working code 
-# main.py
+(this main.py is from other project take this as just for example)
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi_mcp import FastApiMCP
 import uvicorn
-from router import router as router
+
+from file_router import router as file_router
+
 
 def apply_cors(app: FastAPI):
     app.add_middleware(
@@ -293,12 +294,33 @@ def apply_cors(app: FastAPI):
         allow_headers=["*"],
     )
 
-app = FastAPI(title="Layout Detection MCP API", version="0.1.0")
+
+def create_sub_app(title: str, description: str, version: str = "0.1.0") -> FastAPI:
+    sub = FastAPI(title=title, description=description, version=version)
+    apply_cors(sub)
+    return sub
+
+
+app = FastAPI()
 apply_cors(app)
-app.include_router(file_router, prefix="/api/v1/layout")
+
+file_app = create_sub_app(
+    title="Licensing & Sanction Checker MCP",
+    description="Receives JSON blob URL from Data Extraction Agent and compares extracted name with local sanctions CSV."
+)
+file_app.include_router(file_router)
+
+# Expose ONLY this operation id via MCP HTTP (client will use transport='http')
+FastApiMCP(file_app, include_operations=["Licensing_&_Sanction_Checker_MCP"]).mount_http()
+
+# Mount the sub-app under this prefix (keep as-is per your request)
+app.mount("/api/v1/eligibility_agent", file_app)
+
 
 if __name__ == "__main__":
-    uvicorn.run("main:app", host="0.0.0.0", port=8602, reload=False)
+    uvicorn.run(app, host="0.0.0.0", port=8601)
+
+
 
 
 router.py
