@@ -1,0 +1,57 @@
+# document_loader.py
+
+from dotenv import load_dotenv
+import os
+from azure.ai.formrecognizer import DocumentAnalysisClient
+from azure.core.credentials import AzureKeyCredential
+
+# Load environment variables from .env file
+load_dotenv()
+
+# Fetch variables
+endpoint = os.getenv("AZURE_FORMRECOG_ENDPOINT")
+key = os.getenv("AZURE_FORMRECOG_KEY")
+
+# Fail fast if missing
+if not endpoint:
+    raise ValueError("AZURE_FORMRECOG_ENDPOINT is not set. Check your .env file.")
+if not key:
+    raise ValueError("AZURE_FORMRECOG_KEY is not set. Check your .env file.")
+
+# Create the client using the key and endpoint
+client = DocumentAnalysisClient(endpoint=endpoint, credential=AzureKeyCredential(key))
+
+
+def load_document(file_path: str) -> dict:
+    """
+    Extract ONLY the text of the FIRST PAGE
+    using Form Recognizer's prebuilt-read model.
+
+    Returns a dict with:
+      - "first_page_text": text of page 1
+    """
+    with open(file_path, "rb") as f:
+        # ✅ Use prebuilt-read and restrict to first page only
+        poller = client.begin_analyze_document(
+            "prebuilt-read",
+            document=f,
+            pages="1",  # tell Form Recognizer we only care about page 1
+        )
+        result = poller.result()
+
+    # Defensive: make sure we have at least one page
+    if not result.pages:
+        return {"first_page_text": ""}
+
+    first_page = result.pages[0]
+    lines = [line.content for line in first_page.lines]
+    first_page_text = "\n".join(lines)
+
+    # Optional debug
+    print("First page text (truncated to 500 chars):")
+    print(first_page_text[:500])
+    print("\n---- END OF FIRST PAGE PREVIEW ----\n")
+
+    return {
+        "first_page_text": first_page_text
+    }
