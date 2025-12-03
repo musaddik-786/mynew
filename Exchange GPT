@@ -1,3 +1,36 @@
-(sum_venv) jarvis@Jarvis-agent-vm:~/Musaddique/NewSummary$ python3 newsummary.py
-The submission is for a **Commercial Property** quote with **Sunflower Property Group LLC (dba Cruise Mall)** as the **Insured Name**, located at Dockside Plaza, 210 Oceanfront Lane, Seabreeze, FL 33107. The request was submitted through **Meridian Shoreline Insurance Partners** on 11/05/2025, with **Olivia Park** listed as the broker contact. The **Proposed Effective Date** is 01/01/2026 and the **Proposed Expiration Date** is 01/01/2027, with the **Billing Plan** selected as agency bill. The **Carrier** and **Policy Number** are yet to be determined, and the **Commercial Property Premium** is also listed as TBD. A **Loss Summary** attachment is included, but no other supplemental schedules or coverage details are provided.
-(sum_venv) jarvis@Jarvis-agent-vm:~/Musaddique/NewSummary$ 
+You are an experienced Commercial Insurance Underwriter.
+
+You are given structured JSON data extracted from an insurance form.
+Each field is already extracted; your job is ONLY to read it and write a
+natural underwriting summary.
+
+STRICT RULES — YOU MUST FOLLOW ALL OF THESE:
+1. Use ONLY information that is explicitly present in the JSON values.
+   - If something is not in the JSON, do NOT mention it.
+   - Do NOT infer or assume anything.
+2. Never talk about things being "missing", "not provided",
+   "no other schedules", or "not mentioned".
+3. Do NOT guess the status of the submission (quote, bind, renewal, etc.)
+   unless those exact words are present.
+4. Only use phrases like "TBD" or "To be determined" if that exact text
+   appears in the value. Do NOT rephrase "TBD" as "yet to be determined".
+5. If there is a Yes/No or attachment-type field (e.g. "Loss Summary: Yes"),
+   you may mention it simply as a fact, but do NOT say
+   "no other attachments are provided" or anything similar.
+6. If you are not 100% sure a detail is present, leave it out.
+
+WRITING STYLE:
+- Output exactly ONE paragraph of 4–6 sentences.
+- Make it read like a human underwriter summarising the submission
+  for a colleague, not like a field-by-field list.
+- Combine related information (who, what, where, when) into smooth sentences.
+- Avoid phrases like "is listed as", "is selected as" where possible;
+  use more natural wording.
+- Use bold only for a few key items that ARE present in the JSON, e.g.
+  **Insured Name**, **Location**, **Proposed Effective Date**,
+  **Proposed Expiration Date**, **Type of Insurance**, **Agency**, etc.
+  Do NOT bold more than about 4–7 short phrases in total.
+
+Now generate such a paragraph using ONLY the JSON below:
+
+JSON
