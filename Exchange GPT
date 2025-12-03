@@ -1,6 +1,7 @@
 from dotenv import load_dotenv
 import os
-from openai import AzureOpenAI  #  Correct import for Azure OpenAI
+import json
+from openai import AzureOpenAI  # Correct import for Azure OpenAI
 
 # Load environment variables
 load_dotenv()
@@ -22,7 +23,7 @@ if not (
         "AZURE_OPENAI_API_KEY and AZURE_OPENAI_CHAT_DEPLOYMENT"
     )
 
-#  Create Azure OpenAI client
+# Create Azure OpenAI client
 client = AzureOpenAI(
     api_key=AZURE_OPENAI_API_KEY,
     api_version=AZURE_OPENAI_API_VERSION,
@@ -30,39 +31,45 @@ client = AzureOpenAI(
 )
 
 
-def summarize_first_page(document_content: dict, file_name: str | None = None) -> str:
+def summarize_first_page(document_json: dict, file_name: str | None = None) -> str:
     """
-    Use Azure OpenAI to summarize the *first page* of the document.
+    Now this function summarizes a JSON document (extracted fields),
+    NOT a 'first page of text'.
 
-    document_content is expected to come from load_document() and contain:
-      - "pages": List[str]  # each item = text of a page
-      - "text": str         # full text of the document (fallback)
+    document_json is expected to be the parsed JSON dict, for example:
+    {
+      "General Information": { ... },
+      "Policy Information": { ... },
+      ...
+    }
     """
 
-    first_page_text = document_content.get("first_page_text")
-    if not first_page_text:
-        first_page_text = document_content.get("text", "")
-
-    # Safety: limit size so we don't overload the prompt
-    first_page_text = first_page_text[:4000]
+    # Safety: limit JSON size in the prompt (optional)
+    # If JSON is huge, you can trim some sections or keys before dumping.
+    json_string = json.dumps(document_json, indent=2)
+    json_string = json_string[:6000]  # simple safety limit
 
     prompt = f"""
 You are an experienced Commercial Insurance Underwriter.
-Read the FIRST PAGE of the document and write a short, underwriting-focused
-summary in natural language. The summary should highlight whatever information
-is actually present that would help an underwriter. Do not mention document structure, do not
-reference page numbers, and do not include anything that is not explicitly
-supported by the text.
-Write the summary as a single short paragraph of 4–6 sentences, objective,
-clear, and focused only on the details visible in the text. 
-Always remember, Do not mention document structure, do not mention reference page numbers.
-# First page content:
-# \"\"\"{first_page_text}\"\"\"
+
+You are given structured JSON data extracted from an insurance form.
+Each value may sometimes include a trailing text like ", confidence - 0.974".
+Ignore this confidence part when understanding the business meaning.
+
+Using ONLY the information in this JSON, write a short underwriting-focused
+summary as ONE paragraph of 4–6 sentences.
+
+Requirements:
+- Be objective, clear, and concise.
+- Do NOT invent any information that is not explicitly present in the JSON.
+- Do NOT mention JSON, keys, fields, or document structure.
+- Do NOT use bullet points or numbered lists.
+- If some common underwriting details (e.g. limits, policy dates, operations) are missing, simply do not mention them.
+- In the paragraph, make important labels **bold**, such as **Insured Name**, **Policy Number**, **Policy Effective Date**, **Agency**, **Carrier**, **Operations**, **Location**, etc., when those details exist in the JSON.
+
+Here is the JSON data to summarise:
+{json_string}
     """
-
-# have key points bold that would be good to have like Insured Name, Policy Inception and Expiry, etc, whatever think is good to the underwriter.
-# and do not mention anything in your response that is not explicitly mentioned in the text.
-
 
     response = client.chat.completions.create(
         model=AZURE_OPENAI_CHAT_DEPLOYMENT,
@@ -76,29 +83,27 @@ Always remember, Do not mention document structure, do not mention reference pag
     except Exception:
         return getattr(response.choices[0].message, "content", "").strip()
 
-import __main__:
-      i want json that is stored under input folder which is inside of the NewSummary folder
-      and i want to pass the json in summarize_first_page() and change the prompt as this is the json 
-      {
-  "General Information": {
-    "Date": "11/05/2025, confidence - 0.974",
-    "Agency": "Meridian Shoreline Insurance Partners, confidence - 0.876",
-    "Carrier": "TBD, confidence - 0.879",
-    "Code": "MSIP-214, confidence - 0.974",
-    "Email Address": "olivia.park@meridianship.com, confidence - 0.925",
-    "Fax": "+1 (555) 214-7802, confidence - 0.937",
-    "Phone": "+1 (555) 214-7802, confidence - 0.949",
-    "NAIC Code": "TBD, confidence - 0.835",
-    "total_confidence": 0.9325
-  },
-  "Policy Information": {
-    "Policy Number": "TBD, confidence - 0.975",
-    "Program Code": "TBD, confidence - 0.98",
-    "Company Policy Or Program Name": "TBD, confidence - 0.982",
-    "Underwriter": "TBD, confidence - 0.961",
-    "Underwriter
 
-    etc etc
+if __name__ == "__main__":
+    # This block will:
+    # 1) find the JSON file under NewSummary/input/
+    # 2) load it
+    # 3) call summarize_first_page(document_json)
+    # 4) print the summary
 
+    # Absolute path to this file's folder (NewSummary)
+    base_dir = os.path.dirname(os.path.abspath(__file__))
 
-      def summarize_first_page()
+    # Path to the JSON inside the input folder
+    json_path = os.path.join(base_dir, "input", "form_output.json")
+    #   ^ change "form_output.json" to your actual file name
+
+    # Load JSON from file
+    with open(json_path, "r", encoding="utf-8") as f:
+        document_json = json.load(f)
+
+    # Call the summariser
+    summary = summarize_first_page(document_json, file_name="form_output.json")
+
+    # Print summary to console
+    print(summary)
