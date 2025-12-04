@@ -1,314 +1,805 @@
-"""
-This script trains a Linear Regression model on ANY dataset.
+this is json A
+I want to know if everything from json A is covered in json B or not also the difference 
 
-Every line is explained clearly.
 
-HOW TO USE:
-1. Change CSV_PATH to your dataset
-2. Change TARGET_COL to the column you want to predict
-3. Change DROP_COLS to columns you want to remove
-4. Update SAMPLE_INPUT for prediction
-"""
-
-import pandas as pd        # For loading CSV and working with tables
-import numpy as np         # For mathematical operations (arrays, numbers)
-
-# These are ML tools from sklearn
-from sklearn.model_selection import train_test_split       # Split data into train/test
-from sklearn.linear_model import LinearRegression          # ML algorithm
-from sklearn.preprocessing import StandardScaler           # Feature scaling
-from sklearn.metrics import (mean_absolute_error,          # Evaluation metrics
-                             mean_absolute_percentage_error,
-                             mean_squared_error,
-                             r2_score)
-
-import matplotlib.pyplot as plt   # For plotting graphs (optional)
-import pickle                     # For saving model to file
-import os                         # For checking file paths
-
-# =========================================================
-# 1. CONFIGURATION (CHANGE THESE)
-# =========================================================
-
-CSV_PATH = "/path/to/your/data.csv"
-"""
-This is where your CSV file exists.
-You MUST change this to your dataset path.
-"""
-
-TARGET_COL = "mpg"
-"""
-This is the column we want to PREDICT.
-Example:
-- mpg in Auto MPG dataset
-- price in house price dataset
-"""
-
-DROP_COLS = ["car name"]
-"""
-Columns to remove from dataset.
-Usually text columns or IDs which ML cannot use.
-"""
-
-MODEL_PATH = "/path/to/save/model.pkl"
-"""
-Where the trained model will be saved.
-"""
-
-TEST_SIZE = 0.2
-"""
-20% data will be used for testing.
-"""
-
-RANDOM_STATE = 42
-"""
-Helps ensure results remain same every run.
-"""
-
-# =========================================================
-# 2. LOAD DATA
-# =========================================================
-
-print("Loading dataset...")
-df = pd.read_csv(CSV_PATH)
-"""
-pd.read_csv = read a CSV file and convert it into a DataFrame (table).
-df = dataframe containing dataset
-"""
-
-print("\nFirst 5 rows:")
-print(df.head())
-"""
-df.head() shows first 5 rows.
-Purpose: To check dataset loaded correctly.
-"""
-
-print("\nColumn info:")
-print(df.info())
-"""
-df.info() shows:
-- column names
-- data types
-- missing values
-"""
-
-# =========================================================
-# 3. CLEANING THE DATA
-# =========================================================
-
-# Remove unnecessary columns
-for col in DROP_COLS:
-    if col in df.columns:
-        df = df.drop(col, axis=1)
-        print(f"Dropped column: {col}")
-"""
-df.drop removes a column.
-Why drop?
-- Some columns are text or IDs, ML cannot use them.
-- Example: "car name"
-"""
-
-# Replace '?' with NaN because '?' is not a number
-df = df.replace("?", np.nan)
-"""
-Sometimes datasets use '?' instead of blank.
-ML cannot use '?' so we convert '?' → NaN.
-NaN means missing value.
-"""
-
-# Convert any non-numeric columns to numeric if needed
-# (Uncomment and change if your dataset needs it)
-# df["horsepower"] = df["horsepower"].astype(float)
-"""
-Why convert?
-- If 'horsepower' is stored as string like "150", ML cannot use it.
-- We convert it to float.
-"""
-
-# Fill missing numeric values with mean
-for col in df.columns:
-    if df[col].dtype != "object":       # Only numeric columns
-        if df[col].isna().sum() > 0:    # If missing values exist
-            df[col].fillna(df[col].mean(), inplace=True)
-            print(f"Filled NaN in '{col}' using mean.")
-"""
-Why fill NaN?
-ML cannot train on missing values.
-Using mean is a simple and common strategy.
-"""
-
-# If still some missing values remain → drop them
-df = df.dropna()
-"""
-This removes any row with remaining NaN.
-Ensures dataset is fully clean.
-"""
-
-print("\nMissing values after cleaning:")
-print(df.isna().sum())
-"""
-Shows if any column still has missing data.
-"""
-
-# =========================================================
-# 4. SET X AND y
-# =========================================================
-
-# Target (what we want to predict)
-y = df[TARGET_COL]
-"""
-Example:
-If TARGET_COL="mpg", then y contains all mpg values.
-"""
-
-# Features (inputs to the model)
-X = df.drop(TARGET_COL, axis=1)
-"""
-We drop the target column from the dataset.
-Everything else becomes input features.
-"""
-
-feature_names = X.columns.tolist()
-print("\nFeatures used:")
-print(feature_names)
-
-# =========================================================
-# 5. TRAIN-TEST SPLIT
-# =========================================================
-
-X_train, X_test, y_train, y_test = train_test_split(
-    X, y, test_size=TEST_SIZE, random_state=RANDOM_STATE, shuffle=True
-)
-"""
-Purpose:
-- Most important ML step
-- Train → model learns
-- Test → model is evaluated on unseen data
-
-shuffle=True ensures random mixing before split.
-"""
-
-print("\nShapes:")
-print("X_train:", X_train.shape)
-print("X_test :", X_test.shape)
-
-# =========================================================
-# 6. FEATURE SCALING
-# =========================================================
-
-scaler = StandardScaler()
-"""
-StandardScaler converts data to:
-(x - mean) / std
-This makes training stable for Linear Regression.
-"""
-
-X_train_scaled = scaler.fit_transform(X_train)
-"""
-fit_transform:
-1. Compute mean & std from X_train
-2. Apply scaling
-NEVER scale test by fitting on test set.
-"""
-
-X_test_scaled = scaler.transform(X_test)
-"""
-transform:
-Use SAME scaling from train data
-"""
-
-# =========================================================
-# 7. TRAIN LINEAR REGRESSION
-# =========================================================
-
-lr = LinearRegression()
-lr.fit(X_train_scaled, y_train)
-"""
-lr.fit trains the model:
-Finds best w1, w2, ..., wn and b
-Using the formula:
-y = w1*x1 + w2*x2 + ... + wn*xn + b
-"""
-
-# =========================================================
-# 8. EVALUATION
-# =========================================================
-
-y_train_pred = lr.predict(X_train_scaled)
-y_test_pred = lr.predict(X_test_scaled)
-"""
-lr.predict gives predicted values using learned weights.
-"""
-
-# Evaluation metrics
-print("\n--- Evaluation ---")
-print("Train MAE :", mean_absolute_error(y_train, y_train_pred))
-print("Test  MAE :", mean_absolute_error(y_test, y_test_pred))
-
-print("Train MAPE:", mean_absolute_percentage_error(y_train, y_train_pred))
-print("Test  MAPE:", mean_absolute_percentage_error(y_test, y_test_pred))
-
-print("Train MSE :", mean_squared_error(y_train, y_train_pred))
-print("Test  MSE :", mean_squared_error(y_test, y_test_pred))
-
-# RMSE = sqrt(MSE)
-print("Train RMSE:", np.sqrt(mean_squared_error(y_train, y_train_pred)))
-print("Test  RMSE:", np.sqrt(mean_squared_error(y_test, y_test_pred)))
-
-print("Train R2  :", r2_score(y_train, y_train_pred))
-print("Test  R2  :", r2_score(y_test, y_test_pred))
-"""
-These metrics tell:
-- How accurate model is
-- Lower errors = better
-- Higher R² (max 1.0) = better fit
-"""
-
-# =========================================================
-# 9. COEFFICIENTS
-# =========================================================
-
-print("\nModel Coefficients:")
-for name, coef in zip(feature_names, lr.coef_):
-    print(f"{name}: {coef}")
-
-print("Intercept:", lr.intercept_)
-"""
-Coefficients show:
-- Which feature increases or decreases prediction
-- Importance of each feature
-"""
-
-# =========================================================
-# 10. SAVE MODEL + SCALER
-# =========================================================
-
-pickle_data = {
-    "model": lr,
-    "scaler": scaler,
-    "feature_names": feature_names,
+{
+  "Policy Information": {
+    "Date": "11/05/2025, confidence - 0.98",
+    "Proposed Effective Date": "01/01/2026",
+    "Proposed Expiration Date": "01/01/2027",
+    "Billing Plan": "DIRECT :selected:",
+    "Payment Plan": ", confidence - 0.765",
+    "Method of Payment": ", confidence - 0.605",
+    "Audit": ":unselected:, confidence - 0.273",
+    "Deposit": ", confidence - 0.727",
+    "Minimum Premium": ", confidence - 0.637",
+    "Policy Premium": ", confidence - 0.764",
+    "total_confidence": 0.6787142857142857
+  },
+  "Agency": {
+    "Name": "Meridian Shoreline Insurance Partners",
+    "Code": "MSIP-214, confidence - 0.974",
+    "Subcode": ", confidence - 0.478",
+    "Contact Name": "Olivia Park, confidence - 0.968",
+    "Phone": "+1 (555) 214-7802, confidence - 0.985",
+    "Fax": "+1 (555) 214-7802, confidence - 0.937",
+    "Email": "olivia.park@meridianship.com",
+    "total_confidence": 0.8684
+  },
+  "Carrier": {
+    "Name": "TBD",
+    "NAIC Code": "TBD, confidence - 0.835",
+    "Company Policy or Program Name": "TBD, confidence - 0.982",
+    "Program Code": "TBD, confidence - 0.98",
+    "Policy Number": "TBD, confidence - 0.975",
+    "Underwriter": "TBD, confidence - 0.961",
+    "Underwriter Office": "TBD, confidence - 0.962",
+    "total_confidence": 0.9491666666666666
+  },
+  "Transaction Status": {
+    "Status": "QUOTE :selected:",
+    "Issue Policy": ":unselected:",
+    "Renew": ":unselected:",
+    "Bound": ":unselected:",
+    "Change": ":unselected:",
+    "Cancel": ":unselected:",
+    "Date": "11/05/2025, confidence - 0.98",
+    "Time": "6:40 :selected: PM",
+    "total_confidence": 0.98
+  },
+  "Line Of Business": {
+    "Boiler & Machinery": "$ :unselected:",
+    "Cyber and Privacy": "$ :unselected:, confidence - 0.395",
+    "Yacht": "$ :unselected:, confidence - 0.353",
+    "Business Auto": "$ :unselected:, confidence - 0.682",
+    "Fiduciary Liability": "$ :unselected:, confidence - 0.433",
+    "Business Owners": "$ :unselected:, confidence - 0.68",
+    "Garage and Dealers": "$ :unselected:, confidence - 0.477",
+    "Commercial General Liability": "$ :unselected:, confidence - 0.623",
+    "Liquor Liability": "$ :unselected:",
+    "Commercial Inland Marine": "$ :unselected:, confidence - 0.684",
+    "Motor Carrier": "$ :unselected:, confidence - 0.434",
+    "Commercial Property": "$ TBD :unselected:, confidence - 0.975",
+    "Truckers": "$ :unselected:, confidence - 0.468",
+    "Crime": "$ :unselected:, confidence - 0.701",
+    "Umbrella": "$ :unselected:, confidence - 0.489",
+    "total_confidence": 0.5687692307692307
+  },
+  "Premiums": {
+    "Boiler & Machinery": "",
+    "Cyber and Privacy": ", confidence - 0.395",
+    "Yacht": ", confidence - 0.353",
+    "Business Auto": ", confidence - 0.682",
+    "Fiduciary Liability": ", confidence - 0.433",
+    "Business Owners": ", confidence - 0.68",
+    "Garage and Dealers": ", confidence - 0.477",
+    "Commercial General Liability": ", confidence - 0.623",
+    "Liquor Liability": "",
+    "Commercial Inland Marine": ", confidence - 0.684",
+    "Motor Carrier": ", confidence - 0.434",
+    "Commercial Property": "TBD, confidence - 0.975",
+    "Truckers": ", confidence - 0.468",
+    "Crime": ", confidence - 0.701",
+    "Umbrella": ", confidence - 0.489",
+    "total_confidence": 0.5687692307692307
+  },
+  "Attachments": {
+    "Accounts Receivable / Valuable Papers": ":unselected:",
+    "Glass and Sign Section": ":unselected:",
+    "Statement / Schedule of Values": ":unselected:",
+    "Additional Interest Schedule": ":unselected:",
+    "Hotel / Motel Supplement": ":unselected:",
+    "State Supplement": ":unselected:",
+    "Additional Premises Information Schedule": ":unselected:",
+    "Installation / Builders Risk Section": ":unselected:",
+    "Vacant Building Supplement": ":unselected:",
+    "Apartment Building Supplement": ":unselected:",
+    "International Liability Exposure Supplement": ":unselected:",
+    "Vehicle Schedule": ":unselected:",
+    "Condo Assn Bylaws (for D&O Coverage only)": ":unselected:",
+    "International Property Exposure Supplement": ":selected:",
+    "Loss Details": ":unselected:",
+    "Contractors Supplement": ":unselected:",
+    "Loss Summary": ":unselected:",
+    "Coverages Schedule": ":unselected:",
+    "Open Cargo Section": ":unselected:",
+    "Dealers Section": ":unselected:",
+    "Premium Payment Supplement": ":unselected:",
+    "Driver Information Schedule": ":unselected:",
+    "Professional Liability Supplement": ":unselected:",
+    "Electronic Data Processing Section": ":unselected:",
+    "Restaurant / Tavern Supplement": ":unselected:",
+    "Copy of the Notice of Information Practices (Privacy) has been given to the applicant": "(Not required in all states, contact your agent or broker for your state's requirements.)"
+  },
+  "Insured": {
+    "First Named Insured": {
+      "Name": "Sunflower Property Group LLC (dba Cruise Mall)",
+      "Mailing Address": "Dockside Plaza, 210 Oceanfront Lane, Seabreeze, FL 33107",
+      "GL Code": ", confidence - 0.667",
+      "SIC": ", confidence - 0.764",
+      "NAICS": ", confidence - 0.557",
+      "FEIN or Soc Sec #": "",
+      "Business Phone #": "",
+      "Website Address": ", confidence - 0.981",
+      "Corporation": ":unselected:, confidence - 0.684",
+      "Joint Venture": ":unselected:, confidence - 0.525",
+      "Not For Profit Org": ":unselected:, confidence - 0.638",
+      "Subchapter S Corporation": ":unselected:, confidence - 0.638",
+      "Individual": ":unselected:, confidence - 0.703",
+      "LLC": ", confidence - 0.672",
+      "No. of Members and Managers": ":unselected:",
+      "Partnership": ":unselected:, confidence - 0.684",
+      "Trust": ", confidence - 0.685"
+    },
+    "Other Named Insureds": [
+      {
+        "Name": "",
+        "Mailing Address": "",
+        "GL Code": ", confidence - 0.667",
+        "SIC": ", confidence - 0.764",
+        "NAICS": ", confidence - 0.557",
+        "FEIN or Soc Sec #": "",
+        "Business Phone #": "",
+        "Website Address": ", confidence - 0.981",
+        "Corporation": ":unselected:, confidence - 0.684",
+        "Joint Venture": ":unselected:, confidence - 0.525",
+        "Not For Profit Org": ":unselected:, confidence - 0.638",
+        "Subchapter S Corporation": ":unselected:, confidence - 0.638",
+        "Individual": ":unselected:, confidence - 0.703",
+        "LLC": ", confidence - 0.672",
+        "No. of Members and Managers": ":unselected:",
+        "Partnership": ":unselected:, confidence - 0.684",
+        "Trust": ", confidence - 0.685"
+      },
+      {
+        "Name": "",
+        "Mailing Address": "",
+        "GL Code": ", confidence - 0.667",
+        "SIC": ", confidence - 0.764",
+        "NAICS": ", confidence - 0.557",
+        "FEIN or Soc Sec #": "",
+        "Business Phone #": "",
+        "Website Address": ", confidence - 0.981",
+        "Corporation": ":unselected:, confidence - 0.684",
+        "Joint Venture": ":unselected:, confidence - 0.525",
+        "Not For Profit Org": ":unselected:, confidence - 0.638",
+        "Subchapter S Corporation": ":unselected:, confidence - 0.638",
+        "Individual": ":unselected:, confidence - 0.703",
+        "LLC": ", confidence - 0.672",
+        "No. of Members and Managers": ":unselected:",
+        "Partnership": ":unselected:, confidence - 0.684",
+        "Trust": ", confidence - 0.685"
+      }
+    ],
+    "total_confidence": 0.6831666666666667
+  },
+  "Premises Information": [
+    {
+      "Loc #": "001",
+      "Street": "Cruise Resort, 100 Harbor View Drive, Seabreeze, FL 33101",
+      "City Limits": "",
+      "Inside": ":unselected:",
+      "Outside": ":unselected:",
+      "Interest": "",
+      "Owner": ":unselected:",
+      "Tenant": "",
+      "Occupied Area (SQ FT)": "",
+      "Bld #": "",
+      "City": "",
+      "State": "",
+      "# Full Time Employees": "",
+      "# Part Time Employees": "",
+      "Open to Public Area (SQ FT)": "",
+      "County": "",
+      "Zip": "",
+      "Total Building Area (SQ FT)": "150,000",
+      "Annual Revenues": "$ $40,000,000 :selected:",
+      "Description of Operations": "",
+      "Any Area Leased to Others": ""
+    }
+  ],
+  "Nature Of Business": {
+    "Apartments": ":unselected:",
+    "Contractor": ":unselected:",
+    "Manufacturing": ":unselected:",
+    "Restaurant": ":unselected:",
+    "Service": ":selected:",
+    "Hotel/Resort": "",
+    "Condominiums": ":unselected:",
+    "Institutional": ":unselected:",
+    "Office": ":unselected:",
+    "Retail": ":unselected:",
+    "Wholesale": "",
+    "Date Business Started": "01/01/2008",
+    "Description of Primary Operations": "sunflower Property Group LLC (dba Cruise Mall) operates a waterfront, regional mixed-use retail and entertainment complex. The landlord provides and maintains the building shell, common areas and core building systems while leasing space to a mix of national anchors, specialty retailers, full?service and quick?service restaurants, a multiplex cinema and family entertainment tenants. On-site property management oversees tenant coordination, facility maintenance, security and parking operations, including centralized HVAC/MEP systems, fire protection, elevators/escalators, loading docks and waste management. Landlord responsibilities include common?area cleaning, landscaping, exterior façade and roof maintenance, tenant fit?out oversight for leased premises, and event permitting for promotional and seasonal activities; tenants manage their own retail and foodservice operations in accordance with lease terms. Special exposures include concentrated foodservice tenant operations, high public footfall in peak seasons, and waterfront weather?related perils., confidence - 0.264",
+    "Retail Stores or Service Operations % of Total Sales": "",
+    "Installation, Service or Repair Work": ", confidence - 0.455",
+    "Off Premises Installation, Service or Repair Work %": "",
+    "Description of Operations of Other Named Insureds": ", confidence - 0.825",
+    "total_confidence": 0.5146666666666667
+  },
+  "Additional Interest": {
+    "Interest": ":unselected:",
+    "Additional Insured": ", confidence - 0.989",
+    "Lienholder": ":unselected:",
+    "Breach of Warranty": ":unselected:",
+    "Loss Payee": ":unselected:, confidence - 0.989",
+    "Co-Owner": ":unselected:",
+    "Mortgagee": ":unselected:, confidence - 0.988",
+    "Employee as Lessor": "",
+    "Name and Address": ", confidence - 0.986",
+    "Rank": ":unselected:",
+    "Evidence": ":unselected:",
+    "Certificate": ":unselected:, confidence - 0.985",
+    "Policy": ":unselected:",
+    "Send Bill": "",
+    "Interest in Item Number": "",
+    "Location": ", confidence - 0.982",
+    "Building": ", confidence - 0.976",
+    "Vehicle": "",
+    "Boat": "",
+    "Airport": "",
+    "Aircraft": "",
+    "Item Class": ", confidence - 0.982",
+    "Item": "",
+    "Owner": "",
+    "Lender's": ":unselected:",
+    "Leaseback": ":unselected:",
+    "Registrant": ":unselected:",
+    "Loss Payable": ":unselected:",
+    "Trustee": "",
+    "Reference / Loan #": "",
+    "Interest End Date": "",
+    "Lien Amount": "",
+    "Phone": ", confidence - 0.985",
+    "Fax": ", confidence - 0.937",
+    "Reason for Interest": "",
+    "Email Address": ":unselected:",
+    "Item Description": ":unselected:",
+    "total_confidence": 0.9799
+  },
+  "General Information": {
+    "1a. Is the applicant a subsidiary of another entity?": "N",
+    "Parent Company Name": "",
+    "Relationship Description": "",
+    "% Owned": "",
+    "1b. Does the applicant have any subsidiaries?": "N",
+    "Subsidiary Company Name": "",
+    "2. Is a formal safety program in operation?": ":unselected:",
+    "Safety Manual": ":unselected:",
+    "Safety Position": ":unselected:",
+    "Monthly Meetings": ":unselected:",
+    "OSHA": ":unselected:",
+    "3. Any exposure to flammables, explosives, chemicals?": "N",
+    "4. Any other insurance with this company?": "",
+    "Line of Business": "",
+    "Policy Number": ", confidence - 0.975",
+    "5. Any policy or coverage declined, cancelled or non-renewed during the prior three (3) years for any premises or operations?": ":unselected:",
+    "Non-Payment": ":unselected:",
+    "Agent No Longer Represents Carrier": ":unselected:",
+    "Non-Renewal": ":unselected:",
+    "Underwriting": ":unselected:",
+    "Condition Corrected (Describe)": "",
+    "6. Any past losses or claims relating to sexual abuse or molestation allegations, discrimination or negligent hiring?": "",
+    "7. During the last five years (ten in RI), has any applicant been indicted for or convicted of any degree of the crime of fraud, bribery, arson or any other arson-related crime in connection with this or any other property?": "",
+    "8. Any uncorrected fire and/or safety code violations?": "",
+    "Occur Date": "",
+    "Explanation": "",
+    "Resolution": "",
+    "Resolve Date": "",
+    "9. Has applicant had a foreclosure, repossession, bankruptcy or filed for bankruptcy during the last five (5) years?": "",
+    "10. Has applicant had a judgement or lien during the last five (5) years?": "N",
+    "11. Has business been placed in a trust? Name of Trust:": "",
+    "12. Any foreign operations, foreign products distributed in USA, or US products sold / distributed in foreign countries?": "N",
+    "13. Does applicant have other business ventures for which coverage is not requested?": "N",
+    "14. Does applicant own / lease / operate any drones?": "N",
+    "15. Does applicant hire others to operate drones?": "N",
+    "Remarks / Processing Instructions": "",
+    "total_confidence": 0.975
+  },
+  "Prior Carrier Information": [
+    {
+      "Year": "2025",
+      "Category": {
+        "General Liability": "",
+        "Automobile": "",
+        "Property": "$ 210,000",
+        "Other": ""
+      },
+      "Carrier": "Atlantic Harbor Insurance Co., confidence - 0.879",
+      "Policy Number": "AH-CR-2025-001, confidence - 0.975",
+      "Premium": {
+        "General Liability": "",
+        "Automobile": "",
+        "Property": "$ 210,000",
+        "Other": ""
+      },
+      "Effective Date": "2025-01-01, confidence - 0.26",
+      "Expiration Date": "2025-12-31, confidence - 0.98"
+    },
+    {
+      "Year": "2024",
+      "Category": {
+        "General Liability": "",
+        "Automobile": "",
+        "Property": "$ $385,000",
+        "Other": ""
+      },
+      "Carrier": "Gulf Coast Mutual Insurance, confidence - 0.879",
+      "Policy Number": "GCM-CR-2023-045, confidence - 0.975",
+      "Premium": {
+        "General Liability": "",
+        "Automobile": "",
+        "Property": "$ $385,000",
+        "Other": ""
+      },
+      "Effective Date": "2023-01-01, confidence - 0.26",
+      "Expiration Date": "2024-12-31, confidence - 0.98"
+    },
+    {
+      "Year": "",
+      "Category": {
+        "General Liability": "",
+        "Automobile": "",
+        "Property": "$ $360,000",
+        "Other": ""
+      },
+      "Carrier": "Seaside Underwriters Ltd., confidence - 0.879",
+      "Policy Number": "SUL-CR-2021-310, confidence - 0.975",
+      "Premium": {
+        "General Liability": "",
+        "Automobile": "",
+        "Property": "$ $360,000",
+        "Other": ""
+      },
+      "Effective Date": "2021-01-01, confidence - 0.26",
+      "Expiration Date": "2022-12-31, confidence - 0.98"
+    }
+  ],
+  "Loss History": {
+    "Check if none": "",
+    "Total Losses": ", confidence - 0.874",
+    "Claims or Losses": [],
+    "Fields": [
+      "DATE OF CLAIM",
+      "AMOUNT PAID",
+      "AMOUNT RESERVED",
+      "SUBRO- GATION Y/N",
+      "CLAIM OPEN Y/N"
+    ],
+    "total_confidence": 0.874
+  },
+  "Signatures And Producer Information": {
+    "Producer's Name": "Olivia Park, confidence - 0.352",
+    "Producer's Signature": "Olivia Park, confidence - 0.245",
+    "State Producer License No": "MISP1234, confidence - 0.35",
+    "Applicant's Signature": "Sunflower Seeds, confidence - 0.149",
+    "Date": "11/05/2026, confidence - 0.98",
+    "National Producer Number": "MISP9876, confidence - 0.865",
+    "total_confidence": 0.49016666666666664
+  },
+  "Risk And Insurance History": {
+    "Disclosure": "PERSONAL INFORMATION ABOUT YOU, INCLUDING INFORMATION FROM A CREDIT OR OTHER INVESTIGATIVE REPORT, MAY BE COLLECTED FROM PERSONS OTHER THAN YOU IN CONNECTION WITH THIS APPLICATION FOR INSURANCE AND SUBSEQUENT AMENDMENTS AND RENEWALS. SUCH INFORMATION AS WELL AS OTHER PERSONAL AND PRIVILEGED INFORMATION COLLECTED BY US OR OUR AGENTS MAY IN CERTAIN CIRCUMSTANCES BE DISCLOSED TO THIRD PARTIES WITHOUT YOUR AUTHORIZATION. CREDIT SCORING INFORMATION MAY BE USED TO HELP DETERMINE EITHER YOUR ELIGIBILITY FOR INSURANCE OR THE PREMIUM YOU WILL BE CHARGED. WE MAY USE A THIRD PARTY IN CONNECTION WITH THE DEVELOPMENT OF YOUR SCORE. YOU MAY HAVE THE RIGHT TO REVIEW YOUR PERSONAL INFORMATION IN OUR FILES AND REQUEST CORRECTION OF ANY INACCURACIES. YOU MAY ALSO HAVE THE RIGHT TO REQUEST IN WRITING THAT WE CONSIDER EXTRAORDINARY LIFE CIRCUMSTANCES IN CONNECTION WITH THE DEVELOPMENT OF YOUR CREDIT SCORE. THESE RIGHTS MAY BE LIMITED IN SOME STATES. PLEASE CONTACT YOUR AGENT OR BROKER TO LEARN HOW THESE RIGHTS MAY APPLY IN YOUR STATE OR FOR INSTRUCTIONS ON HOW TO SUBMIT A REQUEST TO US FOR A MORE DETAILED DESCRIPTION OF YOUR RIGHTS AND OUR PRACTICES REGARDING PERSONAL INFORMATION. (Not applicable in AZ, CA, DE, KS, MA, MN, ND, NY, OR, VA, or WV. Specific ACORD 38s are available for applicants in these states.) (Applicant's Initials): SS"
+  },
+  "Fraud Warnings": {
+    "AL, AR, DC, LA, MD, NM, RI and WV": "Any person who knowingly (or willfully)* presents a false or fraudulent claim for payment of a loss or benefit or knowingly (or willfully)* presents false information in an application for insurance is guilty of a crime and may be subject to fines and confinement in prison. * Applies in MD Only.",
+    "CO": "It is unlawful to knowingly provide false, incomplete, or misleading facts or information to an insurance company for the purpose of defrauding or attempting to defraud the company. Penalties may include imprisonment, fines, denial of insurance and civil damages. Any insurance company or agent of an insurance company who knowingly provides false, incomplete, or misleading facts or information to a policyholder or claimant for the purpose of defrauding or attempting to defraud the policyholder or claimant with regard to a settlement or award payable from insurance proceeds shall be reported to the Colorado Division of Insurance within the Department of Regulatory Agencies.",
+    "FL and OK": "Any person who knowingly and with intent to injure, defraud, or deceive any insurer files a statement of claim or an application containing any false, incomplete, or misleading information is guilty of a felony (of the third degree) *. * Applies in FL Only.",
+    "KS": "Any person who, knowingly and with intent to defraud, presents, causes to be presented or prepares with knowledge or belief that it will be presented to or by an insurer, purported insurer, broker or any agent thereof, any written statement as part of, or in support of, an application for the issuance of, or the rating of an insurance policy for personal or commercial insurance, or a claim for payment or other benefit pursuant to an insurance policy for commercial or personal insurance which such person knows to contain materially false information concerning any fact material thereto; or conceals, for the purpose of misleading, information concerning any fact material thereto commits a fraudulent insurance act.",
+    "KY, NY, OH and PA": "Any person who knowingly and with intent to defraud any insurance company or other person files an application for insurance or statement of claim containing any materially false information or conceals for the purpose of misleading, information concerning any fact material thereto commits a fraudulent insurance act, which is a crime and subjects such person to criminal and civil penalties (not to exceed five thousand dollars and the stated value of the claim for each such violation) *. * Applies in NY Only.",
+    "ME, TN, VA and WA": "It is a crime to knowingly provide false, incomplete or misleading information to an insurance company for the purpose of defrauding the company. Penalties (may)* include imprisonment, fines and denial of insurance benefits. * Applies in ME Only.",
+    "NJ": "Any person who includes any false or misleading information on an application for an insurance policy is subject to criminal and civil penalties.",
+    "OR": "Any person who knowingly and with intent to defraud or solicit another to defraud the insurer by submitting an application containing a false statement as to any material fact may be violating state law.",
+    "PR": "Any person who knowingly and with the intention of defrauding presents false information in an insurance application, or presents, helps, or causes the presentation of a fraudulent claim for the payment of a loss or any other benefit, or presents more than one claim for the same damage or loss, shall incur a felony and, upon conviction, shall be sanctioned for each violation by a fine of not less than five thousand dollars ($5,000) and not more than ten thousand dollars ($10,000), or a fixed term of imprisonment for three (3) years, or both penalties. Should aggravating circumstances [be] present, the penalty thus established may be increased to a maximum of five (5) years, if extenuating circumstances are present, it may be reduced to a minimum of two (2) years."
+  },
+  "Declarations": {
+    "Applicant Representation": "THE UNDERSIGNED IS AN AUTHORIZED REPRESENTATIVE OF THE APPLICANT AND REPRESENTS THAT REASONABLE INQUIRY HAS BEEN MADE TO OBTAIN THE ANSWERS TO QUESTIONS ON THIS APPLICATION. HE/SHE REPRESENTS THAT THE ANSWERS ARE TRUE, CORRECT AND COMPLETE TO THE BEST OF HIS/HER KNOWLEDGE."
+  },
+  "Other": {
+    "Page Information": "ACORD 125 (2016/03) Page 4 of 4 :unselected: :unselected: :unselected: :unselected: :unselected:"
+  },
+  "Document_Confidence_Score": 0.9356199402336329
 }
 
-with open(MODEL_PATH, "wb") as f:
-    pickle.dump(pickle_data, f)
 
-print("\nModel saved to:", MODEL_PATH)
 
-# =========================================================
-# 11. SAMPLE PREDICTION
-# =========================================================
+This is json B 
 
-print("\nOrder of features for prediction:")
-print(feature_names)
-
-# Change this based on your data
-sample = np.array([8, 305, 130, 3840, 15.4, 79, 1]).reshape(1, -1)
-"""
-sample must follow SAME ORDER as feature_names.
-"""
-
-sample_scaled = scaler.transform(sample)
-sample_pred = lr.predict(sample_scaled)
-
-print("\nSample:", sample)
-print("Prediction:", sample_pred[0])
+{
+  "Policy Information": {
+    "Date": "11/05/2025, confidence - 0.98",
+    "Proposed Effective Date": "01/01/2026",
+    "Proposed Expiration Date": "01/01/2027",
+    "Billing Plan": "DIRECT :selected:",
+    "Payment Plan": ", confidence - 0.765",
+    "Method of Payment": ", confidence - 0.605",
+    "Audit": ":unselected:, confidence - 0.273",
+    "Deposit": ", confidence - 0.727",
+    "Minimum Premium": ", confidence - 0.637",
+    "Policy Premium": ", confidence - 0.764",
+    "total_confidence": 0.6787142857142857
+  },
+  "Agency": {
+    "Name": "Meridian Shoreline Insurance Partners",
+    "Code": "MSIP-214, confidence - 0.974",
+    "Subcode": ", confidence - 0.478",
+    "Contact Name": "Olivia Park, confidence - 0.968",
+    "Phone": "+1 (555) 214-7802, confidence - 0.985",
+    "Fax": "+1 (555) 214-7802, confidence - 0.937",
+    "Email": "olivia.park@meridianship.com",
+    "total_confidence": 0.8684
+  },
+  "Carrier": {
+    "Name": "TBD",
+    "NAIC Code": "TBD, confidence - 0.835",
+    "Company Policy or Program Name": "TBD, confidence - 0.982",
+    "Program Code": "TBD, confidence - 0.98",
+    "Policy Number": "TBD, confidence - 0.975",
+    "Underwriter": "TBD, confidence - 0.961",
+    "Underwriter Office": "TBD, confidence - 0.962",
+    "total_confidence": 0.9491666666666666
+  },
+  "Transaction Status": {
+    "Status": "QUOTE :selected:",
+    "Issue Policy": ":unselected:",
+    "Renew": ":unselected:",
+    "Bound": ":unselected:",
+    "Change": ":unselected:",
+    "Cancel": ":unselected:",
+    "Date": "11/05/2025, confidence - 0.98",
+    "Time": "6:40 :selected: PM",
+    "total_confidence": 0.98
+  },
+  "Line Of Business": {
+    "Boiler & Machinery": "$ :unselected:",
+    "Cyber and Privacy": "$ :unselected:, confidence - 0.395",
+    "Yacht": "$ :unselected:, confidence - 0.353",
+    "Business Auto": "$ :unselected:, confidence - 0.682",
+    "Fiduciary Liability": "$ :unselected:, confidence - 0.433",
+    "Business Owners": "$ :unselected:, confidence - 0.68",
+    "Garage and Dealers": "$ :unselected:, confidence - 0.477",
+    "Commercial General Liability": "$ :unselected:, confidence - 0.623",
+    "Liquor Liability": "$ :unselected:",
+    "Commercial Inland Marine": "$ :unselected:, confidence - 0.684",
+    "Motor Carrier": "$ :unselected:, confidence - 0.434",
+    "Commercial Property": "$ TBD :unselected:, confidence - 0.975",
+    "Truckers": "$ :unselected:, confidence - 0.468",
+    "Crime": "$ :unselected:, confidence - 0.701",
+    "Umbrella": "$ :unselected:, confidence - 0.489",
+    "total_confidence": 0.5687692307692307
+  },
+  "Premiums": {
+    "Boiler & Machinery": "",
+    "Cyber and Privacy": ", confidence - 0.395",
+    "Yacht": ", confidence - 0.353",
+    "Business Auto": ", confidence - 0.682",
+    "Fiduciary Liability": ", confidence - 0.433",
+    "Business Owners": ", confidence - 0.68",
+    "Garage and Dealers": ", confidence - 0.477",
+    "Commercial General Liability": ", confidence - 0.623",
+    "Liquor Liability": "",
+    "Commercial Inland Marine": ", confidence - 0.684",
+    "Motor Carrier": ", confidence - 0.434",
+    "Commercial Property": "TBD, confidence - 0.975",
+    "Truckers": ", confidence - 0.468",
+    "Crime": ", confidence - 0.701",
+    "Umbrella": ", confidence - 0.489",
+    "total_confidence": 0.5687692307692307
+  },
+  "Attachments": {
+    "Accounts Receivable / Valuable Papers": ":unselected:",
+    "Glass and Sign Section": ":unselected:",
+    "Statement / Schedule of Values": ":unselected:",
+    "Additional Interest Schedule": ":unselected:",
+    "Hotel / Motel Supplement": ":unselected:",
+    "State Supplement": ":unselected:",
+    "Additional Premises Information Schedule": ":unselected:",
+    "Installation / Builders Risk Section": ":unselected:",
+    "Vacant Building Supplement": ":unselected:",
+    "Apartment Building Supplement": ":unselected:",
+    "International Liability Exposure Supplement": ":unselected:",
+    "Vehicle Schedule": ":unselected:",
+    "Condo Assn Bylaws (for D&O Coverage only)": ":unselected:",
+    "International Property Exposure Supplement": ":selected:",
+    "Loss Details": ":unselected:",
+    "Contractors Supplement": ":unselected:",
+    "Loss Summary": ":unselected:",
+    "Coverages Schedule": ":unselected:",
+    "Open Cargo Section": ":unselected:",
+    "Dealers Section": ":unselected:",
+    "Premium Payment Supplement": ":unselected:",
+    "Driver Information Schedule": ":unselected:",
+    "Professional Liability Supplement": ":unselected:",
+    "Electronic Data Processing Section": ":unselected:",
+    "Restaurant / Tavern Supplement": ":unselected:",
+    "Copy of the Notice of Information Practices (Privacy) has been given to the applicant": "(Not required in all states, contact your agent or broker for your state's requirements.)"
+  },
+  "Insured": {
+    "First Named Insured": {
+      "Name": "Sunflower Property Group LLC (dba Cruise Mall)",
+      "Mailing Address": "Dockside Plaza, 210 Oceanfront Lane, Seabreeze, FL 33107",
+      "GL Code": ", confidence - 0.667",
+      "SIC": ", confidence - 0.764",
+      "NAICS": ", confidence - 0.557",
+      "FEIN or Soc Sec #": "",
+      "Business Phone #": "",
+      "Website Address": ", confidence - 0.981",
+      "Corporation": ":unselected:, confidence - 0.684",
+      "Joint Venture": ":unselected:, confidence - 0.525",
+      "Not For Profit Org": ":unselected:, confidence - 0.638",
+      "Subchapter S Corporation": ":unselected:, confidence - 0.638",
+      "Individual": ":unselected:, confidence - 0.703",
+      "LLC": ", confidence - 0.672",
+      "No. of Members and Managers": ":unselected:",
+      "Partnership": ":unselected:, confidence - 0.684",
+      "Trust": ", confidence - 0.685"
+    },
+    "Other Named Insureds": [
+      {
+        "Name": "",
+        "Mailing Address": "",
+        "GL Code": ", confidence - 0.667",
+        "SIC": ", confidence - 0.764",
+        "NAICS": ", confidence - 0.557",
+        "FEIN or Soc Sec #": "",
+        "Business Phone #": "",
+        "Website Address": ", confidence - 0.981",
+        "Corporation": ":unselected:, confidence - 0.684",
+        "Joint Venture": ":unselected:, confidence - 0.525",
+        "Not For Profit Org": ":unselected:, confidence - 0.638",
+        "Subchapter S Corporation": ":unselected:, confidence - 0.638",
+        "Individual": ":unselected:, confidence - 0.703",
+        "LLC": ", confidence - 0.672",
+        "No. of Members and Managers": ":unselected:",
+        "Partnership": ":unselected:, confidence - 0.684",
+        "Trust": ", confidence - 0.685"
+      },
+      {
+        "Name": "",
+        "Mailing Address": "",
+        "GL Code": ", confidence - 0.667",
+        "SIC": ", confidence - 0.764",
+        "NAICS": ", confidence - 0.557",
+        "FEIN or Soc Sec #": "",
+        "Business Phone #": "",
+        "Website Address": ", confidence - 0.981",
+        "Corporation": ":unselected:, confidence - 0.684",
+        "Joint Venture": ":unselected:, confidence - 0.525",
+        "Not For Profit Org": ":unselected:, confidence - 0.638",
+        "Subchapter S Corporation": ":unselected:, confidence - 0.638",
+        "Individual": ":unselected:, confidence - 0.703",
+        "LLC": ", confidence - 0.672",
+        "No. of Members and Managers": ":unselected:",
+        "Partnership": ":unselected:, confidence - 0.684",
+        "Trust": ", confidence - 0.685"
+      }
+    ],
+    "total_confidence": 0.6831666666666667
+  },
+  "Premises Information": [
+    {
+      "Loc #": "001",
+      "Street": "Cruise Resort, 100 Harbor View Drive, Seabreeze, FL 33101",
+      "City Limits": "",
+      "Inside": ":unselected:",
+      "Outside": ":unselected:",
+      "Interest": "",
+      "Owner": ":unselected:",
+      "Tenant": "",
+      "Occupied Area (SQ FT)": "",
+      "Bld #": "",
+      "City": "",
+      "State": "",
+      "# Full Time Employees": "",
+      "# Part Time Employees": "",
+      "Open to Public Area (SQ FT)": "",
+      "County": "",
+      "Zip": "",
+      "Total Building Area (SQ FT)": "150,000",
+      "Annual Revenues": "$ $40,000,000 :selected:",
+      "Description of Operations": "",
+      "Any Area Leased to Others": ""
+    }
+  ],
+  "Nature Of Business": {
+    "Apartments": ":unselected:",
+    "Contractor": ":unselected:",
+    "Manufacturing": ":unselected:",
+    "Restaurant": ":unselected:",
+    "Service": ":selected:",
+    "Hotel/Resort": "",
+    "Condominiums": ":unselected:",
+    "Institutional": ":unselected:",
+    "Office": ":unselected:",
+    "Retail": ":unselected:",
+    "Wholesale": "",
+    "Date Business Started": "01/01/2008",
+    "Description of Primary Operations": "sunflower Property Group LLC (dba Cruise Mall) operates a waterfront, regional mixed-use retail and entertainment complex. The landlord provides and maintains the building shell, common areas and core building systems while leasing space to a mix of national anchors, specialty retailers, full?service and quick?service restaurants, a multiplex cinema and family entertainment tenants. On-site property management oversees tenant coordination, facility maintenance, security and parking operations, including centralized HVAC/MEP systems, fire protection, elevators/escalators, loading docks and waste management. Landlord responsibilities include common?area cleaning, landscaping, exterior façade and roof maintenance, tenant fit?out oversight for leased premises, and event permitting for promotional and seasonal activities; tenants manage their own retail and foodservice operations in accordance with lease terms. Special exposures include concentrated foodservice tenant operations, high public footfall in peak seasons, and waterfront weather?related perils., confidence - 0.264",
+    "Retail Stores or Service Operations % of Total Sales": "",
+    "Installation, Service or Repair Work": ", confidence - 0.455",
+    "Off Premises Installation, Service or Repair Work %": "",
+    "Description of Operations of Other Named Insureds": ", confidence - 0.825",
+    "total_confidence": 0.5146666666666667
+  },
+  "Additional Interest": {
+    "Interest": ":unselected:",
+    "Additional Insured": ", confidence - 0.989",
+    "Lienholder": ":unselected:",
+    "Breach of Warranty": ":unselected:",
+    "Loss Payee": ":unselected:, confidence - 0.989",
+    "Co-Owner": ":unselected:",
+    "Mortgagee": ":unselected:, confidence - 0.988",
+    "Employee as Lessor": "",
+    "Name and Address": ", confidence - 0.986",
+    "Rank": ":unselected:",
+    "Evidence": ":unselected:",
+    "Certificate": ":unselected:, confidence - 0.985",
+    "Policy": ":unselected:",
+    "Send Bill": "",
+    "Interest in Item Number": "",
+    "Location": ", confidence - 0.982",
+    "Building": ", confidence - 0.976",
+    "Vehicle": "",
+    "Boat": "",
+    "Airport": "",
+    "Aircraft": "",
+    "Item Class": ", confidence - 0.982",
+    "Item": "",
+    "Owner": "",
+    "Lender's": ":unselected:",
+    "Leaseback": ":unselected:",
+    "Registrant": ":unselected:",
+    "Loss Payable": ":unselected:",
+    "Trustee": "",
+    "Reference / Loan #": "",
+    "Interest End Date": "",
+    "Lien Amount": "",
+    "Phone": ", confidence - 0.985",
+    "Fax": ", confidence - 0.937",
+    "Reason for Interest": "",
+    "Email Address": ":unselected:",
+    "Item Description": ":unselected:",
+    "total_confidence": 0.9799
+  },
+  "General Information": {
+    "1a. Is the applicant a subsidiary of another entity?": "N",
+    "Parent Company Name": "",
+    "Relationship Description": "",
+    "% Owned": "",
+    "1b. Does the applicant have any subsidiaries?": "N",
+    "Subsidiary Company Name": "",
+    "2. Is a formal safety program in operation?": ":unselected:",
+    "Safety Manual": ":unselected:",
+    "Safety Position": ":unselected:",
+    "Monthly Meetings": ":unselected:",
+    "OSHA": ":unselected:",
+    "3. Any exposure to flammables, explosives, chemicals?": "N",
+    "4. Any other insurance with this company?": "",
+    "Line of Business": "",
+    "Policy Number": ", confidence - 0.975",
+    "5. Any policy or coverage declined, cancelled or non-renewed during the prior three (3) years for any premises or operations?": ":unselected:",
+    "Non-Payment": ":unselected:",
+    "Agent No Longer Represents Carrier": ":unselected:",
+    "Non-Renewal": ":unselected:",
+    "Underwriting": ":unselected:",
+    "Condition Corrected (Describe)": "",
+    "6. Any past losses or claims relating to sexual abuse or molestation allegations, discrimination or negligent hiring?": "",
+    "7. During the last five years (ten in RI), has any applicant been indicted for or convicted of any degree of the crime of fraud, bribery, arson or any other arson-related crime in connection with this or any other property?": "",
+    "8. Any uncorrected fire and/or safety code violations?": "",
+    "Occur Date": "",
+    "Explanation": "",
+    "Resolution": "",
+    "Resolve Date": "",
+    "9. Has applicant had a foreclosure, repossession, bankruptcy or filed for bankruptcy during the last five (5) years?": "",
+    "10. Has applicant had a judgement or lien during the last five (5) years?": "N",
+    "11. Has business been placed in a trust? Name of Trust:": "",
+    "12. Any foreign operations, foreign products distributed in USA, or US products sold / distributed in foreign countries?": "N",
+    "13. Does applicant have other business ventures for which coverage is not requested?": "N",
+    "14. Does applicant own / lease / operate any drones?": "N",
+    "15. Does applicant hire others to operate drones?": "N",
+    "Remarks / Processing Instructions": "",
+    "total_confidence": 0.975
+  },
+  "Prior Carrier Information": [
+    {
+      "Year": "2025",
+      "Category": {
+        "General Liability": "",
+        "Automobile": "",
+        "Property": "$ 210,000",
+        "Other": ""
+      },
+      "Carrier": "Atlantic Harbor Insurance Co., confidence - 0.879",
+      "Policy Number": "AH-CR-2025-001, confidence - 0.975",
+      "Premium": {
+        "General Liability": "",
+        "Automobile": "",
+        "Property": "$ 210,000",
+        "Other": ""
+      },
+      "Effective Date": "2025-01-01, confidence - 0.26",
+      "Expiration Date": "2025-12-31, confidence - 0.98"
+    },
+    {
+      "Year": "2024",
+      "Category": {
+        "General Liability": "",
+        "Automobile": "",
+        "Property": "$ $385,000",
+        "Other": ""
+      },
+      "Carrier": "Gulf Coast Mutual Insurance, confidence - 0.879",
+      "Policy Number": "GCM-CR-2023-045, confidence - 0.975",
+      "Premium": {
+        "General Liability": "",
+        "Automobile": "",
+        "Property": "$ $385,000",
+        "Other": ""
+      },
+      "Effective Date": "2023-01-01, confidence - 0.26",
+      "Expiration Date": "2024-12-31, confidence - 0.98"
+    },
+    {
+      "Year": "",
+      "Category": {
+        "General Liability": "",
+        "Automobile": "",
+        "Property": "$ $360,000",
+        "Other": ""
+      },
+      "Carrier": "Seaside Underwriters Ltd., confidence - 0.879",
+      "Policy Number": "SUL-CR-2021-310, confidence - 0.975",
+      "Premium": {
+        "General Liability": "",
+        "Automobile": "",
+        "Property": "$ $360,000",
+        "Other": ""
+      },
+      "Effective Date": "2021-01-01, confidence - 0.26",
+      "Expiration Date": "2022-12-31, confidence - 0.98"
+    }
+  ],
+  "Loss History": {
+    "Check if none": "",
+    "Total Losses": ", confidence - 0.874",
+    "Claims or Losses": [],
+    "Fields": [
+      "DATE OF CLAIM",
+      "AMOUNT PAID",
+      "AMOUNT RESERVED",
+      "SUBRO- GATION Y/N",
+      "CLAIM OPEN Y/N"
+    ],
+    "total_confidence": 0.874
+  },
+  "Signatures And Producer Information": {
+    "Producer's Name": "Olivia Park, confidence - 0.352",
+    "Producer's Signature": "Olivia Park, confidence - 0.245",
+    "State Producer License No": "MISP1234, confidence - 0.35",
+    "Applicant's Signature": "Sunflower Seeds, confidence - 0.149",
+    "Date": "11/05/2026, confidence - 0.98",
+    "National Producer Number": "MISP9876, confidence - 0.865",
+    "total_confidence": 0.49016666666666664
+  },
+  "Risk And Insurance History": {
+    "Disclosure": "PERSONAL INFORMATION ABOUT YOU, INCLUDING INFORMATION FROM A CREDIT OR OTHER INVESTIGATIVE REPORT, MAY BE COLLECTED FROM PERSONS OTHER THAN YOU IN CONNECTION WITH THIS APPLICATION FOR INSURANCE AND SUBSEQUENT AMENDMENTS AND RENEWALS. SUCH INFORMATION AS WELL AS OTHER PERSONAL AND PRIVILEGED INFORMATION COLLECTED BY US OR OUR AGENTS MAY IN CERTAIN CIRCUMSTANCES BE DISCLOSED TO THIRD PARTIES WITHOUT YOUR AUTHORIZATION. CREDIT SCORING INFORMATION MAY BE USED TO HELP DETERMINE EITHER YOUR ELIGIBILITY FOR INSURANCE OR THE PREMIUM YOU WILL BE CHARGED. WE MAY USE A THIRD PARTY IN CONNECTION WITH THE DEVELOPMENT OF YOUR SCORE. YOU MAY HAVE THE RIGHT TO REVIEW YOUR PERSONAL INFORMATION IN OUR FILES AND REQUEST CORRECTION OF ANY INACCURACIES. YOU MAY ALSO HAVE THE RIGHT TO REQUEST IN WRITING THAT WE CONSIDER EXTRAORDINARY LIFE CIRCUMSTANCES IN CONNECTION WITH THE DEVELOPMENT OF YOUR CREDIT SCORE. THESE RIGHTS MAY BE LIMITED IN SOME STATES. PLEASE CONTACT YOUR AGENT OR BROKER TO LEARN HOW THESE RIGHTS MAY APPLY IN YOUR STATE OR FOR INSTRUCTIONS ON HOW TO SUBMIT A REQUEST TO US FOR A MORE DETAILED DESCRIPTION OF YOUR RIGHTS AND OUR PRACTICES REGARDING PERSONAL INFORMATION. (Not applicable in AZ, CA, DE, KS, MA, MN, ND, NY, OR, VA, or WV. Specific ACORD 38s are available for applicants in these states.) (Applicant's Initials): SS"
+  },
+  "Fraud Warnings": {
+    "AL, AR, DC, LA, MD, NM, RI and WV": "Any person who knowingly (or willfully)* presents a false or fraudulent claim for payment of a loss or benefit or knowingly (or willfully)* presents false information in an application for insurance is guilty of a crime and may be subject to fines and confinement in prison. * Applies in MD Only.",
+    "CO": "It is unlawful to knowingly provide false, incomplete, or misleading facts or information to an insurance company for the purpose of defrauding or attempting to defraud the company. Penalties may include imprisonment, fines, denial of insurance and civil damages. Any insurance company or agent of an insurance company who knowingly provides false, incomplete, or misleading facts or information to a policyholder or claimant for the purpose of defrauding or attempting to defraud the policyholder or claimant with regard to a settlement or award payable from insurance proceeds shall be reported to the Colorado Division of Insurance within the Department of Regulatory Agencies.",
+    "FL and OK": "Any person who knowingly and with intent to injure, defraud, or deceive any insurer files a statement of claim or an application containing any false, incomplete, or misleading information is guilty of a felony (of the third degree) *. * Applies in FL Only.",
+    "KS": "Any person who, knowingly and with intent to defraud, presents, causes to be presented or prepares with knowledge or belief that it will be presented to or by an insurer, purported insurer, broker or any agent thereof, any written statement as part of, or in support of, an application for the issuance of, or the rating of an insurance policy for personal or commercial insurance, or a claim for payment or other benefit pursuant to an insurance policy for commercial or personal insurance which such person knows to contain materially false information concerning any fact material thereto; or conceals, for the purpose of misleading, information concerning any fact material thereto commits a fraudulent insurance act.",
+    "KY, NY, OH and PA": "Any person who knowingly and with intent to defraud any insurance company or other person files an application for insurance or statement of claim containing any materially false information or conceals for the purpose of misleading, information concerning any fact material thereto commits a fraudulent insurance act, which is a crime and subjects such person to criminal and civil penalties (not to exceed five thousand dollars and the stated value of the claim for each such violation) *. * Applies in NY Only.",
+    "ME, TN, VA and WA": "It is a crime to knowingly provide false, incomplete or misleading information to an insurance company for the purpose of defrauding the company. Penalties (may)* include imprisonment, fines and denial of insurance benefits. * Applies in ME Only.",
+    "NJ": "Any person who includes any false or misleading information on an application for an insurance policy is subject to criminal and civil penalties.",
+    "OR": "Any person who knowingly and with intent to defraud or solicit another to defraud the insurer by submitting an application containing a false statement as to any material fact may be violating state law.",
+    "PR": "Any person who knowingly and with the intention of defrauding presents false information in an insurance application, or presents, helps, or causes the presentation of a fraudulent claim for the payment of a loss or any other benefit, or presents more than one claim for the same damage or loss, shall incur a felony and, upon conviction, shall be sanctioned for each violation by a fine of not less than five thousand dollars ($5,000) and not more than ten thousand dollars ($10,000), or a fixed term of imprisonment for three (3) years, or both penalties. Should aggravating circumstances [be] present, the penalty thus established may be increased to a maximum of five (5) years, if extenuating circumstances are present, it may be reduced to a minimum of two (2) years."
+  },
+  "Declarations": {
+    "Applicant Representation": "THE UNDERSIGNED IS AN AUTHORIZED REPRESENTATIVE OF THE APPLICANT AND REPRESENTS THAT REASONABLE INQUIRY HAS BEEN MADE TO OBTAIN THE ANSWERS TO QUESTIONS ON THIS APPLICATION. HE/SHE REPRESENTS THAT THE ANSWERS ARE TRUE, CORRECT AND COMPLETE TO THE BEST OF HIS/HER KNOWLEDGE."
+  },
+  "Other": {
+    "Page Information": "ACORD 125 (2016/03) Page 4 of 4 :unselected: :unselected: :unselected: :unselected: :unselected:"
+  },
+  "Document_Confidence_Score": 0.9356199402336329
+}
