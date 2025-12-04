@@ -1,3 +1,104 @@
+def summarize_first_page(document_content: dict, file_name: str | None = None) -> str:
+    """
+    Summarise the ACORD application based ONLY on document_content["content"].
+
+    - `document_content` is expected to be: { "content": "<acord text>" }
+    - We keep :selected: / :unselected: in the text and explain them to the model.
+    """
+
+    raw_text = document_content.get("content", "")
+    cleaned_text = clean_content_text(raw_text)
+
+    prompt = f"""
+You are an experienced Commercial Insurance Underwriter.
+
+You are given the raw textual content of a commercial insurance application
+(ACORD-style form). Your job is to write a short, underwriting-focused summary.
+
+ABOUT THE FORMAT:
+- The text contains normal field labels and values such as dates, addresses,
+  premium amounts, prior carrier details, and narrative descriptions
+  (e.g. description of operations). You should read and use ALL clearly
+  stated information that is underwriting-relevant.
+- In addition, the text uses ':selected:' and ':unselected:' to show which
+  options / boxes are ticked on the form.
+  - Treat ':selected:' as "this option is chosen/ticked".
+  - Treat ':unselected:' as "this option is NOT chosen".
+  - These markers mainly apply to choices like transaction status,
+    lines of business, nature of business, etc.
+
+HOW TO USE THE INFORMATION:
+- You may use ANY clearly written value in the text (dates, addresses,
+  names, revenues, narrative description of operations, prior carrier data, etc.).
+- When there is a list of alternative options (for example QUOTE vs ISSUE POLICY
+  or different lines of business), use the ':selected:' / ':unselected:' markers
+  to decide which options to mention in your summary.
+- Do NOT invent values that are not written anywhere in the text.
+
+STRICT RULES (YOU MUST OBEY ALL):
+1. Use ONLY information that is explicitly present in the text below.
+   - If something is not clearly stated, do NOT mention it.
+   - Do NOT guess or infer anything that is not literally present.
+2. Do NOT mention:
+   - document structure (pages, section titles, ACORD numbers),
+   - generic boilerplate legal / fraud / privacy warnings,
+   - instructions to applicants, producer signature boilerplate, etc.
+3. Do NOT say that anything is "not provided", "not mentioned",
+   "no other attachments/schedules", or similar.
+4. Do NOT rephrase "TBD" as "yet to be determined" or "not decided";
+   only say "TBD" if that exact text appears.
+5. If multiple options exist and only some are ':selected:', only
+   describe what is actually selected (for example QUOTE vs ISSUE POLICY,
+   or COMMERCIAL PROPERTY vs other lines).
+6. You may and should still use ordinary text values even if they are
+   not close to ':selected:' markers (for example effective/expiration dates,
+   addresses, revenues, prior carrier policy numbers, narrative operations).
+
+WRITING STYLE:
+- Output exactly ONE paragraph of 4–6 sentences.
+- Write like an underwriter summarising a submission for a colleague.
+- Focus on key underwriting-relevant points such as:
+  **Insured Name**, **Location**, **Status of Transaction** (e.g. QUOTE if selected),
+  **Line(s) of Business requested** (only if selected),
+  **Proposed Effective and Expiration Dates**,
+  **Annual revenues**, **nature of business and operations**,
+  **type of premises and occupancy**, **significant prior carrier history**
+  and any special exposures explicitly described.
+- Do NOT list fields one by one; combine related facts into smooth sentences.
+- Use bold formatting for a few important labels that ARE present
+  (for example **Insured Name**, **Location**, **Proposed Effective Date**,
+  **Line of Business**, **Annual Revenues**, **Nature of Operations**).
+  Do NOT bold more than about 4–7 short phrases in total.
+
+Now, using ONLY the text below, write such a paragraph:
+
+=== APPLICATION TEXT START ===
+{cleaned_text}
+=== APPLICATION TEXT END ===
+    """
+
+    response = client.chat.completions.create(
+        model=AZURE_OPENAI_CHAT_DEPLOYMENT,
+        messages=[{"role": "user", "content": prompt}],
+        max_tokens=256,
+        temperature=0.1,  # low to reduce guessing
+    )
+
+    try:
+        return response.choices[0].message.content.strip()
+    except Exception:
+        return getattr(response.choices[0].message, "content", "").strip()
+
+
+
+
+
+
+
+
+
+
+
 from dotenv import load_dotenv
 import os
 import json
