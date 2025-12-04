@@ -1,301 +1,61 @@
-import os
-import json
-from dotenv import load_dotenv
-from openai import AzureOpenAI
+I am getting this in terminal
 
-# ------------------ CONFIG ------------------
-load_dotenv()
-
-client = AzureOpenAI(
-    azure_endpoint=os.getenv("AZURE_OPENAI_ENDPOINT"),
-    api_key=os.getenv("AZURE_OPENAI_API_KEY"),
-    api_version="2024-05-01-preview"
-)
-
-MODEL = os.getenv("AZURE_OPENAI_CHAT_DEPLOYMENT")
-output_dir = os.path.join(os.getcwd(), "output")
-INPUT_FILE = os.path.join(output_dir, "output.json")
-
-os.makedirs(output_dir, exist_ok=True)
-OUTPUT_FILE = os.path.join(output_dir, "final_output.json")
-MAX_CHARS = 12000
+Testing /document_extract_mcp ...
+HTTP Status: 200
+{
+    "jsonrpc": "2.0",
+    "id": 1,
+    "result": {
+        "status": false,
+        "error": "Failed to process JSON with final_processor.py: No 'content' text found in Azure output JSON."
+    }
+}
 
 
-def chunk_text(text, max_chars=MAX_CHARS):
-    """
-    Split long text into safe chunks for OpenAI input.
-    We split by lines so we don't cut in the middle of words.
-    """
-    chunks, current, length = [], [], 0
-    for line in text.splitlines():
-        if length + len(line) > max_chars:
-            chunks.append("\n".join(current))
-            current, length = [], 0
-        current.append(line)
-        length += len(line)
-    if current:
-        chunks.append("\n".join(current))
-    return chunks
+this is output.json
 
 
-def clean_field_name(name: str) -> str:
-    """
-    Normalize a field name so that:
-      'LOB - Commercial Property' -> 'Commercial Property'
-      'loss summary' -> 'Loss Summary'
-    This helps us match GPT field names with Azure confidence entries.
-    """
-    if not isinstance(name, str):
-        return str(name)
-
-    name = name.replace("LOB -", "").strip()
-    return name.title()
-
-
-def build_confidence_lookup(raw_json):
-    """
-    Build a lookup:
-        { 'Loss Summary': 0.487, 'Commercial Property': 0.975, ... }
-    from Azure Document Intelligence 'fields'.
-    We will use ONLY these numbers, not the values.
-    """
-    lookup = {}
-    docs = raw_json.get("documents", [])
-    if not docs:
-        return lookup
-
-    for doc in docs:
-        for key, value in doc.get("fields", {}).items():
-            conf = value.get("confidence")
-            if conf is not None:
-                lookup[clean_field_name(key)] = conf
-
-    return lookup
-
-
-def build_prompt(content_chunk: str) -> str:
-    """
-    Prompt that tells GPT:
-      - Read only this OCR text ('FORM_TEXT')
-      - Extract structured JSON with logical groups
-      - DO NOT include confidence numbers (Python will attach them later)
-    """
-    return f"""
-You are a JSON data extractor for an ACORD Commercial Insurance Application (ACORD 125).
-
-You will be given plain text content produced by OCR (Azure Document Intelligence).
-Using ONLY this text, extract and group information into a single JSON object.
-
-VERY IMPORTANT RULES:
-1. Read only the text under "FORM_TEXT". Do not assume anything that is not written there.
-2. Create logical top-level groups, for example (names are suggestions, you can add more):
-   - "General Information"
-   - "Policy Information"
-   - "Transaction Status"
-   - "Line Of Business"
-   - "Premiums"
-   - "Attachments"
-   - "Insured"
-   - "Premises Information"
-   - "Nature Of Business"
-   - "Additional Interest"
-   - "Prior Carrier Information"
-   - "Loss History"
-   - "Signatures And Producer Information"
-   - "Risk And Insurance History"
-   - "Safety Program"
-   - "Business Ventures"
-3. For each field, use the exact value from the text.
-   - For checkboxes, copy ':selected:' and ':unselected:' exactly as they appear in the text.
-   - Do NOT invent or guess checkbox states.
-4. DO NOT add any confidence values in your output.
-   - Just output the raw values like "Quote", ":selected:", "11/05/2025", etc.
-5. Return ONLY valid JSON. No comments, no explanations, no markdown.
-
-FORM_TEXT:
-{content_chunk}
-"""
-
-
-def process_chunk(content_chunk: str):
-    """Send one OCR content chunk to GPT and ensure JSON-only output."""
-    response = client.chat.completions.create(
-        model=MODEL,
-        temperature=0,
-        messages=[
-            {
-                "role": "system",
-                "content": "You are a precise document understanding assistant that outputs only JSON.",
-            },
-            {"role": "user", "content": build_prompt(content_chunk)},
-        ],
-    )
-
-    text = response.choices[0].message.content.strip()
-    try:
-        start = text.find("{")
-        end = text.rfind("}") + 1
-        json_text = text[start:end]
-        return json.loads(json_text)
-    except Exception:
-        print("⚠️ Warning: GPT output not clean JSON. Attempting recovery.")
-        return {"error": "Invalid JSON returned", "raw_output": text}
-
-
-def calculate_overall_confidence(original_json):
-    """
-    Calculate overall average confidence directly from original JSON
-    (we use all 'confidence' keys found in Azure's response).
-    """
-
-    def extract_confidences(obj):
-        confidences = []
-        if isinstance(obj, dict):
-            for key, value in obj.items():
-                if key == "confidence" and isinstance(value, (int, float)):
-                    confidences.append(value)
-                else:
-                    confidences.extend(extract_confidences(value))
-        elif isinstance(obj, list):
-            for item in obj:
-                confidences.extend(extract_confidences(item))
-        return confidences
-
-    confidences = extract_confidences(original_json)
-    if confidences:
-        return sum(confidences) / len(confidences)
-    return None
-
-
-def attach_confidences(data, confidence_lookup):
-    """
-    Recursively walk the GPT JSON.
-    For each leaf field:
-      - Look up a confidence by cleaned field name.
-      - If found, transform:
-            "Some Field": "Value"
-        into:
-            "Some Field": "Value, confidence - 0.873"
-      - If not found, leave as-is.
-    """
-    if isinstance(data, dict):
-        new_obj = {}
-        for key, value in data.items():
-            if isinstance(value, (dict, list)):
-                new_obj[key] = attach_confidences(value, confidence_lookup)
-            else:
-                clean_key = clean_field_name(key)
-                conf = confidence_lookup.get(clean_key)
-                if conf is not None:
-                    new_obj[key] = f"{value}, confidence - {conf}"
-                else:
-                    new_obj[key] = value
-        return new_obj
-
-    elif isinstance(data, list):
-        return [attach_confidences(item, confidence_lookup) for item in data]
-
-    else:
-        # primitive type (str/int/float/bool) — nothing to attach
-        return data
-
-
-def add_confidence_averages(grouped_data, confidence_lookup):
-    """
-    For each top-level group (e.g. "Attachments", "Line Of Business"),
-    collect all confidences of fields under it and compute 'total_confidence'.
-    """
-
-    def collect_confs(obj):
-        collected = []
-        if isinstance(obj, dict):
-            for k, v in obj.items():
-                if k == "total_confidence":
-                    continue
-                if isinstance(v, (dict, list)):
-                    collected.extend(collect_confs(v))
-                else:
-                    clean_k = clean_field_name(k)
-                    c = confidence_lookup.get(clean_k)
-                    if c is not None:
-                        collected.append(c)
-        elif isinstance(obj, list):
-            for item in obj:
-                collected.extend(collect_confs(item))
-        return collected
-
-    for group, fields in grouped_data.items():
-        if not isinstance(fields, dict):
-            continue
-        confs = collect_confs(fields)
-        if confs:
-            avg_conf = sum(confs) / len(confs)
-            fields["total_confidence"] = avg_conf
-
-    return grouped_data
-
-
-def process_azure_output(json_data):
-    """
-    Main pipeline:
-
-    1. Take OCR text from 'documents[0].content'.
-    2. Ask GPT to parse it into structured JSON (values from content only).
-    3. Attach confidence numbers from Azure 'fields'.
-    4. Compute per-group total_confidence and Document_Confidence_Score.
-    5. Save final_output.json.
-    """
-    docs = json_data.get("documents", [])
-    if not docs:
-        raise ValueError("No 'documents' found in Azure output JSON.")
-
-    # 1. Get the big OCR text (this is what you care about)
-    content_text = docs[0].get("content", "")
-    if not content_text:
-        raise ValueError("No 'content' text found in Azure output JSON.")
-
-    # 2. Chunk the content if too long and process via GPT
-    chunks = chunk_text(content_text)
-    final_combined = {}
-
-    for chunk in chunks:
-        result = process_chunk(chunk)
-        if isinstance(result, dict):
-            for k, v in result.items():
-                if (
-                    k in final_combined
-                    and isinstance(final_combined[k], dict)
-                    and isinstance(v, dict)
-                ):
-                    final_combined[k].update(v)
-                else:
-                    final_combined[k] = v
-
-    # 3. Build confidence lookup from Azure fields (only numbers)
-    confidence_lookup = build_confidence_lookup(json_data)
-
-    # 4. Attach "..., confidence - X" to leaf fields
-    final_with_conf = attach_confidences(final_combined, confidence_lookup)
-
-    # 5. Add total_confidence per top-level group
-    final_with_conf = add_confidence_averages(final_with_conf, confidence_lookup)
-
-    # 6. Add overall document-level average confidence
-    overall_avg = calculate_overall_confidence(json_data)
-    if overall_avg is not None:
-        final_with_conf["Document_Confidence_Score"] = overall_avg
-
-    # 7. Save final_output.json
-    with open(OUTPUT_FILE, "w", encoding="utf-8") as f:
-        json.dump(final_with_conf, f, indent=2, ensure_ascii=False)
-
-    print(f"✅ Clean JSON written to {OUTPUT_FILE}")
-    return final_with_conf
-
-
-# ------------------ MAIN ------------------
-if __name__ == "__main__":
-    with open(INPUT_FILE, "r", encoding="utf-8") as f:
-        raw_json = json.load(f)
-
-    process_azure_output(raw_json)
+{
+  "apiVersion": "2024-11-30",
+  "modelId": "4ACORDFORM",
+  "stringIndexType": "textElements",
+  "content": "ACORD® ®\nCOMMERCIAL INSURANCE APPLICATION APPLICANT INFORMATION SECTION\nDATE (MM/DD/YYYY)\n11/05/2025\nAGENCY Meridian Shoreline Insurance Partners\nCARRIER\nNAIC CODE\nTBD\nTBD\nCOMPANY POLICY OR PROGRAM NAME\nPROGRAM CODE\nTBD\nTBD\nPOLICY NUMBER\nTBD\nUNDERWRITER\nUNDERWRITER OFFICE\nTBD\nTBD\nCONTACT NAME: Olivia Park\nPHONE (A/C, No, Ext): +1 (555) 214-7802\nFAX (A/C, No): +1 (555) 214-7802\nE-MAIL ADDRESS: olivia.park@meridianship.com\nCODE: MSIP-214\nSUBCODE:\nAGENCY CUSTOMER ID:\nSTATUS OF TRANSACTION :selected: QUOTE :unselected: ISSUE POLICY :unselected: RENEW :unselected: BOUND (Give Date and/or Attach Copy): :unselected: CHANGE\nDATE\nTIME :unselected:\nAM :unselected: CANCEL\n11/05/2025\n6:40 :selected:\nPM\nLINES OF BUSINESS\nINDICATE LINES OF BUSINESS\nPREMIUM\nPREMIUM PREMIUM :unselected:\nBOILER & MACHINERY\n$ :unselected:\nCYBER AND PRIVACY\n$ :unselected: YACHT\n$ :unselected:\nBUSINESS AUTO\n$ :unselected:\nFIDUCIARY LIABILITY\n$ :unselected:\n$ :unselected:\nBUSINESS OWNERS\n$ :unselected:\nGARAGE AND DEALERS\n$\n$ :unselected:\nCOMMERCIAL GENERAL LIABILITY\n$ :unselected:\nLIQUOR LIABILITY\n$\n$ :unselected:\nCOMMERCIAL INLAND MARINE\n$ :unselected:\nMOTOR CARRIER\n$\n$ :selected:\nCOMMERCIAL PROPERTY\n$ TBD :unselected:\nTRUCKERS\n$\n$ :unselected:\nCRIME\n$ :unselected:\nUMBRELLA\n$ :unselected:\n$\nATTACHMENTS :unselected:\nACCOUNTS RECEIVABLE / VALUABLE PAPERS :unselected:\nGLASS AND SIGN SECTION :unselected:\nSTATEMENT / SCHEDULE OF VALUES :unselected:\nADDITIONAL INTEREST SCHEDULE :unselected:\nHOTEL / MOTEL SUPPLEMENT :unselected:\nSTATE SUPPLEMENT (If applicable) :unselected:\nADDITIONAL PREMISES INFORMATION SCHEDULE :unselected:\nINSTALLATION / BUILDERS RISK SECTION :unselected:\nVACANT BUILDING SUPPLEMENT :unselected:\nAPARTMENT BUILDING SUPPLEMENT :unselected:\nINTERNATIONAL LIABILITY EXPOSURE SUPPLEMENT :unselected:\nVEHICLE SCHEDULE :unselected:\nCONDO ASSN BYLAWS (for D&O Coverage only) :unselected:\nINTERNATIONAL PROPERTY EXPOSURE SUPPLEMENT :selected:\nLOSS DETAILS :unselected:\nCONTRACTORS SUPPLEMENT :unselected:\nLOSS SUMMARY :unselected: :unselected:\nCOVERAGES SCHEDULE :unselected:\nOPEN CARGO SECTION :unselected: :unselected:\nDEALERS SECTION :unselected:\nPREMIUM PAYMENT SUPPLEMENT :unselected: :unselected:\nDRIVER INFORMATION SCHEDULE :unselected:\nPROFESSIONAL LIABILITY SUPPLEMENT :unselected: :unselected:\nELECTRONIC DATA PROCESSING SECTION :unselected:\nRESTAURANT / TAVERN SUPPLEMENT :unselected:\nPOLICY INFORMATION\nPROPOSED EFF DATE\nPROPOSED EXP DATE\nBILLING PLAN\nPAYMENT PLAN\nMETHOD OF PAYMENT\nAUDIT :unselected:\nDEPOSIT\nMINIMUM PREMIUM\nPOLICY PREMIUM\n01/01/2026\n01/01/2027 :unselected:\nDIRECT :selected:\nAGENCY\n$\n$\n$\nAPPLICANT INFORMATION\nNAME (First Named Insured) AND MAILING ADDRESS (including ZIP+4)\nSunflower Property Group LLC (dba Cruise Mall)\nDockside Plaza, 210 Oceanfront Lane, Seabreeze, FL 33107\nGL CODE\nSIC\nNAICS\nFEIN OR SOC SEC #\nBUSINESS PHONE #:\nWEBSITE ADDRESS :unselected: CORPORATION :unselected: JOINT VENTURE\nNO. OF MEMBERS :unselected: NOT FOR PROFIT ORG :unselected:\nSUBCHAPTER \"S\" CORPORATION :unselected: :unselected: INDIVIDUAL :unselected:\nLLC\nAND MANAGERS: :unselected: :unselected: PARTNERSHIP :unselected: TRUST\nNAME (Other Named Insured) AND MAILING ADDRESS (including ZIP+4)\nGL CODE\nSIC\nNAICS\nFEIN OR SOC SEC #\nBUSINESS PHONE #:\nWEBSITE ADDRESS :unselected: CORPORATION :unselected: JOINT VENTURE :unselected: NOT FOR PROFIT ORG :unselected:\nSUBCHAPTER \"S\" CORPORATION :unselected: :unselected: INDIVIDUAL :unselected:\nLLC NO. OF MEMBERS AND MANAGERS: :unselected: :unselected: PARTNERSHIP :unselected: TRUST\nNAME (Other Named Insured) AND MAILING ADDRESS (including ZIP+4)\nGL CODE\nSIC\nNAICS\nFEIN OR SOC SEC #\nBUSINESS PHONE #:\nWEBSITE ADDRESS :unselected: CORPORATION :unselected: JOINT VENTURE :unselected: NOT FOR PROFIT ORG :unselected:\nSUBCHAPTER \"S\" CORPORATION :unselected: :unselected: INDIVIDUAL :unselected:\nLLC NO. OF MEMBERS AND MANAGERS: :unselected: :unselected: PARTNERSHIP :unselected: TRUST\nACORD 125 (2016/03)\nPage 1 of 4\n@ 1993-2015 ACORD CORPORATION. All rights reserved.\nThe ACORD name and logo are registered marks of ACORD :unselected: :unselected: :unselected: :unselected: :unselected:\nCONTACT INFORMATION\nAGENCY CUSTOMER ID:\nCONTACT TYPE:\nCONTACT TYPE:\nCONTACT NAME:\nCONTACT NAME:\nPRIMARY PHONE # :unselected: HOME :unselected: BUS :unselected: CELL\nSECONDARY PHONE # :unselected: HOME :unselected: BUS :unselected: CELL\nPRIMARY PHONE # :unselected: HOME :unselected: BUS :unselected: CELL\nSECONDARY PHONE # :unselected: HOME :unselected: BUS :unselected: CELL\nPRIMARY E-MAIL ADDRESS:\nPRIMARY E-MAIL ADDRESS:\nSECONDARY E-MAIL ADDRESS:\nSECONDARY E-MAIL ADDRESS:\nPREMISES INFORMATION (Attach ACORD 823 for Additional Premises)\nLOC # 001\nSTREET Cruise Resort, 100 Harbor View Drive, Seabreeze, FL 33101\nCITY LIMITS\nINTEREST\n# FULL TIME EMPL\nANNUAL REVENUES: $ $40,000,000 :selected:\nINSIDE :unselected:\nOUTSIDE :unselected:\nOWNER :unselected:\nTENANT\nOCCUPIED AREA:\nSQ FT\nBLD #\nCITY:\nSTATE:\n# PART TIME EMPL\nOPEN TO PUBLIC AREA:\nSQ FT\nCOUNTY:\nZIP: :unselected: :unselected:\nTOTAL BUILDING AREA: 150,000\nSQ FT\nDESCRIPTION OF OPERATIONS:\nANY AREA LEASED TO OTHERS? Y / N\nLOC #\nSTREET\nCITY LIMITS :unselected:\nINSIDE :unselected:\nOUTSIDE :unselected:\nINTEREST\n# FULL TIME EMPL\nANNUAL REVENUES: $ :unselected: OWNER\nOCCUPIED AREA:\nSQ FT\nBLD #\nCITY:\nSTATE: :unselected: TENANT\n# PART TIME EMPL\nOPEN TO PUBLIC AREA:\nSQ FT\nCOUNTY:\nZIP: :unselected:\nTOTAL BUILDING AREA:\nSQ FT\nDESCRIPTION OF OPERATIONS:\nANY AREA LEASED TO OTHERS? Y / N :unselected:\nLOC #\nSTREET\nCITY LIMITS :unselected:\nINSIDE :unselected:\nOUTSIDE\nINTEREST\n# FULL TIME EMPL\nANNUAL REVENUES: $ :unselected:\nOWNER :unselected:\nTENANT\nOCCUPIED AREA:\nSQ FT\nBLD #\nCITY:\nSTATE:\n# PART TIME EMPL\nOPEN TO PUBLIC AREA:\nSQ FT\nCOUNTY:\nZIP: :unselected: :unselected:\nTOTAL BUILDING AREA:\nSQ FT\nDESCRIPTION OF OPERATIONS:\nANY AREA LEASED TO OTHERS? Y / N :unselected:\nLOC #\nSTREET\nCITY LIMITS :unselected:\nINSIDE :unselected:\nOUTSIDE :unselected:\nINTEREST\n# FULL TIME EMPL\nANNUAL REVENUES: $ :unselected:\nOWNER :unselected:\nTENANT\nOCCUPIED AREA:\nSQ FT\nBLD #\nCITY:\nSTATE:\n# PART TIME EMPL\nOPEN TO PUBLIC AREA:\nSQ FT\nCOUNTY:\nZIP: :unselected:\nTOTAL BUILDING AREA: SQ FT\nDESCRIPTION OF OPERATIONS:\nANY AREA LEASED TO OTHERS? Y / N\nNATURE OF BUSINESS :unselected: APARTMENTS :unselected: CONTRACTOR :unselected: MANUFACTURING :unselected: RESTAURANT :unselected:\nSERVICE :selected:\nHOTEL/RESORT\nDATE BUSINESS STARTED (MM/DD/YYYY) :unselected: CONDOMINIUMS :unselected: INSTITUTIONAL :unselected: OFFICE :unselected: RETAIL :unselected: WHOLESALE\n01/01/2008\nDESCRIPTION OF PRIMARY OPERATIONS\nsunflower Property Group LLC (dba Cruise Mall) operates a waterfront, regional mixed-use retail and entertainment complex. The landlord provides and maintains the building shell, common areas and core building systems while leasing space to a mix of national anchors, specialty retailers, full?service and quick?service restaurants, a multiplex cinema and family entertainment tenants. On-site property management oversees tenant coordination, facility maintenance, security and parking operations, including centralized HVAC/MEP systems, fire protection, elevators/escalators, loading docks and waste management. Landlord responsibilities include common?area cleaning, landscaping, exterior façade and roof maintenance, tenant fit?out oversight for leased premises, and event permitting for promotional and seasonal activities; tenants manage their own retail and foodservice operations in accordance with lease terms. Special exposures include concentrated foodservice tenant operations, high public footfall in peak seasons, and waterfront weather?related perils.\nRETAIL STORES OR SERVICE OPERATIONS % OF TOTAL SALES:\nINSTALLATION, SERVICE OR REPAIR WORK\nOFF PREMISES INSTALLATION, SERVICE OR REPAIR WORK %\n%\nDESCRIPTION OF OPERATIONS OF OTHER NAMED INSUREDS\nADDITIONAL INTEREST (Not all fields apply to all scenarios - provide only the necessary data) Attach ACORD 45 for more Additional Interests\nINTEREST :unselected: ADDITIONAL\nINSURED\nBREACH OF :unselected: LIENHOLDER :unselected: WARRANTY :unselected: LOSS PAYEE :unselected: CO-OWNER :unselected: MORTGAGEE :unselected: EMPLOYEE AS LESSOR\nNAME AND ADDRESS RANK: :unselected: EVIDENCE: :unselected: CERTIFICATE :unselected: POLICY :unselected: SEND BILL\nINTEREST IN ITEM NUMBER\nLOCATION:\nBUILDING:\nVEHICLE:\nBOAT:\nAIRPORT:\nAIRCRAFT:\nITEM CLASS:\nITEM:\nOWNER LENDER'S :unselected: LEASEBACK :unselected: REGISTRANT :unselected: LOSS PAYABLE :unselected: TRUSTEE REFERENCE / LOAN #:\nINTEREST END DATE:\nLIEN AMOUNT:\nPHONE (A/C, No, Ext):\nFAX (A/C, No):\nREASON FOR INTEREST:\nE-MAIL ADDRESS: :unselected: OWNER\nITEM DESCRIPTION :unselected:\nACORD 125 (2016/03)\nPage 2 of 4\nAGENCY CUSTOMER ID:\nGENERAL INFORMATION\nEXPLAIN ALL \"YES\" RESPONSES\nY/N\n1a. IS THE APPLICANT A SUBSIDIARY OF ANOTHER ENTITY ?\nN\nPARENT COMPANY NAME\nRELATIONSHIP DESCRIPTION\n% OWNED\n1b. DOES THE APPLICANT HAVE ANY SUBSIDIARIES?\nN\nSUBSIDIARY COMPANY NAME\nRELATIONSHIP DESCRIPTION\n% OWNED\n2. IS A FORMAL SAFETY PROGRAM IN OPERATION? :unselected: SAFETY MANUAL :unselected: SAFETY POSITION :unselected: MONTHLY MEETINGS :unselected: OSHA :unselected:\n. ANY EXPOSURE TO FLAMMABLES, EXPLOSIVES, CHEMICALS?\nN\n4. ANY OTHER INSURANCE WITH THIS COMPANY? (List policy numbers)\nLINE OF BUSINESS\nPOLICY NUMBER\nLINE OF BUSINESS\nPOLICY NUMBER\n5. ANY POLICY OR COVERAGE DECLINED, CANCELLED OR NON-RENEWED DURING THE PRIOR THREE (3) YEARS FOR ANY PREMISES OR OPERATIONS? (Missouri Applicants - Do not answer this question) :unselected: NON-PAYMENT :unselected: AGENT NO LONGER REPRESENTS CARRIER :unselected: :unselected:\nNON-RENEWAL :unselected:\nUNDERWRITING :unselected:\nCONDITION CORRECTED (Describe):\n6. ANY PAST LOSSES OR CLAIMS RELATING TO SEXUAL ABUSE OR MOLESTATION ALLEGATIONS, DISCRIMINATION OR NEGLIGENT HIRING?\n7. DURING THE LAST FIVE YEARS (TEN IN RI), HAS ANY APPLICANT BEEN INDICTED FOR OR CONVICTED OF ANY DEGREE OF THE CRIME OF FRAUD, BRIBERY, ARSON OR ANY OTHER ARSON-RELATED CRIME IN CONNECTION WITH THIS OR ANY OTHER PROPERTY? (In RI, this question must be answered by any applicant for property insurance. Failure to disclose the existence of an arson conviction is a misdemeanor punishable by a sentence of up to one year of imprisonment).\n8. ANY UNCORRECTED FIRE AND/OR SAFETY CODE VIOLATIONS?\nOCCUR DATE\nEXPLANATION\nRESOLUTION\nRESOLVE DATE\n9. HAS APPLICANT HAD A FORECLOSURE, REPOSSESSION, BANKRUPTCY OR FILED FOR BANKRUPTCY DURING THE LAST FIVE (5) YEARS?\nOCCUR DATE\nEXPLANATION\nRESOLUTION\nRESOLVE DATE\n10. HAS APPLICANT HAD A JUDGEMENT OR LIEN DURING THE LAST FIVE (5) YEARS?\nRESOLVE DATE\nN\nOCCUR DATE\nEXPLANATION\nRESOLUTION\n11. HAS BUSINESS BEEN PLACED IN A TRUST? NAME OF TRUST:\n12. ANY FOREIGN OPERATIONS, FOREIGN PRODUCTS DISTRIBUTED IN USA, OR US PRODUCTS SOLD / DISTRIBUTED IN FOREIGN COUNTRIES? (If \"YES\", attach ACORD 815 for Liability Exposure and/or ACORD 816 for Property Exposure)\nN\n13. DOES APPLICANT HAVE OTHER BUSINESS VENTURES FOR WHICH COVERAGE IS NOT REQUESTED?\nN\n14. DOES APPLICANT OWN / LEASE / OPERATE ANY DRONES? (If \"YES\", describe use)\nN\n15. DOES APPLICANT HIRE OTHERS TO OPERATE DRONES? (If \"YES\", describe use)\nN\nREMARKS / PROCESSING INSTRUCTIONS (ACORD 101, Additional Remarks Schedule, may be attached if more space is required)\nPRIOR CARRIER INFORMATION\nYEAR\nCATEGORY\nGENERAL LIABILITY\nAUTOMOBILE\nPROPERTY\nOTHER:\n2025\nCARRIER\nAtlantic Harbor Insurance Co.\nPOLICY NUMBER\nAH-CR-2025-001\nPREMIUM\n$\n$\n$ 210,000\n$\nEFFECTIVE DATE\n2025-01-01\nEXPIRATION DATE\n2025-12-31\nACORD 125 (2016/03)\nPage 3 of 4\nN\nN\nN\nN\nN\nN\nN :selected: :selected: :selected: :selected: :selected: :selected: :selected: :selected: :selected: :selected: :selected: :selected: :selected:\nPRIOR CARRIER INFORMATION (continued)\nAGENCY CUSTOMER ID:\nYEAR\nCATEGORY\nGENERAL LIABILITY\nAUTOMOBILE\nPROPERTY\nOTHER:\nCARRIER\nGulf Coast Mutual Insurance\nPOLICY NUMBER\nGCM-CR-2023-045\n2024\nPREMIUM\n$\n$\n$ $385,000\n$\nEFFECTIVE DATE\n2023-01-01\nEXPIRATION DATE\n2024-12-31\nCARRIER\nSeaside Underwriters Ltd.\nPOLICY NUMBER\nSUL-CR-2021-310\nPREMIUM\n$\n$\n$ $360,000\n$\nEFFECTIVE DATE\n2021-01-01\nEXPIRATION DATE\n2022-12-31\nLOSS HISTORY\nCheck if none (Attach Loss Summary for Additional Loss Information)\nENTER ALL CLAIMS OR LOSSES (REGARDLESS OF FAULT AND WHETHER OR NOT INSURED) OR OCCURRENCES THAT MAY GIVE RISE TO CLAIMS FOR THE LAST YEARS\nTOTAL LOSSES: $\nDATE OF OCCURRENCE\nLINE\nTYPE / DESCRIPTION OF OCCURRENCE OR CLAIM\nDATE OF CLAIM\nAMOUNT PAID\nAMOUNT RESERVED\nSUBRO- GATION Y/N\nCLAIM OPEN Y/N\nSIGNATURE\nCopy of the Notice of Information Practices (Privacy) has been given to the applicant. (Not required in all states, contact your agent or broker for your state's requirements.)\nPERSONAL INFORMATION ABOUT YOU, INCLUDING INFORMATION FROM A CREDIT OR OTHER INVESTIGATIVE REPORT, MAY BE COLLECTED FROM PERSONS OTHER THAN YOU IN CONNECTION WITH THIS APPLICATION FOR INSURANCE AND SUBSEQUENT AMENDMENTS AND RENEWALS. SUCH INFORMATION AS WELL AS OTHER PERSONAL AND PRIVILEGED INFORMATION COLLECTED BY US OR OUR AGENTS MAY IN CERTAIN CIRCUMSTANCES BE DISCLOSED TO THIRD PARTIES WITHOUT YOUR AUTHORIZATION. CREDIT SCORING INFORMATION MAY BE USED TO HELP DETERMINE EITHER YOUR ELIGIBILITY FOR INSURANCE OR THE PREMIUM YOU WILL BE CHARGED. WE MAY USE A THIRD PARTY IN CONNECTION WITH THE DEVELOPMENT OF YOUR SCORE. YOU MAY HAVE THE RIGHT TO REVIEW YOUR PERSONAL INFORMATION IN OUR FILES AND REQUEST CORRECTION OF ANY INACCURACIES. YOU MAY ALSO HAVE THE RIGHT TO REQUEST IN WRITING THAT WE CONSIDER EXTRAORDINARY LIFE CIRCUMSTANCES IN CONNECTION WITH THE DEVELOPMENT OF YOUR CREDIT SCORE. THESE RIGHTS MAY BE LIMITED IN SOME STATES. PLEASE CONTACT YOUR AGENT OR BROKER TO LEARN HOW THESE RIGHTS MAY APPLY IN YOUR STATE OR FOR INSTRUCTIONS ON HOW TO SUBMIT A REQUEST TO US FOR A MORE DETAILED DESCRIPTION OF YOUR RIGHTS AND OUR PRACTICES REGARDING PERSONAL INFORMATION. (Not applicable in AZ, CA, DE, KS, MA, MN, ND, NY, OR, VA, or WV. Specific ACORD 38s are available for applicants in these states.) (Applicant's Initials): SS\nApplicable in AL, AR, DC, LA, MD, NM, RI and WV: Any person who knowingly (or willfully)* presents a false or fraudulent claim for payment of a loss or benefit or knowingly (or willfully)* presents false information in an application for insurance is guilty of a crime and may be subject to fines and confinement in prison. * Applies in MD Only.\nApplicable in CO: It is unlawful to knowingly provide false, incomplete, or misleading facts or information to an insurance company for the purpose of defrauding or attempting to defraud the company. Penalties may include imprisonment, fines, denial of insurance and civil damages. Any insurance company or agent of an insurance company who knowingly provides false, incomplete, or misleading facts or information to a policyholder or claimant for the purpose of defrauding or attempting to defraud the policyholder or claimant with regard to a settlement or award payable from insurance proceeds shall be reported to the Colorado Division of Insurance within the Department of Regulatory Agencies.\nApplicable in FL and OK: Any person who knowingly and with intent to injure, defraud, or deceive any insurer files a statement of claim or an application containing any false, incomplete, or misleading information is guilty of a felony (of the third degree) *. * Applies in FL Only.\nApplicable in KS: Any person who, knowingly and with intent to defraud, presents, causes to be presented or prepares with knowledge or belief that it will be presented to or by an insurer, purported insurer, broker or any agent thereof, any written statement as part of, or in support of, an application for the issuance of, or the rating of an insurance policy for personal or commercial insurance, or a claim for payment or other benefit pursuant to an insurance policy for commercial or personal insurance which such person knows to contain materially false information concerning any fact material thereto; or conceals, for the purpose of misleading, information concerning any fact material thereto commits a fraudulent insurance act.\nApplicable in KY, NY, OH and PA: Any person who knowingly and with intent to defraud any insurance company or other person files an application for insurance or statement of claim containing any materially false information or conceals for the purpose of misleading, information concerning any fact material thereto commits a fraudulent insurance act, which is a crime and subjects such person to criminal and civil penalties (not to exceed five thousand dollars and the stated value of the claim for each such violation) *. * Applies in NY Only.\nApplicable in ME, TN, VA and WA: It is a crime to knowingly provide false, incomplete or misleading information to an insurance company for the purpose of defrauding the company. Penalties (may)* include imprisonment, fines and denial of insurance benefits. * Applies in ME Only.\nApplicable in NJ: Any person who includes any false or misleading information on an application for an insurance policy is subject to criminal and civil penalties.\nApplicable in OR: Any person who knowingly and with intent to defraud or solicit another to defraud the insurer by submitting an application containing a false statement as to any material fact may be violating state law.\nApplicable in PR: Any person who knowingly and with the intention of defrauding presents false information in an insurance application, or presents, helps, or causes the presentation of a fraudulent claim for the payment of a loss or any other benefit, or presents more than one claim for the same damage or loss, shall incur a felony and, upon conviction, shall be sanctioned for each violation by a fine of not less than five thousand dollars ($5,000) and not more than ten thousand dollars ($10,000), or a fixed term of imprisonment for three (3) years, or both penalties. Should aggravating circumstances [be] present, the penalty thus established may be increased to a maximum of five (5) years, if extenuating circumstances are present, it may be reduced to a minimum of two (2) years.\nTHE UNDERSIGNED IS AN AUTHORIZED REPRESENTATIVE OF THE APPLICANT AND REPRESENTS THAT REASONABLE INQUIRY HAS BEEN MADE TO OBTAIN THE ANSWERS TO QUESTIONS ON THIS APPLICATION. HE/SHE REPRESENTS THAT THE ANSWERS ARE TRUE, CORRECT AND COMPLETE TO THE BEST OF HIS/HER KNOWLEDGE.\nPRODUCER'S SIGNATURE\nPRODUCER'S NAME (Please Print)\nSTATE PRODUCER LICENSE NO (Required in Florida)\nOlivia Park\nOlivia Park\nMISP1234\nAPPLICANT'S SIGNATURE\nDATE\nNATIONAL PRODUCER NUMBER\nSunflower Seeds\n11/05/2026\nMISP9876\nACORD 125 (2016/03)\nPage 4 of 4 :unselected: :unselected: :unselected: :unselected: :unselected:",
+  "pages": [
+    {
+      "pageNumber": 1,
+      "angle": -0.01759999990463257,
+      "width": 8.5,
+      "height": 11,
+      "unit": "inch",
+      "words": [
+        {
+          "content": "ACORD®",
+          "polygon": [
+            0.3104,
+            0.4607,
+            1.2119,
+            0.4577,
+            1.2119,
+            0.6256,
+            0.3081,
+            0.6218
+          ],
+          "confidence": 0.225,
+          "span": {
+            "offset": 0,
+            "length": 6
+          }
+        },
+        {
+          "content": "®",
+          "polygon": [
+            1.1695,
+            0.4258,
+            1.2469,
+            0.4252,
+            1.2466,
+            0.5005,
+            1.169,
+            0.4984
+          ],
+          "confidetc etc,,,,
