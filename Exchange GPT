@@ -1,12 +1,1037 @@
-this is json
 
-SUPPLEMENT :unselected:\nPOLICY INFORMATION\nPROPOSED EFF DATE\nPROPOSED EXP DATE\nBILLING PLAN\nPAYMENT PLAN\nMETHOD OF PAYMENT\nAUDIT :unselected:\nDEPOSIT\nMINIMUM PREMIUM\nPOLICY PREMIUM\n01/01/2026\n01/01/2027 :unselected:\nDIRECT :selected:\nAGENCY
-and this is ouput of our summary,
-(summa_venv) jarvis@Jarvis-agent-vm:~/Musaddique/TrySummary$ python3 newsummary.py 
-**Insured Name** is Sunflower Property Group LLC (dba Cruise Mall), seeking coverage for a waterfront, mixed-use retail and entertainment complex located at Dockside Plaza, 210 Oceanfront Lane, Seabreeze, FL 33107, with the primary premises at Cruise Resort, 100 Harbor View Drive, Seabreeze, FL 33101. The submission requests a **Commercial Property** line, with a **Proposed Effective Date** of 01/01/2026 and expiration on 01/01/2027; premium is listed as TBD and billing is direct. The operation is classified as **Service**, with annual revenues of $40,000,000 and a total building area of 150,000 sq ft, comprising leased spaces for national anchors, specialty retailers, restaurants, a cinema, and family entertainment tenants. Landlord responsibilities include building shell, common areas, centralized systems, and event permitting, with special exposures noted for concentrated foodservice operations, high public footfall during peak seasons, and waterfront weather-related perils. **Prior carrier history** includes property coverage with Atlantic Harbor Insurance Co. (2025, $210,000 premium) and Gulf Coast Mutual Insurance (2024, $385,000 premium), with no reported bankrupt
-(summa_venv) jarvis@Jarvis-agent-vm:~/Musaddique/TrySummary$ 
+I think prompt has to be changed as in output.json "Loss Summary": is unselected but in final output.json it is giving as selected 
 
-you can notice that in summary it is saying billing is direct 
-but in the actual json the direct is unselected rather agency is selected
 
-the problem is that for acord data extraction we have used OCR azure doc intelligence and it is generating a json and that same json we are using for summary so in ocr i hope you know it extracts from left to right 
+
+
+there is a mismatch in json 
+
+output.json content field part
+"content": "ACORD® ®\nCOMMERCIAL INSURANCE APPLICATION APPLICANT INFORMATION SECTION\nDATE (MM/DD/YYYY)\n11/05/2025\nAGENCY Meridian Shoreline Insurance Partners\nCARRIER\nNAIC CODE\nTBD\nTBD\nCOMPANY POLICY OR PROGRAM NAME\nPROGRAM CODE\nTBD\nTBD\nPOLICY NUMBER\nTBD\nUNDERWRITER\nUNDERWRITER OFFICE\nTBD\nTBD\nCONTACT NAME: Olivia Park\nPHONE (A/C, No, Ext): +1 (555) 214-7802\nFAX (A/C, No): +1 (555) 214-7802\nE-MAIL ADDRESS: olivia.park@meridianship.com\nCODE: MSIP-214\nSUBCODE:\nAGENCY CUSTOMER ID:\nSTATUS OF TRANSACTION :selected: QUOTE :unselected: ISSUE POLICY :unselected: RENEW :unselected: BOUND (Give Date and/or Attach Copy): :unselected: CHANGE\nDATE\nTIME :unselected:\nAM :unselected: CANCEL\n11/05/2025\n6:40 :selected:\nPM\nLINES OF BUSINESS\nINDICATE LINES OF BUSINESS\nPREMIUM\nPREMIUM PREMIUM :unselected:\nBOILER & MACHINERY\n$ :unselected:\nCYBER AND PRIVACY\n$ :unselected: YACHT\n$ :unselected:\nBUSINESS AUTO\n$ :unselected:\nFIDUCIARY LIABILITY\n$ :unselected:\n$ :unselected:\nBUSINESS OWNERS\n$ :unselected:\nGARAGE AND DEALERS\n$\n$ :unselected:\nCOMMERCIAL GENERAL LIABILITY\n$ :unselected:\nLIQUOR LIABILITY\n$\n$ :unselected:\nCOMMERCIAL INLAND MARINE\n$ :unselected:\nMOTOR CARRIER\n$\n$ :selected:\nCOMMERCIAL PROPERTY\n$ TBD :unselected:\nTRUCKERS\n$\n$ :unselected:\nCRIME\n$ :unselected:\nUMBRELLA\n$ :unselected:\n$\nATTACHMENTS :unselected:\nACCOUNTS RECEIVABLE / VALUABLE PAPERS :unselected:\nGLASS AND SIGN SECTION :unselected:\nSTATEMENT / SCHEDULE OF VALUES :unselected:\nADDITIONAL INTEREST SCHEDULE :unselected:\nHOTEL / MOTEL SUPPLEMENT :unselected:\nSTATE SUPPLEMENT (If applicable) :unselected:\nADDITIONAL PREMISES INFORMATION SCHEDULE :unselected:\nINSTALLATION / BUILDERS RISK SECTION :unselected:\nVACANT BUILDING SUPPLEMENT :unselected:\nAPARTMENT BUILDING SUPPLEMENT :unselected:\nINTERNATIONAL LIABILITY EXPOSURE SUPPLEMENT :unselected:\nVEHICLE SCHEDULE :unselected:\nCONDO ASSN BYLAWS (for D&O Coverage only) :unselected:\nINTERNATIONAL PROPERTY EXPOSURE SUPPLEMENT :selected:\nLOSS DETAILS :unselected:\nCONTRACTORS SUPPLEMENT :unselected:\nLOSS SUMMARY :unselected: :unselected:\nCOVERAGES SCHEDULE :unselected:\nOPEN CARGO SECTION :unselected: :unselected:\nDEALERS SECTION :unselected:\nPREMIUM PAYMENT SUPPLEMENT :unselected: :unselected:\nDRIVER INFORMATION SCHEDULE :unselected:\nPROFESSIONAL LIABILITY SUPPLEMENT :unselected: :unselected:\nELECTRONIC DATA PROCESSING SECTION :unselected:\nRESTAURANT / TAVERN SUPPLEMENT :unselected:\nPOLICY INFORMATION\nPROPOSED EFF DATE\nPROPOSED EXP DATE\nBILLING PLAN\nPAYMENT PLAN\nMETHOD OF PAYMENT\nAUDIT :unselected:\nDEPOSIT\nMINIMUM PREMIUM\nPOLICY PREMIUM\n01/01/2026\n01/01/2027 :unselected:\nDIRECT :selected:\nAGENCY\n$\n$\n$\nAPPLICANT INFORMATION\nNAME (First Named Insured) AND MAILING ADDRESS (including ZIP+4)\nSunflower Property Group LLC (dba Cruise Mall)\nDockside Plaza, 210 Oceanfront Lane, Seabreeze, FL 33107\nGL CODE\nSIC\nNAICS\nFEIN OR SOC SEC #\nBUSINESS PHONE #:\nWEBSITE ADDRESS :unselected: CORPORATION :unselected: JOINT VENTURE\nNO. OF MEMBERS :unselected: NOT FOR PROFIT ORG :unselected:\nSUBCHAPTER \"S\" CORPORATION :unselected: :unselected: INDIVIDUAL :unselected:\nLLC\nAND MANAGERS: :unselected: :unselected: PARTNERSHIP :unselected: TRUST\nNAME (Other Named Insured) AND MAILING ADDRESS (including ZIP+4)\nGL CODE\nSIC\nNAICS\nFEIN OR SOC SEC #\nBUSINESS PHONE #:\nWEBSITE ADDRESS :unselected: CORPORATION :unselected: JOINT VENTURE :unselected: NOT FOR PROFIT ORG :unselected:\nSUBCHAPTER \"S\" CORPORATION :unselected: :unselected: INDIVIDUAL :unselected:\nLLC NO. OF MEMBERS AND MANAGERS: :unselected: :unselected: PARTNERSHIP :unselected: TRUST\nNAME (Other Named Insured) AND MAILING ADDRESS (including ZIP+4)\nGL CODE\nSIC\nNAICS\nFEIN OR SOC SEC #\nBUSINESS PHONE #:\nWEBSITE ADDRESS :unselected: CORPORATION :unselected: JOINT VENTURE :unselected: NOT FOR PROFIT ORG :unselected:\nSUBCHAPTER \"S\" CORPORATION :unselected: :unselected: INDIVIDUAL :unselected:\nLLC NO. OF MEMBERS AND MANAGERS: :unselected: :unselected: PARTNERSHIP :unselected: TRUST\nACORD 125 (2016/03)\nPage 1 of 4\n@ 1993-2015 ACORD CORPORATION. All rights reserved.\nThe ACORD name and logo are registered marks of ACORD :unselected: :unselected: :unselected: :unselected: :unselected:\nCONTACT INFORMATION\nAGENCY CUSTOMER ID:\nCONTACT TYPE:\nCONTACT TYPE:\nCONTACT NAME:\nCONTACT NAME:\nPRIMARY PHONE # :unselected: HOME :unselected: BUS :unselected: CELL\nSECONDARY PHONE # :unselected: HOME :unselected: BUS :unselected: CELL\nPRIMARY PHONE # :unselected: HOME :unselected: BUS :unselected: CELL\nSECONDARY PHONE # :unselected: HOME :unselected: BUS :unselected: CELL\nPRIMARY E-MAIL ADDRESS:\nPRIMARY E-MAIL ADDRESS:\nSECONDARY E-MAIL ADDRESS:\nSECONDARY E-MAIL ADDRESS:\nPREMISES INFORMATION (Attach ACORD 823 for Additional Premises)\nLOC # 001\nSTREET Cruise Resort, 100 Harbor View Drive, Seabreeze, FL 33101\nCITY LIMITS\nINTEREST\n# FULL TIME EMPL\nANNUAL REVENUES: $ $40,000,000 :selected:\nINSIDE :unselected:\nOUTSIDE :unselected:\nOWNER :unselected:\nTENANT\nOCCUPIED AREA:\nSQ FT\nBLD #\nCITY:\nSTATE:\n# PART TIME EMPL\nOPEN TO PUBLIC AREA:\nSQ FT\nCOUNTY:\nZIP: :unselected: :unselected:\nTOTAL BUILDING AREA: 150,000\nSQ FT\nDESCRIPTION OF OPERATIONS:\nANY AREA LEASED TO OTHERS? Y / N\nLOC #\nSTREET\nCITY LIMITS :unselected:\nINSIDE :unselected:\nOUTSIDE :unselected:\nINTEREST\n# FULL TIME EMPL\nANNUAL REVENUES: $ :unselected: OWNER\nOCCUPIED AREA:\nSQ FT\nBLD #\nCITY:\nSTATE: :unselected: TENANT\n# PART TIME EMPL\nOPEN TO PUBLIC AREA:\nSQ FT\nCOUNTY:\nZIP: :unselected:\nTOTAL BUILDING AREA:\nSQ FT\nDESCRIPTION OF OPERATIONS:\nANY AREA LEASED TO OTHERS? Y / N :unselected:\nLOC #\nSTREET\nCITY LIMITS :unselected:\nINSIDE :unselected:\nOUTSIDE\nINTEREST\n# FULL TIME EMPL\nANNUAL REVENUES: $ :unselected:\nOWNER :unselected:\nTENANT\nOCCUPIED AREA:\nSQ FT\nBLD #\nCITY:\nSTATE:\n# PART TIME EMPL\nOPEN TO PUBLIC AREA:\nSQ FT\nCOUNTY:\nZIP: :unselected: :unselected:\nTOTAL BUILDING AREA:\nSQ FT\nDESCRIPTION OF OPERATIONS:\nANY AREA LEASED TO OTHERS? Y / N :unselected:\nLOC #\nSTREET\nCITY LIMITS :unselected:\nINSIDE :unselected:\nOUTSIDE :unselected:\nINTEREST\n# FULL TIME EMPL\nANNUAL REVENUES: $ :unselected:\nOWNER :unselected:\nTENANT\nOCCUPIED AREA:\nSQ FT\nBLD #\nCITY:\nSTATE:\n# PART TIME EMPL\nOPEN TO PUBLIC AREA:\nSQ FT\nCOUNTY:\nZIP: :unselected:\nTOTAL BUILDING AREA: SQ FT\nDESCRIPTION OF OPERATIONS:\nANY AREA LEASED TO OTHERS? Y / N\nNATURE OF BUSINESS :unselected: APARTMENTS :unselected: CONTRACTOR :unselected: MANUFACTURING :unselected: RESTAURANT :unselected:\nSERVICE :selected:\nHOTEL/RESORT\nDATE BUSINESS STARTED (MM/DD/YYYY) :unselected: CONDOMINIUMS :unselected: INSTITUTIONAL :unselected: OFFICE :unselected: RETAIL :unselected: WHOLESALE\n01/01/2008\nDESCRIPTION OF PRIMARY OPERATIONS\nsunflower Property Group LLC (dba Cruise Mall) operates a waterfront, regional mixed-use retail and entertainment complex. The landlord provides and maintains the building shell, common areas and core building systems while leasing space to a mix of national anchors, specialty retailers, full?service and quick?service restaurants, a multiplex cinema and family entertainment tenants. On-site property management oversees tenant coordination, facility maintenance, security and parking operations, including centralized HVAC/MEP systems, fire protection, elevators/escalators, loading docks and waste management. Landlord responsibilities include common?area cleaning, landscaping, exterior façade and roof maintenance, tenant fit?out oversight for leased premises, and event permitting for promotional and seasonal activities; tenants manage their own retail and foodservice operations in accordance with lease terms. Special exposures include concentrated foodservice tenant operations, high public footfall in peak seasons, and waterfront weather?related perils.\nRETAIL STORES OR SERVICE OPERATIONS % OF TOTAL SALES:\nINSTALLATION, SERVICE OR REPAIR WORK\nOFF PREMISES INSTALLATION, SERVICE OR REPAIR WORK %\n%\nDESCRIPTION OF OPERATIONS OF OTHER NAMED INSUREDS\nADDITIONAL INTEREST (Not all fields apply to all scenarios - provide only the necessary data) Attach ACORD 45 for more Additional Interests\nINTEREST :unselected: ADDITIONAL\nINSURED\nBREACH OF :unselected: LIENHOLDER :unselected: WARRANTY :unselected: LOSS PAYEE :unselected: CO-OWNER :unselected: MORTGAGEE :unselected: EMPLOYEE AS LESSOR\nNAME AND ADDRESS RANK: :unselected: EVIDENCE: :unselected: CERTIFICATE :unselected: POLICY :unselected: SEND BILL\nINTEREST IN ITEM NUMBER\nLOCATION:\nBUILDING:\nVEHICLE:\nBOAT:\nAIRPORT:\nAIRCRAFT:\nITEM CLASS:\nITEM:\nOWNER LENDER'S :unselected: LEASEBACK :unselected: REGISTRANT :unselected: LOSS PAYABLE :unselected: TRUSTEE REFERENCE / LOAN #:\nINTEREST END DATE:\nLIEN AMOUNT:\nPHONE (A/C, No, Ext):\nFAX (A/C, No):\nREASON FOR INTEREST:\nE-MAIL ADDRESS: :unselected: OWNER\nITEM DESCRIPTION :unselected:\nACORD 125 (2016/03)\nPage 2 of 4\nAGENCY CUSTOMER ID:\nGENERAL INFORMATION\nEXPLAIN ALL \"YES\" RESPONSES\nY/N\n1a. IS THE APPLICANT A SUBSIDIARY OF ANOTHER ENTITY ?\nN\nPARENT COMPANY NAME\nRELATIONSHIP DESCRIPTION\n% OWNED\n1b. DOES THE APPLICANT HAVE ANY SUBSIDIARIES?\nN\nSUBSIDIARY COMPANY NAME\nRELATIONSHIP DESCRIPTION\n% OWNED\n2. IS A FORMAL SAFETY PROGRAM IN OPERATION? :unselected: SAFETY MANUAL :unselected: SAFETY POSITION :unselected: MONTHLY MEETINGS :unselected: OSHA :unselected:\n. ANY EXPOSURE TO FLAMMABLES, EXPLOSIVES, CHEMICALS?\nN\n4. ANY OTHER INSURANCE WITH THIS COMPANY? (List policy numbers)\nLINE OF BUSINESS\nPOLICY NUMBER\nLINE OF BUSINESS\nPOLICY NUMBER\n5. ANY POLICY OR COVERAGE DECLINED, CANCELLED OR NON-RENEWED DURING THE PRIOR THREE (3) YEARS FOR ANY PREMISES OR OPERATIONS? (Missouri Applicants - Do not answer this question) :unselected: NON-PAYMENT :unselected: AGENT NO LONGER REPRESENTS CARRIER :unselected: :unselected:\nNON-RENEWAL :unselected:\nUNDERWRITING :unselected:\nCONDITION CORRECTED (Describe):\n6. ANY PAST LOSSES OR CLAIMS RELATING TO SEXUAL ABUSE OR MOLESTATION ALLEGATIONS, DISCRIMINATION OR NEGLIGENT HIRING?\n7. DURING THE LAST FIVE YEARS (TEN IN RI), HAS ANY APPLICANT BEEN INDICTED FOR OR CONVICTED OF ANY DEGREE OF THE CRIME OF FRAUD, BRIBERY, ARSON OR ANY OTHER ARSON-RELATED CRIME IN CONNECTION WITH THIS OR ANY OTHER PROPERTY? (In RI, this question must be answered by any applicant for property insurance. Failure to disclose the existence of an arson conviction is a misdemeanor punishable by a sentence of up to one year of imprisonment).\n8. ANY UNCORRECTED FIRE AND/OR SAFETY CODE VIOLATIONS?\nOCCUR DATE\nEXPLANATION\nRESOLUTION\nRESOLVE DATE\n9. HAS APPLICANT HAD A FORECLOSURE, REPOSSESSION, BANKRUPTCY OR FILED FOR BANKRUPTCY DURING THE LAST FIVE (5) YEARS?\nOCCUR DATE\nEXPLANATION\nRESOLUTION\nRESOLVE DATE\n10. HAS APPLICANT HAD A JUDGEMENT OR LIEN DURING THE LAST FIVE (5) YEARS?\nRESOLVE DATE\nN\nOCCUR DATE\nEXPLANATION\nRESOLUTION\n11. HAS BUSINESS BEEN PLACED IN A TRUST? NAME OF TRUST:\n12. ANY FOREIGN OPERATIONS, FOREIGN PRODUCTS DISTRIBUTED IN USA, OR US PRODUCTS SOLD / DISTRIBUTED IN FOREIGN COUNTRIES? (If \"YES\", attach ACORD 815 for Liability Exposure and/or ACORD 816 for Property Exposure)\nN\n13. DOES APPLICANT HAVE OTHER BUSINESS VENTURES FOR WHICH COVERAGE IS NOT REQUESTED?\nN\n14. DOES APPLICANT OWN / LEASE / OPERATE ANY DRONES? (If \"YES\", describe use)\nN\n15. DOES APPLICANT HIRE OTHERS TO OPERATE DRONES? (If \"YES\", describe use)\nN\nREMARKS / PROCESSING INSTRUCTIONS (ACORD 101, Additional Remarks Schedule, may be attached if more space is required)\nPRIOR CARRIER INFORMATION\nYEAR\nCATEGORY\nGENERAL LIABILITY\nAUTOMOBILE\nPROPERTY\nOTHER:\n2025\nCARRIER\nAtlantic Harbor Insurance Co.\nPOLICY NUMBER\nAH-CR-2025-001\nPREMIUM\n$\n$\n$ 210,000\n$\nEFFECTIVE DATE\n2025-01-01\nEXPIRATION DATE\n2025-12-31\nACORD 125 (2016/03)\nPage 3 of 4\nN\nN\nN\nN\nN\nN\nN :selected: :selected: :selected: :selected: :selected: :selected: :selected: :selected: :selected: :selected: :selected: :selected: :selected:\nPRIOR CARRIER INFORMATION (continued)\nAGENCY CUSTOMER ID:\nYEAR\nCATEGORY\nGENERAL LIABILITY\nAUTOMOBILE\nPROPERTY\nOTHER:\nCARRIER\nGulf Coast Mutual Insurance\nPOLICY NUMBER\nGCM-CR-2023-045\n2024\nPREMIUM\n$\n$\n$ $385,000\n$\nEFFECTIVE DATE\n2023-01-01\nEXPIRATION DATE\n2024-12-31\nCARRIER\nSeaside Underwriters Ltd.\nPOLICY NUMBER\nSUL-CR-2021-310\nPREMIUM\n$\n$\n$ $360,000\n$\nEFFECTIVE DATE\n2021-01-01\nEXPIRATION DATE\n2022-12-31\nLOSS HISTORY\nCheck if none (Attach Loss Summary for Additional Loss Information)\nENTER ALL CLAIMS OR LOSSES (REGARDLESS OF FAULT AND WHETHER OR NOT INSURED) OR OCCURRENCES THAT MAY GIVE RISE TO CLAIMS FOR THE LAST YEARS\nTOTAL LOSSES: $\nDATE OF OCCURRENCE\nLINE\nTYPE / DESCRIPTION OF OCCURRENCE OR CLAIM\nDATE OF CLAIM\nAMOUNT PAID\nAMOUNT RESERVED\nSUBRO- GATION Y/N\nCLAIM OPEN Y/N\nSIGNATURE\nCopy of the Notice of Information Practices (Privacy) has been given to the applicant. (Not required in all states, contact your agent or broker for your state's requirements.)\nPERSONAL INFORMATION ABOUT YOU, INCLUDING INFORMATION FROM A CREDIT OR OTHER INVESTIGATIVE REPORT, MAY BE COLLECTED FROM PERSONS OTHER THAN YOU IN CONNECTION WITH THIS APPLICATION FOR INSURANCE AND SUBSEQUENT AMENDMENTS AND RENEWALS. SUCH INFORMATION AS WELL AS OTHER PERSONAL AND PRIVILEGED INFORMATION COLLECTED BY US OR OUR AGENTS MAY IN CERTAIN CIRCUMSTANCES BE DISCLOSED TO THIRD PARTIES WITHOUT YOUR AUTHORIZATION. CREDIT SCORING INFORMATION MAY BE USED TO HELP DETERMINE EITHER YOUR ELIGIBILITY FOR INSURANCE OR THE PREMIUM YOU WILL BE CHARGED. WE MAY USE A THIRD PARTY IN CONNECTION WITH THE DEVELOPMENT OF YOUR SCORE. YOU MAY HAVE THE RIGHT TO REVIEW YOUR PERSONAL INFORMATION IN OUR FILES AND REQUEST CORRECTION OF ANY INACCURACIES. YOU MAY ALSO HAVE THE RIGHT TO REQUEST IN WRITING THAT WE CONSIDER EXTRAORDINARY LIFE CIRCUMSTANCES IN CONNECTION WITH THE DEVELOPMENT OF YOUR CREDIT SCORE. THESE RIGHTS MAY BE LIMITED IN SOME STATES. PLEASE CONTACT YOUR AGENT OR BROKER TO LEARN HOW THESE RIGHTS MAY APPLY IN YOUR STATE OR FOR INSTRUCTIONS ON HOW TO SUBMIT A REQUEST TO US FOR A MORE DETAILED DESCRIPTION OF YOUR RIGHTS AND OUR PRACTICES REGARDING PERSONAL INFORMATION. (Not applicable in AZ, CA, DE, KS, MA, MN, ND, NY, OR, VA, or WV. Specific ACORD 38s are available for applicants in these states.) (Applicant's Initials): SS\nApplicable in AL, AR, DC, LA, MD, NM, RI and WV: Any person who knowingly (or willfully)* presents a false or fraudulent claim for payment of a loss or benefit or knowingly (or willfully)* presents false information in an application for insurance is guilty of a crime and may be subject to fines and confinement in prison. * Applies in MD Only.\nApplicable in CO: It is unlawful to knowingly provide false, incomplete, or misleading facts or information to an insurance company for the purpose of defrauding or attempting to defraud the company. Penalties may include imprisonment, fines, denial of insurance and civil damages. Any insurance company or agent of an insurance company who knowingly provides false, incomplete, or misleading facts or information to a policyholder or claimant for the purpose of defrauding or attempting to defraud the policyholder or claimant with regard to a settlement or award payable from insurance proceeds shall be reported to the Colorado Division of Insurance within the Department of Regulatory Agencies.\nApplicable in FL and OK: Any person who knowingly and with intent to injure, defraud, or deceive any insurer files a statement of claim or an application containing any false, incomplete, or misleading information is guilty of a felony (of the third degree) *. * Applies in FL Only.\nApplicable in KS: Any person who, knowingly and with intent to defraud, presents, causes to be presented or prepares with knowledge or belief that it will be presented to or by an insurer, purported insurer, broker or any agent thereof, any written statement as part of, or in support of, an application for the issuance of, or the rating of an insurance policy for personal or commercial insurance, or a claim for payment or other benefit pursuant to an insurance policy for commercial or personal insurance which such person knows to contain materially false information concerning any fact material thereto; or conceals, for the purpose of misleading, information concerning any fact material thereto commits a fraudulent insurance act.\nApplicable in KY, NY, OH and PA: Any person who knowingly and with intent to defraud any insurance company or other person files an application for insurance or statement of claim containing any materially false information or conceals for the purpose of misleading, information concerning any fact material thereto commits a fraudulent insurance act, which is a crime and subjects such person to criminal and civil penalties (not to exceed five thousand dollars and the stated value of the claim for each such violation) *. * Applies in NY Only.\nApplicable in ME, TN, VA and WA: It is a crime to knowingly provide false, incomplete or misleading information to an insurance company for the purpose of defrauding the company. Penalties (may)* include imprisonment, fines and denial of insurance benefits. * Applies in ME Only.\nApplicable in NJ: Any person who includes any false or misleading information on an application for an insurance policy is subject to criminal and civil penalties.\nApplicable in OR: Any person who knowingly and with intent to defraud or solicit another to defraud the insurer by submitting an application containing a false statement as to any material fact may be violating state law.\nApplicable in PR: Any person who knowingly and with the intention of defrauding presents false information in an insurance application, or presents, helps, or causes the presentation of a fraudulent claim for the payment of a loss or any other benefit, or presents more than one claim for the same damage or loss, shall incur a felony and, upon conviction, shall be sanctioned for each violation by a fine of not less than five thousand dollars ($5,000) and not more than ten thousand dollars ($10,000), or a fixed term of imprisonment for three (3) years, or both penalties. Should aggravating circumstances [be] present, the penalty thus established may be increased to a maximum of five (5) years, if extenuating circumstances are present, it may be reduced to a minimum of two (2) years.\nTHE UNDERSIGNED IS AN AUTHORIZED REPRESENTATIVE OF THE APPLICANT AND REPRESENTS THAT REASONABLE INQUIRY HAS BEEN MADE TO OBTAIN THE ANSWERS TO QUESTIONS ON THIS APPLICATION. HE/SHE REPRESENTS THAT THE ANSWERS ARE TRUE, CORRECT AND COMPLETE TO THE BEST OF HIS/HER KNOWLEDGE.\nPRODUCER'S SIGNATURE\nPRODUCER'S NAME (Please Print)\nSTATE PRODUCER LICENSE NO (Required in Florida)\nOlivia Park\nOlivia Park\nMISP1234\nAPPLICANT'S SIGNATURE\nDATE\nNATIONAL PRODUCER NUMBER\nSunflower Seeds\n11/05/2026\nMISP9876\nACORD 125 (2016/03)\nPage 4 of 4 :unselected: :unselected: :unselected: :unselected: :unselected:",
+
+
+final output.json 
+{
+  "General Information": {
+    "Date": "11/05/2025, confidence - 0.974",
+    "Agency": "Meridian Shoreline Insurance Partners, confidence - 0.876",
+    "Carrier": "TBD, confidence - 0.879",
+    "Code": "MSIP-214, confidence - 0.974",
+    "Email Address": "olivia.park@meridianship.com, confidence - 0.925",
+    "Fax": "+1 (555) 214-7802, confidence - 0.937",
+    "Phone": "+1 (555) 214-7802, confidence - 0.949",
+    "Contact Name": "Olivia Park, confidence - 0.968",
+    "total_confidence": 0.9375714285714285
+  },
+  "Policy Information": {
+    "Policy Number": "TBD, confidence - 0.975",
+    "Program Code": "TBD, confidence - 0.98",
+    "Company Policy Or Program Name": "TBD, confidence - 0.982",
+    "Underwriter": "TBD, confidence - 0.961",
+    "Underwriter Office": "TBD, confidence - 0.962",
+    "Proposed Effective Date": "01/01/2026, confidence - 0.763",
+    "Proposed Expiration Date": "01/01/2027, confidence - 0.971",
+    "Billing Plan - Direct": ":unselected:, confidence - 0.683",
+    "Billing Plan - Agency": ":selected:, confidence - 0.976",
+    "Deposit": "$, confidence - 0.727",
+    "Minimum Premium": "$, confidence - 0.637",
+    "Policy Premium": "$, confidence - 0.764",
+    "total_confidence": 0.8647
+  },
+  "Transaction Status": {
+    "Quote": ":selected:, confidence - 0.955",
+    "Bound": ":unselected:, confidence - 0.756",
+    "Change": ":unselected:, confidence - 0.856",
+    "Cancel": ":unselected:, confidence - 0.826",
+    "Issue Policy": ":unselected:, confidence - 0.822",
+    "Renew": ":unselected:, confidence - 0.738",
+    "Date": "11/05/2025, confidence - 0.982",
+    "Time": "6:40 PM, confidence - 0.97, 0.979",
+    "total_confidence": 0.98
+  },
+  "Line of Business": {
+    "Boiler And Machinery": ":unselected:, confidence - 0.685",
+    "Business Auto": ":unselected:, confidence - 0.682",
+    "Business Owners": ":unselected:, confidence - 0.68",
+    "Commercial General Liability": ":unselected:, confidence - 0.623",
+    "Commercial Inland Marine": ":unselected:, confidence - 0.684",
+    "Commercial Property": ":selected:, confidence - 0.975",
+    "Crime": ":unselected:, confidence - 0.701",
+    "Fiduciary Liability": ":unselected:, confidence - 0.433",
+    "Garage And Dealers": ":unselected:, confidence - 0.477",
+    "Liquor Liability": ":unselected:, confidence - 0.479",
+    "Truckers": ":unselected:, confidence - 0.468",
+    "Umbrella": ":unselected:, confidence - 0.489",
+    "total_confidence": 0.6269999999999999
+  },
+  "Premiums": {
+    "Business Auto Premium": "$, confidence - 0.494",
+    "Commercial General Liability Premium": "$, confidence - 0.472",
+    "Commercial Property Premium": "$ TBD, confidence - 0.562",
+    "Other Lob 1 Premium": "$, confidence - 0.305",
+    "Other Lob 2 Premium": "$ $ , confidence - 0.271",
+    "Other Lob 3 Premium": "$ $ , confidence - 0.172",
+    "Other Lob 6 Premium": "$, confidence - 0.527",
+    "total_confidence": 0.40042857142857147
+  },
+  "Attachments": {
+    "Accounts Receivable/Valuable Papers": ":unselected:, confidence - 0.683",
+    "Additional Interest Schedule": ":unselected:, confidence - 0.685",
+    "Additional Premises Information Schedule": ":unselected:, confidence - 0.685",
+    "Apartment Building Supplement": ":unselected:, confidence - 0.685",
+    "Condo Assn Bylaws": ":unselected:, confidence - 0.685",
+    "Contractors Supplement": ":unselected:, confidence - 0.684",
+    "Coverages Schedule": ":unselected:, confidence - 0.672",
+    "Dealers Section": ":unselected:, confidence - 0.673",
+    "Driver Information Schedule": ":unselected:, confidence - 0.673",
+    "Electronic Data Processing Section": ":unselected:, confidence - 0.685",
+    "Glass And Sign Section": ":unselected:, confidence - 0.51",
+    "Hotel/Motel Supplement": ":unselected:, confidence - 0.51",
+    "Installation/Builders Risk Section": ":unselected:, confidence - 0.486",
+    "International Liability Exposure Supplement": ":unselected:, confidence - 0.486",
+    "International Property Exposure Supplement": ":unselected:, confidence - 0.485",
+    "Loss Summary": ":selected:, confidence - 0.487",
+    "Open Cargo Section": ":unselected:, confidence - 0.486",
+    "Premium Payment Supplement": ":unselected:, confidence - 0.486",
+    "Professional Liability Supplement": ":unselected:, confidence - 0.486",
+    "Restraunt/Tavern Supplement": ":unselected:, confidence - 0.487",
+    "Statement/Schedule Of Values": ":unselected:, confidence - 0.486",
+    "State Supplement": ":unselected:, confidence - 0.487",
+    "Vacant Building Supplement": ":unselected:, confidence - 0.486",
+    "Vehicle Schedule": ":unselected:, confidence - 0.529"
+  },
+  "Broker/Producer": {
+    "Producer's Signature": "Olivia Park, confidence - 0.245",
+    "Producer's Name (Please Print)": "Olivia Park, confidence - 0.355"
+  },
+  "Insured": {
+    "Name And Mailing Address": "Sunflower Property Group LLC (dba Cruise Mall)\nDockside Plaza, 210 Oceanfront Lane, Seabreeze, FL 33107, confidence - 0.914",
+    "Corporation": ":unselected:, confidence - 0.684",
+    "Corporation 2": ":unselected:, confidence - 0.662",
+    "Corporation 3": ":unselected:, confidence - 0.659",
+    "Individual": ":unselected:, confidence - 0.703",
+    "Individual 2": ":unselected:, confidence - 0.685",
+    "Individual 3": ":unselected:, confidence - 0.674",
+    "Joint Venture": ":unselected:, confidence - 0.525",
+    "Joint Venture 2": ":unselected:, confidence - 0.629",
+    "Joint Venture 3": ":unselected:, confidence - 0.539",
+    "LLC": ":unselected:, confidence - 0.672",
+    "LLC 2": ":unselected:, confidence - 0.672",
+    "LLC 3": ":unselected:, confidence - 0.672",
+    "Not For Profit Org": ":unselected:, confidence - 0.638",
+    "Not For Profit Org 2": ":unselected:, confidence - 0.61",
+    "Partnership": ":unselected:, confidence - 0.684",
+    "Partnership 2": ":unselected:, confidence - 0.673",
+    "Subchapter S Corporation": ":unselected:, confidence - 0.638",
+    "Subchapter S Corporation 2": ":unselected:, confidence - 0.671",
+    "Trust": ":unselected:, confidence - 0.685",
+    "Trust 2": ":unselected:, confidence - 0.689",
+    "Other Corporation": ":unselected:, confidence - 0.619",
+    "Other Corporation 2": ":unselected:, confidence - 0.584",
+    "total_confidence": 0.65825
+  },
+  "Premises Information": {
+    "Premises 1": {
+      "Location": "001, confidence - 0.935",
+      "Street": "STREET Cruise Resort, 100 Harbor View Drive, Seabreeze, FL 33101, confidence - 0.365",
+      "City Limits Inside": ":selected:, confidence - 0.96",
+      "City Limits Outside": ":unselected:, confidence - 0.55",
+      "City Limits Other": ":unselected:, confidence - 0.323",
+      "Interest Owner": ":unselected:, confidence - 0.743",
+      "Interest Tenant": ":unselected:, confidence - 0.682",
+      "Annual Revenues": "$ $40,000,000, confidence - 0.772",
+      "Occupied Area": "SQ FT, confidence - 0.921",
+      "Open To Public Area": "SQ FT, confidence - 0.856",
+      "Total Building Area": "150,000 SQ FT, confidence - 0.806"
+    },
+    "Premises 2": {
+      "City Limits Inside": ":unselected:, confidence - 0.532",
+      "City Limits Outside": ":unselected:, confidence - 0.479",
+      "City Limits Other": ":unselected:, confidence - 0.245",
+      "Interest Owner": ":unselected:, confidence - 0.542",
+      "Interest Tenant": ":unselected:, confidence - 0.669",
+      "Annual Revenues": "$, confidence - 0.484",
+      "Occupied Area": "SQ FT, confidence - 0.454",
+      "Open To Public Area": "SQ FT, confidence - 0.612",
+      "Total Building Area": "SQ FT, confidence - 0.55"
+    },
+    "Premises 3": {
+      "City Limits Inside": ":unselected:, confidence - 0.542",
+      "City Limits Outside": ":unselected:, confidence - 0.484",
+      "City Limits Other": ":unselected:, confidence - 0.304",
+      "Interest Owner": ":unselected:, confidence - 0.666",
+      "Interest Tenant": ":unselected:, confidence - 0.664",
+      "Annual Revenues": "$, confidence - 0.299",
+      "Occupied Area": "SQ FT, confidence - 0.467"
+    },
+    "Premises Info Three Open To Public Area": "SQ FT, confidence - 0.776",
+    "Premises Info Three Total Building Area": "SQ FT, confidence - 0.826",
+    "Premises Info Three Any Area Leased To Others?": "Y, confidence - 0.594",
+    "Premises Info Four City Limits Inside": ":unselected:, confidence - 0.625",
+    "Premises Info Four City Limits Outside": ":unselected:, confidence - 0.527",
+    "Premises Info Four City Limits Other": ":unselected:, confidence - 0.414",
+    "Premises Info Four Interest Owner": ":unselected:, confidence - 0.666",
+    "Premises Info Four Interest Tenant": ":unselected:, confidence - 0.668",
+    "Premises Info Four Annual Revenues": "$, confidence - 0.333",
+    "Premises Info Four Occupied Area": "SQ FT, confidence - 0.808",
+    "Premises Info Four Open To Public Area": "SQ FT, confidence - 0.877",
+    "Premises Info Four Total Building Area": "SQ FT, confidence - 0.948",
+    "Premises Info Four Any Area Leased To Others?": "Y, confidence - 0.38",
+    "total_confidence": 0.6493846153846154
+  },
+  "Contact Phones": {
+    "Primary Contact Primary Phone Home": ":unselected:, confidence - 0.965",
+    "Primary Contact Primary Phone Bus": ":unselected:, confidence - 0.959",
+    "Primary Contact Primary Phone Cell": ":unselected:, confidence - 0.961",
+    "Primary Contact Secondary Phone Home": ":unselected:, confidence - 0.958",
+    "Primary Contact Secondary Phone Bus": ":unselected:, confidence - 0.967",
+    "Primary Contact Secondary Phone Cell": ":unselected:, confidence - 0.966",
+    "Secondary Contact Primary Phone Home": ":unselected:, confidence - 0.931",
+    "Secondary Contact Primary Phone Bus": ":unselected:, confidence - 0.96",
+    "Secondary Contact Primary Phone Cell": ":unselected:, confidence - 0.886",
+    "Secondary Contact Secondary Phone Home": ":unselected:, confidence - 0.962",
+    "Secondary Contact Secondary Phone Bus": ":unselected:, confidence - 0.965",
+    "Secondary Contact Secondary Phone Cell": ":unselected:, confidence - 0.812",
+    "total_confidence": 0.9409999999999998
+  },
+  "Nature Of Business": {
+    "Nature Of Business Apartments": ":unselected:, confidence - 0.685",
+    "Nature Of Business Condominiums": ":unselected:, confidence - 0.684",
+    "Nature Of Business Contractor": ":unselected:, confidence - 0.672",
+    "Nature Of Business Institutional": ":unselected:, confidence - 0.685",
+    "Nature Of Business Manufacturing": ":unselected:, confidence - 0.529",
+    "Nature Of Business Office": ":unselected:, confidence - 0.638",
+    "Nature Of Business Restaurant": ":unselected:, confidence - 0.529",
+    "Nature Of Business Retail": ":unselected:, confidence - 0.638",
+    "Nature Of Business Service": ":unselected:, confidence - 0.528",
+    "Nature Of Business Wholesale": ":unselected:, confidence - 0.638",
+    "Date Business Started (Mm/Dd/Yyyy)": "01/01/2008, confidence - 0.982",
+    "Description Of Primary Operations": "sunflower Property Group LLC (dba Cruise Mall) operates a waterfront, regional mixed-use retail and entertainment complex. The landlord provides and maintains the building shell, common areas and core building systems while leasing space to a mix of national anchors, specialty retailers, full?service and quick?service restaurants, a multiplex cinema and family entertainment tenants. On-site property management oversees tenant coordination, facility maintenance, security and parking operations, including centralized HVAC/MEP systems, fire protection, elevators/escalators, loading docks and waste management. Landlord responsibilities include common?area cleaning, landscaping, exterior façade and roof maintenance, tenant fit?out oversight for leased premises, and event permitting for promotional and seasonal activities; tenants manage their own retail and foodservice operations in accordance with lease terms. Special exposures include concentrated foodservice tenant operations, high public footfall in peak seasons, and waterfront weather?related perils., confidence - 0.264",
+    "Installation, Service Or Repair Work": "%, confidence - 0.455",
+    "Off Premises Installation, Service Or Repair Work": "%, confidence - 0.56",
+    "total_confidence": 0.6062142857142858
+  },
+  "Additional Interest": {
+    "Additional Interest Evidence Certificate": ":unselected:, confidence - 0.43",
+    "Additional Interest Evidence Policy": ":unselected:, confidence - 0.486",
+    "Additional Interest Evidence Send Bill": ":unselected:, confidence - 0.36",
+    "Additional Interest Additional Insured": ":unselected:, confidence - 0.758",
+    "Additional Interest Breach Of Warranty": ":unselected:, confidence - 0.684",
+    "Additional Interest Co-Owner": ":unselected:, confidence - 0.742",
+    "Additional Interest Employee As Lessor": ":unselected:, confidence - 0.57",
+    "Additional Interest Leaseback Owner": ":unselected:, confidence - 0.816",
+    "Additional Interest Lienholder": ":unselected:, confidence - 0.758",
+    "Additional Interest Loss Payee": ":unselected:, confidence - 0.679",
+    "Additional Interest Mortgagee": ":unselected:, confidence - 0.677",
+    "Additional Interest Owner": ":unselected:, confidence - 0.677",
+    "Additional Interest Registrant": ":unselected:, confidence - 0.675",
+    "Additional Interest Lender'S Loss Payable": ":unselected:, confidence - 0.685",
+    "Additional Interest Trustee": ":unselected:, confidence - 0.685",
+    "total_confidence": 0.6454666666666669
+  },
+  "Signatures and Producer Information": {
+    "Signature": "in AZ, CA, DE, KS, MA, MN, ND, NY, OR, VA, or WV. Specific ACORD 38s are available for applicants in these states.) (Applicant's\nSS\nApplicable in AL, AR, DC, LA, MD, NM, RI and WV: Any person who knowingly (or willfully)* presents a false or fraudulent claim for payment of a loss or benefit or knowingly (or willfully)* presents false information in an application for insurance is guilty of a crime and may be subject to fines and confinement in prison. * Applies in MD Only.\nApplicable in CO: It is unlawful to knowingly provide false, incomplete, or misleading facts or information to an insurance company for the purpose of defrauding or attempting to defraud the company. Penalties may include imprisonment, fines, denial of insurance and civil damages. Any insurance company or agent of an insurance company who knowingly provides false, incomplete, or misleading facts or information to a policyholder or claimant for the purpose of defrauding or attempting to defraud the policyholder or claimant with regard to a settlement or award payable from insurance proceeds shall be reported to the Colorado Division of Insurance within the Department of Regulatory Agencies.\nApplicable in FL and OK: Any person who knowingly and with intent to injure, defraud, or deceive any insurer files a statement of claim or an application containing any false, incomplete, or misleading information is guilty of a felony (of the third degree) *. * Applies in FL Only.\nApplicable in KS: Any person who, knowingly and with intent to defraud, presents, causes to be presented or prepares with knowledge or belief that it will be presented to or by an insurer, purported insurer, broker or any agent thereof, any written statement as part of, or in support of, an application for the issuance of, or the rating of an insurance policy for personal or commercial insurance, or a claim for payment or other benefit pursuant to an insurance policy for commercial or personal insurance which such person knows to contain materially false information concerning any fact material thereto; or conceals, for the purpose of misleading, information concerning any fact material thereto commits a fraudulent insurance act.\nApplicable in KY, NY, OH and PA: Any person who knowingly and with intent to defraud any insurance company or other person files an application for insurance or statement of claim containing any materially false information or conceals for the purpose of misleading, information concerning any fact material thereto commits a fraudulent insurance act, which is a crime and subjects such person to criminal and civil penalties (not to exceed five thousand dollars and the stated value of the claim for each such violation) *. * Applies in NY Only.\nApplicable in ME, TN, VA and WA: It is a crime to knowingly provide false, incomplete or misleading information to an insurance company for the purpose of defrauding the company. Penalties (may)* include imprisonment, fines and denial of insurance benefits. * Applies in ME Only.\nApplicable in NJ: Any person who includes any false or misleading information on an application for an insurance policy is subject to criminal and civil penalties.\nApplicable in OR: Any person who knowingly and with intent to defraud or solicit another to defraud the insurer by submitting an application containing a false statement as to any material fact may be violating state law.\nApplicable in PR: Any person who knowingly and with the intention of defrauding presents false information in an insurance application, or presents, helps, or causes the presentation of a fraudulent claim for the payment of a loss or any other benefit, or presents more than one claim for the same damage or loss, shall incur a felony and, upon conviction, shall be sanctioned for each violation by a fine of not less than five thousand dollars ($5,000) and not more than ten thousand dollars ($10,000), or a fixed term of imprisonment for three (3) years, or both penalties. Should aggravating circumstances [be] present, the penalty thus established may be increased to a maximum of five (5) years, if extenuating circumstances are present, it may be reduced to a minimum of two (2) years.\nTHE UNDERSIGNED IS AN AUTHORIZED REPRESENTATIVE OF THE APPLICANT AND REPRESENTS THAT REASONABLE INQUIRY HAS BEEN MADE TO OBTAIN THE ANSWERS TO QUESTIONS ON THIS APPLICATION. HE/SHE REPRESENTS THAT THE ANSWERS ARE TRUE, CORRECT AND COMPLETE TO THE BEST OF HIS/HER KNOWLEDGE., confidence - 0",
+    "State Producer Licencse No Required In Florida": "MISP1234, confidence - 0.791",
+    "Applicant'S Signature": "Sunflower Seeds, confidence - 0.149",
+    "Date": "11/05/2026, confidence - 0.98",
+    "National Producer Number": "MISP9876, confidence - 0.865",
+    "total_confidence": 0.557
+  },
+  "Loss History": {
+    "Loss History": "ENTER ALL CLAIMS OR LOSSES (REGARDLESS OF FAULT AND WHETHER OR NOT INSURED) OR OCCURRENCES THAT MAY GIVE RISE TO CLAIMS FOR THE LAST YEARS, confidence - 0.925",
+    "total_confidence": 0.925
+  },
+  "Ownership and Affiliations": {
+    "Is The Applicant A Subsidiary Of Another Entity?": "N, confidence - 0.98",
+    "Does The Applicant Have Any Subsidiaries?": "N, confidence - 0.979",
+    "total_confidence": 0.9795
+  },
+  "Safety Program": {
+    "Is A Formal Safety Program In Operation? Safety Manual": ":unselected:, confidence - 0.975",
+    "Is A Formal Safety Program In Operation? Monthly Meetings": ":unselected:, confidence - 0.976",
+    "Is A Formal Safety Program In Operation? Osha": ":unselected:, confidence - 0.808",
+    "Is A Formal Safety Program In Operation?": "N, confidence - 0.977",
+    "total_confidence": 0.934
+  },
+  "Risk and Insurance History": {
+    "Any Exposure To Flamables, Explosives, Chemicals?": "N, confidence - 0",
+    "Any Other Insurance With This Company?": "N, confidence - 0.973",
+    "Any Policy Or Coverage Declined, Cancelled Or Non-Renewed During The Prior Three Years For Any Premises Or Operations?": "N, confidence - 0.973",
+    "Reason For Policy Declined In Prior Three Years - Non-Payment": ":unselected:, confidence - 0.975",
+    "Reason For Policy Declined In Prior Three Years - Non-Renewal": ":unselected:, confidence - 0.946",
+    "Reason For Policy Declined In Prior Three Years - Agent No Longer Represents Carrier": ":unselected:, confidence - 0.972",
+    "Reason For Policy Declined In Prior Three Years - Condition Corrected": ":unselected:, confidence - 0.96",
+    "Any Past Losses Or Claims Relating To Sexual Abuse Or Molestation Allegations, Discrimination Or Negligent Hiring? Y/N": "N, confidence - 0.547",
+    "Has Applicant Had A Judgement Or Lien During The Last Five Years? Resolve Date 1": "N, confidence - 0.159",
+    "total_confidence": 0.7227777777777777
+  },
+  "Business Ventures": {
+    "Does Applicant Have Other Business Ventures For Which Coverage Is Not Requested?": "N, confidence - 0",
+    "Does Applicant Own/Lease/Operate Any Drones? Y/N": "N, confidence - 0.653",
+    "Does Applicant Hire Others To Operate Drones? Y/N": "N, confidence - 0.806",
+    "total_confidence": 0.48633333333333334
+  },
+  "Prior Carrier Information": {
+    "Year 1": "2025, confidence - 0.546",
+    "General Liability Premium 1": "$, confidence - 0.172",
+    "Automobile Carrier 1": "Atlantic Harbor Insurance Co., confidence - 0.469",
+    "Automobile Policy Number 1": "AH-CR-2025-001, confidence - 0.422",
+    "Automobile Premium 1": "$, confidence - 0.198",
+    "Automobile Effective Date 1": "2025-01-01, confidence - 0.37",
+    "Automobile Expiration Date 1": "2025-12-31, confidence - 0.473",
+    "Property Carrier 1": "Coast Mutual Insurance, confidence - 0.124",
+    "Property Premium 1": "$ 210,000, confidence - 0.415",
+    "Other Premium 1": "$, confidence - 0.119"
+  },
+  "Document_Confidence_Score": 0.9356193969030165
+}
+
+
+
+
+
+
+
+
+
+
+
+
+code
+
+final_processor.py
+
+
+
+
+import os
+import json
+from dotenv import load_dotenv
+from openai import AzureOpenAI
+
+# ------------------ CONFIG ------------------
+load_dotenv()
+
+client = AzureOpenAI(
+    azure_endpoint=os.getenv("AZURE_OPENAI_ENDPOINT"),
+    api_key=os.getenv("AZURE_OPENAI_API_KEY"),
+    api_version="2024-05-01-preview"
+)
+
+MODEL = os.getenv("AZURE_OPENAI_CHAT_DEPLOYMENT")
+CONFIDENCE_THRESHOLD = 0.5
+# OUTPUT_FILE = "final_output.json"
+output_dir = os.path.join(os.getcwd(), "output")
+INPUT_FILE = os.path.join(output_dir, "output.json")
+
+os.makedirs(output_dir, exist_ok=True)
+OUTPUT_FILE = os.path.join(output_dir, "final_output.json")
+MAX_CHARS = 12000
+
+
+def chunk_text(text, max_chars=MAX_CHARS):
+    """Split long text into safe chunks for OpenAI input."""
+    chunks, current, length = [], [], 0
+    for line in text.splitlines():
+        if length + len(line) > max_chars:
+            chunks.append("\n".join(current))
+            current, length = [], 0
+        current.append(line)
+        length += len(line)
+    if current:
+        chunks.append("\n".join(current))
+    return chunks
+
+
+#New Subham's code
+def clean_field_name(name: str) -> str:
+    """Remove prefixes like 'LOB - ' and normalize casing."""
+    name = name.replace("LOB -", "").strip()
+    return name.title()
+
+#New Subham's code
+def simplify_fields(raw_json):
+    """Simplify Azure Doc Intelligence output with confidence preserved."""
+    simplified = {}
+    docs = raw_json.get("documents", [])
+    if not docs:
+        return simplified
+
+    for doc in docs:
+        for key, value in doc.get("fields", {}).items():
+            val = value.get("valueString") or value.get("content") or value.get("valueBoolean")
+            conf = value.get("confidence", None)
+            if val in [None, ""]:
+                continue
+            cleaned_key = clean_field_name(key)
+            simplified[cleaned_key] = {"value": val, "confidence": conf}
+    return simplified
+
+
+
+#New Subham's code
+def build_prompt(cleaned_data):
+    """Structured prompt for GPT (dynamic grouping)."""
+    return f"""
+You are a JSON data formatter. The following JSON is the output from Azure Document Intelligence for an ACORD insurance form.
+
+Return only valid JSON (no commentary, no markdown, no explanations).
+
+Requirements:
+1. Group fields logically (Line of Business, Policy, Broker, Insured, Address, etc.) based on semantic context. 
+   The grouping is flexible — create categories as needed.
+2. Each field must show its value and confidence exactly as in the input JSON, e.g.:
+   "Field Name": "Value, confidence - 0.87"
+   Do not recalculate or lower confidence values.
+3. If a field is repeated, include all instances under the most relevant group.
+4. Combine split tokens like ["6:00", "AM"] → "6:00 AM".
+5. Do not compute averages — Python will handle total_confidence and overall_total_confidence.
+
+Cleaned JSON input:
+{json.dumps(cleaned_data, indent=2)}
+"""
+
+
+
+
+#New Subham's code
+
+def process_chunk(chunk):
+    """Send one chunk to GPT and ensure JSON-only output."""
+    response = client.chat.completions.create(
+        model=MODEL,
+        temperature=0,
+        messages=[
+            {"role": "system", "content": "You are a precise document understanding assistant that outputs only JSON."},
+            {"role": "user", "content": build_prompt(chunk)},
+        ]
+    )
+
+    text = response.choices[0].message.content.strip()
+    try:
+        start = text.find("{")
+        end = text.rfind("}") + 1
+        json_text = text[start:end]
+        return json.loads(json_text)
+    except Exception:
+        print("⚠️ Warning: GPT output not clean JSON. Attempting recovery.")
+        return {"error": "Invalid JSON returned", "raw_output": text}
+
+
+
+
+
+#New Subham's code
+def calculate_overall_confidence(original_json):
+    """Calculate overall average confidence directly from original JSON."""
+    def extract_confidences(obj):
+        confidences = []
+        if isinstance(obj, dict):
+            for key, value in obj.items():
+                if key == "confidence" and isinstance(value, (int, float)):
+                    confidences.append(value)
+                else:
+                    confidences.extend(extract_confidences(value))
+        elif isinstance(obj, list):
+            for item in obj:
+                confidences.extend(extract_confidences(item))
+        return confidences
+
+    confidences = extract_confidences(original_json)
+    if confidences:
+        return sum(confidences) / len(confidences)
+    return None
+
+def add_confidence_averages(grouped_data, original_data):
+    """Compute total_confidence per group using original JSON confidence values."""
+    confidence_lookup = {clean_field_name(k): v.get("confidence") for k, v in original_data.items()}
+
+    for group, fields in grouped_data.items():
+        if not isinstance(fields, dict):
+            continue
+        confidences = []
+        for field in fields.keys():
+            if field in confidence_lookup and confidence_lookup[field] is not None:
+                confidences.append(confidence_lookup[field])
+        if confidences:
+            avg_conf = sum(confidences) / len(confidences)
+            grouped_data[group]["total_confidence"] = avg_conf
+    return grouped_data
+
+def process_azure_output(json_data):
+    """Process entire Doc Intelligence JSON with GPT grouping + confidence math."""
+    simplified = simplify_fields(json_data)
+    text_data = json.dumps(simplified, indent=2)
+    chunks = chunk_text(text_data)
+    final_combined = {}
+
+    for chunk in chunks:
+        result = process_chunk(chunk)
+        if isinstance(result, dict):
+            for k, v in result.items():
+                if k in final_combined and isinstance(v, dict):
+                    final_combined[k].update(v)
+                else:
+                    final_combined[k] = v
+
+    # Add group averages
+    final_combined = add_confidence_averages(final_combined, simplified)
+
+    # Add overall average from original JSON
+    overall_avg = calculate_overall_confidence(json_data)
+    if overall_avg is not None:
+        final_combined["Document_Confidence_Score"] = overall_avg
+
+    with open(OUTPUT_FILE, "w", encoding="utf-8") as f:
+        json.dump(final_combined, f, indent=2, ensure_ascii=False)
+
+    print(f"✅ Clean JSON written to {OUTPUT_FILE}")
+    return final_combined
+
+# ------------------ MAIN ------------------
+if __name__ == "__main__":
+
+    json_path = os.path.join("output","output.json")
+    with open(INPUT_FILE, "r", encoding="utf-8") as f:
+        raw_json = json.load(f)
+
+    process_azure_output(raw_json)
+
+
+
+
+
+
+image processor.py
+
+
+import os
+import json
+import uuid
+import re
+from datetime import datetime
+from dotenv import load_dotenv
+
+from azure.core.credentials import AzureKeyCredential
+from azure.ai.documentintelligence import DocumentIntelligenceClient
+from azure.storage.blob.aio import BlobServiceClient
+from azure.core.exceptions import ResourceNotFoundError
+
+from service import _require_env, get_env_values, AZURE_STORAGE_CONNECTION_STRING, _parse_blob_url
+from final_processor import process_azure_output  # Importing the final processor function
+
+load_dotenv()
+
+
+def collect_total_confidences(obj, out_list):
+    """
+    Recursively search obj (dict/list) and append any numeric values found under
+    keys named 'total_confidence' to out_list.
+    """
+    if isinstance(obj, dict):
+        for k, v in obj.items():
+            if k == "total_confidence":
+                # Accept ints/floats only
+                try:
+                    # If it's already numeric (int/float), use directly; else try to convert
+                    if isinstance(v, (int, float)):
+                        out_list.append(float(v))
+                    else:
+                        out_list.append(float(v))
+                except Exception:
+                    # ignore non-convertible values
+                    pass
+            else:
+                collect_total_confidences(v, out_list)
+    elif isinstance(obj, list):
+        for item in obj:
+            collect_total_confidences(item, out_list)
+    # other types ignored
+
+
+async def analyze_file_async(bloburl: str) -> dict:
+    """
+    Download the PDF from bloburl, analyze it with Azure Document Intelligence,
+    save the JSON locally inside ./output/output.json,
+    read the JSON from the file, process it with final_processor.py,
+    compute Document_Confidence_Score and append it to the final JSON,
+    and upload the final JSON to Azure Blob Storage.
+
+    The uploaded final JSON filename will be in this format:
+      <Reference>_attachment_<OriginalFileNameWithoutExtension>_extraction_<YYYYMMDD_HHMMSS>.json
+    """
+
+    try:
+        _require_env()
+    except Exception as e:
+        return {"status": False, "error": str(e)}
+
+    endpoint, key, model_id = get_env_values()
+
+    try:
+        src_container, src_blob = _parse_blob_url(bloburl)
+    except Exception as e:
+        return {"status": False, "error": f"Invalid BlobUrl: {e}"}
+
+    source_file_name = os.path.basename(src_blob) if src_blob else "unknown.pdf"
+    source_file_name = os.path.basename(source_file_name)
+
+    if not AZURE_STORAGE_CONNECTION_STRING:
+        return {"status": False, "error": "Missing AZURE_STORAGE_CONNECTION_STRING in .env"}
+
+    try:
+        async with BlobServiceClient.from_connection_string(AZURE_STORAGE_CONNECTION_STRING) as blob_service:
+            container_client = blob_service.get_container_client(src_container)
+            blob_client = container_client.get_blob_client(src_blob)
+            try:
+                await blob_client.get_blob_properties()
+            except ResourceNotFoundError:
+                return {"status": False, "error": f"PDF blob not found: container='{src_container}', blob='{src_blob}'"}
+
+            stream = await blob_client.download_blob()
+            pdf_bytes = await stream.readall()
+    except Exception as e:
+        return {"status": False, "error": f"Error downloading PDF from Blob Storage: {e}"}
+
+    input_dir = os.path.join(os.getcwd(), "input")
+    os.makedirs(input_dir, exist_ok=True)
+
+    input_path = os.path.join(input_dir, source_file_name)
+
+    try:
+        with open(input_path, "wb") as wf:
+            wf.write(pdf_bytes)
+    except Exception as e:
+        return {"status": False, "error": f"Failed to write local input file '{input_path}': {e}"}
+
+    print("Connecting to Azure Document Intelligence service...")
+    try:
+        client = DocumentIntelligenceClient(
+            endpoint=endpoint,
+            credential=AzureKeyCredential(key)
+        )
+    except Exception as e:
+        return {"status": False, "error": f"Failed to create DocumentIntelligenceClient: {e}"}
+
+    print(f"Analyzing '{source_file_name}' using model '{model_id}'...")
+    try:
+        with open(input_path, "rb") as f:
+            poller = client.begin_analyze_document(model_id=model_id, body=f)
+            result = poller.result()
+    except Exception as e:
+        return {"status": False, "error": f"Error during document analysis: {e}"}
+
+    output_dir = os.path.join(os.getcwd(), "output")
+    os.makedirs(output_dir, exist_ok=True)
+    output_path = os.path.join(output_dir, "output.json")
+
+    # Save the raw JSON to output.json
+    json_data = result.as_dict()
+    try:
+        with open(output_path, "w", encoding="utf-8") as wf:
+            json.dump(json_data, wf, indent=2, ensure_ascii=False)
+    except Exception as e:
+        return {"status": False, "error": f"Failed to save local output.json: {e}"}
+
+    # Read the JSON from output.json and process it using final_processor.py
+    try:
+        with open(output_path, "r", encoding="utf-8") as rf:
+            raw_json = json.load(rf)  # Load JSON from the file
+        final_output = process_azure_output(raw_json)  # Process the JSON
+
+    #     # -------------------------
+    #     # Compute Document_Confidence_Score (average of all total_confidence)
+    #     # -------------------------
+    #     confidences = []
+    #     collect_total_confidences(final_output, confidences)
+
+    #     if confidences:
+    #         avg = sum(confidences) / len(confidences)
+    #         avg_rounded = round(avg, 3)
+    #     else:
+    #         # If none found, set to 0.0 (you can change to None if you prefer)
+    #         avg_rounded = 0.0
+
+    #     # Add the field at the end of the JSON
+    #     final_output["Document_Confidence_Score"] = avg_rounded
+
+        # Save processed final output locally
+        final_output_path = os.path.join(output_dir, "final_output.json")
+        with open(final_output_path, "w", encoding="utf-8") as wf:
+            json.dump(final_output, wf, indent=2, ensure_ascii=False)
+
+    except Exception as e:
+        return {"status": False, "error": f"Failed to process JSON with final_processor.py: {e}"}
+
+    # ------------------------
+    # Build the target blob name in the desired format:
+    # <Reference>_attachment_<OriginalFileNameNoExt>_extraction_<YYYYMMDD_HHMMSS>.json
+    # ------------------------
+
+    base_name_no_ext = os.path.splitext(source_file_name)[0]  # e.g. "19A81973900C46C9_attachment_Acord_125"
+
+    ref_part = None
+    file_part = None
+
+    # Preferred pattern: "<ref>_attachment_<filename>"
+    if "_attachment_" in base_name_no_ext:
+        try:
+            ref_part, file_part = base_name_no_ext.split("_attachment_", 1)
+            ref_part = (ref_part or "").strip()
+            file_part = (file_part or "").strip()
+        except Exception:
+            ref_part = None
+            file_part = None
+
+    # Fallback: take first token as ref and rest as filename
+    if not ref_part or not file_part:
+        tokens = base_name_no_ext.split("_", 1)
+        if len(tokens) == 2:
+            ref_part, file_part = tokens[0].strip(), tokens[1].strip()
+        else:
+            # last fallback: use a uuid as reference and keep the whole base as filename
+            ref_part = uuid.uuid4().hex[:16]
+            file_part = base_name_no_ext
+
+    # IMPORTANT: Keep underscores in filename exactly as received (Acord_125)
+    # Minimal sanitization: allow only alphanumeric, underscore, and hyphen in both parts
+    ref_part = re.sub(r"[^A-Za-z0-9_-]", "", ref_part)
+    file_part = re.sub(r"[^A-Za-z0-9_-]", "", file_part)
+
+    timestamp = datetime.utcnow().strftime("%Y%m%d_%H%M%S")
+
+    output_container = "output-results"
+    target_blob_name = f"{ref_part}_attachment_{file_part}_extraction_{timestamp}.json"
+
+    # ------------------------
+    # Upload the final_output.json to Azure Blob Storage with the new name
+    # ------------------------
+    try:
+        async with BlobServiceClient.from_connection_string(AZURE_STORAGE_CONNECTION_STRING) as blob_service:
+            out_container_client = blob_service.get_container_client(output_container)
+            try:
+                # create will raise if exists — ignore
+                await out_container_client.create_container()
+            except Exception:
+                pass  # container likely exists; ignore
+
+            out_blob_client = out_container_client.get_blob_client(target_blob_name)
+
+            with open(final_output_path, "rb") as data:
+                await out_blob_client.upload_blob(data, overwrite=True)
+    except Exception as e:
+        return {"status": False, "error": f"Failed to upload final_output.json to output-results: {e}"}
+
+    # Build final URL to return (same style you were using)
+    parsed = bloburl.split("://", 1)[-1]
+    account_and_rest = parsed.split("/", 1)[0]
+    final_output_blob_url = f"https://{account_and_rest}/{output_container}/{target_blob_name}"
+
+    print(f"Final JSON saved locally and uploaded to: {final_output_blob_url}")
+
+    return {
+        "source_file": source_file_name,
+        "final_output_blob_url": final_output_blob_url,
+        "Document_Confidence_Score": final_output.get("Document_Confidence_Score") #added this line 
+    }
+
+
+async def process_input_folder_on_startup() -> None:
+    """Background startup function — checks ./input for any PDFs and logs them."""
+    try:
+        input_dir = os.path.join(os.getcwd(), "input")
+        if not os.path.exists(input_dir):
+            return
+
+        files = [f for f in os.listdir(input_dir) if f.lower().endswith(".pdf")]
+        if not files:
+            return
+
+        for pdf in files:
+            print(f"[startup] Found local PDF in ./input: {pdf} — no automatic processing.")
+    except Exception as e:
+        print(f"[startup] process_input_folder_on_startup error: {e}")
+        return
+
+main.py
+
+
+from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi_mcp import FastApiMCP
+import uvicorn
+from contextlib import asynccontextmanager
+import asyncio
+import os
+
+from router import router as document_router
+from image_processor import process_input_folder_on_startup
+
+async def _start_processing_task() -> None:
+    """
+    Create and store a background task that runs the processor once at startup.
+    This returns the created task (already scheduled).
+    """
+    task = asyncio.create_task(process_input_folder_on_startup())
+    return task
+
+async def _stop_processing_task(task: asyncio.Task) -> None:
+    """
+    Cancel and await the background task if it's still running.
+    """
+    if task and not task.done():
+        task.cancel()
+        try:
+            await task
+        except Exception:
+            pass
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    try:
+        app.state.processing_task = await _start_processing_task()
+    except Exception:
+        app.state.processing_task = None
+
+    yield
+
+    task = getattr(app.state, "processing_task", None)
+    if task:
+        await _stop_processing_task(task)
+
+app = FastAPI(lifespan=lifespan)
+
+def apply_cors(app: FastAPI):
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=["*"],
+        allow_methods=["*"],
+        allow_headers=["*"],
+    )
+
+def create_sub_app(title: str, description: str, version: str = "0.1.0") -> FastAPI:
+    sub_app = FastAPI(title=title, description=description, version=version, lifespan=lifespan)
+    apply_cors(sub_app)
+    return sub_app
+
+apply_cors(app)
+
+document_extractor_app = create_sub_app(
+    title="document_extract_mcp",
+    description="Analyze documents in blob storage using Azure Form Recognizer and return structured results"
+)
+
+document_extractor_app.include_router(document_router)
+FastApiMCP(document_extractor_app, include_operations=["document_extract_mcp"]).mount_http()
+
+app.mount("/api/v1/email_intent_agent", document_extractor_app)
+
+
+if __name__ == "__main__":
+    host = os.getenv("HOST", "0.0.0.0")
+    port = int(os.getenv("PORT", "8202"))
+    uvicorn.run(app, host=host, port=port)
+
+
+
+router.py
+
+
+from dotenv import load_dotenv
+load_dotenv()
+
+from fastapi import APIRouter
+from fastapi.responses import JSONResponse
+from pydantic import BaseModel, Field, validator
+
+from image_processor import analyze_file_async
+
+router = APIRouter()
+
+
+class DocumentExtractMCP(BaseModel):
+    """Trigger document extraction for a PDF file located in blob storage."""
+    AgentName: str = Field(
+        default="DocumentExtractAgent",
+        description="The unique agent name of the agent that is being called"
+    )
+    BlobUrl: str = Field(
+        ...,
+        description="Required: full blob URL (https://...) or container/blob path (container/path/to/file.pdf) to analyze"
+    )
+
+    @validator("BlobUrl")
+    def bloburl_must_not_be_empty(cls, v: str) -> str:
+        if not v or not v.strip():
+            raise ValueError("BlobUrl must be a non-empty string pointing to the blob (full URL or container/blob path).")
+        return v.strip()
+
+
+@router.post("/document_extract_mcp", operation_id="document_extract_mcp")
+async def document_extract_mcp(p_body: DocumentExtractMCP):
+    """
+    Analyze a PDF from Azure Blob storage using image_processor.analyze_file_async and
+    return the analyzer's structured result.
+
+    Body:
+
+        AgentName (str): Agent name (optional)
+
+        BlobUrl (str): Required full blob URL or container/blob path.
+    """
+    try:
+        result = await analyze_file_async(bloburl=p_body.BlobUrl)
+
+        return JSONResponse(content={
+            "jsonrpc": "2.0",
+            "id": 1,
+            "result": result
+        })
+
+    except Exception as e:
+        return JSONResponse(status_code=500, content={"error": f"Extraction failed: {e}"})
+
+
+
+service.py
+
+
+import os
+from urllib.parse import urlparse, unquote
+from dotenv import load_dotenv
+
+load_dotenv()
+
+ENDPOINT = os.getenv("ENDPOINT", "")
+KEY = os.getenv("KEY", "")
+MODEL_ID = os.getenv("MODEL_ID", "")
+AZURE_STORAGE_CONNECTION_STRING = os.getenv("AZURE_STORAGE_CONNECTION_STRING", "")
+
+
+def _require_env() -> None:
+    """Ensure required environment variables exist."""
+    if not (ENDPOINT and KEY and MODEL_ID):
+        raise RuntimeError("Missing ENDPOINT, KEY, or MODEL_ID in .env file.")
+    if not AZURE_STORAGE_CONNECTION_STRING:
+        raise RuntimeError("Missing AZURE_STORAGE_CONNECTION_STRING in .env file.")
+
+
+def get_env_values():
+    """Return endpoint, key, model_id"""
+    return ENDPOINT, KEY, MODEL_ID
+
+
+def _parse_blob_url(url: str) -> tuple[str, str]:
+    """
+    Parse an Azure Blob URL and return (container_name, blob_path).
+    Example URL:
+      https://account.blob.core.windows.net/output-results/folder/name.json
+    Returns:
+      ("output-results", "folder/name.json")
+    """
+    parsed = urlparse(url)
+    if not parsed.scheme.startswith("http"):
+        raise ValueError("BlobUrl must be a valid http(s) URL to Azure Blob Storage.")
+    path = parsed.path.lstrip("/")
+    if "/" not in path:
+        raise ValueError("BlobUrl must include both container and blob path.")
+    parts = path.split("/", 1)
+    container = parts[0]
+    blob_path = parts[1]
+    return unquote(container), unquote(blob_path)
+
+
+test_scripts.py
+
+# import requests
+# import json
+
+# BASE_URL = "http://localhost:8602/api/v1/document_agent/Document_Analyzer_MCP"
+
+# def run_test():
+#     payload = {
+      
+#        "pdfurl": "https://agenticai1.blob.core.windows.net/attachment-downloader/Acord_125_FILLED.pdf"
+
+#     }
+#     try:
+#         resp = requests.post(BASE_URL, json=payload, timeout=120)
+#         print("HTTP Status:", resp.status_code)
+#         try:
+#             data = resp.json()
+#             print(json.dumps(data, indent=4))
+#         except json.JSONDecodeError:
+#             print("Response not JSON:", resp.text)
+#     except Exception as e:
+#         print("Error calling API:", str(e))
+
+# if __name__ == "__main__":
+#     print("Testing /Document_Analyzer_MCP ...")
+#     run_test()
+
+
+
+# import requests
+# import json
+# import os
+
+# # Adjust host/port if you changed them in main.py .env
+# BASE_URL = os.getenv("DOC_EXTRACT_BASE_URL", "http://localhost:8502")
+# ENDPOINT = f"{BASE_URL}/api/v1/email_intent_agent/document_extract_mcp"
+
+# def run_test():
+#     payload = {
+#         "AgentName": "DocumentExtractAgent",
+#         # Replace with a real accessible PDF blob URL in your storage account
+#         "BlobUrl": "https://agenticai1.blob.core.windows.net/attachment-downloader/Acord_125_FILLED.pdf"
+#     }
+#     try:
+#         resp = requests.post(ENDPOINT, json=payload, timeout=180)
+#         print("HTTP Status:", resp.status_code)
+#         try:
+#             data = resp.json()
+#             print(json.dumps(data, indent=4))
+#         except json.JSONDecodeError:
+#             print("Response not JSON:", resp.text)
+#     except Exception as e:
+#         print("Error calling API:", str(e))
+
+# if __name__ == "__main__":
+#     print("Testing /document_extract_mcp ...")
+#     run_test()
+
+
+
+import requests
+import json
+import os
+
+# Adjust host/port if you changed them in main.py .env
+BASE_URL = os.getenv("DOC_EXTRACT_BASE_URL", "http://localhost:8202")
+ENDPOINT = f"{BASE_URL}/api/v1/email_intent_agent/document_extract_mcp"
+
+def run_test():
+    payload = {
+        "AgentName": "DocumentExtractAgent",
+        # Replace with a real accessible PDF blob URL in your storage account
+        "BlobUrl": "https://agenticai1.blob.core.windows.net/sanctioncheck/19AC3EFE6607246C_attachment_DummyAcord125CommInsApp_01.pdf"
+
+    }
+    try:
+        resp = requests.post(ENDPOINT, json=payload, timeout=180)
+        print("HTTP Status:", resp.status_code)
+        try:
+            data = resp.json()
+            print(json.dumps(data, indent=4))
+        except json.JSONDecodeError:
+            print("Response not JSON:", resp.text)
+    except Exception as e:
+        print("Error calling API:", str(e))
+
+if __name__ == "__main__":
+    print("Testing /document_extract_mcp ...")
+    run_test()
+
+
+
+
