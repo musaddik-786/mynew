@@ -1,0 +1,314 @@
+"""
+This script trains a Linear Regression model on ANY dataset.
+
+Every line is explained clearly.
+
+HOW TO USE:
+1. Change CSV_PATH to your dataset
+2. Change TARGET_COL to the column you want to predict
+3. Change DROP_COLS to columns you want to remove
+4. Update SAMPLE_INPUT for prediction
+"""
+
+import pandas as pd        # For loading CSV and working with tables
+import numpy as np         # For mathematical operations (arrays, numbers)
+
+# These are ML tools from sklearn
+from sklearn.model_selection import train_test_split       # Split data into train/test
+from sklearn.linear_model import LinearRegression          # ML algorithm
+from sklearn.preprocessing import StandardScaler           # Feature scaling
+from sklearn.metrics import (mean_absolute_error,          # Evaluation metrics
+                             mean_absolute_percentage_error,
+                             mean_squared_error,
+                             r2_score)
+
+import matplotlib.pyplot as plt   # For plotting graphs (optional)
+import pickle                     # For saving model to file
+import os                         # For checking file paths
+
+# =========================================================
+# 1. CONFIGURATION (CHANGE THESE)
+# =========================================================
+
+CSV_PATH = "/path/to/your/data.csv"
+"""
+This is where your CSV file exists.
+You MUST change this to your dataset path.
+"""
+
+TARGET_COL = "mpg"
+"""
+This is the column we want to PREDICT.
+Example:
+- mpg in Auto MPG dataset
+- price in house price dataset
+"""
+
+DROP_COLS = ["car name"]
+"""
+Columns to remove from dataset.
+Usually text columns or IDs which ML cannot use.
+"""
+
+MODEL_PATH = "/path/to/save/model.pkl"
+"""
+Where the trained model will be saved.
+"""
+
+TEST_SIZE = 0.2
+"""
+20% data will be used for testing.
+"""
+
+RANDOM_STATE = 42
+"""
+Helps ensure results remain same every run.
+"""
+
+# =========================================================
+# 2. LOAD DATA
+# =========================================================
+
+print("Loading dataset...")
+df = pd.read_csv(CSV_PATH)
+"""
+pd.read_csv = read a CSV file and convert it into a DataFrame (table).
+df = dataframe containing dataset
+"""
+
+print("\nFirst 5 rows:")
+print(df.head())
+"""
+df.head() shows first 5 rows.
+Purpose: To check dataset loaded correctly.
+"""
+
+print("\nColumn info:")
+print(df.info())
+"""
+df.info() shows:
+- column names
+- data types
+- missing values
+"""
+
+# =========================================================
+# 3. CLEANING THE DATA
+# =========================================================
+
+# Remove unnecessary columns
+for col in DROP_COLS:
+    if col in df.columns:
+        df = df.drop(col, axis=1)
+        print(f"Dropped column: {col}")
+"""
+df.drop removes a column.
+Why drop?
+- Some columns are text or IDs, ML cannot use them.
+- Example: "car name"
+"""
+
+# Replace '?' with NaN because '?' is not a number
+df = df.replace("?", np.nan)
+"""
+Sometimes datasets use '?' instead of blank.
+ML cannot use '?' so we convert '?' → NaN.
+NaN means missing value.
+"""
+
+# Convert any non-numeric columns to numeric if needed
+# (Uncomment and change if your dataset needs it)
+# df["horsepower"] = df["horsepower"].astype(float)
+"""
+Why convert?
+- If 'horsepower' is stored as string like "150", ML cannot use it.
+- We convert it to float.
+"""
+
+# Fill missing numeric values with mean
+for col in df.columns:
+    if df[col].dtype != "object":       # Only numeric columns
+        if df[col].isna().sum() > 0:    # If missing values exist
+            df[col].fillna(df[col].mean(), inplace=True)
+            print(f"Filled NaN in '{col}' using mean.")
+"""
+Why fill NaN?
+ML cannot train on missing values.
+Using mean is a simple and common strategy.
+"""
+
+# If still some missing values remain → drop them
+df = df.dropna()
+"""
+This removes any row with remaining NaN.
+Ensures dataset is fully clean.
+"""
+
+print("\nMissing values after cleaning:")
+print(df.isna().sum())
+"""
+Shows if any column still has missing data.
+"""
+
+# =========================================================
+# 4. SET X AND y
+# =========================================================
+
+# Target (what we want to predict)
+y = df[TARGET_COL]
+"""
+Example:
+If TARGET_COL="mpg", then y contains all mpg values.
+"""
+
+# Features (inputs to the model)
+X = df.drop(TARGET_COL, axis=1)
+"""
+We drop the target column from the dataset.
+Everything else becomes input features.
+"""
+
+feature_names = X.columns.tolist()
+print("\nFeatures used:")
+print(feature_names)
+
+# =========================================================
+# 5. TRAIN-TEST SPLIT
+# =========================================================
+
+X_train, X_test, y_train, y_test = train_test_split(
+    X, y, test_size=TEST_SIZE, random_state=RANDOM_STATE, shuffle=True
+)
+"""
+Purpose:
+- Most important ML step
+- Train → model learns
+- Test → model is evaluated on unseen data
+
+shuffle=True ensures random mixing before split.
+"""
+
+print("\nShapes:")
+print("X_train:", X_train.shape)
+print("X_test :", X_test.shape)
+
+# =========================================================
+# 6. FEATURE SCALING
+# =========================================================
+
+scaler = StandardScaler()
+"""
+StandardScaler converts data to:
+(x - mean) / std
+This makes training stable for Linear Regression.
+"""
+
+X_train_scaled = scaler.fit_transform(X_train)
+"""
+fit_transform:
+1. Compute mean & std from X_train
+2. Apply scaling
+NEVER scale test by fitting on test set.
+"""
+
+X_test_scaled = scaler.transform(X_test)
+"""
+transform:
+Use SAME scaling from train data
+"""
+
+# =========================================================
+# 7. TRAIN LINEAR REGRESSION
+# =========================================================
+
+lr = LinearRegression()
+lr.fit(X_train_scaled, y_train)
+"""
+lr.fit trains the model:
+Finds best w1, w2, ..., wn and b
+Using the formula:
+y = w1*x1 + w2*x2 + ... + wn*xn + b
+"""
+
+# =========================================================
+# 8. EVALUATION
+# =========================================================
+
+y_train_pred = lr.predict(X_train_scaled)
+y_test_pred = lr.predict(X_test_scaled)
+"""
+lr.predict gives predicted values using learned weights.
+"""
+
+# Evaluation metrics
+print("\n--- Evaluation ---")
+print("Train MAE :", mean_absolute_error(y_train, y_train_pred))
+print("Test  MAE :", mean_absolute_error(y_test, y_test_pred))
+
+print("Train MAPE:", mean_absolute_percentage_error(y_train, y_train_pred))
+print("Test  MAPE:", mean_absolute_percentage_error(y_test, y_test_pred))
+
+print("Train MSE :", mean_squared_error(y_train, y_train_pred))
+print("Test  MSE :", mean_squared_error(y_test, y_test_pred))
+
+# RMSE = sqrt(MSE)
+print("Train RMSE:", np.sqrt(mean_squared_error(y_train, y_train_pred)))
+print("Test  RMSE:", np.sqrt(mean_squared_error(y_test, y_test_pred)))
+
+print("Train R2  :", r2_score(y_train, y_train_pred))
+print("Test  R2  :", r2_score(y_test, y_test_pred))
+"""
+These metrics tell:
+- How accurate model is
+- Lower errors = better
+- Higher R² (max 1.0) = better fit
+"""
+
+# =========================================================
+# 9. COEFFICIENTS
+# =========================================================
+
+print("\nModel Coefficients:")
+for name, coef in zip(feature_names, lr.coef_):
+    print(f"{name}: {coef}")
+
+print("Intercept:", lr.intercept_)
+"""
+Coefficients show:
+- Which feature increases or decreases prediction
+- Importance of each feature
+"""
+
+# =========================================================
+# 10. SAVE MODEL + SCALER
+# =========================================================
+
+pickle_data = {
+    "model": lr,
+    "scaler": scaler,
+    "feature_names": feature_names,
+}
+
+with open(MODEL_PATH, "wb") as f:
+    pickle.dump(pickle_data, f)
+
+print("\nModel saved to:", MODEL_PATH)
+
+# =========================================================
+# 11. SAMPLE PREDICTION
+# =========================================================
+
+print("\nOrder of features for prediction:")
+print(feature_names)
+
+# Change this based on your data
+sample = np.array([8, 305, 130, 3840, 15.4, 79, 1]).reshape(1, -1)
+"""
+sample must follow SAME ORDER as feature_names.
+"""
+
+sample_scaled = scaler.transform(sample)
+sample_pred = lr.predict(sample_scaled)
+
+print("\nSample:", sample)
+print("Prediction:", sample_pred[0])
