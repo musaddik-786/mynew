@@ -1,11 +1,82 @@
-def summarize_content_json(content_json: dict, file_name: str | None = None) -> str:
-    """
-    Summarise the text stored under content_json["content"].
+from dotenv import load_dotenv
+import os
+import json
+from openai import AzureOpenAI
 
-    - Uses :selected: / :unselected: as checkbox indicators.
-    - Only mentions options clearly marked as selected.
+# ---------------- ENV + CLIENT SETUP ----------------
+
+load_dotenv()
+
+AZURE_OPENAI_ENDPOINT = os.getenv("AZURE_OPENAI_ENDPOINT")
+AZURE_OPENAI_API_VERSION = os.getenv("AZURE_OPENAI_API_VERSION")
+AZURE_OPENAI_API_KEY = os.getenv("AZURE_OPENAI_API_KEY")
+AZURE_OPENAI_CHAT_DEPLOYMENT = os.getenv("AZURE_OPENAI_CHAT_DEPLOYMENT")
+
+if not (
+    AZURE_OPENAI_ENDPOINT
+    and AZURE_OPENAI_API_VERSION
+    and AZURE_OPENAI_API_KEY
+    and AZURE_OPENAI_CHAT_DEPLOYMENT
+):
+    raise RuntimeError(
+        "Azure OpenAI env vars missing. Please set "
+        "AZURE_OPENAI_ENDPOINT, AZURE_OPENAI_API_VERSION, "
+        "AZURE_OPENAI_API_KEY and AZURE_OPENAI_CHAT_DEPLOYMENT"
+    )
+
+client = AzureOpenAI(
+    api_key=AZURE_OPENAI_API_KEY,
+    api_version=AZURE_OPENAI_API_VERSION,
+    azure_endpoint=AZURE_OPENAI_ENDPOINT,
+)
+
+# ---------------- HELPERS ----------------
+
+def build_content_only_json(raw_document):
     """
-    raw_text = content_json.get("content", "")
+    Take the raw JSON (which may have many keys) and build a new dict
+    that contains ONLY the 'content' field.
+
+    Result will always look like:
+      { "content": "<big acord text>" }
+    """
+    if isinstance(raw_document, dict):
+        text = raw_document.get("content", "")
+    elif isinstance(raw_document, str):
+        # if the JSON itself is just a string
+        text = raw_document
+    else:
+        text = ""
+
+    return {"content": text}
+
+
+def clean_content_text(text: str) -> str:
+    """
+    Basic cleaning for size only.
+    VERY IMPORTANT: we do NOT remove ':selected:' / ':unselected:'.
+    """
+    if not isinstance(text, str):
+        return ""
+
+    # Safety: keep the first N characters to avoid super huge prompts.
+    # You can adjust this if needed.
+    text = text[:12000]
+
+    return text.strip()
+
+
+# ---------------- MAIN SUMMARISER ----------------
+
+def summarize_first_page(document_content: dict, file_name: str | None = None) -> str:
+    """
+    Summarise the ACORD application based ONLY on document_content["content"].
+
+    - `document_content` is expected to be: { "content": "<acord text>" }
+    - We keep :selected: / :unselected: in the text and explain them to the model.
+    """
+
+    raw_text = document_content.get("content", "")
     cleaned_text = clean_content_text(raw_text)
 
     prompt = f"""
@@ -14,47 +85,47 @@ You are an experienced Commercial Insurance Underwriter.
 You are given the raw textual content of a commercial insurance application
 (ACORD-style form). Your job is to write a short, underwriting-focused summary.
 
-IMPORTANT FORMAT MARKERS IN THE TEXT:
-- The text uses ':selected:' and ':unselected:' to indicate checkboxes.
-- Treat ':selected:' as meaning "this option is chosen/ticked".
-- Treat ':unselected:' as meaning "this option is NOT chosen".
+ABOUT THE FORMAT:
+- The text uses ':selected:' and ':unselected:' to show which options/boxes
+  are ticked on the form.
+- Treat ':selected:' as "this option is chosen/ticked".
+- Treat ':unselected:' as "this option is NOT chosen".
 - When summarising, you should:
-  - Use information from fields or options that are clearly associated
-    with ':selected:'.
+  - Use information from options clearly associated with ':selected:'.
   - Generally ignore options that are ':unselected:' unless the text
-    explicitly states something important about them (for example, a
-    clear "No" answer to a general information question).
+    clearly states something important (for example a direct 'N' for a question).
 
 STRICT RULES (YOU MUST OBEY ALL):
 1. Use ONLY information that is explicitly present in the text below.
    - If something is not clearly stated, do NOT mention it.
    - Do NOT guess or infer anything that is not literally present.
 2. Do NOT mention:
-   - document structure (pages, sections, ACORD numbers),
-   - boilerplate fraud / privacy / legal warning paragraphs,
+   - document structure (pages, section titles, ACORD numbers),
+   - generic boilerplate legal / fraud / privacy warnings,
    - instructions to applicants, producer signature boilerplate, etc.
-3. Do NOT say that something is "not provided", "not mentioned",
-   "no other schedules", "no other attachments", or similar.
+3. Do NOT say that anything is "not provided", "not mentioned",
+   "no other attachments/schedules", or similar.
 4. Do NOT rephrase "TBD" as "yet to be determined" or "not decided";
-   only say "TBD" if it appears exactly in the text.
-5. If a line of business, attachment, or option appears with multiple
-   choices and some are ':selected:' and others ':unselected:',
-   only mention what is actually ':selected:'.
+   only say "TBD" if that exact text appears.
+5. If multiple options exist and only some are ':selected:', only
+   describe what is actually selected (for example QUOTE vs ISSUE POLICY,
+   or COMMERCIAL PROPERTY vs other lines).
 
 WRITING STYLE:
 - Output exactly ONE paragraph of 4–6 sentences.
 - Write like an underwriter summarising a submission for a colleague.
 - Focus on key underwriting-relevant points such as:
-  **Insured Name**, **Location**, **Nature of Operations / Description of Operations**,
-  **Status of Transaction** (e.g., QUOTE if marked selected),
-  **Line(s) of Business requested**, **Proposed Effective and Expiration Dates**,
-  **Annual revenues**, **type of premises and occupancy**, **prior carrier history**,
+  **Insured Name**, **Location**, **Status of Transaction** (e.g. QUOTE),
+  **Line(s) of Business requested** (only if selected),
+  **Proposed Effective and Expiration Dates**,
+  **Annual revenues**, **nature of business and operations**,
+  **type of premises and occupancy**, **significant prior carrier history**
   and any special exposures explicitly described.
 - Do NOT list fields one by one; combine related facts into smooth sentences.
 - Use bold formatting for a few important labels that ARE present
-  (e.g. **Insured Name**, **Location**, **Proposed Effective Date**,
-  **Line of Business**, **Annual Revenues**, **Nature of Operations**, etc.).
-  Do NOT bold more than about 4–7 phrases.
+  (for example **Insured Name**, **Location**, **Proposed Effective Date**,
+  **Line of Business**, **Annual Revenues**, **Nature of Operations**).
+  Do NOT bold more than about 4–7 short phrases in total.
 
 Now, using ONLY the text below, write such a paragraph:
 
@@ -67,10 +138,35 @@ Now, using ONLY the text below, write such a paragraph:
         model=AZURE_OPENAI_CHAT_DEPLOYMENT,
         messages=[{"role": "user", "content": prompt}],
         max_tokens=256,
-        temperature=0.1,
+        temperature=0.1,  # low to reduce guessing
     )
 
     try:
         return response.choices[0].message.content.strip()
     except Exception:
         return getattr(response.choices[0].message, "content", "").strip()
+
+
+# ---------------- SCRIPT ENTRYPOINT ----------------
+
+if __name__ == "__main__":
+    base_dir = os.path.dirname(os.path.abspath(__file__))
+
+    # 1) Read your raw JSON (the one that contains the big "content" string)
+    #    Change filename if needed.
+    json_path = os.path.join(base_dir, "input", "acord_raw.json")
+
+    with open(json_path, "r", encoding="utf-8") as f:
+        raw_document = json.load(f)
+
+    # 2) Build the "content-only JSON"
+    content_json = build_content_only_json(raw_document)
+
+    # Optional: if you really want a separate JSON file with only content, uncomment:
+    # out_path = os.path.join(base_dir, "input", "acord_content_only.json")
+    # with open(out_path, "w", encoding="utf-8") as out_f:
+    #     json.dump(content_json, out_f, indent=2)
+
+    # 3) Summarise based only on this content JSON
+    summary = summarize_first_page(content_json, file_name="acord_raw.json")
+    print(summary)
