@@ -1,3 +1,52 @@
+this is summary_# classifier.py
+
+from dotenv import load_dotenv
+import os
+from openai import AzureOpenAI  #  Correct import for Azure OpenAI
+
+# Load environment variables
+load_dotenv()
+
+AZURE_OPENAI_ENDPOINT = os.getenv("AZURE_OPENAI_ENDPOINT")
+AZURE_OPENAI_API_VERSION = os.getenv("AZURE_OPENAI_API_VERSION")
+AZURE_OPENAI_API_KEY = os.getenv("AZURE_OPENAI_API_KEY")
+AZURE_OPENAI_CHAT_DEPLOYMENT = os.getenv("AZURE_OPENAI_CHAT_DEPLOYMENT")
+
+if not (
+    AZURE_OPENAI_ENDPOINT
+    and AZURE_OPENAI_API_VERSION
+    and AZURE_OPENAI_API_KEY
+    and AZURE_OPENAI_CHAT_DEPLOYMENT
+):
+    raise RuntimeError(
+        "Azure OpenAI env vars missing. Please set "
+        "AZURE_OPENAI_ENDPOINT, AZURE_OPENAI_API_VERSION, "
+        "AZURE_OPENAI_API_KEY and AZURE_OPENAI_CHAT_DEPLOYMENT"
+    )
+
+#  Create Azure OpenAI client
+client = AzureOpenAI(
+    api_key=AZURE_OPENAI_API_KEY,
+    api_version=AZURE_OPENAI_API_VERSION,
+    azure_endpoint=AZURE_OPENAI_ENDPOINT,
+)
+
+
+def summarize_first_page(document_content: dict, file_name: str | None = None) -> str:
+    """
+    Use Azure OpenAI to summarize the *first page* of the document.
+
+    document_content is expected to come from load_document() and contain:
+      - "pages": List[str]  # each item = text of a page
+      - "text": str         # full text of the document (fallback)
+    """
+
+    first_page_text = document_content.get("first_page_text")
+    if not first_page_text:
+        first_page_text = document_content.get("text", "")
+
+
+    prompt = f"""
 You are an experienced Commercial Insurance Underwriter.
 
 Read the following document text and produce a structured "Submission Summary"
@@ -55,3 +104,41 @@ DOCUMENT TEXT:
 """
 {first_page_text}
 """
+"""
+
+
+    response = client.chat.completions.create(
+        model=AZURE_OPENAI_CHAT_DEPLOYMENT,
+        messages=[{"role": "user", "content": prompt}],
+        max_tokens=256,
+        temperature=0.2,
+    )
+
+    try:
+        return response.choices[0].message.content.strip()
+    except Exception:
+        return getattr(response.choices[0].message, "content", "").strip()
+
+
+
+
+
+
+
+
+jarvis@Jarvis-agent-vm:~/Musaddique$ cd PracticeSummary/
+jarvis@Jarvis-agent-vm:~/Musaddique/PracticeSummary$ source summary_venv/bin/activate
+(summary_venv) jarvis@Jarvis-agent-vm:~/Musaddique/PracticeSummary$ python3 main.py 
+Traceback (most recent call last):
+  File "/home/jarvis/Musaddique/PracticeSummary/main.py", line 6, in <module>
+    from router import router as layout_router  # our layout summary router
+    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/jarvis/Musaddique/PracticeSummary/router.py", line 7, in <module>
+    from summary_handler import summarize_blob_pdfs_layout  
+    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/jarvis/Musaddique/PracticeSummary/summary_handler.py", line 121, in <module>
+    from summary_classifier import summarize_first_page
+  File "/home/jarvis/Musaddique/PracticeSummary/summary_classifier.py", line 268
+    response = client.chat.completions.create(
+IndentationError: unexpected indent
+(summary_venv) jarvis@Jarvis-agent-vm:~/Musaddique/PracticeSummary$
