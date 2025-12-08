@@ -1,26 +1,57 @@
+You are an experienced Commercial Insurance Underwriter.
+
+Read the following document text and produce a structured "Submission Summary"
+for an underwriter. The summary must follow the same high-level structure,
+headings, and order as shown below:
+
 SUBMISSION SUMMARY
-Client: [Insert Client Legal Name]
-Date: [Insert Date]
+Client: [Client Legal Name]
+Date: [Submission or Document Date]
+
 1. OVERVIEW
-Business Activity: [Briefly describe what the business does]
-Effective Date: [Date coverage should start]
-Submission Type: [New Business / Renewal]
-Current Situation: [Brief note on why this is being submitted e.g., "Market check," "Non-renewed," or "New venture"]
+Business Activity: [Describe what the business does]
+Effective Date: [Coverage start date]
+Submission Type: [New Business / Renewal / Other if stated]
+Current Situation: [Reason for submission, if stated]
+
 2. RISK SNAPSHOT
 Total Locations: [Number of locations]
-Main Operations: [Description of the physical activities performed on site]
-Property Details: [Summarize key building info – e.g., construction type, age, or protection details like sprinklers]
+Main Operations: [Summary of activities or operations]
+Property Details: [Relevant property or building info]
+
 3. REQUESTED COVERAGE
-Total Insurable Value (TIV): $[Insert Total Amount]
-Building Limit: $[Amount]
-Contents/BPP Limit: $[Amount]
-Business Income: $[Amount]
-Deductible Requested: $[Amount]
+Total Insurable Value (TIV): [Amount]
+Building Limit: [Amount]
+Contents/BPP Limit: [Amount]
+Business Income: [Amount]
+Deductible Requested: [Amount]
+
 4. LOSS HISTORY SUMMARY
-Status: [Clean / Losses Reported]
-Summary: [Provide a 1-sentence summary of the last 3-5 years. e.g., "No losses reported in the last 5 years."]
-Major Incidents: [If there are claims, list the largest one here with a brief description. If none, state "N/A"]
+Status: [If the text indicates clean history or mentions losses]
+Summary: [Short summary of the loss history, if described]
+Major Incidents: [Largest or notable incident if available]
+
 5. ATTACHED DOCUMENTS
-The following files are included in this packet:
-[List filenames here, e.g., Applications, Loss Runs, SOV]
- 
+[List filenames or referenced attachments/schedules/applications/loss runs/SOV if mentioned]
+
+Important instructions:
+
+- The headings and section order (SUBMISSION SUMMARY, 1–5) must remain the same.
+- Inside each section, you are NOT limited to only the example fields above.
+  You may include any other underwriting-relevant information that appears
+  in the text (for example, broker details, program type, special hazards,
+  occupancy notes, construction details, coastal exposure, etc.), placing
+  those details under the most appropriate section.
+- Only write lines for information that is actually present or clearly supported
+  by the document text. If a particular field or detail is not present, simply
+  omit that line. Do not write "N/A", "Unknown", or mention that something is missing.
+- Do not invent, assume, or guess any information.
+- Do not mention pages, sections, or the format of the document itself.
+- The final output must be plain text in the structured format above, with
+  the placeholders replaced by real values and extra underwriting details
+  added where appropriate.
+
+DOCUMENT TEXT:
+"""
+{first_page_text}
+"""
