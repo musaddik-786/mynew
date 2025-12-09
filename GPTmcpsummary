@@ -140,6 +140,7 @@ output of the above code
 
 
 
+
 layout_summaries_result.json
 
 {
@@ -169,10 +170,14 @@ layout_summaries_result.json
 from layout summary.json i want the prompt in such a way that firstly as there is file name in each summary for eg :file_name": "19AEE9EBD098A0A4_attachment_Acord_125_Berkshire_Hathway.pdf and it has summary The insured property at 123 Penny Lane, Springfield, IL has experienced three claims over the past three years, all under commercial property coverage. The first incident was water damage in September 2023, resulting in a paid and incurred amount of $12,500 and is now closed. The second claim involved minor wind damage to exterior signage in January 2024, which was closed with no payment or incurred costs. The most recent claim, still open, concerns a small office fire in November 2025 that was quickly extinguished by sprinklers, with $45,000 paid and $25,000 incurred to date. The total incurred losses for the period amount to $70,000, indicating moderate loss activity with one significant open fire claim.
 so as there are total 3 files and summaries in the json it can be more as well, so i want code and prompt in such a way that first the filenames and summaries are extracted 
 
+now as in the current code there are changes required the output of the current code has file name and summary i want to pass that output to the llm prompt below is an example prompt but there is a change in below prompt as well so i want to tell llm 
+that according to the file name and summary it should consider its context that what this document is all about (related to Commercial insurance) and from all the corresponding summaries it should give a collective summary based on its important fields from each document no need to mention from which document it has extracted which summary
+but there should be a promper template in which the summary should be generated that template does not need to be a fixed template as there might be other documents everytime and not the same documents, that is why i am telling that according to the filename and summary it should understand itself what kind of document it is (commercial Insurance)
 
 
 
-
+#below is just an example prompt template,  as i said there might be any kind of document pdf that we can get everytime and not the same. so we dont need a fixed template or fields in the summary as there can be other documents which might have its own key fields
+so according to the context it gets from the filename and summary it itself has to decide what are the keyfields from the document
 
     prompt = f"""
 You are an experienced Commercial Insurance Underwriter.
