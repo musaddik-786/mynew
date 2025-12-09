@@ -1,8 +1,10 @@
-this is summary_# classifier.py
+This is my current code 
+
 
 from dotenv import load_dotenv
 import os
-from openai import AzureOpenAI  #  Correct import for Azure OpenAI
+import json
+from openai import AzureOpenAI  # Correct import for Azure OpenAI
 
 # Load environment variables
 load_dotenv()
@@ -24,7 +26,7 @@ if not (
         "AZURE_OPENAI_API_KEY and AZURE_OPENAI_CHAT_DEPLOYMENT"
     )
 
-#  Create Azure OpenAI client
+# Create Azure OpenAI client
 client = AzureOpenAI(
     api_key=AZURE_OPENAI_API_KEY,
     api_version=AZURE_OPENAI_API_VERSION,
@@ -32,18 +34,135 @@ client = AzureOpenAI(
 )
 
 
-def summarize_first_page(document_content: dict, file_name: str | None = None) -> str:
+def summarize_first_page(document_json: dict, file_name: str | None = None) -> str:
     """
-    Use Azure OpenAI to summarize the *first page* of the document.
+    Now this function summarizes a JSON document (extracted fields),
+    NOT a 'first page of text'.
 
-    document_content is expected to come from load_document() and contain:
-      - "pages": List[str]  # each item = text of a page
-      - "text": str         # full text of the document (fallback)
+    document_json is expected to be the parsed JSON dict, for example:
+    {
+      "General Information": { ... },
+      "Policy Information": { ... },
+      ...
+    }
     """
 
-    first_page_text = document_content.get("first_page_text")
-    if not first_page_text:
-        first_page_text = document_content.get("text", "")
+    # Safety: limit JSON size in the prompt (optional)
+    # If JSON is huge, you can trim some sections or keys before dumping.
+    json_string = json.dumps(document_json, indent=2)
+    json_string = json_string[:6000]  # simple safety limit
+
+    prompt = f"""
+You are an experienced Commercial Insurance Underwriter.
+
+You are given structured JSON data extracted from an insurance form.
+Each field is already extracted; your job is ONLY to read it and write a
+natural underwriting summary.
+
+STRICT RULES — YOU MUST FOLLOW ALL OF THESE:
+1. Use ONLY information that is explicitly present in the JSON values.
+   - If something is not in the JSON, do NOT mention it.
+   - Do NOT infer or assume anything.
+2. Never talk about things being "missing", "not provided",
+   "no other schedules", or "not mentioned".
+3. Do NOT guess the status of the submission (quote, bind, renewal, etc.)
+   unless those exact words are present.
+4. If there is a Yes/No or attachment-type field (e.g. "Loss Summary: Yes"),
+   you may mention it simply as a fact, but do NOT say
+   "no other attachments are provided" or anything similar.
+5. If you are not 100% sure a detail is present, leave it out.
+
+WRITING STYLE:
+- Output exactly ONE paragraph of 4–6 sentences.
+- Make it read like a human underwriter summarising the submission
+  for a colleague, not like a field-by-field list.
+- Combine related information (who, what, where, when) into smooth sentences.
+- Avoid phrases like "is listed as", "is selected as" where possible;
+  use more natural wording.
+
+Now generate such a paragraph using ONLY the JSON below:
+{json_string}
+    """
+
+    response = client.chat.completions.create(
+        model=AZURE_OPENAI_CHAT_DEPLOYMENT,
+        messages=[{"role": "user", "content": prompt}],
+        max_tokens=256,
+        temperature=0.2,
+    )
+
+    try:
+        return response.choices[0].message.content.strip()
+    except Exception:
+        return getattr(response.choices[0].message, "content", "").strip()
+
+
+if __name__ == "__main__":
+    # This block will:
+    # 1) find the JSON file under NewSummary/input/
+    # 2) load it
+    # 3) call summarize_first_page(document_json)
+    # 4) print the summary
+
+    # Absolute path to this file's folder (NewSummary)
+    base_dir = os.path.dirname(os.path.abspath(__file__))
+
+    # Path to the JSON inside the input folder
+    json_path = os.path.join(base_dir, "output", "layout_summaries_result.json")
+    #   ^ change "form_output.json" to your actual file name
+
+    # Load JSON from file
+    with open(json_path, "r", encoding="utf-8") as f:
+        document_json = json.load(f)
+
+    # Call the summariser
+    summary = summarize_first_page(document_json, file_name="layout_summaries_result.json")
+
+    # Print summary to console
+    print(summary)
+
+
+
+
+
+
+
+
+
+
+
+layout_summaries_result.json
+
+{
+  "status": true,
+  "summaries": [
+    {
+      "blob_url": "https://agenticai1.blob.core.windows.net/attachment-downloader/19AEE9EBD098A0A4_attachment_Acord_125_Berkshire_Hathway.pdf",
+      "file_name": "19AEE9EBD098A0A4_attachment_Acord_125_Berkshire_Hathway.pdf",
+      "summary": "The application is for Berkshire Hathaway, located at 123 Penny Lane, Springfield, IL, with coverage proposed from July 15, 2025, to July 15, 2028. The agency handling the account is Prime Brokers Ltd., and the carrier is Phoenix Insurers Ltd. Lines of business indicated include Commercial Property and Accounts Receivable/Valuable Papers, with relevant supplements attached such as Apartment Building, Installation/Builders Risk, and Contractors. The payment method is agency-billed, and the transaction status is marked as renewal. The application also notes the inclusion of additional interest schedules and statements/schedules of values, which may be relevant for underwriting exposures and coverage limits.",
+      "error": null
+    },
+    {
+      "blob_url": "https://agenticai1.blob.core.windows.net/attachment-downloader/19AEE9EBD098A0A4_attachment_Loss_Run_Berkshire.pdf",
+      "file_name": "19AEE9EBD098A0A4_attachment_Loss_Run_Berkshire.pdf",
+      "summary": "The insured property at 123 Penny Lane, Springfield, IL has experienced three claims over the past three years, all under commercial property coverage. The first incident was water damage in September 2023, resulting in a paid and incurred amount of $12,500 and is now closed. The second claim involved minor wind damage to exterior signage in January 2024, which was closed with no payment or incurred costs. The most recent claim, still open, concerns a small office fire in November 2025 that was quickly extinguished by sprinklers, with $45,000 paid and $25,000 incurred to date. The total incurred losses for the period amount to $70,000, indicating moderate loss activity with one significant open fire claim.",
+      "error": null
+    },
+    {
+      "blob_url": "https://agenticai1.blob.core.windows.net/attachment-downloader/19AEE9EBD098A0A4_attachment_SOV%20-%20Berkshire.pdf",
+      "file_name": "19AEE9EBD098A0A4_attachment_SOV - Berkshire.pdf",
+      "summary": "The insured is Berkshire Hathaway, with coverage placed through Prime Brokers Pvt. Ltd. and Phoenix Insurers Ltd. The schedule lists a property located at 123 Penny Lane, Springfield, Illinois, insured for an actual cash value of $35,000,000. The coinsurance percentage is 80%, and coverage includes causes of loss such as basic, broad, special, earthquake, and flood. Vandalism and sprinkler leakage are excluded. The effective date of coverage is July 15, 2025, and the information has been certified as accurate by the lead broker.",
+      "error": null
+    }
+  ]
+}
+
+from layout summary.json i want the prompt in such a way that firstly as there is file name in each summary for eg :file_name": "19AEE9EBD098A0A4_attachment_Acord_125_Berkshire_Hathway.pdf and it has summary The insured property at 123 Penny Lane, Springfield, IL has experienced three claims over the past three years, all under commercial property coverage. The first incident was water damage in September 2023, resulting in a paid and incurred amount of $12,500 and is now closed. The second claim involved minor wind damage to exterior signage in January 2024, which was closed with no payment or incurred costs. The most recent claim, still open, concerns a small office fire in November 2025 that was quickly extinguished by sprinklers, with $45,000 paid and $25,000 incurred to date. The total incurred losses for the period amount to $70,000, indicating moderate loss activity with one significant open fire claim.
+so as there are total 3 files and summaries in the json it can be more as well, so i want code and prompt in such a way that first the filenames and summaries are extracted 
+
+
+
+
 
 
     prompt = f"""
@@ -101,23 +220,10 @@ Important instructions:
   added where appropriate.
 
 DOCUMENT TEXT:
-"""
+\"\"\"
 {first_page_text}
+\"\"\"
 """
-"""
-
-
-    response = client.chat.completions.create(
-        model=AZURE_OPENAI_CHAT_DEPLOYMENT,
-        messages=[{"role": "user", "content": prompt}],
-        max_tokens=256,
-        temperature=0.2,
-    )
-
-    try:
-        return response.choices[0].message.content.strip()
-    except Exception:
-        return getattr(response.choices[0].message, "content", "").strip()
 
 
 
@@ -126,19 +232,3 @@ DOCUMENT TEXT:
 
 
 
-jarvis@Jarvis-agent-vm:~/Musaddique$ cd PracticeSummary/
-jarvis@Jarvis-agent-vm:~/Musaddique/PracticeSummary$ source summary_venv/bin/activate
-(summary_venv) jarvis@Jarvis-agent-vm:~/Musaddique/PracticeSummary$ python3 main.py 
-Traceback (most recent call last):
-  File "/home/jarvis/Musaddique/PracticeSummary/main.py", line 6, in <module>
-    from router import router as layout_router  # our layout summary router
-    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "/home/jarvis/Musaddique/PracticeSummary/router.py", line 7, in <module>
-    from summary_handler import summarize_blob_pdfs_layout  
-    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "/home/jarvis/Musaddique/PracticeSummary/summary_handler.py", line 121, in <module>
-    from summary_classifier import summarize_first_page
-  File "/home/jarvis/Musaddique/PracticeSummary/summary_classifier.py", line 268
-    response = client.chat.completions.create(
-IndentationError: unexpected indent
-(summary_venv) jarvis@Jarvis-agent-vm:~/Musaddique/PracticeSummary$
