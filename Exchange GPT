@@ -1,306 +1,157 @@
+from dotenv import load_dotenv
 import os
 import json
-from dotenv import load_dotenv
-from openai import AzureOpenAI
+from Data_Filler import extract_filenames_and_summaries
+from Data_Filler import connect_to_blob, beautify_extracted_data
+from openai import AzureOpenAI  # Correct import for Azure OpenAI
 
-# ------------------ CONFIG ------------------
+# Load environment variables
 load_dotenv()
 
-client = AzureOpenAI(
-    azure_endpoint=os.getenv("AZURE_OPENAI_ENDPOINT"),
-    api_key=os.getenv("AZURE_OPENAI_API_KEY"),
-    api_version="2024-05-01-preview"
-)
+AZURE_OPENAI_ENDPOINT = os.getenv("AZURE_OPENAI_ENDPOINT")
+AZURE_OPENAI_API_VERSION = os.getenv("AZURE_OPENAI_API_VERSION")
+AZURE_OPENAI_API_KEY = os.getenv("AZURE_OPENAI_API_KEY")
+AZURE_OPENAI_CHAT_DEPLOYMENT = os.getenv("AZURE_OPENAI_CHAT_DEPLOYMENT")
 
-MODEL = os.getenv("AZURE_OPENAI_CHAT_DEPLOYMENT")
-output_dir = os.path.join(os.getcwd(), "output")
-INPUT_FILE = os.path.join(output_dir, "output.json")
-
-os.makedirs(output_dir, exist_ok=True)
-OUTPUT_FILE = os.path.join(output_dir, "final_output.json")
-MAX_CHARS = 12000
-
-
-def chunk_text(text, max_chars=MAX_CHARS):
-    """
-    Split long text into safe chunks for OpenAI input.
-    We split by lines so we don't cut in the middle of words.
-    """
-    chunks, current, length = [], [], 0
-    for line in text.splitlines():
-        if length + len(line) > max_chars:
-            chunks.append("\n".join(current))
-            current, length = [], 0
-        current.append(line)
-        length += len(line)
-    if current:
-        chunks.append("\n".join(current))
-    return chunks
-
-
-def clean_field_name(name: str) -> str:
-    """
-    Normalize a field name so that:
-      'LOB - Commercial Property' -> 'Commercial Property'
-      'loss summary' -> 'Loss Summary'
-    This helps us match GPT field names with Azure confidence entries.
-    """
-    if not isinstance(name, str):
-        return str(name)
-
-    name = name.replace("LOB -", "").strip()
-    return name.title()
-
-
-def build_confidence_lookup(raw_json):
-    """
-    Build a lookup:
-        { 'Loss Summary': 0.487, 'Commercial Property': 0.975, ... }
-    from Azure Document Intelligence 'fields'.
-    We will use ONLY these numbers, not the values.
-    """
-    lookup = {}
-    docs = raw_json.get("documents", [])
-    if not docs:
-        return lookup
-
-    for doc in docs:
-        for key, value in doc.get("fields", {}).items():
-            conf = value.get("confidence")
-            if conf is not None:
-                lookup[clean_field_name(key)] = conf
-
-    return lookup
-
-
-def build_prompt(content_chunk: str) -> str:
-    """
-    Prompt that tells GPT:
-      - Read only this OCR text ('FORM_TEXT')
-      - Extract structured JSON with logical groups
-      - DO NOT include confidence numbers (Python will attach them later)
-    """
-    return f"""
-You are a JSON data extractor for an ACORD Commercial Insurance Application (ACORD 125).
-
-You will be given plain text content produced by OCR (Azure Document Intelligence).
-Using ONLY this text, extract and group information into a single JSON object.
-
-VERY IMPORTANT RULES:
-1. Read only the text under "FORM_TEXT". Do not assume anything that is not written there.
-2. Create logical top-level groups, for example (names are suggestions, you can add more):
-   - "General Information"
-   - "Policy Information"
-   - "Transaction Status"
-   - "Line Of Business"
-   - "Premiums"
-   - "Attachments"
-   - "Insured"
-   - "Premises Information"
-   - "Nature Of Business"
-   - "Additional Interest"
-   - "Prior Carrier Information"
-   - "Loss History"
-   - "Signatures And Producer Information"
-   - "Risk And Insurance History"
-   - "Safety Program"
-   - "Business Ventures"
-3. For each field, use the exact value from the text.
-   - For checkboxes, copy ':selected:' and ':unselected:' exactly as they appear in the text.
-   - Do NOT invent or guess checkbox states.
-4. DO NOT add any confidence values in your output.
-   - Just output the raw values like "Quote", ":selected:", "11/05/2025", etc.
-5. Return ONLY valid JSON. No comments, no explanations, no markdown.
-
-FORM_TEXT:
-{content_chunk}
-"""
-
-
-def process_chunk(content_chunk: str):
-    """Send one OCR content chunk to GPT and ensure JSON-only output."""
-    response = client.chat.completions.create(
-        model=MODEL,
-        temperature=0,
-        messages=[
-            {
-                "role": "system",
-                "content": "You are a precise document understanding assistant that outputs only JSON.",
-            },
-            {"role": "user", "content": build_prompt(content_chunk)},
-        ],
+if not (
+    AZURE_OPENAI_ENDPOINT
+    and AZURE_OPENAI_API_VERSION
+    and AZURE_OPENAI_API_KEY
+    and AZURE_OPENAI_CHAT_DEPLOYMENT
+):
+    raise RuntimeError(
+        "Azure OpenAI env vars missing. Please set "
+        "AZURE_OPENAI_ENDPOINT, AZURE_OPENAI_API_VERSION, "
+        "AZURE_OPENAI_API_KEY and AZURE_OPENAI_CHAT_DEPLOYMENT"
     )
 
-    text = response.choices[0].message.content.strip()
+# Create Azure OpenAI client
+client = AzureOpenAI(
+    api_key=AZURE_OPENAI_API_KEY,
+    api_version=AZURE_OPENAI_API_VERSION,
+    azure_endpoint=AZURE_OPENAI_ENDPOINT,
+)
+
+
+def summarize_attachments(attachments: list[dict]) -> str:
+    """
+    attachments = list of dicts like:
+    [
+      {"file_name": "...pdf", "summary": "text..."},
+      {"file_name": "...pdf", "summary": "text..."},
+      ...
+    ]
+
+    We will:
+    - use file_name + summary together
+    - let the model infer what type of document it is (ACORD, Loss Run, SOV, etc.)
+    - create ONE combined commercial insurance submission summary
+    """
+
+    # Build a compact text block with all attachments
+    # (you can adjust the length limit if needed)
+    attachment_chunks = []
+    for item in attachments:
+        file_name = item.get("file_name", "unknown_file")
+        summary_text = item.get("summary", "")
+
+        chunk = f"FILENAME: {file_name}\nSUMMARY: {summary_text}"
+        attachment_chunks.append(chunk)
+
+    attachments_text = "\n\n".join(attachment_chunks)
+    attachments_text = attachments_text[:8000]  # simple safety limit
+
+    prompt = f"""
+You are an experienced Commercial Insurance Underwriter.
+
+You are given multiple attachment documents that belong to a SINGLE
+commercial insurance submission. For each document you only see:
+- the file name (which hints at document type, e.g. ACORD app, loss run, SOV)
+- a short summary of the contents.
+
+YOUR TASK:
+Produce ONE combined "Submission Summary" for the account that synthesizes
+all the information across all documents.
+
+VERY IMPORTANT RULES:
+1. Treat the file names and their summaries as the ONLY source of truth.
+   - You may use the file name to infer the general document type
+     (e.g. application, loss runs, SOV, schedule).
+   - Do NOT invent any new facts that are not clearly supported by
+     the summaries.
+2. Do NOT mention which document or file any detail came from.
+   - The final summary must read like a single coherent view of the account,
+     not a list of separate documents.
+3. Focus on underwriting-relevant information, such as:
+   - Named insured / client
+   - Locations and occupancy
+   - Operations / business activities
+   - Coverage dates and basic program structure
+   - Property values / limits / coinsurance (if mentioned)
+   - Key coverage features (causes of loss, notable exclusions)
+   - Loss history and major incidents
+   - Any other material hazards or special notes that appear in the summaries.
+
+STRUCTURE OF YOUR OUTPUT:
+- Start with a heading line: "SUBMISSION SUMMARY"
+- Then write 2–4 short sections with clear headings in ALL CAPS, for example:
+  - ACCOUNT OVERVIEW
+  - PROPERTY & COVERAGE DETAILS
+  - LOSS HISTORY
+  - OTHER NOTABLE POINTS
+- You may choose different section names if they better fit the information.
+- Inside each section, write 1–3 concise sentences in natural prose.
+- Do NOT use bullet points unless they are clearly helpful.
+- Do NOT mention file names, document types, or say that you are summarizing attachments.
+
+GENERAL WRITING RULES:
+- Only include details that are explicitly present or clearly implied
+  by the summaries.
+- Do NOT comment on missing or unknown information.
+- Do NOT guess at submission status (e.g. new business vs renewal)
+  unless that exact wording appears in the summaries.
+- Use a professional, concise underwriting tone.
+
+ATTACHMENT SUMMARIES (file name followed by its summary):
+
+\"\"\" 
+{attachments_text}
+\"\"\"
+    """
+
+    response = client.chat.completions.create(
+        model=AZURE_OPENAI_CHAT_DEPLOYMENT,
+        messages=[{"role": "user", "content": prompt}],
+        max_tokens=512,
+        temperature=0.2,
+    )
+
     try:
-        start = text.find("{")
-        end = text.rfind("}") + 1
-        json_text = text[start:end]
-        return json.loads(json_text)
+        return response.choices[0].message.content.strip()
     except Exception:
-        print("⚠️ Warning: GPT output not clean JSON. Attempting recovery.")
-        return {"error": "Invalid JSON returned", "raw_output": text}
+        return getattr(response.choices[0].message, "content", "").strip()
 
 
-def calculate_overall_confidence(original_json):
-    """
-    Calculate overall average confidence directly from original JSON
-    (we use all 'confidence' keys found in Azure's response).
-    """
-
-    def extract_confidences(obj):
-        confidences = []
-        if isinstance(obj, dict):
-            for key, value in obj.items():
-                if key == "confidence" and isinstance(value, (int, float)):
-                    confidences.append(value)
-                else:
-                    confidences.extend(extract_confidences(value))
-        elif isinstance(obj, list):
-            for item in obj:
-                confidences.extend(extract_confidences(item))
-        return confidences
-
-    confidences = extract_confidences(original_json)
-    if confidences:
-        return sum(confidences) / len(confidences)
-    return None
-
-
-def attach_confidences(data, confidence_lookup):
-    """
-    Recursively walk the GPT JSON.
-    For each leaf field:
-      - Look up a confidence by cleaned field name.
-      - If found, transform:
-            "Some Field": "Value"
-        into:
-            "Some Field": "Value, confidence - 0.873"
-      - If not found, leave as-is.
-    """
-    if isinstance(data, dict):
-        new_obj = {}
-        for key, value in data.items():
-            if isinstance(value, (dict, list)):
-                new_obj[key] = attach_confidences(value, confidence_lookup)
-            else:
-                clean_key = clean_field_name(key)
-                conf = confidence_lookup.get(clean_key)
-                if conf is not None:
-                    new_obj[key] = f"{value}, confidence - {conf}"
-                else:
-                    new_obj[key] = value
-        return new_obj
-
-    elif isinstance(data, list):
-        return [attach_confidences(item, confidence_lookup) for item in data]
-
-    else:
-        # primitive type (str/int/float/bool) — nothing to attach
-        return data
-
-
-def add_confidence_averages(grouped_data, confidence_lookup):
-    """
-    For each top-level group (e.g. "Attachments", "Line Of Business"),
-    collect all confidences of fields under it and compute 'total_confidence'.
-    """
-
-    def collect_confs(obj):
-        collected = []
-        if isinstance(obj, dict):
-            for k, v in obj.items():
-                if k == "total_confidence":
-                    continue
-                if isinstance(v, (dict, list)):
-                    collected.extend(collect_confs(v))
-                else:
-                    clean_k = clean_field_name(k)
-                    c = confidence_lookup.get(clean_k)
-                    if c is not None:
-                        collected.append(c)
-        elif isinstance(obj, list):
-            for item in obj:
-                collected.extend(collect_confs(item))
-        return collected
-
-    for group, fields in grouped_data.items():
-        if not isinstance(fields, dict):
-            continue
-        confs = collect_confs(fields)
-        if confs:
-            avg_conf = sum(confs) / len(confs)
-            fields["total_confidence"] = avg_conf
-
-    return grouped_data
-
-
-def process_azure_output(json_data):
-    """
-    Main pipeline:
-
-    1. Take OCR text from Azure 'content' (top-level) if present,
-       otherwise from 'documents[0].content' if that exists.
-    2. Ask GPT to parse it into structured JSON (values from content only).
-    3. Attach confidence numbers from Azure 'fields'.
-    4. Compute per-group total_confidence and Document_Confidence_Score.
-    5. Save final_output.json.
-    """
-    # 1. Get OCR text
-    # First preference: top-level 'content' (as in your output.json)
-    content_text = json_data.get("content", "")
-
-    # Fallback: 'documents[0].content' if top-level 'content' is missing/empty
-    if not content_text:
-        docs = json_data.get("documents", [])
-        if docs and isinstance(docs[0], dict):
-            content_text = docs[0].get("content", "")
-
-    if not content_text:
-        raise ValueError("No 'content' text found in Azure output JSON.")
-
-    # 2. Chunk the content if too long and process via GPT
-    chunks = chunk_text(content_text)
-    final_combined = {}
-
-    for chunk in chunks:
-        result = process_chunk(chunk)
-        if isinstance(result, dict):
-            for k, v in result.items():
-                if (
-                    k in final_combined
-                    and isinstance(final_combined[k], dict)
-                    and isinstance(v, dict)
-                ):
-                    final_combined[k].update(v)
-                else:
-                    final_combined[k] = v
-
-    # 3. Build confidence lookup from Azure fields (only numbers)
-    confidence_lookup = build_confidence_lookup(json_data)
-
-    # 4. Attach "..., confidence - X" to leaf fields
-    final_with_conf = attach_confidences(final_combined, confidence_lookup)
-
-    # 5. Add total_confidence per top-level group
-    final_with_conf = add_confidence_averages(final_with_conf, confidence_lookup)
-
-    # 6. Add overall document-level average confidence
-    overall_avg = calculate_overall_confidence(json_data)
-    if overall_avg is not None:
-        final_with_conf["Document_Confidence_Score"] = overall_avg
-
-    # 7. Save final_output.json
-    with open(OUTPUT_FILE, "w", encoding="utf-8") as f:
-        json.dump(final_with_conf, f, indent=2, ensure_ascii=False)
-
-    print(f"✅ Clean JSON written to {OUTPUT_FILE}")
-    return final_with_conf
-
-
-# ------------------ MAIN ------------------
 if __name__ == "__main__":
-    with open(INPUT_FILE, "r", encoding="utf-8") as f:
-        raw_json = json.load(f)
+    # Absolute path to this file's folder (NewSummary)
+    base_dir = os.path.dirname(os.path.abspath(__file__))
 
-    process_azure_output(raw_json)
+    output_folder = "output"
+
+    # (Optional) If you still want to directly inspect the JSON file:
+    json_path = os.path.join(base_dir, output_folder, "layout_summaries_result.json")
+    with open(json_path, "r", encoding="utf-8") as f:
+        layout_json = json.load(f)
+    # print(layout_json)  # just for debugging if needed
+
+    # 1) Use your existing helper to extract file_name + summary pairs
+    filenamesummary_extracted_beautified = extract_filenames_and_summaries(output_folder)
+    print("Per-document summaries:")
+    print(filenamesummary_extracted_beautified)
+
+    # 2) Call the new summariser to get ONE combined submission summary
+    combined_summary = summarize_attachments(filenamesummary_extracted_beautified)
+
+    # 3) Print the combined summary
+    print("\n================ COMBINED SUBMISSION SUMMARY ================\n")
+    print(combined_summary)
