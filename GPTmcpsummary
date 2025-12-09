@@ -4,6 +4,8 @@ This is my current code
 from dotenv import load_dotenv
 import os
 import json
+from Data_Filler import extract_filenames_and_summaries
+from Data_Filler import connect_to_blob, beautify_extracted_data
 from openai import AzureOpenAI  # Correct import for Azure OpenAI
 
 # Load environment variables
@@ -107,19 +109,26 @@ if __name__ == "__main__":
     # Absolute path to this file's folder (NewSummary)
     base_dir = os.path.dirname(os.path.abspath(__file__))
 
+    output_folder="output"
     # Path to the JSON inside the input folder
-    json_path = os.path.join(base_dir, "output", "layout_summaries_result.json")
+    json_path = os.path.join(base_dir, output_folder, "layout_summaries_result.json")
     #   ^ change "form_output.json" to your actual file name
 
     # Load JSON from file
     with open(json_path, "r", encoding="utf-8") as f:
         document_json = json.load(f)
 
+    filenamesummary_extracted_beautified = extract_filenames_and_summaries(output_folder)
+    print(filenamesummary_extracted_beautified)
+
     # Call the summariser
-    summary = summarize_first_page(document_json, file_name="layout_summaries_result.json")
+    # summary = summarize_first_page(document_json, file_name="layout_summaries_result.json")
 
     # Print summary to console
-    print(summary)
+    # print(summary)
+
+output of the above code
+[{'file_name': '19AEE9EBD098A0A4_attachment_Acord_125_Berkshire_Hathway.pdf', 'summary': 'The application is for Berkshire Hathaway, located at 123 Penny Lane, Springfield, IL, with coverage proposed from July 15, 2025, to July 15, 2028. The agency handling the account is Prime Brokers Ltd., and the carrier is Phoenix Insurers Ltd. Lines of business indicated include Commercial Property and Accounts Receivable/Valuable Papers, with relevant supplements attached such as Apartment Building, Installation/Builders Risk, and Contractors. The payment method is agency-billed, and the transaction status is marked as renewal. The application also notes the inclusion of additional interest schedules and statements/schedules of values, which may be relevant for underwriting exposures and coverage limits.'}, {'file_name': '19AEE9EBD098A0A4_attachment_Loss_Run_Berkshire.pdf', 'summary': 'The insured property at 123 Penny Lane, Springfield, IL has experienced three claims over the past three years, all under commercial property coverage. The first incident was water damage in September 2023, resulting in a paid and incurred amount of $12,500 and is now closed. The second claim involved minor wind damage to exterior signage in January 2024, which was closed with no payment or incurred costs. The most recent claim, still open, concerns a small office fire in November 2025 that was quickly extinguished by sprinklers, with $45,000 paid and $25,000 incurred to date. The total incurred losses for the period amount to $70,000, indicating moderate loss activity with one significant open fire claim.'}, {'file_name': '19AEE9EBD098A0A4_attachment_SOV - Berkshire.pdf', 'summary': 'The insured is Berkshire Hathaway, with coverage placed through Prime Brokers Pvt. Ltd. and Phoenix Insurers Ltd. The schedule lists a property located at 123 Penny Lane, Springfield, Illinois, insured for an actual cash value of $35,000,000. The coinsurance percentage is 80%, and coverage includes causes of loss such as basic, broad, special, earthquake, and flood. Vandalism and sprinkler leakage are excluded. The effective date of coverage is July 15, 2025, and the information has been certified as accurate by the lead broker.'}]
 
 
 
