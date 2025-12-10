@@ -1,162 +1,272 @@
-STRUCTURE OF YOUR OUTPUT (USE THIS EXACT TEMPLATE):
+now i am working on separatesummary.py
+I want to have 4 prompts
+First prompt 
+so according to the filenames and summary the document should be categorized (Acord, SOV, Losshistory)
+for eg for this filename and summary 19AEE9EBD098A0A4_attachment_Acord_125_Berkshire_Hathway.pdf it should detect that the document is acord form
+from this list of dictiponary i want to iterate through it and extract first file name along with its summary (in the format which is dictionary variable ) and pass that filename and summary in the prompt similarly the next file name and summary in the same dictionary and so on, there can be n number of file name and dictionary in the list of dictionary so dictionary should be
+[
+    {'file_name': '19AEE9EBD098A0A4_attachment_Acord_125_Berkshire_Hathway.pdf', 'summary': 'The applicant is Berkshire Hathaway, located at 123 Penny Lane, Springfield, IL, 62629, operating in IT Services and Operations. The proposed policy is with Phoenix Insurers Ltd. under Program 1, with an effective date of July 15, 2025, and expiration on July 15, 2028. Lines of business indicated include Commercial Property and Accounts Receivable/Valuable Papers, with relevant supplements such as Apartment Building and Contractors attached. The business is classified as an owner-occupied premises within city limits and reports annual revenues of $725,000 with 17 full-time employees. Primary contacts for the account are Michael Hill and Bill Deeney, both reachable via provided phone numbers and email addresses.'},
+    {'file_name': '19AEE9EBD098A0A4_attachment_Loss_Run_Berkshire.pdf', 'summary': 'The insured, located at 123 Penny Lane, Springfield, IL, has maintained commercial property coverage with Berkshire Hathaway over the past three years and reported three claims during this period. The losses include water damage from a burst pipe in September 2023 (closed, $12,500 paid), minor wind damage to exterior signage in January 2024 (closed, $2,100 paid), and a small office fire in November 2025 (open, $45,000 paid with $25,000 reserved). The total incurred losses for all claims amount to $84,600, with $59,600 paid and $25,000 currently reserved. All claims occurred at the same location, and the most recent claim remains open. The loss history indicates moderate frequency and severity, with the largest outstanding exposure related to the recent fire loss.'},
+    {'file_name': '19AEE9EBD098A0A4_attachment_SOV - Berkshire.pdf', 'summary': 'The insured is Berkshire Hathaway, with coverage placed through Prime Brokers Pvt. Ltd. and Phoenix Insurers Ltd. The property is located at 123 Penny Lane, Springfield, Illinois, and is valued at $35,000,000 on an Actual Cash Value basis. The policy includes 80% coinsurance and covers basic, earthquake, and flood perils, with vandalism and sprinkler leakage excluded. The effective date of coverage is July 15, 2025. The information has been confirmed as accurate by the lead broker, William Grey.'}
+]
 
-SUBMISSION SUMMARY  
-Client: [Client Legal Name]  
-Date: [Submission or Document Date]
+in ther terminal: 
+Summaries Final :  [{'file_name': '19AEE9EBD098A0A4_attachment_Acord_125_Berkshire_Hathway.pdf', 'summary': 'The applicant is Berkshire Hathaway, located at 123 Penny Lane, Springfield, IL, 62629, and operates in IT Services and Operations. The proposed policy is with Phoenix Insurers Ltd. under Program 1, with an effective date of July 15, 2025, and expiration on July 15, 2028. Lines of business indicated include Commercial Property and Accounts Receivable/Valuable Papers, with relevant supplements attached such as Apartment Building and Contractors. The annual revenues are reported at $725,000, and the occupied area is 17 (units not specified). The applicant is listed as the owner of the premises, and primary contacts are Michael Hill and Bill Deeney.'}, {'file_name': '19AEE9EBD098A0A4_attachment_Loss_Run_Berkshire.pdf', 'summary': 'The insured, located at 123 Penny Lane, Springfield, IL, has maintained commercial property coverage with Berkshire Hathaway for the past three years. During this period, three claims were reported: a $12,500 paid water damage loss in September 2023, a $2,100 paid wind damage claim in January 2024, and an open fire loss from November 2025 with $45,000 paid and $25,000 reserved, totaling $70,000 incurred. All claims occurred at the same address, with two now closed and one still open. The total incurred losses for the period amount to $84,600, with three claims in total and no indication of liability or casualty exposures. The loss history reflects moderate frequency and severity, with the most significant exposure related to the recent fire loss.'}, {'file_name': '19AEE9EBD098A0A4_attachment_SOV - Berkshire.pdf', 'summary': 'The insured is Berkshire Hathaway, with coverage placed through Prime Brokers Pvt. Ltd. and Phoenix Insurers Ltd. The property at 123 Penny Lane, Springfield, Illinois, is valued at $35,000,000 on an Actual Cash Value basis. The policy includes 80% coinsurance and covers basic, broad, and special causes of loss, as well as earthquake and flood perils. There are exclusions for sprinkler leakage and vandalism. The information provided is confirmed as accurate by the lead broker, William Grey, as of July 15, 2025.'}]
 
-------------------------------------------------------------  
-1. SUBMISSION COVER LETTER / NARRATIVE  
-------------------------------------------------------------  
-✔ Exposure Description:  
-    - [Describe what the business does]  
-    - [Main operations / physical activities]  
-    - [Property details: construction, age, protection, sprinklers, etc.]  
 
-✔ Placement Strategy:  
-    - [Placement goals or program approach if evident]  
 
-✔ Renewal Highlights:  
-    - [Notable changes or updates if mentioned]  
+separate summary.py
 
-✔ Changes YOY:  
-    - [Any changes in exposure, values, operations, or loss experience]  
 
-✔ Additional Overview Details:  
-    - Effective Date: [Coverage start date]  
-    - Submission Type: [Renewal / New Business / Other]  
-    - Current Situation: [Reason for submission if stated]  
+from dotenv import load_dotenv
+import os
+import json
+from Data_Filler import extract_filenames_and_summaries
+from Data_Filler import connect_to_blob, beautify_extracted_data
+from openai import AzureOpenAI  # Correct import for Azure OpenAI
 
-------------------------------------------------------------  
-2. LOSS HISTORY PACKAGE  
-------------------------------------------------------------  
-✔ 5–10 Year Loss Runs:  
-    - [Summarize multi-year loss experience if available]  
+# Load environment variables
+load_dotenv()
 
-✔ Large Loss Details:  
-    - [Brief details on significant claims]  
+AZURE_OPENAI_ENDPOINT = os.getenv("AZURE_OPENAI_ENDPOINT")
+AZURE_OPENAI_API_VERSION = os.getenv("AZURE_OPENAI_API_VERSION")
+AZURE_OPENAI_API_KEY = os.getenv("AZURE_OPENAI_API_KEY")
+AZURE_OPENAI_CHAT_DEPLOYMENT = os.getenv("AZURE_OPENAI_CHAT_DEPLOYMENT")
 
-✔ Trends Analysis:  
-    - [Patterns in frequency/severity if evident]  
+if not (
+    AZURE_OPENAI_ENDPOINT
+    and AZURE_OPENAI_API_VERSION
+    and AZURE_OPENAI_API_KEY
+    and AZURE_OPENAI_CHAT_DEPLOYMENT
+):
+    raise RuntimeError(
+        "Azure OpenAI env vars missing. Please set "
+        "AZURE_OPENAI_ENDPOINT, AZURE_OPENAI_API_VERSION, "
+        "AZURE_OPENAI_API_KEY and AZURE_OPENAI_CHAT_DEPLOYMENT"
+    )
 
-✔ Summary of Loss History:  
-    - Status: [Clean / Losses Reported]  
-    - Summary: [1-sentence overview]  
-    - Major Incidents: [Largest incident if present]  
+# Create Azure OpenAI client
+client = AzureOpenAI(
+    api_key=AZURE_OPENAI_API_KEY,
+    api_version=AZURE_OPENAI_API_VERSION,
+    azure_endpoint=AZURE_OPENAI_ENDPOINT,
+)
 
-------------------------------------------------------------  
-3. EXPOSURE DATA  
-------------------------------------------------------------  
-✔ COPE Information (Construction, Occupancy, Protection, Exposure):  
-    - [Building info, occupancy, protection systems]  
 
-✔ Statement of Values (SOV):  
-    - Total Insurable Value (TIV): $[Insert]  
-    - Building Limit: $[Insert]  
-    - Contents/BPP Limit: $[Insert]  
-    - Business Income: $[Insert]  
+def individual_summary(attachments: list[dict]) -> str:
+    """
+    attachments = list of dicts like:
+    [
+      {"file_name": "...pdf", "summary": "text..."},
+      {"file_name": "...pdf", "summary": "text..."},
+      ...
+    ]
 
-✔ Financials:  
-    - [Any financial information if mentioned]  
+    We will:
+    - use file_name + summary together
+    - let the model infer what type of document it is (ACORD, Loss Run, SOV, etc.)
+    - create ONE combined commercial insurance submission summary
+    """
 
-✔ CAT Worksheets:  
-    - [If any catastrophe/hazard info appears]  
-
-✔ Specialty Schedules:  
-    - [Any special schedules referenced]  
-
-✔ Additional Exposure Details:  
-    - Total Locations: [Insert]  
-    - Main Operations: [Insert]  
-    - Property Details: [Insert]  
-    - Deductible Requested: $[Insert]  
-
-------------------------------------------------------------  
-4. RISK REPORTS  
-------------------------------------------------------------  
-✔ Engineering Surveys:  
-    - [If referenced]  
-
-✔ Safety Audits:  
-    - [If referenced]  
-
-------------------------------------------------------------  
-5. COMPLIANCE DOCUMENTS  
-------------------------------------------------------------  
-✔ Signed Application Forms  
-✔ Declarations  
-✔ Warranties & Indemnities  
-
-✔ Attached Files Included in the Submission:  
-    - [List packaged documents, e.g., application, loss runs, SOV]  
-
-------------------------------------------------------------  
-
-ATTACHMENT SUMMARIES BELOW (DO NOT INCLUDE THIS SECTION IN FINAL OUTPUT):  
-"""  
-{attachments_text}  
-"""
+    # Initialize an empty string to store summaries
+    summaries = ""
+    
+    # Iterate through each attachment in the list
+    # for attachment in attachments:
+    #     # Append the summary of each attachment to the summaries variable
+    #     summaries += f"File Name: {attachment['file_name']}\nSummary: {attachment['summary']}\n\n"
+    
+    summaries = attachments
+    # Return the combined summaries
+    print("Summaries Final : ", summaries)
+    
+    return summaries
 
 
 
 
+summary_handler.py
 
 
 
+import os
+import json
+from typing import Dict, Any, List
+import pandas as pd
+from summary_service import summary_require_env
+from summary_storage_utils import download_blob_to_input_folder
+from summary_loader import load_summary_document
+from summary_classifier import summarize_first_page
+from Data_Filler import extract_filenames_and_summaries
+from Data_Filler import connect_to_blob, beautify_extracted_data
+from newsummary import summarize_attachments
+from separate_summary import individual_summary
+
+INPUT_FOLDER = "input"
+OUTPUT_FOLDER = "output"
+
+
+async def summarize_blob_pdfs_layout(blob_urls: List[str]) -> Dict[str, Any]:
+    """
+    For each Blob URL:
+      - Download PDF into input/
+      - Use Form Recognizer to extract text (all pages)
+      - Use LLM to summarize the FIRST PAGE
+
+    Returns:
+      {
+        "status": True/False,
+        "summaries": [
+          {
+            "blob_url": "<url>",
+            "file_name": "file1.pdf",
+            "summary": "<summary text>" or None,
+            "error": "<error message>" or None
+          },
+          ...
+        ],
+        "save_error": "<error if we couldn't write output file>"  # optional
+      }
+    """
+    try:
+        summary_require_env()
+    except Exception as e:
+        return {"status": False, "error": f"Environment misconfigured: {e}"}
+
+    summaries: List[Dict[str, Any]] = []
+
+    for blob_url in blob_urls:
+        file_name = None
+
+        # 1) Download PDF
+        try:
+            local_pdf = await download_blob_to_input_folder(
+                blob_url, input_folder=INPUT_FOLDER
+            )
+            file_name = os.path.basename(local_pdf)
+        except Exception as e:
+            summaries.append(
+                {
+                    "blob_url": blob_url,
+                    "file_name": file_name,
+                    "summary": None,
+                    "error": f"Failed to download blob: {e}",
+                }
+            )
+            continue
+
+        # 2) Use Form Recognizer to analyze the document
+        try:
+            document_content = load_summary_document(local_pdf)
+        except Exception as e:
+            summaries.append(
+                {
+                    "blob_url": blob_url,
+                    "file_name": file_name,
+                    "summary": None,
+                    "error": f"Form Recognizer failed: {e}",
+                }
+            )
+            continue
+
+        # 3) Summarize FIRST PAGE using LLM
+        try:
+            summary_text = summarize_first_page(document_content, file_name=file_name)
+        except Exception as e:
+            summaries.append(
+                {
+                    "blob_url": blob_url,
+                    "file_name": file_name,
+                    "summary": None,
+                    "error": f"Summarization failed: {e}",
+                }
+            )
+            continue
+
+        # 4) Success case for this document
+        summaries.append(
+            {
+                "blob_url": blob_url,
+                "file_name": file_name,
+                "summary": summary_text,
+                "error": None,
+            }
+        )
+
+    result: Dict[str, Any] = {"status": True, "summaries": summaries}
+
+    # 5) Save result to ./output (optional, same style as your earlier project)
+    try:
+        os.makedirs(OUTPUT_FOLDER, exist_ok=True)
+        out_path = os.path.join(OUTPUT_FOLDER, "layout_summaries_result.json")
+        with open(out_path, "w", encoding="utf-8") as f:
+            json.dump(result, f, indent=2, ensure_ascii=False)
+    except Exception as e:
+        result["save_error"] = str(e)
+    
+    try:
+        extracted_data = extract_filenames_and_summaries(OUTPUT_FOLDER)
+        # print("Extracted Data:", extracted_data)
+        print("Beautified Extracted Data:\n")
+        beautify_data = beautify_extracted_data(extracted_data)
+        print(beautify_data)
+
+        # Example usage of connect_to_blob
+        DATA_URL = os.getenv("Data_URL")  # Retrieve the Data_URL from environment variables
+        if DATA_URL:
+            try:
+                updated_data = connect_to_blob(DATA_URL,beautify_data)
+                print("Blob Data Processed Successfully.")
+                if isinstance(updated_data, pd.DataFrame):
+                    print("Blob Data Processed Successfully and Excel Updated.")
+                else:
+                    print(f"Error: {updated_data['error']}")
+            except Exception as e:
+                print(f"Error processing blob data: {e}")
+        else:
+            print("Data_URL environment variable is not set.")
+
+    except Exception as e:
+        print(f"Error: {e}")
 
 
 
-This is the final tempalte that my team leasder gave, i have been told to refer for the summary that should be provided in prompt
+    try:
+        base_dir = os.path.dirname(os.path.abspath(__file__))
 
-1. Submission Cover Letter / Narrative
-✔ Exposure description
-✔ Placement strategy
-✔ Renewal highlights
-✔ Changes YOY
-2. Loss History Package
-✔ 5–10 year loss runs
-✔ Large loss details
-✔ Trends analysis
-3. Exposure Data
-✔ COPE
-✔ SOV
-✔ Financials
-✔ CAT worksheets
-✔ Specialty schedules
-4. Risk Reports
-✔ Engineering surveys
-✔ Safety audits
-5. Compliance Documents
-✔ Signed application forms
-✔ Declarations
-✔ Warranties & indemnities
+        output_folder = "output"
+
+        # (Optional) If you still want to directly inspect the JSON file:
+        json_path = os.path.join(base_dir, output_folder, "layout_summaries_result.json")
+        with open(json_path, "r", encoding="utf-8") as f:
+            layout_json = json.load(f)
+        # print(layout_json)  # just for debugging if needed
+
+        # 1) Use your existing helper to extract file_name + summary pairs
+        filenamesummary_extracted_beautified = extract_filenames_and_summaries(output_folder)
+        print("Per-document summaries:")
+        print(filenamesummary_extracted_beautified)
 
 
-Also below is the template that i created on my own , now i want to merge the below template in above template in such a way that the above template is the finalized template so priority is the above template dont remove anything from above template
+
+        # 2) Call the new summariser to get ONE combined submission summary
+        combined_summary = summarize_attachments(filenamesummary_extracted_beautified)
+        print("Combined Submission Summary:")
+        print(combined_summary)
+    # except Exception as e:
+    #     print(f"Error generating combined submission summary: {e}")
+
+        result["combined_summary"] = combined_summary
+    except Exception as e:
+        print(f"Error generating combined submission summary: {e}")
+        result["combined_summary_error"] = str(e)
 
 
-SUBMISSION SUMMARY
-Client: [Insert Client Legal Name]
-Date: [Insert Date]
-1. OVERVIEW
-Business Activity: [Briefly describe what the business does]
-Effective Date: [Date coverage should start]
-Submission Type: [New Business / Renewal]
-Current Situation: [Brief note on why this is being submitted e.g., "Market check," "Non-renewed," or "New venture"]
-2. RISK SNAPSHOT
-Total Locations: [Number of locations]
-Main Operations: [Description of the physical activities performed on site]
-Property Details: [Summarize key building info – e.g., construction type, age, or protection details like sprinklers]
-3. REQUESTED COVERAGE
-Total Insurable Value (TIV): $[Insert Total Amount]
-Building Limit: $[Amount]
-Contents/BPP Limit: $[Amount]
-Business Income: $[Amount]
-Deductible Requested: $[Amount]
-4. LOSS HISTORY SUMMARY
-Status: [Clean / Losses Reported]
-Summary: [Provide a 1-sentence summary of the last 3-5 years. e.g., "No losses reported in the last 5 years."]
-Major Incidents: [If there are claims, list the largest one here with a brief description. If none, state "N/A"]
-5. ATTACHED DOCUMENTS
-The following files are included in this packet:
-[List filenames here, e.g., Applications, Loss Runs, SOV]
- 
+
+    try:
+        individualized_summary = individual_summary(filenamesummary_extracted_beautified)
+    except Exception as e:
+        print(f"Error generating combined submission summary: {e}")
+
+
+    return result
