@@ -1,13 +1,8 @@
-I created a code on my own for the same thing
-
-saprate summary.py
+summary_classifier.py
 
 from dotenv import load_dotenv
 import os
-import json
-from Data_Filler import extract_filenames_and_summaries
-from Data_Filler import connect_to_blob, beautify_extracted_data
-from openai import AzureOpenAI  # Correct import for Azure OpenAI
+from openai import AzureOpenAI  #  Correct import for Azure OpenAI
 
 # Load environment variables
 load_dotenv()
@@ -29,7 +24,7 @@ if not (
         "AZURE_OPENAI_API_KEY and AZURE_OPENAI_CHAT_DEPLOYMENT"
     )
 
-# Create Azure OpenAI client
+#  Create Azure OpenAI client
 client = AzureOpenAI(
     api_key=AZURE_OPENAI_API_KEY,
     api_version=AZURE_OPENAI_API_VERSION,
@@ -37,326 +32,48 @@ client = AzureOpenAI(
 )
 
 
-def identify_document_type(file_name: str, summary: str) -> str:
+def summarize_first_page(document_content: dict, file_name: str | None = None) -> str:
     """
-    Identifies the document type based on the file name and summary.
-    Returns one of: 'ACORD', 'Loss Run', 'SOV'.
+    Use Azure OpenAI to summarize the *first page* of the document.
+
+    document_content is expected to come from load_document() and contain:
+      - "pages": List[str]  # each item = text of a page
+      - "text": str         # full text of the document (fallback)
     """
+
+    first_page_text = document_content.get("first_page_text")
+    if not first_page_text:
+        first_page_text = document_content.get("text", "")
+
+    # Safety: limit size so we don't overload the prompt
+    first_page_text = first_page_text[:4000]
+
+
     prompt = f"""
-    Based on the following file name and summary, identify the document type (ACORD, Loss Run, SOV):
-    File Name: {file_name}
-    Summary: {summary}
+You are an experienced Commercial Insurance Underwriter.
+Read the FIRST PAGE of the document and write a short, underwriting-focused
+summary in natural language. The summary should highlight whatever information
+is actually present that would help an underwriter. Do not mention document structure, do not
+reference page numbers, and do not include anything that is not explicitly
+supported by the text.
+Write the summary as a single short paragraph of 4–6 sentences, objective,
+clear, and focused only on the details visible in the text. 
+Always remember, Do not mention document structure, do not mention reference page numbers.
+# First page content:
+# \"\"\"{first_page_text}\"\"\"
     """
-    response = client.completions.create(
+
+
+
+
+    response = client.chat.completions.create(
         model=AZURE_OPENAI_CHAT_DEPLOYMENT,
-        prompt=prompt,
-        max_tokens=512,
+        messages=[{"role": "user", "content": prompt}],
+        max_tokens=256,
         temperature=0.2,
     )
-    document_type = response["choices"][0]["text"].strip()
-    return document_type
-
-
-
-
-def process_acord(summary: str) -> str:
-    """
-    Processes ACORD-type documents.
-    """
-    prompt = f"""
-    Create a summary for the following ACORD document:
-    {summary}
-    """
-    response = client.completions.create(
-        model=AZURE_OPENAI_CHAT_DEPLOYMENT,
-        prompt=prompt,
-        max_tokens=512,
-        temperature=0.2,
-    )
-    return response["choices"][0]["text"].strip()
-
-def process_loss_run(summary: str) -> str:
-    """
-    Processes Loss Run-type documents.
-    """
-    prompt = f"""
-    Create a summary for the following Loss Run document:
-    {summary}
-    """
-    response = client.completions.create(
-        model=AZURE_OPENAI_CHAT_DEPLOYMENT,
-        prompt=prompt,
-        max_tokens=512,
-        temperature=0.2,
-    )
-    return response["choices"][0]["text"].strip()
-
-def process_sov(summary: str) -> str:
-    """
-    Processes SOV-type documents.
-    """
-    prompt = f"""
-    Create a summary for the following SOV document:
-    {summary}
-    """
-    response = client.completions.create(
-        model=AZURE_OPENAI_CHAT_DEPLOYMENT,
-        prompt=prompt,
-        max_tokens=512,
-        temperature=0.2,
-    )
-    return response["choices"][0]["text"].strip()
-
-
-
-
-def individual_summary(attachments: list[dict]) -> str:
-    """
-    attachments = list of dicts like:
-    [
-      {"file_name": "...pdf", "summary": "text..."},
-      {"file_name": "...pdf", "summary": "text..."},
-      ...
-    ]
-
-    We will:
-    - use file_name + summary together
-    - let the model infer what type of document it is (ACORD, Loss Run, SOV, etc.)
-    - create ONE combined commercial insurance submission summary
-    """
-
-    # Initialize an empty string to store summaries
-    summaries = ""
-    
-    # Iterate through each attachment in the list
-    # for attachment in attachments:
-    #     # Append the summary of each attachment to the summaries variable
-    #     summaries += f"File Name: {attachment['file_name']}\nSummary: {attachment['summary']}\n\n"
-    
-    # summaries = attachments
-    # Return the combined summaries
-    # print("Summaries Final : ", summaries)
-
-    for attachment in attachments:
-        # Extract file name and summary
-        file_name = attachment["file_name"]
-        summary = attachment["summary"]
-        
-
-        document_type = identify_document_type(file_name, summary)
-        print(f"Document Type Identified: {document_type}")
-        
-        if document_type == "ACORD":
-            processed_summary = process_acord(summary)
-        elif document_type == "Loss Run":
-            processed_summary = process_loss_run(summary)
-        elif document_type == "SOV":
-            processed_summary = process_sov(summary)
-        else:
-            processed_summary = "Unknown document type. Unable to process."
-        # Update the attachment with the processed summary
-        attachment["processed_summary"] = processed_summary
-
-        # Print the processed summary
-        print(f"Processed Summary for {file_name}: {processed_summary}")
-
-    # Return the updated list of attachments
-    return attachments
-
-
-
-summary_handler.py
-
-
-
-import os
-import json
-from typing import Dict, Any, List
-import pandas as pd
-from summary_service import summary_require_env
-from summary_storage_utils import download_blob_to_input_folder
-from summary_loader import load_summary_document
-from summary_classifier import summarize_first_page
-from Data_Filler import extract_filenames_and_summaries
-from Data_Filler import connect_to_blob, beautify_extracted_data
-from newsummary import summarize_attachments
-from separate_summary import individual_summary
-
-INPUT_FOLDER = "input"
-OUTPUT_FOLDER = "output"
-
-
-async def summarize_blob_pdfs_layout(blob_urls: List[str]) -> Dict[str, Any]:
-    """
-    For each Blob URL:
-      - Download PDF into input/
-      - Use Form Recognizer to extract text (all pages)
-      - Use LLM to summarize the FIRST PAGE
-
-    Returns:
-      {
-        "status": True/False,
-        "summaries": [
-          {
-            "blob_url": "<url>",
-            "file_name": "file1.pdf",
-            "summary": "<summary text>" or None,
-            "error": "<error message>" or None
-          },
-          ...
-        ],
-        "save_error": "<error if we couldn't write output file>"  # optional
-      }
-    """
-    try:
-        summary_require_env()
-    except Exception as e:
-        return {"status": False, "error": f"Environment misconfigured: {e}"}
-
-    summaries: List[Dict[str, Any]] = []
-
-    for blob_url in blob_urls:
-        file_name = None
-
-        # 1) Download PDF
-        try:
-            local_pdf = await download_blob_to_input_folder(
-                blob_url, input_folder=INPUT_FOLDER
-            )
-            file_name = os.path.basename(local_pdf)
-        except Exception as e:
-            summaries.append(
-                {
-                    "blob_url": blob_url,
-                    "file_name": file_name,
-                    "summary": None,
-                    "error": f"Failed to download blob: {e}",
-                }
-            )
-            continue
-
-        # 2) Use Form Recognizer to analyze the document
-        try:
-            document_content = load_summary_document(local_pdf)
-        except Exception as e:
-            summaries.append(
-                {
-                    "blob_url": blob_url,
-                    "file_name": file_name,
-                    "summary": None,
-                    "error": f"Form Recognizer failed: {e}",
-                }
-            )
-            continue
-
-        # 3) Summarize FIRST PAGE using LLM
-        try:
-            summary_text = summarize_first_page(document_content, file_name=file_name)
-        except Exception as e:
-            summaries.append(
-                {
-                    "blob_url": blob_url,
-                    "file_name": file_name,
-                    "summary": None,
-                    "error": f"Summarization failed: {e}",
-                }
-            )
-            continue
-
-        # 4) Success case for this document
-        summaries.append(
-            {
-                "blob_url": blob_url,
-                "file_name": file_name,
-                "summary": summary_text,
-                "error": None,
-            }
-        )
-
-    result: Dict[str, Any] = {"status": True, "summaries": summaries}
-
-    # 5) Save result to ./output (optional, same style as your earlier project)
-    try:
-        os.makedirs(OUTPUT_FOLDER, exist_ok=True)
-        out_path = os.path.join(OUTPUT_FOLDER, "layout_summaries_result.json")
-        with open(out_path, "w", encoding="utf-8") as f:
-            json.dump(result, f, indent=2, ensure_ascii=False)
-    except Exception as e:
-        result["save_error"] = str(e)
-    
-    try:
-        extracted_data = extract_filenames_and_summaries(OUTPUT_FOLDER)
-        # print("Extracted Data:", extracted_data)
-        print("Beautified Extracted Data:\n")
-        beautify_data = beautify_extracted_data(extracted_data)
-        print(beautify_data)
-
-        # Example usage of connect_to_blob
-        DATA_URL = os.getenv("Data_URL")  # Retrieve the Data_URL from environment variables
-        if DATA_URL:
-            try:
-                updated_data = connect_to_blob(DATA_URL,beautify_data)
-                print("Blob Data Processed Successfully.")
-                if isinstance(updated_data, pd.DataFrame):
-                    print("Blob Data Processed Successfully and Excel Updated.")
-                else:
-                    print(f"Error: {updated_data['error']}")
-            except Exception as e:
-                print(f"Error processing blob data: {e}")
-        else:
-            print("Data_URL environment variable is not set.")
-
-    except Exception as e:
-        print(f"Error: {e}")
-
-
 
     try:
-        base_dir = os.path.dirname(os.path.abspath(__file__))
-
-        output_folder = "output"
-
-        # (Optional) If you still want to directly inspect the JSON file:
-        json_path = os.path.join(base_dir, output_folder, "layout_summaries_result.json")
-        with open(json_path, "r", encoding="utf-8") as f:
-            layout_json = json.load(f)
-        # print(layout_json)  # just for debugging if needed
-
-        # 1) Use your existing helper to extract file_name + summary pairs
-        filenamesummary_extracted_beautified = extract_filenames_and_summaries(output_folder)
-        print("Per-document summaries:")
-        print(filenamesummary_extracted_beautified)
-
-
-
-        # 2) Call the new summariser to get ONE combined submission summary
-        combined_summary = summarize_attachments(filenamesummary_extracted_beautified)
-        print("Combined Submission Summary:")
-        print(combined_summary)
-    # except Exception as e:
-    #     print(f"Error generating combined submission summary: {e}")
-
-        result["combined_summary"] = combined_summary
-    except Exception as e:
-        print(f"Error generating combined submission summary: {e}")
-        result["combined_summary_error"] = str(e)
-
-
-
-    try:
-        individualized_summary = individual_summary(filenamesummary_extracted_beautified)
-        print("Individualized Summary Output:")
-        print(individualized_summary)
-    except Exception as e:
-        print(f"Error generating Individual summary: {e}")
-
-
-    return result
-
-
-I am getting this error
-Error generating Individual summary: Error code: 400 - {'error': {'code': 'OperationNotSupported', 'message': 'The completion operation does not work with the specified model, gpt-4.1. Please choose different model and try again. You can learn more about which models can be used with each operation here: https://go.microsoft.com/fwlink/?linkid=2197993.'}}
-
-
-first check my logic i hope it is good as per what i said you earlier 
-also check the error 
+        return response.choices[0].message.content.strip()
+    except Exception:
+        return getattr(response.choices[0].message, "content", "").strip()
