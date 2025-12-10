@@ -1,3 +1,110 @@
+STRUCTURE OF YOUR OUTPUT (USE THIS EXACT TEMPLATE):
+
+SUBMISSION SUMMARY  
+Client: [Client Legal Name]  
+Date: [Submission or Document Date]
+
+------------------------------------------------------------  
+1. SUBMISSION COVER LETTER / NARRATIVE  
+------------------------------------------------------------  
+✔ Exposure Description:  
+    - [Describe what the business does]  
+    - [Main operations / physical activities]  
+    - [Property details: construction, age, protection, sprinklers, etc.]  
+
+✔ Placement Strategy:  
+    - [Placement goals or program approach if evident]  
+
+✔ Renewal Highlights:  
+    - [Notable changes or updates if mentioned]  
+
+✔ Changes YOY:  
+    - [Any changes in exposure, values, operations, or loss experience]  
+
+✔ Additional Overview Details:  
+    - Effective Date: [Coverage start date]  
+    - Submission Type: [Renewal / New Business / Other]  
+    - Current Situation: [Reason for submission if stated]  
+
+------------------------------------------------------------  
+2. LOSS HISTORY PACKAGE  
+------------------------------------------------------------  
+✔ 5–10 Year Loss Runs:  
+    - [Summarize multi-year loss experience if available]  
+
+✔ Large Loss Details:  
+    - [Brief details on significant claims]  
+
+✔ Trends Analysis:  
+    - [Patterns in frequency/severity if evident]  
+
+✔ Summary of Loss History:  
+    - Status: [Clean / Losses Reported]  
+    - Summary: [1-sentence overview]  
+    - Major Incidents: [Largest incident if present]  
+
+------------------------------------------------------------  
+3. EXPOSURE DATA  
+------------------------------------------------------------  
+✔ COPE Information (Construction, Occupancy, Protection, Exposure):  
+    - [Building info, occupancy, protection systems]  
+
+✔ Statement of Values (SOV):  
+    - Total Insurable Value (TIV): $[Insert]  
+    - Building Limit: $[Insert]  
+    - Contents/BPP Limit: $[Insert]  
+    - Business Income: $[Insert]  
+
+✔ Financials:  
+    - [Any financial information if mentioned]  
+
+✔ CAT Worksheets:  
+    - [If any catastrophe/hazard info appears]  
+
+✔ Specialty Schedules:  
+    - [Any special schedules referenced]  
+
+✔ Additional Exposure Details:  
+    - Total Locations: [Insert]  
+    - Main Operations: [Insert]  
+    - Property Details: [Insert]  
+    - Deductible Requested: $[Insert]  
+
+------------------------------------------------------------  
+4. RISK REPORTS  
+------------------------------------------------------------  
+✔ Engineering Surveys:  
+    - [If referenced]  
+
+✔ Safety Audits:  
+    - [If referenced]  
+
+------------------------------------------------------------  
+5. COMPLIANCE DOCUMENTS  
+------------------------------------------------------------  
+✔ Signed Application Forms  
+✔ Declarations  
+✔ Warranties & Indemnities  
+
+✔ Attached Files Included in the Submission:  
+    - [List packaged documents, e.g., application, loss runs, SOV]  
+
+------------------------------------------------------------  
+
+ATTACHMENT SUMMARIES BELOW (DO NOT INCLUDE THIS SECTION IN FINAL OUTPUT):  
+"""  
+{attachments_text}  
+"""
+
+
+
+
+
+
+
+
+
+
 This is the final tempalte that my team leasder gave, i have been told to refer for the summary that should be provided in prompt
 
 1. Submission Cover Letter / Narrative
