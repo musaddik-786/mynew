@@ -1,510 +1,4 @@
-Nice — below are the full, ready-to-drop-in updated files you asked for. I only changed the modules that needed edits for the new response shape and the new logic (classification using file_name+summary, detailed per-doc summaries using text, store text in JSON, strip text from API response).
-
-Files included (full content):
-	•	summary_loader.py — unchanged but included for completeness (returns full text under first_page_text).
-	•	summary_classifier.py — unchanged behaviour but shown for completeness (creates short LLM summary).
-	•	Data_Filler.py — updated to return text along with file_name & summary.
-	•	separate_summary.py — updated: classification uses file_name+summary; detailed summaries use text; uses chat completions wrapper.
-	•	summary_handler.py — updated to save text to JSON but return the compact two-item response:
-[ {"combined_summary": ...}, {"individualized_summary": [ {file_name, summary, document_type, processed_summary}, ... ]} ]
-
-Copy-paste each file into your repo and restart your service.
-
-⸻
-
-summary_loader.py
-
-from dotenv import load_dotenv
-import os
-from azure.ai.formrecognizer import DocumentAnalysisClient
-from azure.core.credentials import AzureKeyCredential
-
-# Load environment variables from .env file
-load_dotenv()
-
-# Fetch variables
-endpoint = os.getenv("AZURE_FORMRECOG_ENDPOINT")
-key = os.getenv("AZURE_FORMRECOG_KEY")
-
-# Fail fast if missing
-if not endpoint:
-    raise ValueError("AZURE_FORMRECOG_ENDPOINT is not set. Check your .env file.")
-if not key:
-    raise ValueError("AZURE_FORMRECOG_KEY is not set. Check your .env file.")
-
-# Create the client using the key and endpoint
-client = DocumentAnalysisClient(endpoint=endpoint, credential=AzureKeyCredential(key))
-
-
-def load_summary_document(file_path: str) -> dict:
-    """
-    Extract ALL PAGES using Form Recognizer's prebuilt-read model.
-
-    Even though the return key is 'first_page_text',
-    we return the FULL DOCUMENT TEXT (all pages) concatenated.
-    """
-    with open(file_path, "rb") as f:
-        poller = client.begin_analyze_document(
-            "prebuilt-read",
-            document=f
-        )
-        result = poller.result()
-
-    if not result.pages:
-        return {"first_page_text": ""}
-
-    all_pages_text_list = []
-    # Collect text for ALL pages
-    for page in result.pages:
-        page_lines = [line.content for line in page.lines]
-        page_text = "\n".join(page_lines)
-        all_pages_text_list.append(page_text)
-
-    # Combine everything into ONE string
-    all_pages_text = "\n\n".join(all_pages_text_list)
-
-    # Optional debug
-    print("ALL pages text (truncated to 500 chars):")
-    print(all_pages_text[:500])
-    print("\n---- END OF PREVIEW ----\n")
-
-    return {
-        "first_page_text": all_pages_text   # full text stored under this key
-    }
-
-
-⸻
-
-summary_classifier.py
-
-# classifier.py
-from dotenv import load_dotenv
-import os
-from openai import AzureOpenAI  # Correct import for Azure OpenAI
-
-# Load environment variables
-load_dotenv()
-
-AZURE_OPENAI_ENDPOINT = os.getenv("AZURE_OPENAI_ENDPOINT")
-AZURE_OPENAI_API_VERSION = os.getenv("AZURE_OPENAI_API_VERSION")
-AZURE_OPENAI_API_KEY = os.getenv("AZURE_OPENAI_API_KEY")
-AZURE_OPENAI_CHAT_DEPLOYMENT = os.getenv("AZURE_OPENAI_CHAT_DEPLOYMENT")
-
-if not (
-    AZURE_OPENAI_ENDPOINT
-    and AZURE_OPENAI_API_VERSION
-    and AZURE_OPENAI_API_KEY
-    and AZURE_OPENAI_CHAT_DEPLOYMENT
-):
-    raise RuntimeError(
-        "Azure OpenAI env vars missing. Please set "
-        "AZURE_OPENAI_ENDPOINT, AZURE_OPENAI_API_VERSION, "
-        "AZURE_OPENAI_API_KEY and AZURE_OPENAI_CHAT_DEPLOYMENT"
-    )
-
-# Create Azure OpenAI client
-client = AzureOpenAI(
-    api_key=AZURE_OPENAI_API_KEY,
-    api_version=AZURE_OPENAI_API_VERSION,
-    azure_endpoint=AZURE_OPENAI_ENDPOINT,
-)
-
-
-def summarize_first_page(document_content: dict, file_name: str | None = None) -> str:
-    """
-    Use Azure OpenAI to summarize the *first page* of the document.
-
-    document_content is expected to come from load_summary_document() and contain:
-      - "first_page_text": str  # we store full text there now
-    """
-
-    first_page_text = document_content.get("first_page_text")
-    if not first_page_text:
-        first_page_text = document_content.get("text", "")
-
-    # Safety: limit size so we don't overload the prompt
-    first_page_text = first_page_text[:4000]
-
-    prompt = f"""
-You are an experienced Commercial Insurance Underwriter.
-Read the FIRST PAGE of the document and write a short, underwriting-focused
-summary in natural language. The summary should highlight whatever information
-is actually present that would help an underwriter. Do not mention document structure, do not
-reference page numbers, and do not include anything that is not explicitly
-supported by the text.
-Write the summary as a single short paragraph of 4–6 sentences, objective,
-clear, and focused only on the details visible in the text. 
-Always remember, Do not mention document structure, do not mention reference page numbers.
-# First page content:
-# \"\"\"{first_page_text}\"\"\"
-    """
-
-    response = client.chat.completions.create(
-        model=AZURE_OPENAI_CHAT_DEPLOYMENT,
-        messages=[{"role": "user", "content": prompt}],
-        max_tokens=256,
-        temperature=0.2,
-    )
-
-    try:
-        return response.choices[0].message.content.strip()
-    except Exception:
-        return getattr(response.choices[0].message, "content", "").strip()
-
-
-⸻
-
-Data_Filler.py (updated to include text)
-
-import os
-import json
-import pandas as pd
-from io import BytesIO
-from azure.storage.blob import BlobServiceClient
-from typing import List, Dict, Any
-from summary_service import summary_require_env
-from summary_service import AZURE_STORAGE_CONNECTION_STRING, _parse_blob_url
-
-
-def extract_filenames_and_summaries(output_folder: str) -> List[Dict[str, Any]]:
-    """
-    Extracts file names, summaries, and raw text from the JSON file in the output folder.
-
-    Returns list of:
-      {
-        "file_name": "<file_name>",
-        "summary": "<summary>",
-        "text": "<full_text_or_first_page_text>"
-      }
-    """
-    result_file = os.path.join(output_folder, "layout_summaries_result.json")
-
-    if not os.path.exists(result_file):
-        raise FileNotFoundError(f"No JSON result file found at {result_file}")
-
-    with open(result_file, "r", encoding="utf-8") as f:
-        data = json.load(f)
-
-    summaries = data.get("summaries", [])
-
-    extracted_data = [
-        {
-            "file_name": item["file_name"],
-            "summary": item["summary"],
-            "text": item.get("text", "")  # <-- NEW: raw text stored here
-        }
-        for item in summaries
-        if "file_name" in item and "summary" in item
-    ]
-
-    return extracted_data
-
-
-def beautify_extracted_data(extracted_data: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
-    """
-    Beautifies and prints the extracted data in the desired format.
-    NOTE: we do NOT include 'text' here, only file_name + summary + reference_number.
-    """
-    beautified_data: List[Dict[str, Any]] = []
-
-    for item in extracted_data:
-        file_name = item["file_name"]
-        reference_number = file_name.split("_")[0]
-
-        beautified_item = {
-            "reference_number": reference_number,
-            "file_name": file_name,
-            "summary": item["summary"],
-        }
-        beautified_data.append(beautified_item)
-
-        print(f"file_name: {file_name}")
-        print(f"reference_number: {reference_number}")
-        print(f"summary: {item['summary']}\n")
-
-    return beautified_data
-
-
-def connect_to_blob(blob_url: str, beautified_data: List[Dict[str, Any]]):
-    """
-    Update existing rows in the Excel blob by concatenating file_name + summary
-    into the Summary cell for matching 'Unique refrence Number'.
-    Does NOT create new rows if there is no match.
-    """
-    try:
-        summary_require_env()
-    except Exception as e:
-        return {"status": False, "error": f"Environment misconfigured: {e}"}
-
-    if not AZURE_STORAGE_CONNECTION_STRING:
-        raise RuntimeError("AZURE_STORAGE_CONNECTION_STRING not set")
-
-    try:
-        container, blob_path = _parse_blob_url(blob_url)
-    except Exception as e:
-        return {"status": False, "error": f"Unable to parse blob URL: {e}"}
-
-    try:
-        blob_service_client = BlobServiceClient.from_connection_string(AZURE_STORAGE_CONNECTION_STRING)
-        blob_client = blob_service_client.get_blob_client(container=container, blob=blob_path)
-
-        blob_data = blob_client.download_blob().readall()
-        excel_data = pd.read_excel(BytesIO(blob_data))
-
-        if "Unique refrence Number" not in excel_data.columns:
-            return {"status": False, "error": "'Unique refrence Number' column is missing in the Excel file."}
-
-        if "Summary" not in excel_data.columns:
-            excel_data["Summary"] = None
-
-        for item in beautified_data:
-            reference_number = item.get("reference_number")
-            file_name = item.get("file_name", "")
-            summary_text = item.get("summary", "")
-
-            matches = excel_data[excel_data["Unique refrence Number"] == reference_number].index
-
-            if matches.empty:
-                print(f"Reference number not found in Excel, skipping: {reference_number}")
-                continue
-
-            new_fragment = f"file_name: {file_name}\nsummary: {summary_text}"
-
-            for idx in matches:
-                existing = excel_data.at[idx, "Summary"]
-                if existing is not None and not pd.isna(existing):
-                    updated = f"{existing}\n\n{new_fragment}"
-                else:
-                    updated = new_fragment
-                excel_data.at[idx, "Summary"] = updated
-
-        output_stream = BytesIO()
-        excel_data.to_excel(output_stream, index=False, engine="openpyxl")
-        output_stream.seek(0)
-        blob_client.upload_blob(output_stream, overwrite=True)
-
-        return excel_data
-
-    except Exception as e:
-        return {"status": False, "error": f"Failed to process blob: {e}"}
-
-
-⸻
-
-separate_summary.py (key changes)
-
-from dotenv import load_dotenv
-import os
-from typing import List, Dict, Any
-from openai import AzureOpenAI  # Correct import for Azure OpenAI
-
-# Load environment variables
-load_dotenv()
-
-AZURE_OPENAI_ENDPOINT = os.getenv("AZURE_OPENAI_ENDPOINT")
-AZURE_OPENAI_API_VERSION = os.getenv("AZURE_OPENAI_API_VERSION")
-AZURE_OPENAI_API_KEY = os.getenv("AZURE_OPENAI_API_KEY")
-AZURE_OPENAI_CHAT_DEPLOYMENT = os.getenv("AZURE_OPENAI_CHAT_DEPLOYMENT")
-
-if not (
-    AZURE_OPENAI_ENDPOINT
-    and AZURE_OPENAI_API_VERSION
-    and AZURE_OPENAI_API_KEY
-    and AZURE_OPENAI_CHAT_DEPLOYMENT
-):
-    raise RuntimeError(
-        "Azure OpenAI env vars missing. Please set "
-        "AZURE_OPENAI_ENDPOINT, AZURE_OPENAI_API_VERSION, "
-        "AZURE_OPENAI_API_KEY and AZURE_OPENAI_CHAT_DEPLOYMENT"
-    )
-
-# Create Azure OpenAI client
-client = AzureOpenAI(
-    api_key=AZURE_OPENAI_API_KEY,
-    api_version=AZURE_OPENAI_API_VERSION,
-    azure_endpoint=AZURE_OPENAI_ENDPOINT,
-)
-
-
-def _call_chat_llm(prompt: str, max_tokens: int = 512, temperature: float = 0.2) -> str:
-    response = client.chat.completions.create(
-        model=AZURE_OPENAI_CHAT_DEPLOYMENT,
-        messages=[{"role": "user", "content": prompt}],
-        max_tokens=max_tokens,
-        temperature=temperature,
-    )
-    return response.choices[0].message.content.strip()
-
-
-def identify_document_type(file_name: str, summary: str) -> str:
-    """
-    Identifies the document type based on the file name and SUMMARY.
-    Returns one of: 'ACORD', 'Loss Run', 'SOV'.
-    """
-    prompt = f"""
-You are classifying a commercial insurance document.
-
-Possible types:
-- ACORD    (application / submission form)
-- Loss Run (loss history / claims listing)
-- SOV      (statement of values / property schedule)
-
-Read the file name and the short underwriting summary and choose EXACTLY ONE type.
-
-IMPORTANT:
-- Your ENTIRE response must be exactly one of:
-  ACORD
-  Loss Run
-  SOV
-- Do NOT add any explanation or extra words.
-
-File Name: {file_name}
-Summary: {summary}
-"""
-    raw = _call_chat_llm(prompt, max_tokens=10, temperature=0.0)
-    doc_type = raw.strip()
-
-    if doc_type.upper() == "ACORD":
-        return "ACORD"
-    if doc_type.lower().startswith("loss"):
-        return "Loss Run"
-    if "SOV" in doc_type.upper():
-        return "SOV"
-
-    # Fallback
-    return "ACORD"
-
-
-def process_acord(text: str) -> str:
-    """
-    Processes ACORD-type documents using the FIRST PAGE / FULL TEXT.
-    """
-    text = (text or "")[:4000]
-
-    prompt = f"""
-You are an experienced commercial insurance underwriter.
-
-You are given the FIRST PAGE TEXT (or full text) of an ACORD-style application
-or submission for a commercial property risk.
-
-Using ONLY this text, write a clear underwriting-friendly narrative.
-
-RULES:
-- Focus on: named insured, address/location, operations, carrier/program,
-  key dates, lines of business, and basic exposure info (revenue, employees)
-  IF they appear in the text.
-- Do NOT invent any data that is not clearly present.
-- Do NOT mention 'first page', 'ACORD', or 'this document'.
-- Write 4–6 concise sentences of natural prose.
-
-DOCUMENT TEXT:
-\"\"\" 
-{text}
-\"\"\"
-"""
-    return _call_chat_llm(prompt)
-
-
-def process_loss_run(text: str) -> str:
-    """
-    Processes Loss Run-type documents using the FIRST PAGE / FULL TEXT.
-    """
-    text = (text or "")[:4000]
-
-    prompt = f"""
-You are an experienced commercial insurance underwriter.
-
-You are given the FIRST PAGE TEXT (or full text) of a loss run / loss history document.
-
-Using ONLY this text, write a concise loss history summary.
-
-RULES:
-- Focus on: number of claims, type of losses (water, fire, wind, etc.),
-  total paid / incurred / reserved (if mentioned), coverage period, and
-  whether any large or open claims exist.
-- Comment briefly on frequency and severity based ONLY on the text.
-- Do NOT invent any new numbers or claims.
-- Do NOT mention 'loss run' or 'this summary'.
-- Write 3–5 concise sentences.
-
-DOCUMENT TEXT:
-\"\"\" 
-{text}
-\"\"\"
-"""
-    return _call_chat_llm(prompt)
-
-
-def process_sov(text: str) -> str:
-    """
-    Processes SOV-type documents using the FIRST PAGE / FULL TEXT.
-    """
-    text = (text or "")[:4000]
-
-    prompt = f"""
-You are an experienced commercial property underwriter.
-
-You are given the FIRST PAGE TEXT (or full text) of a Statement of Values (SOV)
-or similar property schedule.
-
-Using ONLY this text, write a concise property exposure summary.
-
-RULES:
-- Focus on: named insured, main location(s), total property values, valuation basis
-  (e.g. ACV or replacement cost), coinsurance, covered perils, and any major exclusions
-  IF they appear in the text.
-- Do NOT invent any extra locations, values, or terms.
-- Do NOT mention 'SOV' or 'this document'.
-- Write 3–5 concise sentences.
-
-DOCUMENT TEXT:
-\"\"\" 
-{text}
-\"\"\"
-"""
-    return _call_chat_llm(prompt)
-
-
-def individual_summary(attachments: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
-    """
-    attachments = list of dicts like:
-    [
-      {"file_name": "...pdf", "summary": "short summary", "text": "full text"},
-      ...
-    ]
-    For each:
-      - detect type using file_name + summary
-      - call corresponding processor using TEXT
-      - add 'document_type' and 'processed_summary'
-    """
-    for attachment in attachments:
-        file_name = attachment.get("file_name", "")
-        summary = attachment.get("summary", "")
-        text = attachment.get("text", "")
-
-        document_type = identify_document_type(file_name, summary)
-        print(f"Document Type Identified for {file_name}: {document_type}")
-
-        if document_type == "ACORD":
-            processed_summary = process_acord(text)
-        elif document_type == "Loss Run":
-            processed_summary = process_loss_run(text)
-        elif document_type == "SOV":
-            processed_summary = process_sov(text)
-        else:
-            processed_summary = "Unknown document type. Unable to process."
-
-        attachment["document_type"] = document_type
-        attachment["processed_summary"] = processed_summary
-
-        print(f"Processed Summary for {file_name}:\n{processed_summary}\n")
-
-    return attachments
-
-
-⸻
-
-summary_handler.py (final — returns the two-item list)
+Below is the full, ready-to-copy updated summary_handler.py. It keeps your existing end-to-end flow (download blobs → form recognizer → short LLM summary saved in JSON → combined submission summary → per-document typed summaries), but adds a small cleaning step at the end that returns a compact dictionary:
 
 import os
 import json
@@ -524,19 +18,57 @@ INPUT_FOLDER = "input"
 OUTPUT_FOLDER = "output"
 
 
-async def summarize_blob_pdfs_layout(blob_urls: List[str]) -> List[Dict[str, Any]]:
+def clean_result_for_api(result: Dict[str, Any]) -> Dict[str, Any]:
+    """
+    Build a compact, clean dictionary response from the full 'result' dict.
+
+    Output shape:
+    {
+      "combined_summary": "<string or None>",
+      "individualized_summary": [
+         { "file_name": ..., "summary": ..., "document_type": ..., "processed_summary": ... },
+         ...
+      ]
+    }
+
+    This removes raw 'text' and error details from the per-file items.
+    """
+    combined = result.get("combined_summary")
+
+    raw_individualized = result.get("individualized_summary", [])
+    cleaned_list: List[Dict[str, Any]] = []
+
+    if isinstance(raw_individualized, list):
+        for item in raw_individualized:
+            cleaned_item = {
+                "file_name": item.get("file_name"),
+                "summary": item.get("summary"),
+                "document_type": item.get("document_type"),
+                "processed_summary": item.get("processed_summary"),
+            }
+            cleaned_list.append(cleaned_item)
+
+    return {
+        "combined_summary": combined,
+        "individualized_summary": cleaned_list,
+    }
+
+
+async def summarize_blob_pdfs_layout(blob_urls: List[str]) -> Dict[str, Any]:
     """
     For each Blob URL:
       - Download PDF into input/
       - Use Form Recognizer to extract text (all pages)
-      - Use LLM to summarize the FIRST PAGE (short summary)
-      - Save per-document: blob_url, file_name, summary, text, document_type, error
-      - Return: [ {"combined_summary": ...}, {"individualized_summary": [ {file_name, summary, document_type, processed_summary}, ... ] } ]
+      - Use LLM to summarize the FIRST PAGE
+
+    Saves the full detailed JSON (including raw text) to ./output/layout_summaries_result.json
+    but RETURNS a cleaned dictionary suitable for API responses (no raw 'text').
     """
     try:
         summary_require_env()
     except Exception as e:
-        return [{"combined_summary": None}, {"individualized_summary": []}]
+        # Return a clean, empty-shaped response on environment failure
+        return {"combined_summary": None, "individualized_summary": []}
 
     summaries: List[Dict[str, Any]] = []
 
@@ -556,13 +88,12 @@ async def summarize_blob_pdfs_layout(blob_urls: List[str]) -> List[Dict[str, Any
                     "file_name": file_name,
                     "summary": None,
                     "text": None,
-                    "document_type": None,
                     "error": f"Failed to download blob: {e}",
                 }
             )
             continue
 
-        # 2) Form Recognizer
+        # 2) Use Form Recognizer to analyze the document
         try:
             document_content = load_summary_document(local_pdf)
         except Exception as e:
@@ -572,16 +103,15 @@ async def summarize_blob_pdfs_layout(blob_urls: List[str]) -> List[Dict[str, Any
                     "file_name": file_name,
                     "summary": None,
                     "text": None,
-                    "document_type": None,
                     "error": f"Form Recognizer failed: {e}",
                 }
             )
             continue
 
-        # Extract raw text
+        # Extract raw text (stored in first_page_text key by loader)
         text_content = document_content.get("first_page_text", "")
 
-        # 3) Short LLM summary (first page)
+        # 3) Summarize FIRST PAGE using LLM (short summary)
         try:
             summary_text = summarize_first_page(document_content, file_name=file_name)
         except Exception as e:
@@ -591,27 +121,25 @@ async def summarize_blob_pdfs_layout(blob_urls: List[str]) -> List[Dict[str, Any
                     "file_name": file_name,
                     "summary": None,
                     "text": text_content,
-                    "document_type": None,
                     "error": f"Summarization failed: {e}",
                 }
             )
             continue
 
-        # 4) Store success case (text saved for storage only)
+        # 4) Success case for this document — include raw text for audit on disk
         summaries.append(
             {
                 "blob_url": blob_url,
                 "file_name": file_name,
                 "summary": summary_text,
-                "text": text_content,   # stored in JSON output on disk
-                "document_type": None,  # will be filled by individual_summary()
+                "text": text_content,
                 "error": None,
             }
         )
 
     result: Dict[str, Any] = {"status": True, "summaries": summaries}
 
-    # 5) Save to disk (this JSON WILL include text for each entry)
+    # 5) Save result to ./output (retain 'text' on disk for audit)
     try:
         os.makedirs(OUTPUT_FOLDER, exist_ok=True)
         out_path = os.path.join(OUTPUT_FOLDER, "layout_summaries_result.json")
@@ -620,7 +148,7 @@ async def summarize_blob_pdfs_layout(blob_urls: List[str]) -> List[Dict[str, Any
     except Exception as e:
         result["save_error"] = str(e)
 
-    # 6) Beautify & optionally update Excel (unchanged)
+    # 6) Beautify and optionally write to Excel (unchanged; uses only file_name + summary)
     try:
         extracted_data = extract_filenames_and_summaries(OUTPUT_FOLDER)
         print("Beautified Extracted Data:\n")
@@ -635,6 +163,7 @@ async def summarize_blob_pdfs_layout(blob_urls: List[str]) -> List[Dict[str, Any
                 if isinstance(updated_data, pd.DataFrame):
                     print("Blob Data Processed Successfully and Excel Updated.")
                 else:
+                    # updated_data may be an error dict
                     print(f"Error: {updated_data.get('error')}")
             except Exception as e:
                 print(f"Error processing blob data: {e}")
@@ -645,56 +174,50 @@ async def summarize_blob_pdfs_layout(blob_urls: List[str]) -> List[Dict[str, Any
 
     # 7) Combined submission summary (uses file_name + summary only)
     combined_summary_text = None
+    filenamesummary_extracted_beautified: List[Dict[str, Any]] = []
     try:
-        filenamesummary_extracted_beautified = extract_filenames_and_summaries(OUTPUT_FOLDER)
-        print("Per-document summaries (with text included in internal list):")
+        base_dir = os.path.dirname(os.path.abspath(__file__))
+        output_folder = "output"
+
+        json_path = os.path.join(base_dir, output_folder, "layout_summaries_result.json")
+        with open(json_path, "r", encoding="utf-8") as f:
+            layout_json = json.load(f)
+
+        filenamesummary_extracted_beautified = extract_filenames_and_summaries(output_folder)
+        print("Per-document summaries (with text):")
         print(filenamesummary_extracted_beautified)
 
         combined_summary_text = summarize_attachments(filenamesummary_extracted_beautified)
         print("Combined Submission Summary:")
         print(combined_summary_text)
+
         result["combined_summary"] = combined_summary_text
     except Exception as e:
         print(f"Error generating combined submission summary: {e}")
         result["combined_summary_error"] = str(e)
         combined_summary_text = None
 
-    # 8) Individual typed summaries (ACORD / Loss Run / SOV) — uses text from extracted list
-    individualized_with_text: List[Dict[str, Any]] = []
+    # 8) Individual typed summaries (ACORD / Loss Run / SOV)
     try:
-        individualized_with_text = individual_summary(filenamesummary_extracted_beautified)
-        print("Individualized Summary Output (internal, includes text):")
-        print(individualized_with_text)
-        result["individualized_summary"] = individualized_with_text
+        # individual_summary expects attachments each having 'file_name','summary','text'
+        individualized_summary = individual_summary(filenamesummary_extracted_beautified)
+        print("Individualized Summary Output (raw):")
+        print(individualized_summary)
+        result["individualized_summary"] = individualized_summary
     except Exception as e:
         print(f"Error generating Individual summary: {e}")
         result["individualized_summary_error"] = str(e)
-        individualized_with_text = []
+        result["individualized_summary"] = []
 
-    # 9) Build final cleaned response (no raw 'text' field)
-    cleaned_individualized: List[Dict[str, Any]] = []
-    for it in individualized_with_text:
-        cleaned_item: Dict[str, Any] = {
-            "file_name": it.get("file_name"),
-            "summary": it.get("summary"),
-            "document_type": it.get("document_type"),
-            "processed_summary": it.get("processed_summary"),
-        }
-        cleaned_individualized.append(cleaned_item)
-
-    response_payload: List[Dict[str, Any]] = [
-        {"combined_summary": combined_summary_text},
-        {"individualized_summary": cleaned_individualized},
-    ]
-
-    return response_payload
+    # 9) CLEAN the result for the API and return only the compact payload (no raw text)
+    cleaned_payload = clean_result_for_api(result)
+    return cleaned_payload
 
 
 ⸻
 
-If you want I can:
-	•	Update the endpoint wrapper / test script to log the new response shape the same way your test output previously did.
-	•	Provide a sample layout_summaries_result.json example with text included and the returned payload example — helpful to confirm formats.
-	•	Add small defensive checks (e.g., ensure text length > 0 before passing to processors).
+If you want, I can:
+	•	Also provide a small test script that calls summarize_blob_pdfs_layout() and prints the cleaned JSON (so you can verify quickly).
+	•	Or modify the clean_result_for_api() shape (for example to include status or errors) — right now it only returns combined_summary and individualized_summary as you requested.
 
-Tell me which one next and I’ll produce it immediately.
+Want the test script next?
