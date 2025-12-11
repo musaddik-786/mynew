@@ -1,253 +1,17 @@
-Perfect, this is a very clear new requirement. I’ll do two things:
-	1.	Change the flow from “classify single PDF as ACORD / Non-ACORD” → to “summarize first page of multiple PDFs”
-	2.	Make the router accept a list of blob URLs, and return a list of summaries (with document names).
-
-Below is complete updated code for all the files you showed: router, classifier.py, document_loader.py, handler.py, service.py, storage_utils.py.
-
-⸻
-
-1️⃣ Router – now accepts multiple URLs and returns list of summaries
-
-# router.py
-
-from typing import List
-from fastapi import APIRouter
-from fastapi.responses import JSONResponse
-from pydantic import BaseModel, Field
-
-from .handler import summarize_blob_pdfs_layout
-
-router = APIRouter()
-
-
-class LayoutDetectRequest(BaseModel):
-    """
-    Payload:
-    {
-      "attachment_urls": [
-        "https://<account>.blob.core.windows.net/<container>/<path>/file1.pdf",
-        "https://<account>.blob.core.windows.net/<container>/<path>/file2.pdf"
-      ]
-    }
-    """
-    attachment_urls: List[str] = Field(
-        ...,
-        description="List of full Azure Blob URLs to the PDF attachments."
-    )
-
-
-@router.post(
-    "/layout_detection_mcp",
-    operation_id="layout_detection_mcp",
-    summary="Download one or more PDFs from blob, analyze first page and return summaries",
-)
-async def detect_layout(request: LayoutDetectRequest):
-    """
-    Analyze the documents to generate a summary of the *first page* of each document.
-
-    Args:
-        attachment_urls: List of Blob URLs returned by the email_attachment_mcp
-
-    Returns:
-        JSONResponse: JSON-RPC style response containing a list of summaries.
-    """
-    try:
-        result = await summarize_blob_pdfs_layout(request.attachment_urls)
-        return JSONResponse(
-            content={"jsonrpc": "2.0", "id": 1, "result": result},
-            status_code=200,
-        )
-    except Exception as e:
-        return JSONResponse(
-            content={
-                "jsonrpc": "2.0",
-                "id": 1,
-                "result": {"status": False, "error": str(e)},
-            },
-            status_code=200,
-        )
-
-
-⸻
-
-2️⃣ classifier.py – now does first page summarization, not ACORD classification
-
-# classifier.py
-
-from dotenv import load_dotenv
-import os
-from openai import AzureOpenAI  # ✅ Correct import for Azure OpenAI
-
-# Load environment variables
-load_dotenv()
-
-AZURE_OPENAI_ENDPOINT = os.getenv("AZURE_OPENAI_ENDPOINT")
-AZURE_OPENAI_API_VERSION = os.getenv("AZURE_OPENAI_API_VERSION")
-AZURE_OPENAI_API_KEY = os.getenv("AZURE_OPENAI_API_KEY")
-AZURE_OPENAI_CHAT_DEPLOYMENT = os.getenv("AZURE_OPENAI_CHAT_DEPLOYMENT")
-
-if not (
-    AZURE_OPENAI_ENDPOINT
-    and AZURE_OPENAI_API_VERSION
-    and AZURE_OPENAI_API_KEY
-    and AZURE_OPENAI_CHAT_DEPLOYMENT
-):
-    raise RuntimeError(
-        "Azure OpenAI env vars missing. Please set "
-        "AZURE_OPENAI_ENDPOINT, AZURE_OPENAI_API_VERSION, "
-        "AZURE_OPENAI_API_KEY and AZURE_OPENAI_CHAT_DEPLOYMENT"
-    )
-
-# ✅ Create Azure OpenAI client
-client = AzureOpenAI(
-    api_key=AZURE_OPENAI_API_KEY,
-    api_version=AZURE_OPENAI_API_VERSION,
-    azure_endpoint=AZURE_OPENAI_ENDPOINT,
-)
-
-
-def summarize_first_page(document_content: dict, file_name: str | None = None) -> str:
-    """
-    Use Azure OpenAI to summarize the *first page* of the document.
-
-    document_content is expected to come from load_document() and contain:
-      - "pages": List[str]  # each item = text of a page
-      - "text": str         # full text of the document (fallback)
-    """
-
-    pages = document_content.get("pages", [])
-    if pages and isinstance(pages, list) and len(pages) > 0:
-        first_page_text = pages[0]
-    else:
-        # Fallback: if for some reason pages[] is not present, use full text
-        first_page_text = document_content.get("text", "")
-
-    # Safety: limit size so we don't overload the prompt
-    first_page_text = first_page_text[:4000]
-
-    prompt = f"""
-You are an expert in insurance documentation.
-
-Your task is to read the FIRST PAGE of an insurance-related PDF and write a concise,
-human-readable summary of what this document is about.
-
-Document name: {file_name or "Unknown"}
-
-First page content:
-\"\"\"{first_page_text}\"\"\"
-
-Write:
-- A short paragraph (3–5 sentences)
-- No bullet points
-- No headings
-- No extra explanation, only the summary.
-"""
-
-    response = client.chat.completions.create(
-        model=AZURE_OPENAI_CHAT_DEPLOYMENT,
-        messages=[{"role": "user", "content": prompt}],
-        max_tokens=256,
-        temperature=0.2,
-    )
-
-    try:
-        return response.choices[0].message.content.strip()
-    except Exception:
-        return getattr(response.choices[0].message, "content", "").strip()
-
-
-⸻
-
-3️⃣ document_loader.py – now also returns per-page text (for first-page summary)
-
-# document_loader.py
-
-from dotenv import load_dotenv
-import os
-from azure.ai.formrecognizer import DocumentAnalysisClient
-from azure.core.credentials import AzureKeyCredential
-
-# Load environment variables from .env file
-load_dotenv()
-
-# Fetch variables
-endpoint = os.getenv("AZURE_FORMRECOG_ENDPOINT")
-key = os.getenv("AZURE_FORMRECOG_KEY")
-
-# Fail fast if missing
-if not endpoint:
-    raise ValueError("AZURE_FORMRECOG_ENDPOINT is not set. Check your .env file.")
-if not key:
-    raise ValueError("AZURE_FORMRECOG_KEY is not set. Check your .env file.")
-
-# Create the client using the key and endpoint
-client = DocumentAnalysisClient(endpoint=endpoint, credential=AzureKeyCredential(key))
-
-
-def load_document(file_path: str) -> dict:
-    """
-    Extracts text and layout information using Form Recognizer's prebuilt-layout model.
-
-    Returns a dict with:
-      - "text": full text from all pages
-      - "pages": list of strings, each string is text of that page
-      - "tables": simple representation of tables (if detected), otherwise message
-    """
-    with open(file_path, "rb") as f:
-        poller = client.begin_analyze_document("prebuilt-layout", document=f)
-        result = poller.result()
-
-    # Debugging: Print available attributes in DocumentPage (first page only)
-    print("Available attributes in DocumentPage:")
-    print(dir(result.pages[0]))
-    print("\n\n")
-
-    pages_text: list[str] = []
-    all_lines: list[str] = []
-
-    # Collect text per page and overall
-    for page in result.pages:
-        page_lines = [line.content for line in page.lines]
-        pages_text.append("\n".join(page_lines))
-        all_lines.extend(page_lines)
-
-    # Extract table information if available (very simplified)
-    tables = []
-    for page in result.pages:
-        if hasattr(page, "tables"):  # remains from your original logic
-            for table in page.tables:
-                table_data = []
-                for row in table.cells:
-                    table_data.append(row.content)
-                tables.append(table_data)
-
-    document_content = {
-        "text": "\n".join(all_lines),                 # full text (all pages)
-        "pages": pages_text,                          # list of page texts
-        "tables": tables if tables else "No tables detected",
-    }
-
-    return document_content
-
-🔍 Note: The only real change here (vs your version) is:
-	•	we build pages_text (text per page)
-	•	we fix "n".join(lines) → "\n".join(all_lines)
-so newline is actually a newline, not the letter n.
-
-⸻
-
-4️⃣ handler.py – loop over multiple URLs, summarize first page of each
-
-# handler.py
 
 import os
 import json
 from typing import Dict, Any, List
+import pandas as pd
 
-from .service import _require_env
-from .storage_utils import download_blob_to_input_folder
-from .document_loader import load_document
-from .classifier import summarize_first_page
+from summary_service import summary_require_env
+from summary_storage_utils import download_blob_to_input_folder
+from summary_loader import load_summary_document
+from summary_classifier import summarize_first_page
+from Data_Filler import extract_filenames_and_summaries
+from Data_Filler import connect_to_blob, beautify_extracted_data
+from newsummary import summarize_attachments
+from separate_summary import individual_summary
 
 INPUT_FOLDER = "input"
 OUTPUT_FOLDER = "output"
@@ -257,25 +21,13 @@ async def summarize_blob_pdfs_layout(blob_urls: List[str]) -> Dict[str, Any]:
     """
     For each Blob URL:
       - Download PDF into input/
-      - Use Form Recognizer to analyze layout and extract text
+      - Use Form Recognizer to extract text (all pages)
       - Use LLM to summarize the FIRST PAGE
-    Returns:
-      {
-        "status": True/False,
-        "summaries": [
-          {
-            "blob_url": "<url>",
-            "file_name": "file1.pdf",
-            "summary": "<summary text>" or None,
-            "error": "<error message>" or None
-          },
-          ...
-        ],
-        "save_error": "<error if we couldn't write output file>"  # optional
-      }
+
+    Now also stores raw text in layout_summaries_result.json.
     """
     try:
-        _require_env()
+        summary_require_env()
     except Exception as e:
         return {"status": False, "error": f"Environment misconfigured: {e}"}
 
@@ -296,6 +48,7 @@ async def summarize_blob_pdfs_layout(blob_urls: List[str]) -> Dict[str, Any]:
                     "blob_url": blob_url,
                     "file_name": file_name,
                     "summary": None,
+                    "text": None,
                     "error": f"Failed to download blob: {e}",
                 }
             )
@@ -303,19 +56,23 @@ async def summarize_blob_pdfs_layout(blob_urls: List[str]) -> Dict[str, Any]:
 
         # 2) Use Form Recognizer to analyze the document
         try:
-            document_content = load_document(local_pdf)
+            document_content = load_summary_document(local_pdf)
         except Exception as e:
             summaries.append(
                 {
                     "blob_url": blob_url,
                     "file_name": file_name,
                     "summary": None,
+                    "text": None,
                     "error": f"Form Recognizer failed: {e}",
                 }
             )
             continue
 
-        # 3) Summarize FIRST PAGE using LLM
+        # Extract raw text (stored in first_page_text key)
+        text_content = document_content.get("first_page_text", "")
+
+        # 3) Summarize FIRST PAGE using LLM (short summary)
         try:
             summary_text = summarize_first_page(document_content, file_name=file_name)
         except Exception as e:
@@ -324,6 +81,7 @@ async def summarize_blob_pdfs_layout(blob_urls: List[str]) -> Dict[str, Any]:
                     "blob_url": blob_url,
                     "file_name": file_name,
                     "summary": None,
+                    "text": text_content,
                     "error": f"Summarization failed: {e}",
                 }
             )
@@ -335,13 +93,14 @@ async def summarize_blob_pdfs_layout(blob_urls: List[str]) -> Dict[str, Any]:
                 "blob_url": blob_url,
                 "file_name": file_name,
                 "summary": summary_text,
+                "text": text_content,   # <-- NEW: store raw text here
                 "error": None,
             }
         )
 
     result: Dict[str, Any] = {"status": True, "summaries": summaries}
 
-    # 5) Save result to ./output (optional but keeping your original style)
+    # 5) Save result to ./output
     try:
         os.makedirs(OUTPUT_FOLDER, exist_ok=True)
         out_path = os.path.join(OUTPUT_FOLDER, "layout_summaries_result.json")
@@ -350,106 +109,61 @@ async def summarize_blob_pdfs_layout(blob_urls: List[str]) -> Dict[str, Any]:
     except Exception as e:
         result["save_error"] = str(e)
 
+    # 6) Beautify and send summary into Excel (unchanged: uses only summary)
+    try:
+        extracted_data = extract_filenames_and_summaries(OUTPUT_FOLDER)
+        print("Beautified Extracted Data:\n")
+        beautify_data = beautify_extracted_data(extracted_data)
+        print(beautify_data)
+
+        DATA_URL = os.getenv("Data_URL")
+        if DATA_URL:
+            try:
+                updated_data = connect_to_blob(DATA_URL, beautify_data)
+                print("Blob Data Processed Successfully.")
+                if isinstance(updated_data, pd.DataFrame):
+                    print("Blob Data Processed Successfully and Excel Updated.")
+                else:
+                    print(f"Error: {updated_data['error']}")
+            except Exception as e:
+                print(f"Error processing blob data: {e}")
+        else:
+            print("Data_URL environment variable is not set.")
+
+    except Exception as e:
+        print(f"Error in beautify / blob step: {e}")
+
+    # 7) Combined submission summary (uses file_name + summary only)
+    try:
+        base_dir = os.path.dirname(os.path.abspath(__file__))
+        output_folder = "output"
+
+        json_path = os.path.join(base_dir, output_folder, "layout_summaries_result.json")
+        with open(json_path, "r", encoding="utf-8") as f:
+            layout_json = json.load(f)
+
+        filenamesummary_extracted_beautified = extract_filenames_and_summaries(output_folder)
+        print("Per-document summaries (with text):")
+        print(filenamesummary_extracted_beautified)
+
+        combined_summary = summarize_attachments(filenamesummary_extracted_beautified)
+        print("Combined Submission Summary:")
+        print(combined_summary)
+
+        result["combined_summary"] = combined_summary
+    except Exception as e:
+        print(f"Error generating combined submission summary: {e}")
+        result["combined_summary_error"] = str(e)
+
+    # 8) Individual typed summaries (ACORD / Loss Run / SOV)
+    try:
+        # Reuse filenamesummary_extracted_beautified, which now also has 'text'
+        individualized_summary = individual_summary(filenamesummary_extracted_beautified)
+        print("Individualized Summary Output:")
+        print(individualized_summary)
+        result["individualized_summary"] = individualized_summary
+    except Exception as e:
+        print(f"Error generating Individual summary: {e}")
+        result["individualized_summary_error"] = str(e)
+
     return result
-
-🔁 Now, for each URL, you get:
-	•	document name (file_name)
-	•	its first-page summary (summary)
-	•	error (if any)
-All of these are collected in a list: result["summaries"].
-
-So the shape matches your requirement:
-
-document name → below that its summary
-… for all documents, in a list.
-
-⸻
-
-5️⃣ service.py – unchanged (included for completeness)
-
-# service.py
-
-import os
-from urllib.parse import urlparse, unquote
-from dotenv import load_dotenv
-
-load_dotenv()
-
-AZURE_STORAGE_CONNECTION_STRING = os.environ.get("AZURE_STORAGE_CONNECTION_STRING", "")
-
-
-def _require_env() -> None:
-    """Ensure required environment variables exist."""
-    if not AZURE_STORAGE_CONNECTION_STRING:
-        raise RuntimeError("Missing AZURE_STORAGE_CONNECTION_STRING in environment/.env")
-
-
-def _parse_blob_url(url: str) -> tuple[str, str]:
-    """
-    Parse an Azure Blob URL and return (container_name, blob_path).
-    Example URL:
-      https://account.blob.core.windows.net/output-results/folder/name.pdf
-    Returns:
-      ("output-results", "folder/name.pdf")
-    """
-    parsed = urlparse(url)
-    if not parsed.scheme.startswith("http"):
-        raise ValueError("url must be a valid http(s) Azure Blob URL.")
-
-    path = parsed.path.lstrip("/")
-    if "/" not in path:
-        raise ValueError("url must include both container and blob path.")
-    parts = path.split("/", 1)
-    container = parts[0]
-    blob_path = parts[1]
-    return unquote(container), unquote(blob_path)
-
-
-⸻
-
-6️⃣ storage_utils.py – unchanged (included for completeness)
-
-# storage_utils.py
-
-import os
-import aiofiles
-from azure.storage.blob.aio import BlobServiceClient
-from azure.core.exceptions import ResourceNotFoundError
-
-from .service import AZURE_STORAGE_CONNECTION_STRING, _parse_blob_url
-
-
-async def download_blob_to_input_folder(blob_url: str, input_folder: str = "input") -> str:
-    """
-    Downloads the blob at blob_url into input_folder (root-level) preserving filename.
-    Returns the local path to the downloaded file.
-    """
-    if not AZURE_STORAGE_CONNECTION_STRING:
-        raise RuntimeError("AZURE_STORAGE_CONNECTION_STRING not set")
-
-    container, blob_path = _parse_blob_url(blob_url)
-    filename = os.path.basename(blob_path)
-    os.makedirs(input_folder, exist_ok=True)
-    local_path = os.path.join(input_folder, filename)
-
-    async with BlobServiceClient.from_connection_string(AZURE_STORAGE_CONNECTION_STRING) as service:
-        container_client = service.get_container_client(container)
-        blob_client = container_client.get_blob_client(blob_path)
-        try:
-            await blob_client.get_blob_properties()
-        except ResourceNotFoundError:
-            raise FileNotFoundError(f"Blob not found: container={container} blob={blob_path}")
-        stream = await blob_client.download_blob()
-        data = await stream.readall()
-
-    # write file async
-    async with aiofiles.open(local_path, "wb") as f:
-        await f.write(data)
-
-    return local_path
-
-
-⸻
-
-If you want, next step we can do:
-	•	Take one real blob URL, run this flow conceptually, and I’ll show you exactly what the final JSON response will look like for 2–3 example documents.
