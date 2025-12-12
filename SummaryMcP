@@ -1,121 +1,36 @@
-
-I have changed the code (Summary handler.py) so now i want to store beautified it in excel
-earlier we were checking for Summary column in the excel and if it exists then we were storing our data in that column corresponding to the reference number row correct? so now we will be doing same but the only change is now we will look for 2 columns 1) Submission summary and 2) Document summary and now as per our response that we are getting from beautified we will store it in the excel in such a way that Submission summary column will have combined summary stored and Document summary will have filename and processed summary stored from  "individualized_summary": that we are getting from the response
-
-Summary handler.py
-
-    try:
-        beautified = beautify_api_response(cleaned_payload)
-        print(beautified)
-
-        # print("\n----- COMBINED SUBMISSION SUMMARY (beautified) -----\n")
-        # if beautified["combined_summary"]:
-        #     print(beautified["combined_summary"])
-        # else:
-        #     print("No combined summary available.")
-
-        DATA_URL = os.getenv("Data_URL")
-        if DATA_URL:
-            try:
-                updated_data = connect_to_blob(DATA_URL, beautified)
-                print("Blob Data Processed Successfully.")
-                if isinstance(updated_data, pd.DataFrame):
-                    print("Blob Data Processed Successfully and Excel Updated.")
-                else:
-                    # updated_data may be an error dict
-                    print(f"Error: {updated_data.get('error')}")
-            except Exception as e:
-                print(f"Error processing blob data: {e}")
-        else:
-            print("Data_URL environment variable is not set.")
-    except Exception as e:
-        print(f"Error in beautify / blob step: {e}")
-
-
-
-    # return cleaned_payload
-    return beautified
-
-
-Data filler.py
-
-import os
-import json
-import pandas as pd
 from io import BytesIO
+import pandas as pd
 from azure.storage.blob import BlobServiceClient
-from typing import List, Dict, Any
-from summary_service import summary_require_env
-from summary_service import AZURE_STORAGE_CONNECTION_STRING, _parse_blob_url
-import re
-from typing import Iterable
+from typing import Dict, Any
+from summary_service import summary_require_env, AZURE_STORAGE_CONNECTION_STRING, _parse_blob_url
 
-
-def extract_filenames_and_summaries(output_folder: str) -> List[Dict[str, Any]]:
+def connect_to_blob(blob_url: str, beautified_payload: Dict[str, Any]):
     """
-    Extracts file names, summaries, and raw text from the JSON file in the output folder.
+    Update Excel blob using the NEW beautified payload format (dict).
 
-    Returns list of:
-      {
-        "file_name": "<file_name>",
-        "summary": "<summary>",
-        "text": "<full_text_or_first_page_text>"
-      }
-    """
-    result_file = os.path.join(output_folder, "layout_summaries_result.json")
+    Expected beautified_payload shape:
+    {
+      "combined_summary": "<string or None>",
+      "individualized_summary": [
+         {
+           "file_name": "...",
+           "summary": "...",                # (not used here)
+           "document_type": "...",          # (optional)
+           "processed_summary": "..."       # used for Document summary
+         }, ...
+      ]
+    }
 
-    if not os.path.exists(result_file):
-        raise FileNotFoundError(f"No JSON result file found at {result_file}")
-
-    with open(result_file, "r", encoding="utf-8") as f:
-        data = json.load(f) 
-
-    summaries = data.get("summaries", [])
-
-    extracted_data = [
-        {
-            "file_name": item["file_name"],
-            "summary": item["summary"],
-            "text": item.get("text", "")  # <-- thisismyNEW: raw text stored here
-        }
-        for item in summaries
-        if "file_name" in item and "summary" in item
-    ]
-
-    return extracted_data
-
-#Absolute working code 
-def beautify_extracted_data(extracted_data: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
-    """
-    Beautifies and prints the extracted data in the desired format.
-    NOTE: we do NOT include 'text' here, only file_name + summary + reference_number.
-    """
-    beautified_data: List[Dict[str, Any]] = []
-
-    for item in extracted_data:
-        file_name = item["file_name"]
-        reference_number = file_name.split("_")[0]
-
-        beautified_item = {
-            "reference_number": reference_number,
-            "file_name": file_name,
-            "summary": item["summary"],
-        }
-        beautified_data.append(beautified_item)
-
-        print(f"file_name: {file_name}")
-        print(f"reference_number: {reference_number}")
-        print(f"summary: {item['summary']}\n")
-
-    return beautified_data
-
-
-
-def connect_to_blob(blob_url: str, beautified_data: List[Dict[str, Any]]):
-    """
-    Update existing rows in the Excel blob by concatenating file_name + summary
-    into the Summary cell for matching 'Unique refrence Number'.
-    Does NOT create new rows if there is no match.
+    Behavior:
+      - For each reference (derived from file_name: <REF>_...), find rows where
+        excel["Unique refrence Number"] == ref.
+      - Overwrite "Submission summary" on those rows with combined_summary (if provided).
+      - Overwrite "Document summary" on those rows with a single cell value that is the
+        concatenation (joined by two newlines) of:
+           "file_name: <file_name>\nprocessed_summary:\n<processed_summary>"
+        for all files belonging to that reference.
+      - Does NOT create new rows. If no match is found for a reference, we skip it.
+      - Returns updated pandas.DataFrame on success, or {"status": False, "error": "..."}.
     """
     try:
         summary_require_env()
@@ -123,221 +38,82 @@ def connect_to_blob(blob_url: str, beautified_data: List[Dict[str, Any]]):
         return {"status": False, "error": f"Environment misconfigured: {e}"}
 
     if not AZURE_STORAGE_CONNECTION_STRING:
-        raise RuntimeError("AZURE_STORAGE_CONNECTION_STRING not set")
+        return {"status": False, "error": "AZURE_STORAGE_CONNECTION_STRING not set"}
 
+    # parse blob URL into container + path
     try:
         container, blob_path = _parse_blob_url(blob_url)
     except Exception as e:
         return {"status": False, "error": f"Unable to parse blob URL: {e}"}
 
     try:
-        blob_service_client = BlobServiceClient.from_connection_string(AZURE_STORAGE_CONNECTION_STRING)
-        blob_client = blob_service_client.get_blob_client(container=container, blob=blob_path)
+        svc = BlobServiceClient.from_connection_string(AZURE_STORAGE_CONNECTION_STRING)
+        blob_client = svc.get_blob_client(container=container, blob=blob_path)
 
-        blob_data = blob_client.download_blob().readall()
-        excel_data = pd.read_excel(BytesIO(blob_data))
+        # download excel into memory
+        blob_bytes = blob_client.download_blob().readall()
+        excel_df = pd.read_excel(BytesIO(blob_bytes))
 
-        if "Unique refrence Number" not in excel_data.columns:
+        # required reference column
+        if "Unique refrence Number" not in excel_df.columns:
             return {"status": False, "error": "'Unique refrence Number' column is missing in the Excel file."}
 
-        if "Summary" not in excel_data.columns:
-            excel_data["Summary"] = None
+        # ensure target columns exist (create if missing)
+        if "Submission summary" not in excel_df.columns:
+            excel_df["Submission summary"] = None
+        if "Document summary" not in excel_df.columns:
+            excel_df["Document summary"] = None
 
-        for item in beautified_data:
-            reference_number = item.get("reference_number")
-            file_name = item.get("file_name", "")
-            summary_text = item.get("summary", "")
+        combined_summary = beautified_payload.get("combined_summary")
+        individualized = beautified_payload.get("individualized_summary", [])
 
-            matches = excel_data[excel_data["Unique refrence Number"] == reference_number].index
+        # Build mapping ref -> list of aggregated doc strings
+        ref_to_entries = {}
+        for item in individualized:
+            fname = item.get("file_name") or ""
+            processed = item.get("processed_summary") or ""
 
-            if matches.empty:
-                print(f"Reference number not found in Excel, skipping: {reference_number}")
+            if not fname:
+                # skip entries without filename
                 continue
 
-            new_fragment = f"file_name: {file_name}\nsummary: {summary_text}"
+            # Expect filename format "<REF>_..."; if missing underscore, skip (defensive)
+            if "_" not in fname:
+                print(f"[connect_to_blob] skipping filename with unexpected format: {fname}")
+                continue
+
+            ref = fname.split("_", 1)[0]
+            entry_text = f"file_name: {fname}\nprocessed_summary:\n{processed}".strip()
+            ref_to_entries.setdefault(ref, []).append(entry_text)
+
+        # For each reference, write aggregated values into matching rows
+        for ref, entries in ref_to_entries.items():
+            matches = excel_df[excel_df["Unique refrence Number"] == ref].index
+            if matches.empty:
+                # no matching reference in sheet — skip without creating rows
+                print(f"[connect_to_blob] reference not found in Excel, skipping: {ref}")
+                continue
+
+            # Join all entries for this reference into one cell value
+            document_summary_cell = "\n\n".join(entries).strip()
 
             for idx in matches:
-                existing = excel_data.at[idx, "Summary"]
-                if existing is not None and not pd.isna(existing):
-                    updated = f"{existing}\n\n{new_fragment}"
+                # Overwrite Submission summary if combined_summary provided; else leave as None
+                if combined_summary:
+                    excel_df.at[idx, "Submission summary"] = combined_summary
                 else:
-                    updated = new_fragment
-                excel_data.at[idx, "Summary"] = updated
+                    excel_df.at[idx, "Submission summary"] = None
 
-        output_stream = BytesIO()
-        excel_data.to_excel(output_stream, index=False, engine="openpyxl")
-        output_stream.seek(0)
-        blob_client.upload_blob(output_stream, overwrite=True)
+                # Overwrite Document summary with aggregated cell
+                excel_df.at[idx, "Document summary"] = document_summary_cell
 
-        return excel_data
+        # save updated excel back to blob (overwrite)
+        out_stream = BytesIO()
+        excel_df.to_excel(out_stream, index=False, engine="openpyxl")
+        out_stream.seek(0)
+        blob_client.upload_blob(out_stream, overwrite=True)
+
+        return excel_df
 
     except Exception as e:
         return {"status": False, "error": f"Failed to process blob: {e}"}
-
-
-
-
-
-
-def normalize_text(s: str) -> str:
-    """
-    Clean and normalize an LLM-produced string:
-    - Replace escaped unicode sequences like '\\u2714' with '✔' (or remove)
-    - Replace repeated newlines with single newline
-    - Trim leading/trailing whitespace on each line and collapse multiple spaces
-    - Remove stray carriage returns
-    """
-    if not s:
-        return s
-    # if the string contains literal backslash-u (e.g. "\\u2714") turn into the actual char
-    try:
-        # decode unicode-escapes (only when safe) — but avoid double-decoding valid unicode
-        # This will transform "\\u2714" into "✔"
-        s = s.encode("utf-8").decode("unicode_escape")
-    except Exception:
-        # fallback: ignore decoding errors
-        pass
-
-    # Convert any ✔ variants (some LLMs produce unicode check) to a single visible symbol
-    s = s.replace("\u2714", "✔")
-    s = s.replace("\\u2714", "✔")  # literal backslash-u
-
-    # Normalize line endings & whitespace
-    s = s.replace("\r\n", "\n").replace("\r", "\n")
-    # collapse multiple blank lines to single
-    s = re.sub(r"\n\s*\n+", "\n\n", s)
-    # trim trailing spaces on each line
-    s = "\n".join([ln.strip() for ln in s.split("\n")])
-    # collapse more-than-two spaces
-    s = re.sub(r"[ ]{2,}", " ", s)
-    # final strip
-    return s.strip()
-
-
-
-
-def beautify_api_response(cleaned_payload: Dict[str, Any]) -> Dict[str, Any]:
-    """
-    Take cleaned_payload (the dict you return to API) and produce a
-    more human-friendly 'beautified' structure for display or Excel upload.
-
-    Input shape:
-      {
-        "combined_summary": "<string>",
-        "individualized_summary": [
-          {"file_name": ..., "summary": ..., "document_type": ..., "processed_summary": ...},
-          ...
-        ]
-      }
-
-    Output shape (dict):
-      {
-        "combined_summary": "<normalized multi-line string>",
-        "individualized_summary": [
-           {
-             "file_name": "<filename>",
-             "summary": "<normalized single-paragraph summary>",
-             "document_type": "<ACORD|Loss Run|SOV>",
-             "processed_summary": "<normalized multi-line narrative>"
-           },
-           ...
-        ]
-      }
-
-    This function **does not** return 'text' or raw LLM outputs with \n escapes.
-    """
-    out = {"combined_summary": None, "individualized_summary": []}
-
-    combined = cleaned_payload.get("combined_summary")
-    out["combined_summary"] = normalize_text(combined) if combined else None
-
-    indiv = cleaned_payload.get("individualized_summary", [])
-    beautified_list = []
-    if isinstance(indiv, Iterable):
-        for item in indiv:
-            # defensive: ensure keys exist
-            file_name = item.get("file_name")
-            summary = item.get("summary")
-            doc_type = item.get("document_type")
-            processed = item.get("processed_summary")
-
-            beautified_item = {
-                "file_name": file_name,
-                "summary": normalize_text(summary) if summary else None,
-                "document_type": doc_type,
-                "processed_summary": normalize_text(processed) if processed else None,
-            }
-            beautified_list.append(beautified_item)
-
-    out["individualized_summary"] = beautified_list
-    return out
-
-
-
-
-sumvenv) jarvis@Jarvis-agent-vm:~/Musaddique/Ultimate_Summary$ python3 test_script.py 
-Testing /api/v1/summary_agent/attachment_summary_mcp ...
-Calling endpoint: http://localhost:8602/api/v1/summary_agent/attachment_summary_mcp
-Request payload:
-{
-  "attachment_urls": [
-    "https://agenticai1.blob.core.windows.net/output-results/123ASJKDB1JKBSAF_attachment_Acord_125_High_tech_solution.pdf",
-    "https://agenticai1.blob.core.windows.net/output-results/123ASJKDB1JKBSAF_attachment_Loss_Run_HighTech_Solution.pdf",
-    "https://agenticai1.blob.core.windows.net/output-results/123ASJKDB1JKBSAF_attachment_SOV.pdf"
-  ]
-}
-
-HTTP Status: 200
-
-Response JSON:
-{
-    "jsonrpc": "2.0",
-    "id": 1,
-    "result": {
-        "combined_summary": "SUBMISSION SUMMARY\nClient: High Tech Solution\nDate: July 15, 2025\n\n1. SUBMISSION COVER LETTER / NARRATIVE\nExposure Description:\n- High Tech Solution operates in the IT services and operations sector.\n- Main operations are IT-related, conducted from commercial office premises.\n- The primary property is a commercial office space featuring advanced hi-tech systems and infrastructure. The business is the owner-occupant of the main location at 123 Penny Lane, Springfield, Illinois, with additional presence at 456 Elm St, Suite 200, Los Angeles, CA 90001. Property details include modern construction and unspecified protection features, with exclusions for sprinkler leakage and vandalism noted.\n\nPlacement Strategy:\n- Coverage is being placed through Prime Brokers Ltd. with Phoenix Insurers Ltd. under Program 1, targeting Commercial Property and Accounts Receivable/Valuable Papers lines. Relevant supplements for Apartment Building and Contractors are included.\n\nRenewal Highlights:\n- Coverage includes basic, broad, and special causes of loss, as well as earthquake and flood. Notable exclusions are sprinkler leakage and vandalism.\n\nChanges YOY:\n- No explicit changes in exposure, values, or operations are mentioned. Loss experience over the past three years is summarized below.\n\nAdditional Overview Details:\n- Effective Date: July 15, 2025\n- Submission Type: Not explicitly stated (appears to be renewal based on prior coverage and loss history)\n- Current Situation: Submission is for continued coverage with updated values and loss history.\n\n2. LOSS HISTORY PACKAGE\n5\u00e2\u0080\u009310 Year Loss Runs:\n- Three years of loss history are provided for the Los Angeles office location.\n\nLarge Loss Details:\n- Four claims reported: theft of office equipment, basement floor damage from tremors, electrical fire in a storage room, and windowpane damage from a minor earthquake. Two claims are closed (total paid: $26,950), two remain open (reserves: $23,000). Total incurred losses: $92,450.\n\nTrends Analysis:\n- Losses reflect exposures to theft, fire, and earthquake-related property damage. Both frequency and severity are moderate, with no catastrophic losses reported.\n\nSummary of Loss History:\n- Status: Losses Reported\n- Summary: Four claims in three years, with moderate total incurred losses and exposures typical for IT office operations.\n- Major Incidents: Electrical fire and earthquake-related damages are the largest incidents",
-        "individualized_summary": [
-            {
-                "file_name": "123ASJKDB1JKBSAF_attachment_Acord_125_High_tech_solution.pdf",
-                "summary": "The applicant, High Tech Solution, is located at 456 Elm St, Suite 200, Los Angeles, CA 90001, and operates in the IT services and operations sector. The proposed policy is with Phoenix Insurers Ltd. under Program 1, with coverage effective from July 15, 2025, to July 15, 2028, and is being handled through Prime Brokers Ltd. The primary premises listed is 123 Penny Lane, Springfield, Illinois, where the applicant is the owner and the operations are IT-related. The business reports annual revenues of $725,000 and has full-time employees (exact number not specified). Lines of business indicated for coverage include Commercial Property and Accounts Receivable/Valuable Papers, with relevant supplements such as Apartment Building and Contractors also attached.",
-                "document_type": "ACORD",
-                "processed_summary": "SUBMISSION SUMMARY\nClient: High Tech Solution\nDate: 07/15/2025\n\n1. SUBMISSION COVER LETTER / NARRATIVE\nExposure Description:\n- High Tech Solution is engaged in IT services and operations.\n- The main operations are conducted at 123 Penny Lane, Springfield, Illinois 62629, where the business is listed as the owner and operates inside city limits.\n- Property details such as construction type, age, protection features, and sprinkler information are not specified in the provided text.\n\nPlacement Strategy:\n- The submission is for placement with Phoenix Insurers Ltd. under Program 1, with agency representation by Prime Brokers Ltd.\n- Lines of business indicated include Commercial Property and Commercial Inland Marine, with additional supplements attached for accounts receivable/valuable papers, installation/builders risk, apartment building, and contractors.\n\nRenewal Highlights:\n- The submission is marked as a renewal, with a proposed effective date of 07/15/2025 and expiration date of 07/15/2028.\n- No specific renewal highlights or notable changes are mentioned.\n\nChanges YOY:\n- No explicit changes in exposure, values, operations, or loss experience are referenced in the text.\n\nAdditional Overview Details:\n- Effective Date: 07/15/2025\n- Submission Type: Renewal\n- Current Situation: The transaction is indicated as a renewal; no further context or reason for submission is provided."
-            },
-            {
-                "file_name": "123ASJKDB1JKBSAF_attachment_Loss_Run_HighTech_Solution.pdf",
-                "summary": "Hightech Solution has maintained commercial property coverage over the past three years, with policies consistently in force for their Los Angeles office location. Four claims have been reported during this period: a theft of office equipment, basement floor damage from tremors, an electrical fire in a storage room, and windowpane damage caused by a minor earthquake. Two claims are closed, totaling $26,950 in paid losses, while two remain open with reserves set at $23,000. The total incurred losses for all claims amount to $92,450. The claims reflect exposures to theft, fire, and earthquake-related property damage.",
-                "document_type": "Loss Run",
-                "processed_summary": "LOSS HISTORY PACKAGE\n5\u00e2\u0080\u009310 Year Loss Runs:\n- Losses reported over the past 3 years, with 4 claims under commercial property policies from 2023 to 2025.\n\nLarge Loss Details:\n- The largest claim is an open electrical fire loss in a storage room (2025) with $30,000 paid and $15,000 reserved, totaling $45,000 incurred.\n\nTrends Analysis:\n- Losses include theft, earthquake-related floor and window damage, and fire, with moderate frequency (4 claims in 3 years) and one high-severity event; two claims remain open.\n\nSummary of Loss History:\n- Status: Losses Reported\n- Summary: Four claims totaling $92,450 incurred, with $69,450 paid and $23,000 reserved, including theft, earthquake, and fire losses.\n- Major Incidents: Electrical fire in 2025 ($45,000 incurred, open)."
-            },
-            {
-                "file_name": "123ASJKDB1JKBSAF_attachment_SOV.pdf",
-                "summary": "The insured is Berkshire Hathaway, with coverage placed through Prime Brokers Pvt. Ltd. and Phoenix Insurers Ltd. The property is a commercial office space located at 456 Elm St, Suite 200, Los Angeles, CA 90001, featuring advanced hi-tech systems and infrastructure. The total insured value is $35,000,000 on an Actual Cash Value basis, with 80% coinsurance applied. Coverage includes basic, broad, and special causes of loss, as well as earthquake and flood, with exclusions for sprinkler leakage and vandalism. The effective date of coverage is July 15, 2025, and all values and location details have been confirmed by the lead broker.",
-                "document_type": "SOV",
-                "processed_summary": "EXPOSURE DATA\n\nCOPE Information (Construction, Occupancy, Protection, Exposure):\n- Commercial office space located at 456 Elm St, Suite 200, Los Angeles, CA 90001; utilizes advanced hi-tech systems, equipment, and infrastructure. Construction and protection details not specified.\n\nStatement of Values (SOV):\n- Total Insurable Value (TIV): $35,000,000\n- Building Limit: [Not specified]\n- Contents/BPP Limit: [Not specified]\n- Business Income: [Not specified]\n\nFinancials:\n- Coinsurance: 80%\n\nCAT Worksheets:\n- Earthquake and Flood coverage indicated.\n\nSpecialty Schedules:\n- Sprinkler Leakage and Vandalism excluded.\n\nAdditional Exposure Details:\n- Total Locations: 1\n- Main Operations: Commercial office occupancy with advanced technology infrastructure\n- Property Details: Valuation basis is Actual Cash Value (ACV)\n- Deductible Requested: [Not specified]"
-            }
-        ]
-    }
-}
-(sumvenv) jarvis@Jarvis-agent-vm:~/Musaddique/Ultimate_Summary$ 
-
-
-
-running main.py
-{'combined_summary': 'SUBMISSION SUMMARY\nClient: High Tech Solution\nDate: July 15, 2025\n\n1. SUBMISSION COVER LETTER / NARRATIVE\nExposure Description:\n- High Tech Solution operates in the IT services and operations sector.\n- Main operations are IT-related, conducted from commercial office premises.\n- The primary property is a commercial office space featuring advanced hi-tech systems and infrastructure. The business is the owner-occupant of the main location at 123 Penny Lane, Springfield, Illinois, with additional presence at 456 Elm St, Suite 200, Los Angeles, CA 90001. Property details include modern construction and unspecified protection features, with exclusions for sprinkler leakage and vandalism noted.\n\nPlacement Strategy:\n- Coverage is being placed through Prime Brokers Ltd. with Phoenix Insurers Ltd. under Program 1, targeting Commercial Property and Accounts Receivable/Valuable Papers lines. Relevant supplements for Apartment Building and Contractors are included.\n\nRenewal Highlights:\n- Coverage includes basic, broad, and special causes of loss, as well as earthquake and flood. Notable exclusions are sprinkler leakage and vandalism.\n\nChanges YOY:\n- No explicit changes in exposure, values, or operations are mentioned. Loss experience over the past three years is summarized below.\n\nAdditional Overview Details:\n- Effective Date: July 15, 2025\n- Submission Type: Not explicitly stated (appears to be renewal based on prior coverage and loss history)\n- Current Situation: Submission is for continued coverage with updated values and loss history.\n\n2. LOSS HISTORY PACKAGE\n5â\x80\x9310 Year Loss Runs:\n- Three years of loss history are provided for the Los Angeles office location.\n\nLarge Loss Details:\n- Four claims reported: theft of office equipment, basement floor damage from tremors, electrical fire in a storage room, and windowpane damage from a minor earthquake. Two claims are closed (total paid: $26,950), two remain open (reserves: $23,000). Total incurred losses: $92,450.\n\nTrends Analysis:\n- Losses reflect exposures to theft, fire, and earthquake-related property damage. Both frequency and severity are moderate, with no catastrophic losses reported.\n\nSummary of Loss History:\n- Status: Losses Reported\n- Summary: Four claims in three years, with moderate total incurred losses and exposures typical for IT office operations.\n- Major Incidents: Electrical fire and earthquake-related damages are the largest incidents', 'individualized_summary': [{'file_name': '123ASJKDB1JKBSAF_attachment_Acord_125_High_tech_solution.pdf', 'summary': 'The applicant, High Tech Solution, is located at 456 Elm St, Suite 200, Los Angeles, CA 90001, and operates in the IT services and operations sector. The proposed policy is with Phoenix Insurers Ltd. under Program 1, with coverage effective from July 15, 2025, to July 15, 2028, and is being handled through Prime Brokers Ltd. The primary premises listed is 123 Penny Lane, Springfield, Illinois, where the applicant is the owner and the operations are IT-related. The business reports annual revenues of $725,000 and has full-time employees (exact number not specified). Lines of business indicated for coverage include Commercial Property and Accounts Receivable/Valuable Papers, with relevant supplements such as Apartment Building and Contractors also attached.', 'document_type': 'ACORD', 'processed_summary': 'SUBMISSION SUMMARY\nClient: High Tech Solution\nDate: 07/15/2025\n\n1. SUBMISSION COVER LETTER / NARRATIVE\nExposure Description:\n- High Tech Solution is engaged in IT services and operations.\n- The main operations are conducted at 123 Penny Lane, Springfield, Illinois 62629, where the business is listed as the owner and operates inside city limits.\n- Property details such as construction type, age, protection features, and sprinkler information are not specified in the provided text.\n\nPlacement Strategy:\n- The submission is for placement with Phoenix Insurers Ltd. under Program 1, with agency representation by Prime Brokers Ltd.\n- Lines of business indicated include Commercial Property and Commercial Inland Marine, with additional supplements attached for accounts receivable/valuable papers, installation/builders risk, apartment building, and contractors.\n\nRenewal Highlights:\n- The submission is marked as a renewal, with a proposed effective date of 07/15/2025 and expiration date of 07/15/2028.\n- No specific renewal highlights or notable changes are mentioned.\n\nChanges YOY:\n- No explicit changes in exposure, values, operations, or loss experience are referenced in the text.\n\nAdditional Overview Details:\n- Effective Date: 07/15/2025\n- Submission Type: Renewal\n- Current Situation: The transaction is indicated as a renewal; no further context or reason for submission is provided.'}, {'file_name': '123ASJKDB1JKBSAF_attachment_Loss_Run_HighTech_Solution.pdf', 'summary': 'Hightech Solution has maintained commercial property coverage over the past three years, with policies consistently in force for their Los Angeles office location. Four claims have been reported during this period: a theft of office equipment, basement floor damage from tremors, an electrical fire in a storage room, and windowpane damage caused by a minor earthquake. Two claims are closed, totaling $26,950 in paid losses, while two remain open with reserves set at $23,000. The total incurred losses for all claims amount to $92,450. The claims reflect exposures to theft, fire, and earthquake-related property damage.', 'document_type': 'Loss Run', 'processed_summary': 'LOSS HISTORY PACKAGE\n5â\x80\x9310 Year Loss Runs:\n- Losses reported over the past 3 years, with 4 claims under commercial property policies from 2023 to 2025.\n\nLarge Loss Details:\n- The largest claim is an open electrical fire loss in a storage room (2025) with $30,000 paid and $15,000 reserved, totaling $45,000 incurred.\n\nTrends Analysis:\n- Losses include theft, earthquake-related floor and window damage, and fire, with moderate frequency (4 claims in 3 years) and one high-severity event; two claims remain open.\n\nSummary of Loss History:\n- Status: Losses Reported\n- Summary: Four claims totaling $92,450 incurred, with $69,450 paid and $23,000 reserved, including theft, earthquake, and fire losses.\n- Major Incidents: Electrical fire in 2025 ($45,000 incurred, open).'}, {'file_name': '123ASJKDB1JKBSAF_attachment_SOV.pdf', 'summary': 'The insured is Berkshire Hathaway, with coverage placed through Prime Brokers Pvt. Ltd. and Phoenix Insurers Ltd. The property is a commercial office space located at 456 Elm St, Suite 200, Los Angeles, CA 90001, featuring advanced hi-tech systems and infrastructure. The total insured value is $35,000,000 on an Actual Cash Value basis, with 80% coinsurance applied. Coverage includes basic, broad, and special causes of loss, as well as earthquake and flood, with exclusions for sprinkler leakage and vandalism. The effective date of coverage is July 15, 2025, and all values and location details have been confirmed by the lead broker.', 'document_type': 'SOV', 'processed_summary': 'EXPOSURE DATA\n\nCOPE Information (Construction, Occupancy, Protection, Exposure):\n- Commercial office space located at 456 Elm St, Suite 200, Los Angeles, CA 90001; utilizes advanced hi-tech systems, equipment, and infrastructure. Construction and protection details not specified.\n\nStatement of Values (SOV):\n- Total Insurable Value (TIV): $35,000,000\n- Building Limit: [Not specified]\n- Contents/BPP Limit: [Not specified]\n- Business Income: [Not specified]\n\nFinancials:\n- Coinsurance: 80%\n\nCAT Worksheets:\n- Earthquake and Flood coverage indicated.\n\nSpecialty Schedules:\n- Sprinkler Leakage and Vandalism excluded.\n\nAdditional Exposure Details:\n- Total Locations: 1\n- Main Operations: Commercial office occupancy with advanced technology infrastructure\n- Property Details: Valuation basis is Actual Cash Value (ACV)\n- Deductible Requested: [Not specified]'}]}
-INFO:     127.0.0.1:36402 - "POST /api/v1/summary_agent/attachment_summary_mcp HTTP/1.1" 200 OK
-^CINFO:     Shutting down
-INFO:     Waiting for application shutdown.
-INFO:     Application shutdown complete.
-INFO:     Finished server process [12281]
-(sumvenv) jarvis@Jarvis-agent-vm:~/Musaddique/Ultimate_Summary$ 
-
-
-
-
-
-
-
-
-
-
-
-
