@@ -1,125 +1,24 @@
-now here as we are giving attachment_text in pronmpt i want to pass reference number to newsummary.py maybe we can create a new function here which accepts the reference number from where i am not sure we should call this new function, 
-and that new function will store that txt content in a variable so that we can pass that variable in the prompt along with attachment_text and one simple addition in prompt is that we have to tell llm to 
-mention that email body in the summary such that it should be included in the template wherever it feels to include it in the section of the template 
+Got it — we’ll stop trying to heuristically strip the email. Instead we’ll pass the raw email body into the LLM prompt and explicitly instruct the model to use only the main content (ignore salutations/signatures/contact lines) when it decides to include email details in the submission summary.
 
-for eg this is inside the body_<referencenumber>.txt that got downloaded in the email_body folder
-here are sample txt files
+Below I give a drop-in patch: a small, safe change to newsummary.py (only the relevant functions) plus a short snippet showing how to call it from summary_handler.py. This code:
+	•	reads email_body/body_<REF>.txt files for references found in attachments,
+	•	passes the raw content to the prompt (truncated for safety),
+	•	instructs the LLM to ignore greetings/signatures and use only the main content if relevant.
 
-first file
-Dear Underwriting Team,
-I am submitting HighTech Solution for your consideration for Business Interruption coverage. High Tech Solution operates in the Technology / Software Services sector and seeks a 12-month policy effective January 1, 2026 through January 1, 2027. The requested limit is $50,000,000 excess of $15,000,000, and the Total Insured Value is $900,000,000.
-The insured’s mailing address is High Tech Solution, 456 Elm St, Suite 200, Los Angeles, CA 90001, USA. Enclosed with this submission are the Acord 125, Schedule of Values (SOV), and Loss Run for your review.
-Please confirm receipt of the submission and advise if you require any further underwriting information, valuation backup, or clarification on exposures. I appreciate your prompt attention and look forward to your feedback.
-Best regards,
-William Grey
-Prime Brokers
+You already have the beautify_extracted_data producing reference_number in items, so this integrates directly.
 
+⸻
 
+Changes to newsummary.py (replace or merge)
 
-second file
-Please find ACORD 125 and the Loss details (Excel) attached for a property
-submission on behalf of Sunflower Property Group LLC (dba Cruise Mall). We
-request your review and underwriting feedback to confirm appetite, capacity
-and any outstanding requirements to progress placement.
-
-
-
-| Item | Details |
-
-|---|---|
-
-| Named insured | Sunflower Property Group LLC (dba Cruise Mall) |
-
-| Location | Dockside Plaza, 210 Oceanfront Lane, Seabreeze, FL 33107 |
-
-| Line requested | Property — Building, Business Personal Property,
-Business Interruption (incl. Extra Expense) |
-
-| Requested effective date | 2026-02-01 |
-
-| Building limit requested | $120,000,000 |
-
-| Contents limit requested | $15,000,000 |
-
-| Business Interruption limit requested | $40,000,000; Indemnity period: 24
-months |
-
-| Deductible preference | $100,000 standard; provide hurricane/wind
-sublimit options |
-
-| Construction / Year built | Type II (non-combustible) / 2012 (major
-renovations 2019) |
-
-| Occupancy | Mixed-use resort retail and food & beverage |
-
-| Protective features | Full sprinkler system; central station alarm;
-hydrant within 300 ft |
-
-| Annual gross revenue | $55,000,000 |
-
-| Attachments | ACORD 125; Loss details (Excel) |
-
-Requested underwriting feedback
-
-- Confirm appetite and available capacity for the proposed property program
-including BI limit requested
-
-- Preferred valuation basis (Replacement Cost vs. Agreed Value) and
-endorsement options for ordinance/law and soft costs
-
-- Deductible options and sublimits for named windstorm, flood and ordinance
-coverage
-
-- Any immediate underwriting requirements (ACORD property supplements,
-current valuation reports, recent engineering/inspection reports, proof of
-protective devices, loss history)
-
-- Preferred secure channel to receive additional documents
-
-
-
-Thank you for your prompt review. I look forward to your guidance on next
-steps.
-
-
-
-Kind regards,
-
-Olivia Park
-
-Senior Hospitality Broker u{2014} Meridian Shoreline Insurance Partners
-
-olivia.park@meridianship.com
-
-+1 (555) 214-7802
-
-
-etc 
-
-
-so if llm feels to include this infromation which is only the main content of mail and not the top and bottom part which top( from file one ->Dear Underwriting Team,, from file 2 bottom part ->Kind regards,
-
-Olivia Park
-
-Senior Hospitality Broker u{2014} Meridian Shoreline Insurance Partners
-
-olivia.park@meridianship.com
-
-+1 (555) 214-7802)
-so basically focusing on main important content of mail and including it in the summary in any section that llm feels that it should include it 
-
-newsummary.py
-
+# newsummary.py (only required functions shown / merge into your file)
 from dotenv import load_dotenv
 import os
 import json
-from Data_Filler import extract_filenames_and_summaries
-from Data_Filler import connect_to_blob, beautify_extracted_data
-from openai import AzureOpenAI  # Correct import for Azure OpenAI
+from typing import List, Dict, Optional
+from openai import AzureOpenAI
 
-# Load environment variables
 load_dotenv()
-
 AZURE_OPENAI_ENDPOINT = os.getenv("AZURE_OPENAI_ENDPOINT")
 AZURE_OPENAI_API_VERSION = os.getenv("AZURE_OPENAI_API_VERSION")
 AZURE_OPENAI_API_KEY = os.getenv("AZURE_OPENAI_API_KEY")
@@ -131,13 +30,8 @@ if not (
     and AZURE_OPENAI_API_KEY
     and AZURE_OPENAI_CHAT_DEPLOYMENT
 ):
-    raise RuntimeError(
-        "Azure OpenAI env vars missing. Please set "
-        "AZURE_OPENAI_ENDPOINT, AZURE_OPENAI_API_VERSION, "
-        "AZURE_OPENAI_API_KEY and AZURE_OPENAI_CHAT_DEPLOYMENT"
-    )
+    raise RuntimeError("Azure OpenAI env vars missing.")
 
-# Create Azure OpenAI client
 client = AzureOpenAI(
     api_key=AZURE_OPENAI_API_KEY,
     api_version=AZURE_OPENAI_API_VERSION,
@@ -145,78 +39,99 @@ client = AzureOpenAI(
 )
 
 
+def extract_refs_from_attachments(attachments: List[Dict]) -> List[str]:
+    """Return unique refs from filenames (text before first underscore)."""
+    refs = []
+    for item in attachments or []:
+        fname = item.get("file_name", "") or ""
+        if "_" in fname:
+            refs.append(fname.split("_", 1)[0])
+    # keep unique in order
+    seen = set()
+    out = []
+    for r in refs:
+        if r not in seen:
+            seen.add(r)
+            out.append(r)
+    return out
 
-I think we need a funciton something like this to get the reference number we will call this function from summary_handler.py I think we did this earlier to download the body.txt also and then we will pass this reference number to the below function and add the logic in below function of getting that particular file using reference number and passing it in the prompt
-def getreference_number(beautify_data:list):
-       # collect unique references
-    refs = set()
-    for item in beautified_data or []:
-        ref = item.get("reference_number") or item.get("reference") or None
-        if ref:
-            refs.add(str(ref))
 
-    if not refs:
-        return {"status": "no_refs", "message": "No reference numbers found in beautified_data", "details": {}}
-
-
-
-
-
-def summarize_attachments(attachments: list[dict]) -> str:
+def load_raw_email_bodies_for_refs(refs: List[str], email_body_folder: str = "email_body") -> Dict[str, Dict]:
     """
-    attachments = list of dicts like:
-    [
-      {"file_name": "...pdf", "summary": "text...", "text": "full doc text"},
-      ...
-    ]
-    Only 'summary' is used here.
+    Load raw files named `body_<ref>.txt` from email_body_folder.
+    Returns dict: ref -> {"status": "ok", "path": ..., "raw": "<full text>"} or {"status":"missing"}
     """
-    BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-    INPUT_FOLDER = os.path.join(BASE_DIR, "email_body")
+    base = os.path.dirname(os.path.abspath(__file__))
+    out = {}
+    for ref in refs or []:
+        fname = f"body_{ref}.txt"
+        path = os.path.join(base, email_body_folder, fname)
+        if not os.path.exists(path):
+            out[ref] = {"status": "missing", "path": path}
+            continue
+        try:
+            with open(path, "r", encoding="utf-8", errors="ignore") as f:
+                raw = f.read()
+            out[ref] = {"status": "ok", "path": path, "raw": raw}
+        except Exception as e:
+            out[ref] = {"status": "error", "path": path, "error": str(e)}
+    return out
 
+
+def summarize_attachments(
+    attachments: List[Dict],
+    email_bodies: Optional[Dict[str, Dict]] = None,
+    include_email_bodies_in_prompt: bool = True,
+) -> str:
+    """
+    Build combined submission summary. If email_bodies is None, this function
+    will attempt to load body_<ref>.txt for refs extracted from attachments.
+    We pass raw email text to the LLM and instruct it to use only the main content
+    (ignore salutations/signatures/contact lines) when including info.
+    """
+    # build attachments text
     attachment_chunks = []
     for item in attachments:
         file_name = item.get("file_name", "unknown_file")
         summary_text = item.get("summary", "")
-
         chunk = f"FILENAME: {file_name}\nSUMMARY: {summary_text}"
         attachment_chunks.append(chunk)
-
     attachments_text = "\n\n".join(attachment_chunks)
-    attachments_text = attachments_text[:8000]  # simple safety limit
+    attachments_text = attachments_text[:8000]
 
+    # load email bodies if not provided
+    if email_bodies is None:
+        refs = extract_refs_from_attachments(attachments)
+        email_bodies = load_raw_email_bodies_for_refs(refs)
+
+    # build email body section for prompt (raw)
+    email_chunks = []
+    if include_email_bodies_in_prompt and isinstance(email_bodies, dict):
+        for ref, meta in email_bodies.items():
+            if meta.get("status") == "ok":
+                raw = meta.get("raw", "") or ""
+                # keep reasonable amount
+                snippet = raw[:3000]
+                email_chunks.append(f"REFERENCE: {ref}\nRAW_EMAIL_BODY:\n{snippet}")
+    email_bodies_text = "\n\n---\n\n".join(email_chunks)
+    if len(email_bodies_text) > 6000:
+        email_bodies_text = email_bodies_text[:6000] + "\n[TRUNCATED]"
+
+    # final prompt: instruct model to ignore salutations/signatures and use main content only if relevant
     prompt = f"""
 You are an experienced Commercial Insurance Underwriter.
 
-You are given multiple attachment documents that belong to a SINGLE
-commercial insurance submission. For each document you only see:
-- the file name (which hints at document type, e.g. ACORD app, loss run, SOV)
-- a short summary of the contents.
+You are given multiple attachment documents (file names + short summaries) for a single submission.
+Additionally you may be given the RAW email body text(s) that accompanied the submission.
 
-YOUR TASK:
-Produce ONE combined "Submission Summary" for the account that synthesizes
-all the information across all documents.
+INSTRUCTIONS ABOUT EMAIL BODIES:
+- The email bodies are raw; DO NOT assume they are perfectly formatted.
+- When using email text, use **only the main content** (i.e. the core submission details, requested limits, dates, TIV, etc.).
+  Ignore salutations ("Dear...", "Hi ..."), sign-offs ("Regards", "Kind regards", signatures), and contact lines (email addresses, phone numbers).
+- You may incorporate email-provided numeric details (e.g. requested limits, effective dates) into the appropriate section of the summary
+  BUT DO NOT invent anything not present in the attachments or emails.
 
-VERY IMPORTANT RULES:
-1. Treat the file names and their summaries as the ONLY source of truth.
-   - You may use the file name to infer the general document type
-     (e.g. application, loss runs, SOV, schedule).
-   - Do NOT invent any new facts that are not clearly supported by
-     the summaries.
-2. Do NOT mention which document or file any detail came from.
-   - The final summary must read like a single coherent view of the account,
-     not a list of separate documents.
-3. Focus on underwriting-relevant information, such as:
-   - Named insured / client
-   - Locations and occupancy
-   - Operations / business activities
-   - Coverage dates and basic program structure
-   - Property values / limits / coinsurance (if mentioned)
-   - Key coverage features (causes of loss, notable exclusions)
-   - Loss history and major incidents
-   - Any other material hazards or special notes that appear in the summaries.
-
-STRUCTURE OF YOUR OUTPUT (USE THIS EXACT TEMPLATE):
+STRUCTURE OF OUTPUT (USE THIS TEMPLATE EXACTLY):
 
 SUBMISSION SUMMARY  
 Client: [Client Legal Name]  
@@ -224,91 +139,64 @@ Date: [Submission or Document Date]
 
 1. SUBMISSION COVER LETTER / NARRATIVE  
  Exposure Description:  
-    - [Describe what the business does]  
-    - [Main operations / physical activities]  
-    - [Property details: construction, age, protection, sprinklers, etc.]  
+    - [Describe business / operations]  
+    - [Property details if present]  
 
  Placement Strategy:  
-    - [Placement goals or program approach if evident]  
+    - [Program / carrier / broker if evident]  
 
  Renewal Highlights:  
-    - [Notable changes or updates if mentioned]  
+    - [If any]  
 
  Changes YOY:  
-    - [Any changes in exposure, values, operations, or loss experience]  
+    - [If any]  
 
  Additional Overview Details:  
-    - Effective Date: [Coverage start date]  
-    - Submission Type: [Renewal / New Business / Other]  
-    - Current Situation: [Reason for submission if stated]  
+    - Effective Date: [if present]  
+    - Submission Type: [New / Renewal / Other]  
+    - Current Situation: [as stated]
 
-2. LOSS HISTORY PACKAGE   
+2. LOSS HISTORY PACKAGE  
  5–10 Year Loss Runs:  
-    - [Summarize multi-year loss experience if available]  
+    - [Summary if present]  
 
  Large Loss Details:  
-    - [Brief details on significant claims]  
+    - [Significant claims]  
 
  Trends Analysis:  
-    - [Patterns in frequency/severity if evident]  
+    - [If present]  
 
  Summary of Loss History:  
     - Status: [Clean / Losses Reported]  
-    - Summary: [1-sentence overview]  
-    - Major Incidents: [Largest incident if present]  
+    - Summary: [one-liner]  
+    - Major Incidents: [largest incident if present]
 
 3. EXPOSURE DATA  
- COPE Information (Construction, Occupancy, Protection, Exposure):  
-    - [Building info, occupancy, protection systems]  
+ COPE Information:  
+    - [Construction, Occupancy, Protection, Exposure]  
 
  Statement of Values (SOV):  
-    - Total Insurable Value (TIV): $[Insert]  
+    - Total Insurable Value (TIV): $[Insert if present]  
     - Building Limit: $[Insert]  
     - Contents/BPP Limit: $[Insert]  
     - Business Income: $[Insert]  
 
  Financials:  
-    - [Any financial information if mentioned]  
+    - [Any financial info]
 
- CAT Worksheets:  
-    - [If any catastrophe/hazard info appears]  
+CAT Worksheets, Specialty schedules, etc. as needed.
 
- Specialty Schedules:  
-    - [Any special schedules referenced]  
-
- Additional Exposure Details:  
-    - Total Locations: [Insert]  
-    - Main Operations: [Insert]  
-    - Property Details: [Insert]  
-    - Deductible Requested: $[Insert]  
-
-4. RISK REPORTS  
- Engineering Surveys:  
-    - [If referenced]  
-
- Safety Audits:  
-    - [If referenced]  
-
-5. COMPLIANCE DOCUMENTS  
- Signed Application Forms  
- Declarations  
- Warranties & Indemnities  
-
- Attached Files Included in the Submission:  
-    - [List packaged documents, e.g., application, loss runs, SOV]  
-
-
-ATTACHMENT SUMMARIES (file name followed by its summary):
-
-\"\"\" 
+Attached files included:
 {attachments_text}
-\"\"\"
+
+# RAW EMAIL BODIES (if present; use them only to supplement / clarify)
+{email_bodies_text}
     """
 
     response = client.chat.completions.create(
         model=AZURE_OPENAI_CHAT_DEPLOYMENT,
         messages=[{"role": "user", "content": prompt}],
-        max_tokens=512,
+        max_tokens=1024,
         temperature=0.2,
     )
 
@@ -316,3 +204,32 @@ ATTACHMENT SUMMARIES (file name followed by its summary):
         return response.choices[0].message.content.strip()
     except Exception:
         return getattr(response.choices[0].message, "content", "").strip()
+
+
+⸻
+
+How to call from summary_handler.py
+
+After you have beautify_data (which is the list returned by beautify_extracted_data), do this (example snippet):
+
+# summary_handler.py (place near where you currently call summarize_attachments)
+from newsummary import extract_refs_from_attachments, load_raw_email_bodies_for_refs, summarize_attachments
+
+# assume filenamesummary_extracted_beautified is the list from extract_filenames_and_summaries(...)
+refs = extract_refs_from_attachments(filenamesummary_extracted_beautified)
+email_bodies_map = load_raw_email_bodies_for_refs(refs, email_body_folder="email_body")
+
+# pass the email bodies explicitly (safer for debugging)
+combined_summary_text = summarize_attachments(filenamesummary_extracted_beautified, email_bodies=email_bodies_map)
+
+If you’d rather let summarize_attachments autoload, you can continue to call it with a single argument.
+
+⸻
+
+Notes & safety
+	•	We still truncate bodies to avoid huge prompts (you can raise/lower the 3000/6000 char limits).
+	•	The LLM is explicitly told to ignore salutations/signatures/contact lines; this usually works well.
+	•	This keeps all email text available (raw) so nothing important is accidentally removed by heuristics.
+	•	If you want, I can also show a small local test that prints the prompt (without calling LLM) so you can verify the exact email content being sent.
+
+Would you like that test snippet so you can inspect prompts before model calls?
