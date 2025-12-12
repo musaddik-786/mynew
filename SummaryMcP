@@ -1,409 +1,176 @@
-summary_handler.py
+Nice detective work — that error pops up because you passed the cleaned payload (a dict) into beautify_extracted_data() which expects a list of per-file dicts (so it tried for item in extracted_data and then item["file_name"] — Python treated item as a string key and you got string indices must be integers not str).
+
+Fix: don’t reuse beautify_extracted_data() for the cleaned API dict. Instead add a small dedicated beautifier that:
+	•	Accepts the cleaned payload (the dict with combined_summary + individualized_summary),
+	•	Removes/normalizes control characters (\n, \u2714 etc.),
+	•	Produces a nicely readable dict (or list) where each per-file item is human-friendly:
+
+file_name: ...
+summary: ...
+document_type: ...
+processed_summary: ...
 
 
-import os
-import json
-from typing import Dict, Any, List
-import pandas as pd
+	•	Does not include raw text.
 
-from summary_service import summary_require_env
-from summary_storage_utils import download_blob_to_input_folder
-from summary_loader import load_summary_document
-from summary_classifier import summarize_first_page
-from Data_Filler import extract_filenames_and_summaries
-from Data_Filler import connect_to_blob, beautify_extracted_data
-from newsummary import summarize_attachments
-from separate_summary import individual_summary
+Below I give you two things you can copy-paste into your existing summary_handler.py:
+	1.	A new helper normalize_text() — removes escape sequences, collapses whitespace and converts the checkmark escape to a real check mark (or removes if you prefer).
+	2.	beautify_api_response(cleaned_payload) — converts your cleaned API payload into a nicely formatted structure for printing / returning to users (and returns a new data structure you can use to upload to Excel if you want).
+	3.	Show exactly where to call it (replace your current attempt that used beautify_extracted_data(cleaned_payload)).
 
-INPUT_FOLDER = "input"
-OUTPUT_FOLDER = "output"
+Copy these functions into summary_handler.py (place them above summarize_blob_pdfs_layout or near the other helpers):
 
+import re
+from typing import Iterable
 
-def clean_result_for_api(result: Dict[str, Any]) -> Dict[str, Any]:
+def normalize_text(s: str) -> str:
     """
-    Build a compact, clean dictionary response from the full 'result' dict.
-
-    Output shape:
-    {
-      "combined_summary": "<string or None>",
-      "individualized_summary": [
-         { "file_name": ..., "summary": ..., "document_type": ..., "processed_summary": ... },
-         ...
-      ]
-    }
-
-    This removes raw 'text' and error details from the per-file items.
+    Clean and normalize an LLM-produced string:
+    - Replace escaped unicode sequences like '\\u2714' with '✔' (or remove)
+    - Replace repeated newlines with single newline
+    - Trim leading/trailing whitespace on each line and collapse multiple spaces
+    - Remove stray carriage returns
     """
-    combined = result.get("combined_summary")
-
-    raw_individualized = result.get("individualized_summary", [])
-    cleaned_list: List[Dict[str, Any]] = []
-
-    if isinstance(raw_individualized, list):
-        for item in raw_individualized:
-            cleaned_item = {
-                "file_name": item.get("file_name"),
-                "summary": item.get("summary"),
-                "document_type": item.get("document_type"),
-                "processed_summary": item.get("processed_summary"),
-            }
-            cleaned_list.append(cleaned_item)
-
-    return {
-        "combined_summary": combined,
-        "individualized_summary": cleaned_list,
-    }
-
-
-async def summarize_blob_pdfs_layout(blob_urls: List[str]) -> Dict[str, Any]:
-    """
-    For each Blob URL:
-      - Download PDF into input/
-      - Use Form Recognizer to extract text (all pages)
-      - Use LLM to summarize the FIRST PAGE
-
-    Saves the full detailed JSON (including raw text) to ./output/layout_summaries_result.json
-    but RETURNS a cleaned dictionary suitable for API responses (no raw 'text').
-    """
+    if not s:
+        return s
+    # if the string contains literal backslash-u (e.g. "\\u2714") turn into the actual char
     try:
-        summary_require_env()
-    except Exception as e:
-        # Return a clean, empty-shaped response on environment failure
-        return {"combined_summary": None, "individualized_summary": []}
+        # decode unicode-escapes (only when safe) — but avoid double-decoding valid unicode
+        # This will transform "\\u2714" into "✔"
+        s = s.encode("utf-8").decode("unicode_escape")
+    except Exception:
+        # fallback: ignore decoding errors
+        pass
 
-    summaries: List[Dict[str, Any]] = []
+    # Convert any ✔ variants (some LLMs produce unicode check) to a single visible symbol
+    s = s.replace("\u2714", "✔")
+    s = s.replace("\\u2714", "✔")  # literal backslash-u
 
-    for blob_url in blob_urls:
-        file_name = None
+    # Normalize line endings & whitespace
+    s = s.replace("\r\n", "\n").replace("\r", "\n")
+    # collapse multiple blank lines to single
+    s = re.sub(r"\n\s*\n+", "\n\n", s)
+    # trim trailing spaces on each line
+    s = "\n".join([ln.strip() for ln in s.split("\n")])
+    # collapse more-than-two spaces
+    s = re.sub(r"[ ]{2,}", " ", s)
+    # final strip
+    return s.strip()
 
-        # 1) Download PDF
-        try:
-            local_pdf = await download_blob_to_input_folder(
-                blob_url, input_folder=INPUT_FOLDER
-            )
-            file_name = os.path.basename(local_pdf)
-        except Exception as e:
-            summaries.append(
-                {
-                    "blob_url": blob_url,
-                    "file_name": file_name,
-                    "summary": None,
-                    "text": None,
-                    "error": f"Failed to download blob: {e}",
-                }
-            )
-            continue
 
-        # 2) Use Form Recognizer to analyze the document
-        try:
-            document_content = load_summary_document(local_pdf)
-        except Exception as e:
-            summaries.append(
-                {
-                    "blob_url": blob_url,
-                    "file_name": file_name,
-                    "summary": None,
-                    "text": None,
-                    "error": f"Form Recognizer failed: {e}",
-                }
-            )
-            continue
+def beautify_api_response(cleaned_payload: Dict[str, Any]) -> Dict[str, Any]:
+    """
+    Take cleaned_payload (the dict you return to API) and produce a
+    more human-friendly 'beautified' structure for display or Excel upload.
 
-        # Extract raw text (stored in first_page_text key by loader)
-        text_content = document_content.get("first_page_text", "")
+    Input shape:
+      {
+        "combined_summary": "<string>",
+        "individualized_summary": [
+          {"file_name": ..., "summary": ..., "document_type": ..., "processed_summary": ...},
+          ...
+        ]
+      }
 
-        # 3) Summarize FIRST PAGE using LLM (short summary)
-        try:
-            summary_text = summarize_first_page(document_content, file_name=file_name)
-        except Exception as e:
-            summaries.append(
-                {
-                    "blob_url": blob_url,
-                    "file_name": file_name,
-                    "summary": None,
-                    "text": text_content,
-                    "error": f"Summarization failed: {e}",
-                }
-            )
-            continue
+    Output shape (dict):
+      {
+        "combined_summary": "<normalized multi-line string>",
+        "individualized_summary": [
+           {
+             "file_name": "<filename>",
+             "summary": "<normalized single-paragraph summary>",
+             "document_type": "<ACORD|Loss Run|SOV>",
+             "processed_summary": "<normalized multi-line narrative>"
+           },
+           ...
+        ]
+      }
 
-        # 4) Success case for this document — include raw text for audit on disk
-        summaries.append(
-            {
-                "blob_url": blob_url,
+    This function **does not** return 'text' or raw LLM outputs with \n escapes.
+    """
+    out = {"combined_summary": None, "individualized_summary": []}
+
+    combined = cleaned_payload.get("combined_summary")
+    out["combined_summary"] = normalize_text(combined) if combined else None
+
+    indiv = cleaned_payload.get("individualized_summary", [])
+    beautified_list = []
+    if isinstance(indiv, Iterable):
+        for item in indiv:
+            # defensive: ensure keys exist
+            file_name = item.get("file_name")
+            summary = item.get("summary")
+            doc_type = item.get("document_type")
+            processed = item.get("processed_summary")
+
+            beautified_item = {
                 "file_name": file_name,
-                "summary": summary_text,
-                "text": text_content,
-                "error": None,
+                "summary": normalize_text(summary) if summary else None,
+                "document_type": doc_type,
+                "processed_summary": normalize_text(processed) if processed else None,
             }
-        )
+            beautified_list.append(beautified_item)
 
-    result: Dict[str, Any] = {"status": True, "summaries": summaries}
+    out["individualized_summary"] = beautified_list
+    return out
 
-    # 5) Save result to ./output (retain 'text' on disk for audit)
+Next: replace your current failed beautify block (you had):
+
+    cleaned_payload = clean_result_for_api(result)
     try:
-        os.makedirs(OUTPUT_FOLDER, exist_ok=True)
-        out_path = os.path.join(OUTPUT_FOLDER, "layout_summaries_result.json")
-        with open(out_path, "w", encoding="utf-8") as f:
-            json.dump(result, f, indent=2, ensure_ascii=False)
+        beautify_data = beautify_extracted_data(cleaned_payload)
+        print(beautify_data)
     except Exception as e:
-        result["save_error"] = str(e)
-
-    # 6) Beautify and optionally write to Excel (unchanged; uses only file_name + summary)
-    try:
-        extracted_data = extract_filenames_and_summaries(OUTPUT_FOLDER)
-        print("Beautified Extracted Data:\n")
- except Exception as e:
         print(f"Error in beautify / blob step: {e}")
 
-    # 7) Combined submission summary (uses file_name + summary only)
-    combined_summary_text = None
-    filenamesummary_extracted_beautified: List[Dict[str, Any]] = []
-    try:
-        base_dir = os.path.dirname(os.path.abspath(__file__))
-        output_folder = "output"
-
-        json_path = os.path.join(base_dir, output_folder, "layout_summaries_result.json")
-        with open(json_path, "r", encoding="utf-8") as f:
-            layout_json = json.load(f)
-
-        filenamesummary_extracted_beautified = extract_filenames_and_summaries(output_folder)
-        print("Per-document summaries (with text):")
-        print(filenamesummary_extracted_beautified)
-
-        combined_summary_text = summarize_attachments(filenamesummary_extracted_beautified)
-        print("Combined Submission Summary:")
-        print(combined_summary_text)
-
-        result["combined_summary"] = combined_summary_text
-    except Exception as e:
-        print(f"Error generating combined submission summary: {e}")
-        result["combined_summary_error"] = str(e)
-        combined_summary_text = None
-
-    # 8) Individual typed summaries (ACORD / Loss Run / SOV)
-    try:
-        # individual_summary expects attachments each having 'file_name','summary','text'
-        individualized_summary = individual_summary(filenamesummary_extracted_beautified)
-        print("Individualized Summary Output (raw):")
-        print(individualized_summary)
-        result["individualized_summary"] = individualized_summary
-    except Exception as e:
-        print(f"Error generating Individual summary: {e}")
-        result["individualized_summary_error"] = str(e)
-        result["individualized_summary"] = []
-
+with this — it uses the new function and prints in a friendly way:
 
     # 9) CLEAN the result for the API and return only the compact payload (no raw text)
     cleaned_payload = clean_result_for_api(result)
 
-
-    
+    # 10) Beautify the cleaned payload for display / optional downstream writing
     try:
-        beautify_data = beautify_extracted_data(cleaned_payload)
-        print(beautify_data)
+        beautified = beautify_api_response(cleaned_payload)
+        # print human-friendly combined summary
+        print("\n----- COMBINED SUBMISSION SUMMARY (beautified) -----\n")
+        if beautified["combined_summary"]:
+            print(beautified["combined_summary"])
+        else:
+            print("No combined summary available.")
 
-    #     DATA_URL = os.getenv("Data_URL")
-    #     if DATA_URL:
-    #         try:
-    #             updated_data = connect_to_blob(DATA_URL, beautify_data)
-    #             print("Blob Data Processed Successfully.")
-    #             if isinstance(updated_data, pd.DataFrame):
-    #                 print("Blob Data Processed Successfully and Excel Updated.")
-    #             else:
-    #                 # updated_data may be an error dict
-    #                 print(f"Error: {updated_data.get('error')}")
-    #         except Exception as e:
-    #             print(f"Error processing blob data: {e}")
-    #     else:
-    #         print("Data_URL environment variable is not set.")
+        # print per-document nicely
+        print("\n----- INDIVIDUAL DOCUMENT SUMMARIES (beautified) -----\n")
+        for doc in beautified["individualized_summary"]:
+            print(f"file_name: {doc.get('file_name')}")
+            print(f"document_type: {doc.get('document_type')}")
+            print("summary:")
+            print(doc.get("summary") or "  -")
+            print("processed_summary:")
+            print(doc.get("processed_summary") or "  -")
+            print("-" * 60)
+
+        # If you need the beautified dict for uploading to Excel or returning, it's here:
+        # beautified (dict)
     except Exception as e:
         print(f"Error in beautify / blob step: {e}")
 
 
+⸻
 
-    return cleaned_payload
+Why this fixes your error and cleans the output
+	•	You no longer pass a dict into beautify_extracted_data() (which expects a list) — so the string indices error will stop.
+	•	normalize_text() decodes \u2714 sequences and collapses \n into readable paragraphs (keeps newlines for sections).
+	•	The final printed output is human-friendly (no literal \n tokens, actual line breaks).
+	•	The beautified object still contains machine-friendly fields and can be returned by the API or used to create Excel rows: you simply use beautified["individualized_summary"].
 
+⸻
 
-Data_Filler.py
+Optional: if you want the printed processed_summary to be single-paragraph (no headers), change the normalize_text step to replace \n with spaces (I kept newlines so sections remain readable).
 
-import os
-import json
-import pandas as pd
-from io import BytesIO
-from azure.storage.blob import BlobServiceClient
-from typing import List, Dict, Any
-from summary_service import summary_require_env
-from summary_service import AZURE_STORAGE_CONNECTION_STRING, _parse_blob_url
+⸻
 
+If you want, I can:
+	•	Paste the full updated summary_handler.py with these functions integrated exactly in the right spot so you can copy-paste the file (I kept message short to avoid a huge dump).
+	•	Or create a tiny test harness that shows how a cleaned_payload will print after beautification, using one of your sample outputs.
 
-def extract_filenames_and_summaries(output_folder: str) -> List[Dict[str, Any]]:
-    """
-    Extracts file names, summaries, and raw text from the JSON file in the output folder.
-
-    Returns list of:
-      {
-        "file_name": "<file_name>",
-        "summary": "<summary>",
-        "text": "<full_text_or_first_page_text>"
-      }
-    """
-    result_file = os.path.join(output_folder, "layout_summaries_result.json")
-
-    if not os.path.exists(result_file):
-        raise FileNotFoundError(f"No JSON result file found at {result_file}")
-
-    with open(result_file, "r", encoding="utf-8") as f:
-        data = json.load(f) 
-
-    summaries = data.get("summaries", [])
-
-    extracted_data = [
-        {
-            "file_name": item["file_name"],
-            "summary": item["summary"],
-            "text": item.get("text", "")  # <-- thisismyNEW: raw text stored here
-        }
-        for item in summaries
-        if "file_name" in item and "summary" in item
-    ]
-
-    return extracted_data
-
-
-def beautify_extracted_data(extracted_data: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
-    """
-    Beautifies and prints the extracted data in the desired format.
-    NOTE: we do NOT include 'text' here, only file_name + summary + reference_number.
-    """
-    beautified_data: List[Dict[str, Any]] = []
-
-    for item in extracted_data:
-        file_name = item["file_name"]
-        reference_number = file_name.split("_")[0]
-
-        beautified_item = {
-            "reference_number": reference_number,
-            "file_name": file_name,
-            "summary": item["summary"],
-        }
-        beautified_data.append(beautified_item)
-
-        print(f"file_name: {file_name}")
-        print(f"reference_number: {reference_number}")
-        print(f"summary: {item['summary']}\n")
-
-    return beautified_data
-
-
-def connect_to_blob(blob_url: str, beautified_data: List[Dict[str, Any]]):
-    """
-    Update existing rows in the Excel blob by concatenating file_name + summary
-    into the Summary cell for matching 'Unique refrence Number'.
-    Does NOT create new rows if there is no match.
-    """
-    try:
-        summary_require_env()
-    except Exception as e:
-        return {"status": False, "error": f"Environment misconfigured: {e}"}
-
-    if not AZURE_STORAGE_CONNECTION_STRING:
-        raise RuntimeError("AZURE_STORAGE_CONNECTION_STRING not set")
-
-    try:
-        container, blob_path = _parse_blob_url(blob_url)
-    except Exception as e:
-        return {"status": False, "error": f"Unable to parse blob URL: {e}"}
-
-    try:
-        blob_service_client = BlobServiceClient.from_connection_string(AZURE_STORAGE_CONNECTION_STRING)
-        blob_client = blob_service_client.get_blob_client(container=container, blob=blob_path)
-
-        blob_data = blob_client.download_blob().readall()
-        excel_data = pd.read_excel(BytesIO(blob_data))
-
-        if "Unique refrence Number" not in excel_data.columns:
-            return {"status": False, "error": "'Unique refrence Number' column is missing in the Excel file."}
-
-        if "Summary" not in excel_data.columns:
-            excel_data["Summary"] = None
-
-        for item in beautified_data:
-            reference_number = item.get("reference_number")
-            file_name = item.get("file_name", "")
-            summary_text = item.get("summary", "")
-
-            matches = excel_data[excel_data["Unique refrence Number"] == reference_number].index
-
-            if matches.empty:
-                print(f"Reference number not found in Excel, skipping: {reference_number}")
-                continue
-
-            new_fragment = f"file_name: {file_name}\nsummary: {summary_text}"
-
-            for idx in matches:
-                existing = excel_data.at[idx, "Summary"]
-                if existing is not None and not pd.isna(existing):
-                    updated = f"{existing}\n\n{new_fragment}"
-                else:
-                    updated = new_fragment
-                excel_data.at[idx, "Summary"] = updated
-
-        output_stream = BytesIO()
-        excel_data.to_excel(output_stream, index=False, engine="openpyxl")
-        output_stream.seek(0)
-        blob_client.upload_blob(output_stream, overwrite=True)
-
-        return excel_data
-
-    except Exception as e:
-        return {"status": False, "error": f"Failed to process blob: {e}"}
-
-
-
-
-
-
-(sumvenv) jarvis@Jarvis-agent-vm:~/Musaddique/Ultimate_Summary$ python3 test_script.py 
-Testing /api/v1/summary_agent/attachment_summary_mcp ...
-Calling endpoint: http://localhost:8602/api/v1/summary_agent/attachment_summary_mcp
-Request payload:
-{
-  "attachment_urls": [
-    "https://agenticai1.blob.core.windows.net/output-results/123ASJKDB1JKBSAF_attachment_Acord_125_High_tech_solution.pdf",
-    "https://agenticai1.blob.core.windows.net/output-results/123ASJKDB1JKBSAF_attachment_Loss_Run_HighTech_Solution.pdf",
-    "https://agenticai1.blob.core.windows.net/output-results/123ASJKDB1JKBSAF_attachment_SOV.pdf"
-  ]
-}
-
-HTTP Status: 200
-
-Response JSON:
-{
-    "jsonrpc": "2.0",
-    "id": 1,
-    "result": {
-        "combined_summary": "SUBMISSION SUMMARY  \nClient: High Tech Solution  \nDate: July 15, 2025\n\n------------------------------------------------------------  \n1. SUBMISSION COVER LETTER / NARRATIVE  \n------------------------------------------------------------  \n\u2714 Exposure Description:  \n    - High Tech Solution is an IT services and operations business.  \n    - Main operations include technology services conducted from commercial office premises.  \n    - The primary location is 123 Penny Lane, Springfield, Illinois, where the company is the owner.  \n    - The business utilizes advanced hi-tech systems, equipment, and infrastructure.  \n    - Property details for the Los Angeles location include commercial office occupancy, with coverage for theft, fire, and earthquake exposures noted in recent loss history.  \n\n\u2714 Placement Strategy:  \n    - The submission seeks a three-year commercial insurance placement through Phoenix Insurers Ltd., with Prime Brokers Ltd. as the handling broker.  \n    - Lines of business requested include Commercial Property and Accounts Receivable/Valuable Papers, with supplements for Apartment Building and Contractors.  \n\n\u2714 Renewal Highlights:  \n    - No explicit renewal changes noted; submission includes updated values and current loss history.  \n\n\u2714 Changes YOY:  \n    - No specific year-over-year changes in exposure or operations are detailed. Loss history reflects ongoing exposure to theft, fire, and earthquake.  \n\n\u2714 Additional Overview Details:  \n    - Effective Date: July 15, 2025  \n    - Submission Type: New Business (three-year term indicated)  \n    - Current Situation: Seeking comprehensive coverage for IT operations and related property exposures.  \n\n------------------------------------------------------------  \n2. LOSS HISTORY PACKAGE  \n------------------------------------------------------------  \n\u2714 5\u201310 Year Loss Runs:  \n    - Three years of loss history provided, covering the Los Angeles office location.  \n\n\u2714 Large Loss Details:  \n    - Electrical fire in storage room: $30,000 paid, $15,000 reserved (open claim).  \n    - Window damage from minor earthquake: $12,500 paid, $8,000 reserved (open claim).  \n    - Theft of office equipment: $8,750 paid (closed).  \n    - Basement floor damage from tremors: $18,200 paid (closed).  \n\n\u2714 Trends Analysis:  \n    - Losses are primarily property-related, with exposures to theft, fire, and earthquake. Two claims remain open with reserves.  \n\n\u2714 Summary of Loss History:  \n    - Status: Losses Reported  \n    - Summary: Four claims totaling $92,450 incurred over three years, with $69,450 paid and $23,000 reserved;",
-        "individualized_summary": [
-            {
-                "file_name": "123ASJKDB1JKBSAF_attachment_Acord_125_High_tech_solution.pdf",
-                "summary": "The applicant, High Tech Solution, is seeking commercial insurance coverage through Phoenix Insurers Ltd. for a three-year term beginning July 15, 2025. The business operates in IT services and operations, with its primary premises located at 123 Penny Lane, Springfield, Illinois, where it is listed as the owner. The company reports annual revenues of $725,000 and has at least one full-time employee. Lines of business indicated include Commercial Property and Accounts Receivable/Valuable Papers, with relevant supplements such as Apartment Building and Contractors also attached. Key contacts for the account are Michael Hill (primary) and Bill Deeney (secondary), and the application is being handled by Prime Brokers Ltd.",
-                "document_type": "ACORD",
-                "processed_summary": "SUBMISSION SUMMARY  \nClient: High Tech Solution  \nDate: 07/15/2025\n\n------------------------------------------------------------  \n1. SUBMISSION COVER LETTER / NARRATIVE  \n------------------------------------------------------------  \n\u2714 Exposure Description:  \n    - High Tech Solution is engaged in IT services and operations.  \n    - Main operations are conducted at 123 Penny Lane, Springfield, Illinois 62629, where the business is listed as the owner and operates within city limits.  \n    - The submission references commercial property coverage, with additional supplements for apartment buildings, contractors, installation/builders risk, and accounts receivable/valuable papers, indicating a mix of property and operational exposures.  \n    - The occupied area and specific property construction details are not provided.  \n\n\u2714 Placement Strategy:  \n    - The submission is placed through Prime Brokers Ltd. with Phoenix Insurers Ltd. under Program 1.  \n    - The lines of business indicated include commercial property and accounts receivable/valuable papers, with supporting supplements for contractors and apartment buildings, suggesting a comprehensive property and ancillary coverage approach.  \n\n\u2714 Renewal Highlights:  \n    - The transaction is marked as a renewal, with no specific changes or updates noted.  \n\n\u2714 Changes YOY:  \n    - No explicit changes in exposure, values, operations, or loss experience are mentioned in the provided text.  \n\n\u2714 Additional Overview Details:  \n    - Effective Date: 07/15/2025  \n    - Submission Type: Renewal  \n    - Current Situation: Submission is for renewal of existing coverage; no reason for submission stated."
-            },
-            {
-                "file_name": "123ASJKDB1JKBSAF_attachment_Loss_Run_HighTech_Solution.pdf",
-                "summary": "Hightech Solution has maintained commercial property coverage over the past three years, with policies consistently covering their Los Angeles office location. During this period, four claims were reported: theft of office equipment ($8,750 paid), basement floor damage from tremors ($18,200 paid), an electrical fire in the storage room (open, $30,000 paid, $15,000 reserved), and window damage from a minor earthquake (open, $12,500 paid, $8,000 reserved). The total paid losses amount to $69,450, with $23,000 in outstanding reserves, resulting in total incurred losses of $92,450. The claims reflect exposure to theft, fire, and earthquake-related property damage, with two claims still open and reserves maintained for potential further payments. All information is current as of December 2, 2025.",
-                "document_type": "Loss Run",
-                "processed_summary": "LOSS HISTORY PACKAGE  \n------------------------------------------------------------  \n\u2714 5\u201310 Year Loss Runs:  \n    - Four claims reported over the past three years (2023\u20132025) under commercial property coverage.  \n\n\u2714 Large Loss Details:  \n    - The largest claim is an open electrical fire loss in a storage room (2025) with $30,000 paid and $15,000 reserved, totaling $45,000 incurred.  \n\n\u2714 Trends Analysis:  \n    - Losses include theft, earthquake-related damage, and fire, with moderate frequency and one notably severe claim. Two claims remain open with reserves.  \n\n\u2714 Summary of Loss History:  \n    - Status: Losses Reported  \n    - Summary: Four claims totaling $92,450 incurred, with a mix of closed and open claims, and varied loss types.  \n    - Major Incidents: 2025 electrical fire in storage room ($45,000 incurred, open)."
-            },
-            {
-                "file_name": "123ASJKDB1JKBSAF_attachment_SOV.pdf",
-                "summary": "The insured is Berkshire Hathaway, with coverage placed through Prime Brokers Pvt. Ltd. and Phoenix Insurers Ltd. The property at 456 Elm St, Suite 200, Los Angeles, CA 90001 is a commercial office space utilizing advanced hi-tech systems, equipment, and infrastructure. The schedule indicates 100% values at $35,000,000, with coverage for basic, broad, special causes of loss, earthquake, and flood. Actual Cash Value (ACV) is specified as the valuation basis. The coinsurance percentage is 80%, and the information is attested by the lead broker as accurate as of July 15, 2025.",
-                "document_type": "SOV",
-                "processed_summary": "EXPOSURE DATA  \n------------------------------------------------------------  \n\n\u2714 COPE Information (Construction, Occupancy, Protection, Exposure):  \n    - Commercial office space at 456 Elm St, Suite 200, Los Angeles, CA 90001; utilizes advanced hi-tech systems, equipment, and infrastructure.  \n\n\u2714 Statement of Values (SOV):  \n    - Total Insurable Value (TIV): $35,000,000  \n    - Building Limit: [Not specified]  \n    - Contents/BPP Limit: [Not specified]  \n    - Business Income: [Not specified]  \n\n\u2714 Financials:  \n    - Coinsurance: 80%  \n\n\u2714 CAT Worksheets:  \n    - Earthquake and flood coverage indicated.  \n\n\u2714 Specialty Schedules:  \n    - Sprinkler leakage and vandalism excluded.  \n\n\u2714 Additional Exposure Details:  \n    - Total Locations: 1  \n    - Main Operations: Commercial office activities  \n    - Property Details: Valuation basis is Actual Cash Value (ACV); 100% values reported.  \n    - Deductible Requested: [Not specified]"
-            }
-        ]
-    }
-}
-(sumvenv) jarvis@Jarvis-agent-vm:~/Musaddique/Ultimate_Summary$ 
+Which do you want next — full file replacement or a quick test snippet?
