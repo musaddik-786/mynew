@@ -1,431 +1,23 @@
-This is my current code for summary_handler.py
+You’re right — your newsummary.summarize_attachments and the handler calls were inconsistent (undefined names, different expectations). I fixed that and gave you one clear, working change set you can drop in.
 
+What I changed for you (copy/paste):
+	•	newsummary.py — made extract_refs_from_attachments accept both kinds of inputs (items with file_name or reference_number) and made summarize_attachments accept an optional email_bodies dict (so you can pass the files you downloaded). Removed the undefined names and made the function self-contained and safe.
+	•	summary_handler.py — showed the exact spot and the exact small snippet to call the ref-extractor, load the local email bodies map, and then call summarize_attachments(..., email_bodies=...).
 
+Drop these into your repo.
 
+⸻
 
-import os
-import json
-from typing import Dict, Any, List
-import pandas as pd
+1) Replace newsummary.py with this (or patch the functions shown)
 
-from summary_service import summary_require_env
-from summary_storage_utils import download_blob_to_input_folder
-from summary_loader import load_summary_document
-from summary_classifier import summarize_first_page
-from Data_Filler import extract_filenames_and_summaries
-from Data_Filler import connect_to_blob, beautify_extracted_data
-from newsummary import summarize_attachments
-from separate_summary import individual_summary
-from Data_Filler import beautify_api_response
-from summary_storage_utils import download_blob_to_input_folder_by_reference
-from newsummary import extract_refs_from_attachments, load_raw_email_bodies_for_refs, summarize_attachments
-
-
-INPUT_FOLDER = "input"
-OUTPUT_FOLDER = "output"
-EMAIL_BODY = "email_body"
-
-def clean_result_for_api(result: Dict[str, Any]) -> Dict[str, Any]:
-    """
-    Build a compact, clean dictionary response from the full 'result' dict.
-
-    Output shape:
-    {
-      "combined_summary": "<string or None>",
-      "individualized_summary": [
-         { "file_name": ..., "summary": ..., "document_type": ..., "processed_summary": ... },
-         ...
-      ]
-    }
-
-    This removes raw 'text' and error details from the per-file items.
-    """
-    combined = result.get("combined_summary")
-
-    raw_individualized = result.get("individualized_summary", [])
-    cleaned_list: List[Dict[str, Any]] = []
-
-    if isinstance(raw_individualized, list):
-        for item in raw_individualized:
-            cleaned_item = {
-                "file_name": item.get("file_name"),
-                "summary": item.get("summary"),
-                "document_type": item.get("document_type"),
-                "processed_summary": item.get("processed_summary"),
-            }
-            cleaned_list.append(cleaned_item)
-
-    return {
-        "combined_summary": combined,
-        "individualized_summary": cleaned_list,
-    }
-
-
-async def summarize_blob_pdfs_layout(blob_urls: List[str]) -> Dict[str, Any]:
-    """
-    For each Blob URL:
-      - Download PDF into input/
-      - Use Form Recognizer to extract text (all pages)
-      - Use LLM to summarize the FIRST PAGE
-
-    Saves the full detailed JSON (including raw text) to ./output/layout_summaries_result.json
-    but RETURNS a cleaned dictionary suitable for API responses (no raw 'text').
-    """
-    try:
-        summary_require_env()
-    except Exception as e:
-        # Return a clean, empty-shaped response on environment failure
-        return {"combined_summary": None, "individualized_summary": []}
-
-    summaries: List[Dict[str, Any]] = []
-
-    for blob_url in blob_urls:
-        file_name = None
-
-        # 1) Download PDF
-        try:
-            local_pdf = await download_blob_to_input_folder(
-                blob_url, input_folder=INPUT_FOLDER
-            )
-            file_name = os.path.basename(local_pdf)
-        except Exception as e:
-            summaries.append(
-                {
-                    "blob_url": blob_url,
-                    "file_name": file_name,
-                    "summary": None,
-                    "text": None,
-                    "error": f"Failed to download blob: {e}",
-                }
-            )
-            continue
-
-        # 2) Use Form Recognizer to analyze the document
-        try:
-            document_content = load_summary_document(local_pdf)
-        except Exception as e:
-            summaries.append(
-                {
-                    "blob_url": blob_url,
-                    "file_name": file_name,
-                    "summary": None,
-                    "text": None,
-                    "error": f"Form Recognizer failed: {e}",
-                }
-            )
-            continue
-
-        # Extract raw text (stored in first_page_text key by loader)
-        text_content = document_content.get("first_page_text", "")
-
-        # 3) Summarize FIRST PAGE using LLM (short summary)
-        try:
-            summary_text = summarize_first_page(document_content, file_name=file_name)
-        except Exception as e:
-            summaries.append(
-                {
-                    "blob_url": blob_url,
-                    "file_name": file_name,
-                    "summary": None,
-                    "text": text_content,
-                    "error": f"Summarization failed: {e}",
-                }
-            )
-            continue
-
-        # 4) Success case for this document — include raw text for audit on disk
-        summaries.append(
-            {
-                "blob_url": blob_url,
-                "file_name": file_name,
-                "summary": summary_text,
-                "text": text_content,
-                "error": None,
-            }
-        )
-
-    result: Dict[str, Any] = {"status": True, "summaries": summaries}
-
-    # 5) Save result to ./output (retain 'text' on disk for audit)
-    try:
-        os.makedirs(OUTPUT_FOLDER, exist_ok=True)
-        out_path = os.path.join(OUTPUT_FOLDER, "layout_summaries_result.json")
-        with open(out_path, "w", encoding="utf-8") as f:
-            json.dump(result, f, indent=2, ensure_ascii=False)
-    except Exception as e:
-        result["save_error"] = str(e)
-
-    # 6) Beautify and optionally write to Excel (unchanged; uses only file_name + summary)
-    try:
-        extracted_data = extract_filenames_and_summaries(OUTPUT_FOLDER)
-        print("Beautified Extracted Data:\n")
-        beautify_data = beautify_extracted_data(extracted_data)
-        print(beautify_data)
-
-    #     DATA_URL = os.getenv("Data_URL")
-    #     if DATA_URL:
-    #         try:
-    #             updated_data = connect_to_blob(DATA_URL, beautify_data)
-    #             print("Blob Data Processed Successfully.")
-    #             if isinstance(updated_data, pd.DataFrame):
-    #                 print("Blob Data Processed Successfully and Excel Updated.")
-    #             else:
-    #                 # updated_data may be an error dict
-    #                 print(f"Error: {updated_data.get('error')}")
-    #         except Exception as e:
-    #             print(f"Error processing blob data: {e}")
-    #     else:
-    #         print("Data_URL environment variable is not set.")
-    except Exception as e:
-        print(f"Error in beautify / blob step: {e}")
-
-
-    try:
-        download_results = await download_blob_to_input_folder_by_reference(
-            beautify_data,
-            output_folder=EMAIL_BODY,
-            container_name="attachment-downloader",
-            blob_name_template="body_{ref}.txt",
-        )
-        print("Email body download results:", download_results)
-    except Exception as e:
-        print("Failed to download email bodies by reference:", e)
-
-
-    # 7) Combined submission summary (uses file_name + summary only)
-    combined_summary_text = None
-    filenamesummary_extracted_beautified: List[Dict[str, Any]] = []
-    try:
-        base_dir = os.path.dirname(os.path.abspath(__file__))
-        output_folder = "output"
-
-        json_path = os.path.join(base_dir, output_folder, "layout_summaries_result.json")
-        with open(json_path, "r", encoding="utf-8") as f:
-            layout_json = json.load(f)
-
-        filenamesummary_extracted_beautified = extract_filenames_and_summaries(output_folder)
-        print("Per-document summaries (with text):")
-        print(filenamesummary_extracted_beautified)
-        
-        
-        #HERE WE CAN CALL THE EXTRACT REFS FROM ATTACHMENTS AND LOAD RAW EMAIL BODIES FOR REFS FUNCTIONS AND KEEP THE CALLING OF SUMMARIZE_ATTACHMENTS SAME AS BELOW 
-
-        combined_summary_text = summarize_attachments(filenamesummary_extracted_beautified)
-        print("Combined Submission Summary:")
-        print(combined_summary_text)
-
-        result["combined_summary"] = combined_summary_text
-    except Exception as e:
-        print(f"Error generating combined submission summary: {e}")
-        result["combined_summary_error"] = str(e)
-        combined_summary_text = None
-
-    # 8) Individual typed summaries (ACORD / Loss Run / SOV)
-    try:
-        # individual_summary expects attachments each having 'file_name','summary','text'
-        individualized_summary = individual_summary(filenamesummary_extracted_beautified)
-        # print("Individualized Summary Output (raw):")
-        print(individualized_summary)
-        result["individualized_summary"] = individualized_summary
-    except Exception as e:
-        print(f"Error generating Individual summary: {e}")
-        result["individualized_summary_error"] = str(e)
-        result["individualized_summary"] = []
-
-
-    # 9) CLEAN the result for the API and return only the compact payload (no raw text)
-    cleaned_payload = clean_result_for_api(result)
-
-
-    
-    try:
-        beautified = beautify_api_response(cleaned_payload)
-        print("This is beautified for  response : ", beautified)
-
-        # print("\n----- COMBINED SUBMISSION SUMMARY (beautified) -----\n")
-        # if beautified["combined_summary"]:
-        #     print(beautified["combined_summary"])
-        # else:
-        #     print("No combined summary available.")
-
-        DATA_URL = os.getenv("Data_URL")
-        if DATA_URL:
-            try:
-                updated_data = connect_to_blob(DATA_URL, beautified)
-                print("Blob Data Processed Successfully.")
-                if isinstance(updated_data, pd.DataFrame):
-                    print("Blob Data Processed Successfully and Excel Updated.")
-                else:
-                    # updated_data may be an error dict
-                    print(f"Error: {updated_data.get('error')}")
-            except Exception as e:
-                print(f"Error processing blob data: {e}")
-        else:
-            print("Data_URL environment variable is not set.")
-    except Exception as e:
-        print(f"Error in beautify / blob step: {e}")
-
-
-
-
-    # try:
-    #     email_body = download_blob_to_input_folder_by_reference(beautify_data)
-    #     from summary_storage_utils import download_blob_to_input_folder_by_reference
-
-# ensure EMAIL_BODY = "email_body" at top of summary_handler.py
-
-# call it (since it's async, await it)
-    # try:
-    #     download_results = await download_blob_to_input_folder_by_reference(
-    #         beautify_data,
-    #         output_folder=EMAIL_BODY,
-    #         container_name="attachment-downloader",
-    #         blob_name_template="body_{ref}.txt",
-    #     )
-    #     print("Email body download results:", download_results)
-    # except Exception as e:
-    #     print("Failed to download email bodies by reference:", e)
-
-
-    # return cleaned_payload
-    return beautified
-
-
-
-
-
-This is my current summary storage utils .py (just for your reference)
-
-
-
-import os
-import aiofiles
-from azure.storage.blob.aio import BlobServiceClient
-from azure.core.exceptions import ResourceNotFoundError
-
-from summary_service import AZURE_STORAGE_CONNECTION_STRING, _parse_blob_url
-
-
-async def download_blob_to_input_folder(blob_url: str, input_folder: str = "input") -> str:
-    """
-    Downloads the blob at blob_url into input_folder (root-level) preserving filename.
-    Returns the local path to the downloaded file.
-    """
-    if not AZURE_STORAGE_CONNECTION_STRING:
-        raise RuntimeError("AZURE_STORAGE_CONNECTION_STRING not set")
-    
-    container, blob_path = _parse_blob_url(blob_url)
-    filename = os.path.basename(blob_path)
-    os.makedirs(input_folder, exist_ok=True)
-    local_path = os.path.join(input_folder, filename)
-
-    async with BlobServiceClient.from_connection_string(AZURE_STORAGE_CONNECTION_STRING) as service:
-        container_client = service.get_container_client(container)
-        blob_client = container_client.get_blob_client(blob_path)
-        try:
-            await blob_client.get_blob_properties()
-        except ResourceNotFoundError:
-            raise FileNotFoundError(f"Blob not found: container={container} blob={blob_path}")
-        stream = await blob_client.download_blob()
-        data = await stream.readall()
-
-    # write file async
-    async with aiofiles.open(local_path, "wb") as f:
-        await f.write(data)
-
-    return local_path
-
-
-
-# async def download_email_from_blob(reference: str, input_folder: str = "input"):
-#     print("Hi")
-    
-
-
-
-
-
-
-async def download_blob_to_input_folder_by_reference(
-    beautified_data: list,
-    output_folder: str = "email_body",
-    container_name: str = "attachment-downloader",
-    blob_name_template: str = "body_{ref}.txt",
-) -> dict:
-    """
-    Download blobs whose names are derived from reference numbers found in beautified_data.
-
-    Args:
-      beautified_data: list of dicts each containing "reference_number" (as produced by beautify_extracted_data)
-      output_folder: local folder to save downloaded email bodies
-      container_name: blob container name (default 'attachment-downloader')
-      blob_name_template: template for filename in blob storage, {ref} will be replaced by the reference number
-
-    Returns:
-      dict mapping reference_number -> {"status":"ok","path":local_path} or {"status":"error","error":msg}
-    """
-    results = {}
-
-    if not AZURE_STORAGE_CONNECTION_STRING:
-        raise RuntimeError("AZURE_STORAGE_CONNECTION_STRING not set")
-
-    # collect unique references
-    refs = set()
-    for item in beautified_data or []:
-        ref = item.get("reference_number") or item.get("reference") or None
-        if ref:
-            refs.add(str(ref))
-
-    if not refs:
-        return {"status": "no_refs", "message": "No reference numbers found in beautified_data", "details": {}}
-
-    os.makedirs(output_folder, exist_ok=True)
-
-    svc = BlobServiceClient.from_connection_string(AZURE_STORAGE_CONNECTION_STRING)
-
-    async with svc:
-        container_client = svc.get_container_client(container_name)
-        for ref in refs:
-            blob_name = blob_name_template.format(ref=ref)
-            local_path = os.path.join(output_folder, blob_name)
-
-            try:
-                blob_client = container_client.get_blob_client(blob_name)
-
-                # check existence
-                try:
-                    await blob_client.get_blob_properties()
-                except ResourceNotFoundError:
-                    results[ref] = {"status": "error", "error": f"Blob not found: container={container_name} blob={blob_name}"}
-                    continue
-
-                stream = await blob_client.download_blob()
-                data = await stream.readall()
-
-                # write file async
-                async with aiofiles.open(local_path, "wb") as f:
-                    await f.write(data)
-
-                results[ref] = {"status": "ok", "path": local_path}
-            except AzureError as ae:
-                results[ref] = {"status": "error", "error": f"AzureError: {ae}"}
-            except Exception as e:
-                results[ref] = {"status": "error", "error": str(e)}
-
-    return {"status": "done", "details": results}
-
-
-this is my current new summary.py
-
-
-
+# newsummary.py (replace/patch relevant parts)
 from dotenv import load_dotenv
 import os
-import json
 from typing import List, Dict, Optional
 from openai import AzureOpenAI
 
 load_dotenv()
+
 AZURE_OPENAI_ENDPOINT = os.getenv("AZURE_OPENAI_ENDPOINT")
 AZURE_OPENAI_API_VERSION = os.getenv("AZURE_OPENAI_API_VERSION")
 AZURE_OPENAI_API_KEY = os.getenv("AZURE_OPENAI_API_KEY")
@@ -447,13 +39,24 @@ client = AzureOpenAI(
 
 
 def extract_refs_from_attachments(attachments: List[Dict]) -> List[str]:
-    """Return unique refs from filenames (text before first underscore)."""
+    """
+    Return unique refs. Accept items that either:
+      - have 'file_name' like '<REF>_...' OR
+      - have 'reference_number' key directly (from beautify_data)
+    """
     refs = []
     for item in attachments or []:
+        # priority: explicit reference_number if present
+        ref_direct = item.get("reference_number") or item.get("reference")
+        if ref_direct:
+            refs.append(str(ref_direct))
+            continue
+
         fname = item.get("file_name", "") or ""
         if "_" in fname:
             refs.append(fname.split("_", 1)[0])
-    # keep unique in order
+
+    # unique while preserving order
     seen = set()
     out = []
     for r in refs:
@@ -465,11 +68,11 @@ def extract_refs_from_attachments(attachments: List[Dict]) -> List[str]:
 
 def load_raw_email_bodies_for_refs(refs: List[str], email_body_folder: str = "email_body") -> Dict[str, Dict]:
     """
-    Load raw files named `body_<ref>.txt` from email_body_folder.
-    Returns dict: ref -> {"status": "ok", "path": ..., "raw": "<full text>"} or {"status":"missing"}
+    Load local files named `body_<ref>.txt` from email_body_folder.
+    Returns dict: ref -> {"status": "ok", "path": ..., "raw": "<full text>"} or {"status":"missing"/"error"}.
     """
     base = os.path.dirname(os.path.abspath(__file__))
-    out = {}
+    out: Dict[str, Dict] = {}
     for ref in refs or []:
         fname = f"body_{ref}.txt"
         path = os.path.join(base, email_body_folder, fname)
@@ -487,98 +90,109 @@ def load_raw_email_bodies_for_refs(refs: List[str], email_body_folder: str = "em
 
 def summarize_attachments(
     attachments: List[Dict],
+    email_bodies: Optional[Dict[str, Dict]] = None,
+    include_email_bodies_in_prompt: bool = True,
 ) -> str:
     """
-    Build combined submission summary. If email_bodies is None, this function
-    will attempt to load body_<ref>.txt for refs extracted from attachments.
-    We pass raw email text to the LLM and instruct it to use only the main content
-    (ignore salutations/signatures/contact lines) when including info.
+    Build combined submission summary.
+
+    - attachments: list of {"file_name":..., "summary":..., "text":...} OR items with 'reference_number'.
+    - email_bodies: optional dict mapping ref -> {"status":"ok","raw": "..."} (if None, function will try to load local files).
+    - include_email_bodies_in_prompt: if False, email bodies will not be included even if available.
+
+    Returns the LLM string result.
     """
-    # build attachments text
+    # build attachments text (short summaries)
     attachment_chunks = []
-    for item in attachments:
+    for item in attachments or []:
         file_name = item.get("file_name", "unknown_file")
-        summary_text = item.get("summary", "")
+        summary_text = item.get("summary", "") or ""
         chunk = f"FILENAME: {file_name}\nSUMMARY: {summary_text}"
         attachment_chunks.append(chunk)
     attachments_text = "\n\n".join(attachment_chunks)
-    attachments_text = attachments_text[:8000]
+    attachments_text = attachments_text[:8000]  # safety
 
-    # load email bodies if not provided
+    # ensure we have email_bodies map (if caller didn't pass, try loading from disk)
     if email_bodies is None:
         refs = extract_refs_from_attachments(attachments)
         email_bodies = load_raw_email_bodies_for_refs(refs)
+    else:
+        # make a shallow defensive copy
+        email_bodies = dict(email_bodies)
 
-    # build email body section for prompt (raw)
+    # build email bodies section (keep short per ref)
     email_chunks = []
     if include_email_bodies_in_prompt and isinstance(email_bodies, dict):
         for ref, meta in email_bodies.items():
-            if meta.get("status") == "ok":
-                raw = meta.get("raw", "") or ""
-                # keep reasonable amount
-                snippet = raw[:3000]
-                email_chunks.append(f"REFERENCE: {ref}\nRAW_EMAIL_BODY:\n{snippet}")
+            if not meta or meta.get("status") != "ok":
+                continue
+            raw = meta.get("raw", "") or ""
+            # instruct model to ignore salutations/signatures via prompt wording below
+            snippet = raw[:3000]
+            email_chunks.append(f"REFERENCE: {ref}\nRAW_EMAIL_BODY:\n{snippet}")
     email_bodies_text = "\n\n---\n\n".join(email_chunks)
-    if len(email_bodies_text) > 6000:
+    if email_bodies_text and len(email_bodies_text) > 6000:
         email_bodies_text = email_bodies_text[:6000] + "\n[TRUNCATED]"
 
-    # final prompt: instruct model to ignore salutations/signatures and use main content only if relevant
+    # final prompt: make explicit instruction to use only main body content
     prompt = f"""
 You are an experienced Commercial Insurance Underwriter.
 
-You are given multiple attachment documents (file names + short summaries) for a single submission.
-Additionally you may be given the RAW email body text(s) that accompanied the submission.
+You are given multiple attachment documents that belong to a SINGLE
+commercial insurance submission (file name + short summary). You MAY also have
+the raw email body text(s) that accompanied the submission; if present they
+are below. When using the email text, use only the main content (ignore salutations,
+sign-offs, and signature contact lines). Do NOT invent facts.
 
-INSTRUCTIONS ABOUT EMAIL BODIES:
-- The email bodies are raw; DO NOT assume they are perfectly formatted.
-- When using email text, use **only the main content** (i.e. the core submission details, requested limits, dates, TIV, etc.).
-  Ignore salutations ("Dear...", "Hi ..."), sign-offs ("Regards", "Kind regards", signatures), and contact lines (email addresses, phone numbers).
-- You may incorporate email-provided numeric details (e.g. requested limits, effective dates) into the appropriate section of the summary
-  BUT DO NOT invent anything not present in the attachments or emails.
+Attached files (short summaries):
+{attachments_text}
 
-STRUCTURE OF OUTPUT (USE THIS TEMPLATE EXACTLY):
+# RAW EMAIL BODIES (if any; use only main content, ignore salutations/signatures):
+{email_bodies_text}
 
+Produce ONE combined "Submission Summary" for the account using the following TEMPLATE (fill sections where you have data). Use only facts present in attachments or the provided email bodies.
 SUBMISSION SUMMARY  
 Client: [Client Legal Name]  
 Date: [Submission or Document Date]
 
 1. SUBMISSION COVER LETTER / NARRATIVE  
  Exposure Description:  
-    - [Describe business / operations]  
-    - [Property details if present]  
+    - [Describe what the business does]  
+    - [Main operations / physical activities]  
+    - [Property details: construction, age, protection, sprinklers, etc.]  
 
  Placement Strategy:  
-    - [Program / carrier / broker if evident]  
+    - [Placement goals or program approach if evident]  
 
  Renewal Highlights:  
-    - [If any]  
+    - [Notable changes or updates if mentioned]  
 
  Changes YOY:  
-    - [If any]  
+    - [Any changes in exposure, values, operations, or loss experience]  
 
  Additional Overview Details:  
-    - Effective Date: [if present]  
-    - Submission Type: [New / Renewal / Other]  
-    - Current Situation: [as stated]
+    - Effective Date: [Coverage start date]  
+    - Submission Type: [Renewal / New Business / Other]  
+    - Current Situation: [Reason for submission if stated]  
 
-2. LOSS HISTORY PACKAGE  
+2. LOSS HISTORY PACKAGE   
  5–10 Year Loss Runs:  
-    - [Summary if present]  
+    - [Summarize multi-year loss experience if available]  
 
  Large Loss Details:  
-    - [Significant claims]  
+    - [Brief details on significant claims]  
 
  Trends Analysis:  
-    - [If present]  
+    - [Patterns in frequency/severity if evident]  
 
  Summary of Loss History:  
     - Status: [Clean / Losses Reported]  
-    - Summary: [one-liner]  
-    - Major Incidents: [largest incident if present]
+    - Summary: [1-sentence overview]  
+    - Major Incidents: [Largest incident if present]  
 
 3. EXPOSURE DATA  
- COPE Information:  
-    - [Construction, Occupancy, Protection, Exposure]  
+ COPE Information (Construction, Occupancy, Protection, Exposure):  
+    - [Building info, occupancy, protection systems]  
 
  Statement of Values (SOV):  
     - Total Insurable Value (TIV): $[Insert if present]  
@@ -586,16 +200,12 @@ Date: [Submission or Document Date]
     - Contents/BPP Limit: $[Insert]  
     - Business Income: $[Insert]  
 
- Financials:  
-    - [Any financial info]
+Financials, CAT worksheets, Specialty schedules, etc., as needed.
 
-CAT Worksheets, Specialty schedules, etc. as needed.
-
-Attached files included:
+ATTACHMENT SUMMARY LIST: (file name then short summary)
 {attachments_text}
 
-# RAW EMAIL BODIES (if present; use them only to supplement / clarify)
-{email_bodies_text}
+# End of template.
     """
 
     response = client.chat.completions.create(
@@ -609,3 +219,54 @@ Attached files included:
         return response.choices[0].message.content.strip()
     except Exception:
         return getattr(response.choices[0].message, "content", "").strip()
+
+
+⸻
+
+2) Update summary_handler.py where you build combined summary
+
+Replace the part marked #HERE WE CAN CALL THE EXTRACT REFS... with this exact snippet (it uses the filenamesummary_extracted_beautified list you already created — that contains file_name and summary and is the right thing to pass):
+
+        # --- load local email bodies for refs and call summarize_attachments with them ---
+        try:
+            # use the per-doc list (each entry has file_name + summary + text)
+            refs = extract_refs_from_attachments(filenamesummary_extracted_beautified)
+            print("Extracted refs for email bodies:", refs)
+
+            # load whatever body_<ref>.txt files exist under email_body/
+            email_bodies_map = load_raw_email_bodies_for_refs(refs, email_body_folder=EMAIL_BODY)
+            print("Loaded email bodies map:", email_bodies_map)
+
+            # pass the email_bodies_map explicitly to the summarizer (safer & debuggable)
+            combined_summary_text = summarize_attachments(
+                filenamesummary_extracted_beautified,
+                email_bodies=email_bodies_map,
+                include_email_bodies_in_prompt=True,
+            )
+            print("Combined Submission Summary:")
+            print(combined_summary_text)
+
+            result["combined_summary"] = combined_summary_text
+        except Exception as e:
+            print(f"Error generating combined submission summary: {e}")
+            result["combined_summary_error"] = str(e)
+            combined_summary_text = None
+
+Notes:
+	•	I use filenamesummary_extracted_beautified (the list you get from extract_filenames_and_summaries(output_folder)) — that list contains file_name keys so extract_refs_from_attachments will pick up refs. If you prefer to pass beautify_data (which has reference_number), extract_refs_from_attachments also supports that now.
+	•	email_bodies_map will look like { "19AA119...": {"status":"ok","raw":"..."} , "XYZ": {"status":"missing"} }. The summarizer reads only status == "ok" entries.
+
+⸻
+
+3) A couple of operational reminders (short)
+	•	Make sure your download_blob_to_input_folder_by_reference actually ran before this code (you already call it earlier — good). Verify email_body/body_<ref>.txt files exist on disk (the handler prints download_results — check it).
+	•	If the LLM returns empty or errors (429), log the LLM response / exception (you already print exceptions in other parts). If you get 429s often, add a small retry wrapper later.
+	•	Use the filenamesummary_extracted_beautified list for both combined summary and individual_summary — keeps data consistent.
+
+⸻
+
+If you want I can:
+	•	Give you a tiny try/except patch to separate_summary.individual_summary so per-document LLM failures don’t kill the whole list (I recommend it).
+	•	Or give a 3-retry decorator for the Azure LLM calls.
+
+Tell me which and I’ll paste it — no more fuss.
