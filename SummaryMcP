@@ -1,5 +1,27 @@
 '123ASJKDB1JKBSAF_attachment_Loss_Run_HighTech_Solution.pdf': Webview overlay is disposed.
 
+this in testscript run
+Error: Failed to process blob: The specified blob does not exist.
+RequestId:7a4c870d-301e-005b-024b-6b6998000000
+Time:2025-12-12T09:44:29.7985349Z
+ErrorCode:BlobNotFound
+Content: <?xml version="1.0" encoding="utf-8"?><Error><Code>BlobNotFound</Code><Message>The specified blob does not exist.
+RequestId:7a4c870d-301e-005b-024b-6b6998000000
+Time:2025-12-12T09:44:29.7985349Z</Message></Error>
+
+
+this in main run
+Response JSON:
+{
+    "jsonrpc": "2.0",
+    "id": 1,
+    "result": {
+        "combined_summary": "SUBMISSION SUMMARY\nClient: High Tech Solution\nDate: July 15, 2025\n\n1. SUBMISSION COVER LETTER / NARRATIVE\nExposure Description:\n- High Tech Solution is an IT services and operations firm with annual revenues of $725,000.\n- The business operates primarily from a commercial office space featuring advanced hi-tech systems and infrastructure.\n- The main premises is located at 456 Elm St, Suite 200, Los Angeles, CA 90001, with additional reference to 123 Penny Lane, Springfield, Illinois 62629, where the applicant is the owner and the location is within city limits.\n- Property details include modern office construction with exposures to theft, fire, and earthquake, as reflected in recent loss history.\n\nPlacement Strategy:\n- Coverage is proposed with Phoenix Insurers Ltd. under Program 1, placed through Prime Brokers Ltd., with a focus on Commercial Property and Accounts Receivable/Valuable Papers.\n- Relevant supplements for Apartment Building and Contractors are included, indicating possible ancillary exposures or interests.\n\nRenewal Highlights:\n- The submission is for a new policy term effective July 15, 2025, through July 15, 2028.\n- No explicit renewal changes noted; coverage includes earthquake and flood per the SOV.\n\nChanges YOY:\n- Recent claims activity includes theft, earthquake, and fire losses, with two claims currently open and reserves outstanding.\n- No other material changes in values or operations indicated.\n\nAdditional Overview Details:\n- Effective Date: July 15, 2025\n- Submission Type: New Business\n- Current Situation: Seeking placement for comprehensive property coverage, including specialty causes of loss.\n\n2. LOSS HISTORY PACKAGE\n5\u00e2\u0080\u009310 Year Loss Runs:\n- Three years of continuous commercial property coverage with four reported claims.\n\nLarge Loss Details:\n- Electrical fire in February 2025 (open, $30,000 paid, $15,000 reserved).\n- Floor damage from tremors in July 2024 ($18,200 paid, closed).\n- Theft of office equipment in March 2023 ($8,750 paid, closed).\n- Window damage from minor earthquake in September 2025 (open, $12,500 paid, $8,000 reserved).\n\nTrends Analysis:\n- Losses reflect exposures to theft, earthquake, and fire.\n- Two claims",
+        "individualized_summary": []
+    }
+}
+
+and 
 
 
 
