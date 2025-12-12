@@ -1,4 +1,43 @@
 
+I have changed the code (Summary handler.py) so now i want to store beautified it in excel
+earlier we were checking for Summary column in the excel and if it exists then we were storing our data in that column corresponding to the reference number row correct? so now we will be doing same but the only change is now we will look for 2 columns 1) Submission summary and 2) Document summary and now as per our response that we are getting from beautified we will store it in the excel in such a way that Submission summary column will have combined summary stored and Document summary will have filename and processed summary stored from  "individualized_summary": that we are getting from the response
+
+Summary handler.py
+
+    try:
+        beautified = beautify_api_response(cleaned_payload)
+        print(beautified)
+
+        # print("\n----- COMBINED SUBMISSION SUMMARY (beautified) -----\n")
+        # if beautified["combined_summary"]:
+        #     print(beautified["combined_summary"])
+        # else:
+        #     print("No combined summary available.")
+
+        DATA_URL = os.getenv("Data_URL")
+        if DATA_URL:
+            try:
+                updated_data = connect_to_blob(DATA_URL, beautified)
+                print("Blob Data Processed Successfully.")
+                if isinstance(updated_data, pd.DataFrame):
+                    print("Blob Data Processed Successfully and Excel Updated.")
+                else:
+                    # updated_data may be an error dict
+                    print(f"Error: {updated_data.get('error')}")
+            except Exception as e:
+                print(f"Error processing blob data: {e}")
+        else:
+            print("Data_URL environment variable is not set.")
+    except Exception as e:
+        print(f"Error in beautify / blob step: {e}")
+
+
+
+    # return cleaned_payload
+    return beautified
+
+
+Data filler.py
 
 import os
 import json
