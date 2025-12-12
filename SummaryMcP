@@ -1,119 +1,77 @@
-from io import BytesIO
-import pandas as pd
-from azure.storage.blob import BlobServiceClient
-from typing import Dict, Any
-from summary_service import summary_require_env, AZURE_STORAGE_CONNECTION_STRING, _parse_blob_url
+'123ASJKDB1JKBSAF_attachment_Loss_Run_HighTech_Solution.pdf': Webview overlay is disposed.
 
-def connect_to_blob(blob_url: str, beautified_payload: Dict[str, Any]):
+
+
+
+
+
+this is Data Filler.py
+
+def extract_filenames_and_summaries(output_folder: str) -> List[Dict[str, Any]]:
     """
-    Update Excel blob using the NEW beautified payload format (dict).
+    Extracts file names, summaries, and raw text from the JSON file in the output folder.
 
-    Expected beautified_payload shape:
-    {
-      "combined_summary": "<string or None>",
-      "individualized_summary": [
-         {
-           "file_name": "...",
-           "summary": "...",                # (not used here)
-           "document_type": "...",          # (optional)
-           "processed_summary": "..."       # used for Document summary
-         }, ...
-      ]
-    }
-
-    Behavior:
-      - For each reference (derived from file_name: <REF>_...), find rows where
-        excel["Unique refrence Number"] == ref.
-      - Overwrite "Submission summary" on those rows with combined_summary (if provided).
-      - Overwrite "Document summary" on those rows with a single cell value that is the
-        concatenation (joined by two newlines) of:
-           "file_name: <file_name>\nprocessed_summary:\n<processed_summary>"
-        for all files belonging to that reference.
-      - Does NOT create new rows. If no match is found for a reference, we skip it.
-      - Returns updated pandas.DataFrame on success, or {"status": False, "error": "..."}.
+    Returns list of:
+      {
+        "file_name": "<file_name>",
+        "summary": "<summary>",
+        "text": "<full_text_or_first_page_text>"
+      }
     """
+    result_file = os.path.join(output_folder, "layout_summaries_result.json")
+
+    if not os.path.exists(result_file):
+        raise FileNotFoundError(f"No JSON result file found at {result_file}")
+
+    with open(result_file, "r", encoding="utf-8") as f:
+        data = json.load(f) 
+
+    summaries = data.get("summaries", [])
+
+    extracted_data = [
+        {
+            "file_name": item["file_name"],
+            "summary": item["summary"],
+            "text": item.get("text", "")  # <-- thisismyNEW: raw text stored here
+        }
+        for item in summaries
+        if "file_name" in item and "summary" in item
+    ]
+
+    return extracted_data
+
+def beautify_extracted_data(extracted_data: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    """
+    Beautifies and prints the extracted data in the desired format.
+    NOTE: we do NOT include 'text' here, only file_name + summary + reference_number.
+    """
+    beautified_data: List[Dict[str, Any]] = []
+
+    for item in extracted_data:
+        file_name = item["file_name"]
+        reference_number = file_name.split("_")[0]
+
+        beautified_item = {
+            "reference_number": reference_number,
+            "file_name": file_name,
+            "summary": item["summary"],
+        }
+        beautified_data.append(beautified_item)
+
+        print(f"file_name: {file_name}")
+        print(f"reference_number: {reference_number}")
+        print(f"summary: {item['summary']}\n")
+
+    return beautified_data
+
+
+Summary handler.py
+
+    # 6) Beautify and optionally write to Excel (unchanged; uses only file_name + summary)
     try:
-        summary_require_env()
-    except Exception as e:
-        return {"status": False, "error": f"Environment misconfigured: {e}"}
+        extracted_data = extract_filenames_and_summaries(OUTPUT_FOLDER)
+        print("Beautified Extracted Data:\n")
+        beautify_data = beautify_extracted_data(extracted_data)
+        print(beautify_data)
 
-    if not AZURE_STORAGE_CONNECTION_STRING:
-        return {"status": False, "error": "AZURE_STORAGE_CONNECTION_STRING not set"}
-
-    # parse blob URL into container + path
-    try:
-        container, blob_path = _parse_blob_url(blob_url)
-    except Exception as e:
-        return {"status": False, "error": f"Unable to parse blob URL: {e}"}
-
-    try:
-        svc = BlobServiceClient.from_connection_string(AZURE_STORAGE_CONNECTION_STRING)
-        blob_client = svc.get_blob_client(container=container, blob=blob_path)
-
-        # download excel into memory
-        blob_bytes = blob_client.download_blob().readall()
-        excel_df = pd.read_excel(BytesIO(blob_bytes))
-
-        # required reference column
-        if "Unique refrence Number" not in excel_df.columns:
-            return {"status": False, "error": "'Unique refrence Number' column is missing in the Excel file."}
-
-        # ensure target columns exist (create if missing)
-        if "Submission summary" not in excel_df.columns:
-            excel_df["Submission summary"] = None
-        if "Document summary" not in excel_df.columns:
-            excel_df["Document summary"] = None
-
-        combined_summary = beautified_payload.get("combined_summary")
-        individualized = beautified_payload.get("individualized_summary", [])
-
-        # Build mapping ref -> list of aggregated doc strings
-        ref_to_entries = {}
-        for item in individualized:
-            fname = item.get("file_name") or ""
-            processed = item.get("processed_summary") or ""
-
-            if not fname:
-                # skip entries without filename
-                continue
-
-            # Expect filename format "<REF>_..."; if missing underscore, skip (defensive)
-            if "_" not in fname:
-                print(f"[connect_to_blob] skipping filename with unexpected format: {fname}")
-                continue
-
-            ref = fname.split("_", 1)[0]
-            entry_text = f"file_name: {fname}\nprocessed_summary:\n{processed}".strip()
-            ref_to_entries.setdefault(ref, []).append(entry_text)
-
-        # For each reference, write aggregated values into matching rows
-        for ref, entries in ref_to_entries.items():
-            matches = excel_df[excel_df["Unique refrence Number"] == ref].index
-            if matches.empty:
-                # no matching reference in sheet — skip without creating rows
-                print(f"[connect_to_blob] reference not found in Excel, skipping: {ref}")
-                continue
-
-            # Join all entries for this reference into one cell value
-            document_summary_cell = "\n\n".join(entries).strip()
-
-            for idx in matches:
-                # Overwrite Submission summary if combined_summary provided; else leave as None
-                if combined_summary:
-                    excel_df.at[idx, "Submission summary"] = combined_summary
-                else:
-                    excel_df.at[idx, "Submission summary"] = None
-
-                # Overwrite Document summary with aggregated cell
-                excel_df.at[idx, "Document summary"] = document_summary_cell
-
-        # save updated excel back to blob (overwrite)
-        out_stream = BytesIO()
-        excel_df.to_excel(out_stream, index=False, engine="openpyxl")
-        out_stream.seek(0)
-        blob_client.upload_blob(out_stream, overwrite=True)
-
-        return excel_df
-
-    except Exception as e:
-        return {"status": False, "error": f"Failed to process blob: {e}"}
+I want to extract reference number 
