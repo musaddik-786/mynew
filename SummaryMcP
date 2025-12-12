@@ -1,282 +1,128 @@
-now in summary_handler I want to call another function (which need to be created )which downloads a blob from container, can we connect to the blob without the url being provided in the code 
-(this is the url https://agenticai1.blob.core.windows.net/attachment-downloader/body_19AA119CAE5F6409.txt)
+Nice — your logic is correct: beautify_extracted_data() already produces reference_number for each file, so you can use those reference IDs to build the blob names and download the corresponding email body files (which, in your example, live at container=attachment-downloader and follow the filename pattern body_<REF>.txt).
 
-as you can see i want to download this file for eg : body_19AA119CAE5F6409.txt , but based on the reference number which is 19AA119CAE5F6409 this I want to extract from the beautify_data(I am not sure if it has the reference number i hope you know whther it has or not)
-so according to that reference number it should download this email body in the email_body folder 
+Below I give you a ready-to-copy async function you can add to summary_storage_utils.py plus a short usage snippet to add into summary_handler.py. The function:
+	•	Accepts the beautified list (the beautify_data you already have).
+	•	Extracts unique reference numbers.
+	•	Builds blob name body_{ref}.txt and container attachment-downloader.
+	•	Downloads each blob asynchronously into an email_body folder (creates it).
+	•	Returns a dict mapping ref -> {"status":"ok","path":local_path} or ref -> {"status":"error","error":message} so you can inspect what succeeded/failed.
 
+Drop this into summary_storage_utils.py (near your existing download_blob_to_input_folder function):
 
-summary handler.py
+# summary_storage_utils.py  (append this function)
 
-INPUT_FOLDER = "input"
-OUTPUT_FOLDER = "output"
-EMAIL_BODY = "email_body"
+import os
+import aiofiles
+from azure.storage.blob.aio import BlobServiceClient
+from azure.core.exceptions import ResourceNotFoundError, AzureError
 
-def clean_result_for_api(result: Dict[str, Any]) -> Dict[str, Any]:
+from summary_service import AZURE_STORAGE_CONNECTION_STRING, _parse_blob_url  # ensure these exist
+
+async def download_blob_to_input_folder_by_reference(
+    beautified_data: list,
+    output_folder: str = "email_body",
+    container_name: str = "attachment-downloader",
+    blob_name_template: str = "body_{ref}.txt",
+) -> dict:
     """
-    Build a compact, clean dictionary response from the full 'result' dict.
+    Download blobs whose names are derived from reference numbers found in beautified_data.
 
-    Output shape:
-    {
-      "combined_summary": "<string or None>",
-      "individualized_summary": [
-         { "file_name": ..., "summary": ..., "document_type": ..., "processed_summary": ... },
-         ...
-      ]
-    }
+    Args:
+      beautified_data: list of dicts each containing "reference_number" (as produced by beautify_extracted_data)
+      output_folder: local folder to save downloaded email bodies
+      container_name: blob container name (default 'attachment-downloader')
+      blob_name_template: template for filename in blob storage, {ref} will be replaced by the reference number
 
-    This removes raw 'text' and error details from the per-file items.
+    Returns:
+      dict mapping reference_number -> {"status":"ok","path":local_path} or {"status":"error","error":msg}
     """
-    combined = result.get("combined_summary")
+    results = {}
 
-    raw_individualized = result.get("individualized_summary", [])
-    cleaned_list: List[Dict[str, Any]] = []
+    if not AZURE_STORAGE_CONNECTION_STRING:
+        raise RuntimeError("AZURE_STORAGE_CONNECTION_STRING not set")
 
-    if isinstance(raw_individualized, list):
-        for item in raw_individualized:
-            cleaned_item = {
-                "file_name": item.get("file_name"),
-                "summary": item.get("summary"),
-                "document_type": item.get("document_type"),
-                "processed_summary": item.get("processed_summary"),
-            }
-            cleaned_list.append(cleaned_item)
+    # collect unique references
+    refs = set()
+    for item in beautified_data or []:
+        ref = item.get("reference_number") or item.get("reference") or None
+        if ref:
+            refs.add(str(ref))
 
-    return {
-        "combined_summary": combined,
-        "individualized_summary": cleaned_list,
-    }
+    if not refs:
+        return {"status": "no_refs", "message": "No reference numbers found in beautified_data", "details": {}}
 
+    os.makedirs(output_folder, exist_ok=True)
 
-async def summarize_blob_pdfs_layout(blob_urls: List[str]) -> Dict[str, Any]:
-    """
-    For each Blob URL:
-      - Download PDF into input/
-      - Use Form Recognizer to extract text (all pages)
-      - Use LLM to summarize the FIRST PAGE
+    svc = BlobServiceClient.from_connection_string(AZURE_STORAGE_CONNECTION_STRING)
 
-    Saves the full detailed JSON (including raw text) to ./output/layout_summaries_result.json
-    but RETURNS a cleaned dictionary suitable for API responses (no raw 'text').
-    """
-    try:
-        summary_require_env()
-    except Exception as e:
-        # Return a clean, empty-shaped response on environment failure
-        return {"combined_summary": None, "individualized_summary": []}
+    async with svc:
+        container_client = svc.get_container_client(container_name)
+        for ref in refs:
+            blob_name = blob_name_template.format(ref=ref)
+            local_path = os.path.join(output_folder, blob_name)
 
-    summaries: List[Dict[str, Any]] = []
-
-    for blob_url in blob_urls:
-        file_name = None
-
-        # 1) Download PDF
-        try:
-            local_pdf = await download_blob_to_input_folder(
-                blob_url, input_folder=INPUT_FOLDER
-            )
-            file_name = os.path.basename(local_pdf)
-        except Exception as e:
-            summaries.append(
-                {
-                    "blob_url": blob_url,
-                    "file_name": file_name,
-                    "summary": None,
-                    "text": None,
-                    "error": f"Failed to download blob: {e}",
-                }
-            )
-            continue
-
-        # 2) Use Form Recognizer to analyze the document
-        try:
-            document_content = load_summary_document(local_pdf)
-        except Exception as e:
-            summaries.append(
-                {
-                    "blob_url": blob_url,
-                    "file_name": file_name,
-                    "summary": None,
-                    "text": None,
-                    "error": f"Form Recognizer failed: {e}",
-                }
-            )
-            continue
-
-        # Extract raw text (stored in first_page_text key by loader)
-        text_content = document_content.get("first_page_text", "")
-
-        # 3) Summarize FIRST PAGE using LLM (short summary)
-        try:
-            summary_text = summarize_first_page(document_content, file_name=file_name)
-        except Exception as e:
-            summaries.append(
-                {
-                    "blob_url": blob_url,
-                    "file_name": file_name,
-                    "summary": None,
-                    "text": text_content,
-                    "error": f"Summarization failed: {e}",
-                }
-            )
-            continue
-
-        # 4) Success case for this document — include raw text for audit on disk
-        summaries.append(
-            {
-                "blob_url": blob_url,
-                "file_name": file_name,
-                "summary": summary_text,
-                "text": text_content,
-                "error": None,
-            }
-        )
-
-    result: Dict[str, Any] = {"status": True, "summaries": summaries}
-
-    # 5) Save result to ./output (retain 'text' on disk for audit)
-    try:
-        os.makedirs(OUTPUT_FOLDER, exist_ok=True)
-        out_path = os.path.join(OUTPUT_FOLDER, "layout_summaries_result.json")
-        with open(out_path, "w", encoding="utf-8") as f:
-            json.dump(result, f, indent=2, ensure_ascii=False)
-    except Exception as e:
-        result["save_error"] = str(e)
-
-    # 6) Beautify and optionally write to Excel (unchanged; uses only file_name + summary)
-    try:
-        extracted_data = extract_filenames_and_summaries(OUTPUT_FOLDER)
-        print("Beautified Extracted Data:\n")
-        beautify_data = beautify_extracted_data(extracted_data)
-        print(beautify_data)
-
-    #     DATA_URL = os.getenv("Data_URL")
-    #     if DATA_URL:
-    #         try:
-    #             updated_data = connect_to_blob(DATA_URL, beautify_data)
-    #             print("Blob Data Processed Successfully.")
-    #             if isinstance(updated_data, pd.DataFrame):
-    #                 print("Blob Data Processed Successfully and Excel Updated.")
-    #             else:
-    #                 # updated_data may be an error dict
-    #                 print(f"Error: {updated_data.get('error')}")
-    #         except Exception as e:
-    #             print(f"Error processing blob data: {e}")
-    #     else:
-    #         print("Data_URL environment variable is not set.")
-    except Exception as e:
-        print(f"Error in beautify / blob step: {e}")
-
-    # 7) Combined submission summary (uses file_name + summary only)
-    combined_summary_text = None
-    filenamesummary_extracted_beautified: List[Dict[str, Any]] = []
-    try:
-        base_dir = os.path.dirname(os.path.abspath(__file__))
-        output_folder = "output"
-
-        json_path = os.path.join(base_dir, output_folder, "layout_summaries_result.json")
-        with open(json_path, "r", encoding="utf-8") as f:
-            layout_json = json.load(f)
-
-        filenamesummary_extracted_beautified = extract_filenames_and_summaries(output_folder)
-        print("Per-document summaries (with text):")
-        print(filenamesummary_extracted_beautified)
-        
-        
-
-        combined_summary_text = summarize_attachments(filenamesummary_extracted_beautified)
-        print("Combined Submission Summary:")
-        print(combined_summary_text)
-
-        result["combined_summary"] = combined_summary_text
-    except Exception as e:
-        print(f"Error generating combined submission summary: {e}")
-        result["combined_summary_error"] = str(e)
-        combined_summary_text = None
-
-    # 8) Individual typed summaries (ACORD / Loss Run / SOV)
-    try:
-        # individual_summary expects attachments each having 'file_name','summary','text'
-        individualized_summary = individual_summary(filenamesummary_extracted_beautified)
-        # print("Individualized Summary Output (raw):")
-        print(individualized_summary)
-        result["individualized_summary"] = individualized_summary
-    except Exception as e:
-        print(f"Error generating Individual summary: {e}")
-        result["individualized_summary_error"] = str(e)
-        result["individualized_summary"] = []
-
-
-    # 9) CLEAN the result for the API and return only the compact payload (no raw text)
-    cleaned_payload = clean_result_for_api(result)
-
-
-    
-    try:
-        beautified = beautify_api_response(cleaned_payload)
-        print("This is beautified for  response : ", beautified)
-
-        # print("\n----- COMBINED SUBMISSION SUMMARY (beautified) -----\n")
-        # if beautified["combined_summary"]:
-        #     print(beautified["combined_summary"])
-        # else:
-        #     print("No combined summary available.")
-
-        DATA_URL = os.getenv("Data_URL")
-        if DATA_URL:
             try:
-                updated_data = connect_to_blob(DATA_URL, beautified)
-                print("Blob Data Processed Successfully.")
-                if isinstance(updated_data, pd.DataFrame):
-                    print("Blob Data Processed Successfully and Excel Updated.")
-                else:
-                    # updated_data may be an error dict
-                    print(f"Error: {updated_data.get('error')}")
+                blob_client = container_client.get_blob_client(blob_name)
+
+                # check existence
+                try:
+                    await blob_client.get_blob_properties()
+                except ResourceNotFoundError:
+                    results[ref] = {"status": "error", "error": f"Blob not found: container={container_name} blob={blob_name}"}
+                    continue
+
+                stream = await blob_client.download_blob()
+                data = await stream.readall()
+
+                # write file async
+                async with aiofiles.open(local_path, "wb") as f:
+                    await f.write(data)
+
+                results[ref] = {"status": "ok", "path": local_path}
+            except AzureError as ae:
+                results[ref] = {"status": "error", "error": f"AzureError: {ae}"}
             except Exception as e:
-                print(f"Error processing blob data: {e}")
-        else:
-            print("Data_URL environment variable is not set.")
-    except Exception as e:
-        print(f"Error in beautify / blob step: {e}")
+                results[ref] = {"status": "error", "error": str(e)}
 
+    return {"status": "done", "details": results}
 
+How to call it from summary_handler.py
 
+You already compute beautify_data earlier:
 
-    try:
-        email_body = download_blob_to_input_folder_by_reference(beautify_data)
+# after you compute beautify_data in summary_handler.py
 
+from summary_storage_utils import download_blob_to_input_folder_by_reference
 
-    # return cleaned_payload
-    return beautified
+# ensure EMAIL_BODY = "email_body" at top of summary_handler.py
 
+# call it (since it's async, await it)
+try:
+    download_results = await download_blob_to_input_folder_by_reference(
+        beautify_data,
+        output_folder=EMAIL_BODY,
+        container_name="attachment-downloader",
+        blob_name_template="body_{ref}.txt",
+    )
+    print("Email body download results:", download_results)
+except Exception as e:
+    print("Failed to download email bodies by reference:", e)
 
-Data Filler.py
+Place that call after you build beautify_data (for example, right after the print(beautify_data) line). That ensures you use the reference numbers produced by your beautifier.
 
-#Absolute working code 
-def beautify_extracted_data(extracted_data: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
-    """
-    Beautifies and prints the extracted data in the desired format.
-    NOTE: we do NOT include 'text' here, only file_name + summary + reference_number.
-    """
-    beautified_data: List[Dict[str, Any]] = []
+Notes, edge cases & helpful tips
+	1.	Blob name pattern — I used body_{ref}.txt because your example URL uses body_19AA119CAE5F6409.txt. If your real naming differs (e.g. body_<ref>.eml or body_<ref>_v2.txt) adjust blob_name_template accordingly.
+	2.	Container name — I set attachment-downloader (from your example). If containers vary, either add logic to try multiple containers or pass container name via env var.
+	3.	Permissions — ensure AZURE_STORAGE_CONNECTION_STRING used by the service has read permission on the attachment-downloader container.
+	4.	Diagnostics — the function returns per-ref results so you can log missing blobs instead of failing the whole pipeline. This avoids the kind of BlobNotFound crash you saw earlier.
+	5.	Filename collisions — if multiple refs map to the same blob name (unlikely), the function will overwrite the local file. If you want unique local names, prepend the ref into the local filename or include a timestamp.
+	6.	Synchronous call alternative — I implemented async to match your download_blob_to_input_folder. If you prefer a synchronous version for easier testing, tell me and I’ll provide it.
 
-    for item in extracted_data:
-        file_name = item["file_name"]
-        reference_number = file_name.split("_")[0]
+⸻
 
-        beautified_item = {
-            "reference_number": reference_number,
-            "file_name": file_name,
-            "summary": item["summary"],
-        }
-        beautified_data.append(beautified_item)
+If you want, I can also:
+	•	Paste a full updated summary_storage_utils.py with both download functions together (the existing download_blob_to_input_folder + the new download_blob_to_input_folder_by_reference), or
+	•	Provide a synchronous version, or
+	•	Change the function to accept a single reference (download one file) rather than a batch.
 
-        print(f"file_name: {file_name}")
-        print(f"reference_number: {reference_number}")
-        print(f"summary: {item['summary']}\n")
-
-    return beautified_data
-
-as we can see there is reference number in  beautify_extracted_data
-
-so in summary storage utils i want to create this function 
-
-async def download_blob_to_input_folder_by_reference
+Which would you like?
