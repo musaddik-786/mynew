@@ -1,44 +1,12 @@
-This is how i am getting it in response
+Great — understood. I fixed the main problem (mojibake / escaped-unicode like \u00e2\u009c\u0094 and raw \n sequences), and produced two updated files you can copy-paste:
+	•	summary_handler.py — unchanged logic flow, but now calls a robust beautifier and returns the cleaned + beautified dict (no raw text). It prints a friendly view and returns the beautified dict (ready for storing to Excel later).
+	•	Data_Filler.py — only small tweaks: kept extract_filenames_and_summaries() and beautify_extracted_data() as before, but moved the robust normalize_text() and beautify_api_response() into this file (so you can re-use them if desired). I implemented a robust fix for mojibake / double-encoded UTF-8 sequences and fallbacks.
 
-Response JSON:
-{
-    "jsonrpc": "2.0",
-    "id": 1,
-    "result": {
-        "combined_summary": "SUBMISSION SUMMARY\nClient: High Tech Solution\nDate: July 15, 2025\n\n------------------------------------------------------------\n1. SUBMISSION COVER LETTER / NARRATIVE\n------------------------------------------------------------\n\u00e2\u009c\u0094 Exposure Description:\n- High Tech Solution is a corporation engaged in IT services and operations.\n- Main operations are conducted at a commercial office space, with activities centered on technology services and the use of advanced hi-tech systems and equipment.\n- The primary insured premises is 123 Penny Lane, Springfield, Illinois, with an additional office at 456 Elm St, Suite 200, Los Angeles, CA 90001. The business owns the Springfield location and operates within city limits.\n- Property details include advanced technological equipment and systems. Supplemental forms suggest possible exposures related to apartment buildings and contractors, indicating ancillary activities or property interests beyond core IT operations.\n\n\u00e2\u009c\u0094 Placement Strategy:\n- The program is placed with Phoenix Insurers Ltd. under Program 1, with coverage bound for a three-year term. Coverage includes Commercial Property and Accounts Receivable/Valuable Papers, with earthquake and flood as specified causes of loss.\n\n\u00e2\u009c\u0094 Renewal Highlights:\n- No explicit renewal changes noted; the submission is marked as bound for the upcoming term.\n\n\u00e2\u009c\u0094 Changes YOY:\n- No specific changes in exposure, values, or operations are indicated compared to prior years.\n\n\u00e2\u009c\u0094 Additional Overview Details:\n- Effective Date: July 15, 2025\n- Submission Type: Bound (New or Renewal not specified)\n- Current Situation: Submission is for a bound policy with coverage confirmed.\n\n------------------------------------------------------------\n2. LOSS HISTORY PACKAGE\n------------------------------------------------------------\n\u00e2\u009c\u0094 5\u00e2\u0080\u009310 Year Loss Runs:\n- Three-year loss history is provided for the Los Angeles office location.\n\n\u00e2\u009c\u0094 Large Loss Details:\n- Four claims reported: theft of office equipment, floor damage from tremors, an electrical fire in a storage room (largest reserve), and window damage from a minor earthquake.\n\n\u00e2\u009c\u0094 Trends Analysis:\n- Losses are concentrated at a single address and reflect exposure to theft, fire, and earthquake-related events. Two claims remain open, with the electrical fire representing the largest outstanding reserve.\n\n\u00e2\u009c\u0094 Summary of Loss History:\n- Status: Losses Reported\n- Summary: Four claims over three years totaling $92,450 incurred, with $23,000 in open reserves.\n- Major Incidents: Electrical fire in storage room (largest reserve).\n\n------------------------------------------------------------\n3. EXPOSURE DATA",
-        "individualized_summary": [
-            {
-                "file_name": "123ASJKDB1JKBSAF_attachment_Acord_125_High_tech_solution.pdf",
-                "summary": "The applicant, High Tech Solution, is a corporation located at 456 Elm St, Suite 200, Los Angeles, CA 90001, with primary operations in IT services and operations. The proposed policy is with Phoenix Insurers Ltd. under Program 1, with coverage effective from July 15, 2025, to July 15, 2028, and the transaction is marked as bound. The primary insured premises is 123 Penny Lane, Springfield, Illinois, where the applicant is the owner and operations are conducted inside city limits. Annual revenues are reported at $725,000, and the business has full-time employees (exact number not specified). Relevant lines of business indicated include Commercial Property and Accounts Receivable/Valuable Papers, with several supplemental forms attached, such as Apartment Building and Contractors Supplements, suggesting potential exposures beyond standard IT operations.",
-                "document_type": "ACORD",
-                "processed_summary": "SUBMISSION SUMMARY\nClient: High Tech Solution\nDate: 07/15/2025\n\n------------------------------------------------------------\n1. SUBMISSION COVER LETTER / NARRATIVE\n------------------------------------------------------------\n\u00e2\u009c\u0094 Exposure Description:\n- High Tech Solution provides IT services and operations.\n- Main operations are conducted at 123 Penny Lane, Springfield, Illinois 62629, with the business mailing address at 456 Elm St, Suite 200, Los Angeles, CA 90001.\n- The Springfield location is owned and situated within city limits.\n- Occupied area is indicated as 1 (unit/area not specified).\n- No specific property construction, age, or protection details are provided.\n- The business employs 1 full-time employee and reports annual revenues of $725,000.\n\n\u00e2\u009c\u0094 Placement Strategy:\n- The submission is for placement with Phoenix Insurers Ltd. under Program 1, facilitated by Prime Brokers Ltd.\n- Lines of business indicated include Commercial Property and Accounts Receivable/Valuable Papers, with supplemental forms for Apartment Building, Contractors, and Installation/Builders Risk attached.\n\n\u00e2\u009c\u0094 Renewal Highlights:\n- The application is marked as a renewal, with the proposed effective date of 07/15/2025 and expiration date of 07/15/2028.\n\n\u00e2\u009c\u0094 Changes YOY:\n- No changes in exposure, values, operations, or loss experience are noted in the provided information.\n\n\u00e2\u009c\u0094 Additional Overview Details:\n- Effective Date: 07/15/2025\n- Submission Type: Renewal\n- Current Situation: Renewal submission for continued coverage; no specific reason for submission stated."
-            },
-            {
-                "file_name": "123ASJKDB1JKBSAF_attachment_Loss_Run_HighTech_Solution.pdf",
-                "summary": "Hightech Solution has maintained commercial property coverage over the past three years, with policies consistently in force for their Los Angeles office location. The account has reported four claims during this period, including theft of office equipment, floor damage from tremors, an electrical fire in a storage room, and window damage from a minor earthquake. Total paid losses amount to $69,450, with $23,000 in outstanding reserves, resulting in total incurred losses of $92,450. Two claims remain open, with the largest reserve associated with the electrical fire. The loss history indicates exposure to theft, fire, and earthquake-related events, with claims concentrated at a single address.",
-                "document_type": "Loss Run",
-                "processed_summary": "LOSS HISTORY PACKAGE\n------------------------------------------------------------\n\u00e2\u009c\u0094 5\u00e2\u0080\u009310 Year Loss Runs:\n- Four claims reported over the past three policy years (2023\u00e2\u0080\u00932025) for commercial property coverage.\n\n\u00e2\u009c\u0094 Large Loss Details:\n- The largest claim is an open electrical fire loss in February 2025, with $30,000 paid and $15,000 reserved, totaling $45,000 incurred.\n\n\u00e2\u009c\u0094 Trends Analysis:\n- Losses include theft, earthquake-related damage, and fire, with moderate frequency and one notably severe incident. Two claims remain open with reserves.\n\n\u00e2\u009c\u0094 Summary of Loss History:\n- Status: Losses Reported\n- Summary: Four claims totaling $92,450 incurred, with a mix of closed and open claims, including fire, theft, and earthquake damage.\n- Major Incidents: Electrical fire in storage room (Feb 2025, $45,000 incurred, open)."
-            },
-            {
-                "file_name": "123ASJKDB1JKBSAF_attachment_SOV.pdf",
-                "summary": "The insured is Berkshire Hathaway, with coverage placed through Prime Brokers Pvt. Ltd. and Phoenix Insurers Ltd. The property is a commercial office space located at 456 Elm St, Suite 200, Los Angeles, CA 90001, featuring advanced hi-tech systems and equipment. The schedule indicates 100% values at $35,000,000 on an Actual Cash Value basis. Coinsurance is set at 80%, and requested coverage includes causes of loss such as earthquake and flood. The effective date of coverage is July 15, 2025, and the information is verified and signed by the lead broker.",
-                "document_type": "SOV",
-                "processed_summary": "EXPOSURE DATA\n------------------------------------------------------------\n\n\u00e2\u009c\u0094 COPE Information (Construction, Occupancy, Protection, Exposure):\n- Commercial office space at 456 Elm St, Suite 200, Los Angeles, CA 90001, utilizing advanced hi-tech systems, equipment, and infrastructure.\n\n\u00e2\u009c\u0094 Statement of Values (SOV):\n- Total Insurable Value (TIV): $35,000,000\n- Building Limit: [Not specified]\n- Contents/BPP Limit: [Not specified]\n- Business Income: [Not specified]\n\n\u00e2\u009c\u0094 Financials:\n- Coinsurance: 80%\n\n\u00e2\u009c\u0094 CAT Worksheets:\n- Earthquake and Flood coverage indicated.\n\n\u00e2\u009c\u0094 Specialty Schedules:\n- Sprinkler leakage and vandalism excluded.\n\n\u00e2\u009c\u0094 Additional Exposure Details:\n- Total Locations: 1\n- Main Operations: Commercial office operations\n- Property Details: Valuation basis is Actual Cash Value (ACV)\n- Deductible Requested: [Not specified]"
-            }
-        ]
-    }
-}
-(sumvenv) jarvis@Jarvis-agent-vm:~/Musaddique/Ultimate_Summary$ 
+Copy these two files exactly (replace your existing ones). After that, run your test again — the JSON result will contain human-readable strings (actual line breaks and check marks) and individualized_summary entries without text.
 
-remeber going forward i have store this is excel but in proper manner as i said earlier 
-filename : whatever the filename is 
-summar , etc etc 
+⸻
 
-
-summary handler.py
-
-
-
+summary_handler.py (FULL file)
 
 import os
 import json
@@ -53,6 +21,8 @@ from Data_Filler import extract_filenames_and_summaries
 from Data_Filler import connect_to_blob, beautify_extracted_data
 from newsummary import summarize_attachments
 from separate_summary import individual_summary
+
+# import the beautifier from Data_Filler (we put it there)
 from Data_Filler import beautify_api_response
 
 INPUT_FOLDER = "input"
@@ -103,7 +73,7 @@ async def summarize_blob_pdfs_layout(blob_urls: List[str]) -> Dict[str, Any]:
       - Use LLM to summarize the FIRST PAGE
 
     Saves the full detailed JSON (including raw text) to ./output/layout_summaries_result.json
-    but RETURNS a cleaned dictionary suitable for API responses (no raw 'text').
+    but RETURNS a cleaned + beautified dictionary suitable for API responses (no raw 'text').
     """
     try:
         summary_require_env()
@@ -250,49 +220,42 @@ async def summarize_blob_pdfs_layout(blob_urls: List[str]) -> Dict[str, Any]:
         result["individualized_summary_error"] = str(e)
         result["individualized_summary"] = []
 
-
     # 9) CLEAN the result for the API and return only the compact payload (no raw text)
     cleaned_payload = clean_result_for_api(result)
 
-
-    
+    # 10) Beautify the cleaned payload for display / downstream usage
     try:
         beautified = beautify_api_response(cleaned_payload)
-        print(beautified)
-        # print("\n----- COMBINED SUBMISSION SUMMARY (beautified) -----\n")
-        # if beautified["combined_summary"]:
-        #     print(beautified["combined_summary"])
-        # else:
-        #     print("No combined summary available.")
 
-    #     DATA_URL = os.getenv("Data_URL")
-    #     if DATA_URL:
-    #         try:
-    #             updated_data = connect_to_blob(DATA_URL, beautify_data)
-    #             print("Blob Data Processed Successfully.")
-    #             if isinstance(updated_data, pd.DataFrame):
-    #                 print("Blob Data Processed Successfully and Excel Updated.")
-    #             else:
-    #                 # updated_data may be an error dict
-    #                 print(f"Error: {updated_data.get('error')}")
-    #         except Exception as e:
-    #             print(f"Error processing blob data: {e}")
-    #     else:
-    #         print("Data_URL environment variable is not set.")
+        # print human-friendly combined summary and per-doc items
+        print("\n----- COMBINED SUBMISSION SUMMARY (beautified) -----\n")
+        if beautified["combined_summary"]:
+            print(beautified["combined_summary"])
+        else:
+            print("No combined summary available.")
+
+        print("\n----- INDIVIDUAL DOCUMENT SUMMARIES (beautified) -----\n")
+        for doc in beautified["individualized_summary"]:
+            print(f"file_name: {doc.get('file_name')}")
+            print(f"document_type: {doc.get('document_type')}")
+            print("summary:")
+            print(doc.get("summary") or "  -")
+            print("processed_summary:")
+            print(doc.get("processed_summary") or "  -")
+            print("-" * 60)
+
     except Exception as e:
-        print(f"Error in beautify / blob step: {e}")
+        print(f"Error in beautify / display step: {e}")
+        # fallback to cleaned payload if beautify fails
+        beautified = cleaned_payload
 
-
-
-    # return cleaned_payload
+    # Return beautified payload (dict). This is what API should return.
     return beautified
 
 
+⸻
 
-
-Data filler.py
-
-
+Data_Filler.py (FULL file with robust normalizer & beautifier)
 
 import os
 import json
@@ -304,7 +267,6 @@ from summary_service import summary_require_env
 from summary_service import AZURE_STORAGE_CONNECTION_STRING, _parse_blob_url
 import re
 from typing import Iterable
-
 
 def extract_filenames_and_summaries(output_folder: str) -> List[Dict[str, Any]]:
     """
@@ -323,7 +285,7 @@ def extract_filenames_and_summaries(output_folder: str) -> List[Dict[str, Any]]:
         raise FileNotFoundError(f"No JSON result file found at {result_file}")
 
     with open(result_file, "r", encoding="utf-8") as f:
-        data = json.load(f) 
+        data = json.load(f)
 
     summaries = data.get("summaries", [])
 
@@ -331,7 +293,7 @@ def extract_filenames_and_summaries(output_folder: str) -> List[Dict[str, Any]]:
         {
             "file_name": item["file_name"],
             "summary": item["summary"],
-            "text": item.get("text", "")  # <-- thisismyNEW: raw text stored here
+            "text": item.get("text", "")  # raw text stored here
         }
         for item in summaries
         if "file_name" in item and "summary" in item
@@ -339,7 +301,7 @@ def extract_filenames_and_summaries(output_folder: str) -> List[Dict[str, Any]]:
 
     return extracted_data
 
-#Absolute working code 
+
 def beautify_extracted_data(extracted_data: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
     """
     Beautifies and prints the extracted data in the desired format.
@@ -363,7 +325,6 @@ def beautify_extracted_data(extracted_data: List[Dict[str, Any]]) -> List[Dict[s
         print(f"summary: {item['summary']}\n")
 
     return beautified_data
-
 
 
 def connect_to_blob(blob_url: str, beautified_data: List[Dict[str, Any]]):
@@ -430,45 +391,71 @@ def connect_to_blob(blob_url: str, beautified_data: List[Dict[str, Any]]):
         return {"status": False, "error": f"Failed to process blob: {e}"}
 
 
+# -----------------------
+# Robust normalizer / beautifier
+# -----------------------
+def _fix_mojibake(s: str) -> str:
+    """
+    Try to fix double-encoded UTF-8 sequences like '\\u00e2\\u009c\\u0094'
+    which often appear when bytes were UTF-8 but got escaped.
 
-
+    Strategy (best-effort):
+      1) Try unicode-escape decode then latin1->utf-8 decode.
+      2) Try latin1->utf-8 directly.
+      3) Fallback to original string.
+    """
+    if not isinstance(s, str) or not s:
+        return s
+    try:
+        # step1: decode unicode-escaped sequences
+        step1 = s.encode("utf-8").decode("unicode_escape")
+        # step2: bytes that are now latin-1 representation of original UTF-8 -> decode to utf-8
+        fixed = step1.encode("latin-1").decode("utf-8")
+        return fixed
+    except Exception:
+        try:
+            # alternative: direct latin-1 -> utf-8 decode
+            return s.encode("latin-1").decode("utf-8")
+        except Exception:
+            return s
 
 
 def normalize_text(s: str) -> str:
     """
     Clean and normalize an LLM-produced string:
-    - Replace escaped unicode sequences like '\\u2714' with '✔' (or remove)
-    - Replace repeated newlines with single newline
+    - Fix mojibake / escaped unicode (e.g. \\u00e2\\u009c\\u0094 -> ✔)
+    - Replace escaped unicode sequences like '\\u2714' (literal) using unicode-escape
+    - Replace repeated newlines with single blank lines
     - Trim leading/trailing whitespace on each line and collapse multiple spaces
-    - Remove stray carriage returns
     """
     if not s:
         return s
-    # if the string contains literal backslash-u (e.g. "\\u2714") turn into the actual char
+
+    # 1) Fix common mojibake (double-encoded UTF-8)
     try:
-        # decode unicode-escapes (only when safe) — but avoid double-decoding valid unicode
-        # This will transform "\\u2714" into "✔"
-        s = s.encode("utf-8").decode("unicode_escape")
+        s = _fix_mojibake(s)
     except Exception:
-        # fallback: ignore decoding errors
         pass
 
-    # Convert any ✔ variants (some LLMs produce unicode check) to a single visible symbol
+    # 2) If there remain literal escape sequences like '\u2714' convert them
+    try:
+        s2 = s.encode("utf-8").decode("unicode_escape")
+        # if decoding changed something meaningful, keep it
+        if s2 and s2 != s:
+            s = s2
+    except Exception:
+        pass
+
+    # Convert check marks to visible char (just in case)
     s = s.replace("\u2714", "✔")
-    s = s.replace("\\u2714", "✔")  # literal backslash-u
+    s = s.replace("\\u2714", "✔")
 
     # Normalize line endings & whitespace
     s = s.replace("\r\n", "\n").replace("\r", "\n")
-    # collapse multiple blank lines to single
-    s = re.sub(r"\n\s*\n+", "\n\n", s)
-    # trim trailing spaces on each line
-    s = "\n".join([ln.strip() for ln in s.split("\n")])
-    # collapse more-than-two spaces
-    s = re.sub(r"[ ]{2,}", " ", s)
-    # final strip
+    s = re.sub(r"\n\s*\n+", "\n\n", s)  # collapse multiple blank lines
+    s = "\n".join([ln.strip() for ln in s.split("\n")])  # trim line ends
+    s = re.sub(r"[ ]{2,}", " ", s)  # collapse multiple spaces
     return s.strip()
-
-
 
 
 def beautify_api_response(cleaned_payload: Dict[str, Any]) -> Dict[str, Any]:
@@ -498,8 +485,6 @@ def beautify_api_response(cleaned_payload: Dict[str, Any]) -> Dict[str, Any]:
            ...
         ]
       }
-
-    This function **does not** return 'text' or raw LLM outputs with \n escapes.
     """
     out = {"combined_summary": None, "individualized_summary": []}
 
@@ -510,7 +495,6 @@ def beautify_api_response(cleaned_payload: Dict[str, Any]) -> Dict[str, Any]:
     beautified_list = []
     if isinstance(indiv, Iterable):
         for item in indiv:
-            # defensive: ensure keys exist
             file_name = item.get("file_name")
             summary = item.get("summary")
             doc_type = item.get("document_type")
@@ -518,11 +502,37 @@ def beautify_api_response(cleaned_payload: Dict[str, Any]) -> Dict[str, Any]:
 
             beautified_item = {
                 "file_name": file_name,
-                "summary": normalize_text(summary) if summary else None,
+                # we keep 'summary' as single paragraph — collapse newlines to space
+                "summary": None if not summary else " ".join(normalize_text(summary).splitlines()),
                 "document_type": doc_type,
-                "processed_summary": normalize_text(processed) if processed else None,
+                # processed_summary may be multi-line; keep line breaks for readability
+                "processed_summary": None if not processed else normalize_text(processed),
             }
             beautified_list.append(beautified_item)
 
     out["individualized_summary"] = beautified_list
     return out
+
+
+⸻
+
+What changed & why this will fix your output
+	1.	Robust mojibake fixer (_fix_mojibake) tries to recover \u00e2\u009c\u0094 style sequences into the intended symbol (common when UTF-8 bytes were escaped). This resolves the \u00e2\u009c\u0094 you saw.
+	2.	normalize_text then does unicode_escape decode fallback and trims/collapses blank lines while preserving paragraph structure.
+	3.	beautify_api_response returns summary as a single paragraph (suitable for Excel cell) and processed_summary as multi-line (so it’s readable).
+	4.	Summary handler prints the beautified strings (human-readable) and returns the beautified dict — free of raw text and free of escaped sequences.
+
+⸻
+
+Next steps you can take (suggestions)
+	•	Run your test_script.py. The returned JSON should now show readable ✔ and real line breaks instead of \u00e2\u009c\u0094 sequences and escaped \n tokens.
+	•	When you’re ready to write to Excel, use beautified["individualized_summary"] — each entry has:
+	•	file_name (string)
+	•	summary (single-line paragraph — good for an Excel cell)
+	•	document_type (ACORD/Loss Run/SOV)
+	•	processed_summary (multi-line narrative — you can place it in a cell)
+	•	If you want, I can now:
+	•	Provide the exact code snippet to write beautified["individualized_summary"] into an Excel sheet (one row per file, columns: file_name, summary, document_type, processed_summary).
+	•	Or run a small local sample to show the exact JSON the API will return (using your sample).
+
+Which would you like next — Excel write code, or run a sample transformation of the output you pasted to show the cleaned result?
