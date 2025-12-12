@@ -145,6 +145,23 @@ client = AzureOpenAI(
 )
 
 
+
+I think we need a funciton something like this to get the reference number we will call this function from summary_handler.py I think we did this earlier to download the body.txt also and then we will pass this reference number to the below function and add the logic in below function of getting that particular file using reference number and passing it in the prompt
+def getreference_number(beautify_data:list):
+       # collect unique references
+    refs = set()
+    for item in beautified_data or []:
+        ref = item.get("reference_number") or item.get("reference") or None
+        if ref:
+            refs.add(str(ref))
+
+    if not refs:
+        return {"status": "no_refs", "message": "No reference numbers found in beautified_data", "details": {}}
+
+
+
+
+
 def summarize_attachments(attachments: list[dict]) -> str:
     """
     attachments = list of dicts like:
