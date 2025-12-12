@@ -1,128 +1,301 @@
-Nice — your logic is correct: beautify_extracted_data() already produces reference_number for each file, so you can use those reference IDs to build the blob names and download the corresponding email body files (which, in your example, live at container=attachment-downloader and follow the filename pattern body_<REF>.txt).
+now here as we are giving attachment_text in pronmpt i want to pass reference number to newsummary.py maybe we can create a new function here which accepts the reference number from where i am not sure we should call this new function, 
+and that new function will store that txt content in a variable so that we can pass that variable in the prompt along with attachment_text and one simple addition in prompt is that we have to tell llm to 
+mention that email body in the summary such that it should be included in the template wherever it feels to include it in the section of the template 
 
-Below I give you a ready-to-copy async function you can add to summary_storage_utils.py plus a short usage snippet to add into summary_handler.py. The function:
-	•	Accepts the beautified list (the beautify_data you already have).
-	•	Extracts unique reference numbers.
-	•	Builds blob name body_{ref}.txt and container attachment-downloader.
-	•	Downloads each blob asynchronously into an email_body folder (creates it).
-	•	Returns a dict mapping ref -> {"status":"ok","path":local_path} or ref -> {"status":"error","error":message} so you can inspect what succeeded/failed.
+for eg this is inside the body_<referencenumber>.txt that got downloaded in the email_body folder
+here are sample txt files
 
-Drop this into summary_storage_utils.py (near your existing download_blob_to_input_folder function):
+first file
+Dear Underwriting Team,
+I am submitting HighTech Solution for your consideration for Business Interruption coverage. High Tech Solution operates in the Technology / Software Services sector and seeks a 12-month policy effective January 1, 2026 through January 1, 2027. The requested limit is $50,000,000 excess of $15,000,000, and the Total Insured Value is $900,000,000.
+The insured’s mailing address is High Tech Solution, 456 Elm St, Suite 200, Los Angeles, CA 90001, USA. Enclosed with this submission are the Acord 125, Schedule of Values (SOV), and Loss Run for your review.
+Please confirm receipt of the submission and advise if you require any further underwriting information, valuation backup, or clarification on exposures. I appreciate your prompt attention and look forward to your feedback.
+Best regards,
+William Grey
+Prime Brokers
 
-# summary_storage_utils.py  (append this function)
 
+
+second file
+Please find ACORD 125 and the Loss details (Excel) attached for a property
+submission on behalf of Sunflower Property Group LLC (dba Cruise Mall). We
+request your review and underwriting feedback to confirm appetite, capacity
+and any outstanding requirements to progress placement.
+
+
+
+| Item | Details |
+
+|---|---|
+
+| Named insured | Sunflower Property Group LLC (dba Cruise Mall) |
+
+| Location | Dockside Plaza, 210 Oceanfront Lane, Seabreeze, FL 33107 |
+
+| Line requested | Property — Building, Business Personal Property,
+Business Interruption (incl. Extra Expense) |
+
+| Requested effective date | 2026-02-01 |
+
+| Building limit requested | $120,000,000 |
+
+| Contents limit requested | $15,000,000 |
+
+| Business Interruption limit requested | $40,000,000; Indemnity period: 24
+months |
+
+| Deductible preference | $100,000 standard; provide hurricane/wind
+sublimit options |
+
+| Construction / Year built | Type II (non-combustible) / 2012 (major
+renovations 2019) |
+
+| Occupancy | Mixed-use resort retail and food & beverage |
+
+| Protective features | Full sprinkler system; central station alarm;
+hydrant within 300 ft |
+
+| Annual gross revenue | $55,000,000 |
+
+| Attachments | ACORD 125; Loss details (Excel) |
+
+Requested underwriting feedback
+
+- Confirm appetite and available capacity for the proposed property program
+including BI limit requested
+
+- Preferred valuation basis (Replacement Cost vs. Agreed Value) and
+endorsement options for ordinance/law and soft costs
+
+- Deductible options and sublimits for named windstorm, flood and ordinance
+coverage
+
+- Any immediate underwriting requirements (ACORD property supplements,
+current valuation reports, recent engineering/inspection reports, proof of
+protective devices, loss history)
+
+- Preferred secure channel to receive additional documents
+
+
+
+Thank you for your prompt review. I look forward to your guidance on next
+steps.
+
+
+
+Kind regards,
+
+Olivia Park
+
+Senior Hospitality Broker u{2014} Meridian Shoreline Insurance Partners
+
+olivia.park@meridianship.com
+
++1 (555) 214-7802
+
+
+etc 
+
+
+so if llm feels to include this infromation which is only the main content of mail and not the top and bottom part which top( from file one ->Dear Underwriting Team,, from file 2 bottom part ->Kind regards,
+
+Olivia Park
+
+Senior Hospitality Broker u{2014} Meridian Shoreline Insurance Partners
+
+olivia.park@meridianship.com
+
++1 (555) 214-7802)
+so basically focusing on main important content of mail and including it in the summary in any section that llm feels that it should include it 
+
+newsummary.py
+
+from dotenv import load_dotenv
 import os
-import aiofiles
-from azure.storage.blob.aio import BlobServiceClient
-from azure.core.exceptions import ResourceNotFoundError, AzureError
+import json
+from Data_Filler import extract_filenames_and_summaries
+from Data_Filler import connect_to_blob, beautify_extracted_data
+from openai import AzureOpenAI  # Correct import for Azure OpenAI
 
-from summary_service import AZURE_STORAGE_CONNECTION_STRING, _parse_blob_url  # ensure these exist
+# Load environment variables
+load_dotenv()
 
-async def download_blob_to_input_folder_by_reference(
-    beautified_data: list,
-    output_folder: str = "email_body",
-    container_name: str = "attachment-downloader",
-    blob_name_template: str = "body_{ref}.txt",
-) -> dict:
-    """
-    Download blobs whose names are derived from reference numbers found in beautified_data.
+AZURE_OPENAI_ENDPOINT = os.getenv("AZURE_OPENAI_ENDPOINT")
+AZURE_OPENAI_API_VERSION = os.getenv("AZURE_OPENAI_API_VERSION")
+AZURE_OPENAI_API_KEY = os.getenv("AZURE_OPENAI_API_KEY")
+AZURE_OPENAI_CHAT_DEPLOYMENT = os.getenv("AZURE_OPENAI_CHAT_DEPLOYMENT")
 
-    Args:
-      beautified_data: list of dicts each containing "reference_number" (as produced by beautify_extracted_data)
-      output_folder: local folder to save downloaded email bodies
-      container_name: blob container name (default 'attachment-downloader')
-      blob_name_template: template for filename in blob storage, {ref} will be replaced by the reference number
-
-    Returns:
-      dict mapping reference_number -> {"status":"ok","path":local_path} or {"status":"error","error":msg}
-    """
-    results = {}
-
-    if not AZURE_STORAGE_CONNECTION_STRING:
-        raise RuntimeError("AZURE_STORAGE_CONNECTION_STRING not set")
-
-    # collect unique references
-    refs = set()
-    for item in beautified_data or []:
-        ref = item.get("reference_number") or item.get("reference") or None
-        if ref:
-            refs.add(str(ref))
-
-    if not refs:
-        return {"status": "no_refs", "message": "No reference numbers found in beautified_data", "details": {}}
-
-    os.makedirs(output_folder, exist_ok=True)
-
-    svc = BlobServiceClient.from_connection_string(AZURE_STORAGE_CONNECTION_STRING)
-
-    async with svc:
-        container_client = svc.get_container_client(container_name)
-        for ref in refs:
-            blob_name = blob_name_template.format(ref=ref)
-            local_path = os.path.join(output_folder, blob_name)
-
-            try:
-                blob_client = container_client.get_blob_client(blob_name)
-
-                # check existence
-                try:
-                    await blob_client.get_blob_properties()
-                except ResourceNotFoundError:
-                    results[ref] = {"status": "error", "error": f"Blob not found: container={container_name} blob={blob_name}"}
-                    continue
-
-                stream = await blob_client.download_blob()
-                data = await stream.readall()
-
-                # write file async
-                async with aiofiles.open(local_path, "wb") as f:
-                    await f.write(data)
-
-                results[ref] = {"status": "ok", "path": local_path}
-            except AzureError as ae:
-                results[ref] = {"status": "error", "error": f"AzureError: {ae}"}
-            except Exception as e:
-                results[ref] = {"status": "error", "error": str(e)}
-
-    return {"status": "done", "details": results}
-
-How to call it from summary_handler.py
-
-You already compute beautify_data earlier:
-
-# after you compute beautify_data in summary_handler.py
-
-from summary_storage_utils import download_blob_to_input_folder_by_reference
-
-# ensure EMAIL_BODY = "email_body" at top of summary_handler.py
-
-# call it (since it's async, await it)
-try:
-    download_results = await download_blob_to_input_folder_by_reference(
-        beautify_data,
-        output_folder=EMAIL_BODY,
-        container_name="attachment-downloader",
-        blob_name_template="body_{ref}.txt",
+if not (
+    AZURE_OPENAI_ENDPOINT
+    and AZURE_OPENAI_API_VERSION
+    and AZURE_OPENAI_API_KEY
+    and AZURE_OPENAI_CHAT_DEPLOYMENT
+):
+    raise RuntimeError(
+        "Azure OpenAI env vars missing. Please set "
+        "AZURE_OPENAI_ENDPOINT, AZURE_OPENAI_API_VERSION, "
+        "AZURE_OPENAI_API_KEY and AZURE_OPENAI_CHAT_DEPLOYMENT"
     )
-    print("Email body download results:", download_results)
-except Exception as e:
-    print("Failed to download email bodies by reference:", e)
 
-Place that call after you build beautify_data (for example, right after the print(beautify_data) line). That ensures you use the reference numbers produced by your beautifier.
+# Create Azure OpenAI client
+client = AzureOpenAI(
+    api_key=AZURE_OPENAI_API_KEY,
+    api_version=AZURE_OPENAI_API_VERSION,
+    azure_endpoint=AZURE_OPENAI_ENDPOINT,
+)
 
-Notes, edge cases & helpful tips
-	1.	Blob name pattern — I used body_{ref}.txt because your example URL uses body_19AA119CAE5F6409.txt. If your real naming differs (e.g. body_<ref>.eml or body_<ref>_v2.txt) adjust blob_name_template accordingly.
-	2.	Container name — I set attachment-downloader (from your example). If containers vary, either add logic to try multiple containers or pass container name via env var.
-	3.	Permissions — ensure AZURE_STORAGE_CONNECTION_STRING used by the service has read permission on the attachment-downloader container.
-	4.	Diagnostics — the function returns per-ref results so you can log missing blobs instead of failing the whole pipeline. This avoids the kind of BlobNotFound crash you saw earlier.
-	5.	Filename collisions — if multiple refs map to the same blob name (unlikely), the function will overwrite the local file. If you want unique local names, prepend the ref into the local filename or include a timestamp.
-	6.	Synchronous call alternative — I implemented async to match your download_blob_to_input_folder. If you prefer a synchronous version for easier testing, tell me and I’ll provide it.
 
-⸻
+def summarize_attachments(attachments: list[dict]) -> str:
+    """
+    attachments = list of dicts like:
+    [
+      {"file_name": "...pdf", "summary": "text...", "text": "full doc text"},
+      ...
+    ]
+    Only 'summary' is used here.
+    """
+    BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+    INPUT_FOLDER = os.path.join(BASE_DIR, "email_body")
 
-If you want, I can also:
-	•	Paste a full updated summary_storage_utils.py with both download functions together (the existing download_blob_to_input_folder + the new download_blob_to_input_folder_by_reference), or
-	•	Provide a synchronous version, or
-	•	Change the function to accept a single reference (download one file) rather than a batch.
+    attachment_chunks = []
+    for item in attachments:
+        file_name = item.get("file_name", "unknown_file")
+        summary_text = item.get("summary", "")
 
-Which would you like?
+        chunk = f"FILENAME: {file_name}\nSUMMARY: {summary_text}"
+        attachment_chunks.append(chunk)
+
+    attachments_text = "\n\n".join(attachment_chunks)
+    attachments_text = attachments_text[:8000]  # simple safety limit
+
+    prompt = f"""
+You are an experienced Commercial Insurance Underwriter.
+
+You are given multiple attachment documents that belong to a SINGLE
+commercial insurance submission. For each document you only see:
+- the file name (which hints at document type, e.g. ACORD app, loss run, SOV)
+- a short summary of the contents.
+
+YOUR TASK:
+Produce ONE combined "Submission Summary" for the account that synthesizes
+all the information across all documents.
+
+VERY IMPORTANT RULES:
+1. Treat the file names and their summaries as the ONLY source of truth.
+   - You may use the file name to infer the general document type
+     (e.g. application, loss runs, SOV, schedule).
+   - Do NOT invent any new facts that are not clearly supported by
+     the summaries.
+2. Do NOT mention which document or file any detail came from.
+   - The final summary must read like a single coherent view of the account,
+     not a list of separate documents.
+3. Focus on underwriting-relevant information, such as:
+   - Named insured / client
+   - Locations and occupancy
+   - Operations / business activities
+   - Coverage dates and basic program structure
+   - Property values / limits / coinsurance (if mentioned)
+   - Key coverage features (causes of loss, notable exclusions)
+   - Loss history and major incidents
+   - Any other material hazards or special notes that appear in the summaries.
+
+STRUCTURE OF YOUR OUTPUT (USE THIS EXACT TEMPLATE):
+
+SUBMISSION SUMMARY  
+Client: [Client Legal Name]  
+Date: [Submission or Document Date]
+
+1. SUBMISSION COVER LETTER / NARRATIVE  
+ Exposure Description:  
+    - [Describe what the business does]  
+    - [Main operations / physical activities]  
+    - [Property details: construction, age, protection, sprinklers, etc.]  
+
+ Placement Strategy:  
+    - [Placement goals or program approach if evident]  
+
+ Renewal Highlights:  
+    - [Notable changes or updates if mentioned]  
+
+ Changes YOY:  
+    - [Any changes in exposure, values, operations, or loss experience]  
+
+ Additional Overview Details:  
+    - Effective Date: [Coverage start date]  
+    - Submission Type: [Renewal / New Business / Other]  
+    - Current Situation: [Reason for submission if stated]  
+
+2. LOSS HISTORY PACKAGE   
+ 5–10 Year Loss Runs:  
+    - [Summarize multi-year loss experience if available]  
+
+ Large Loss Details:  
+    - [Brief details on significant claims]  
+
+ Trends Analysis:  
+    - [Patterns in frequency/severity if evident]  
+
+ Summary of Loss History:  
+    - Status: [Clean / Losses Reported]  
+    - Summary: [1-sentence overview]  
+    - Major Incidents: [Largest incident if present]  
+
+3. EXPOSURE DATA  
+ COPE Information (Construction, Occupancy, Protection, Exposure):  
+    - [Building info, occupancy, protection systems]  
+
+ Statement of Values (SOV):  
+    - Total Insurable Value (TIV): $[Insert]  
+    - Building Limit: $[Insert]  
+    - Contents/BPP Limit: $[Insert]  
+    - Business Income: $[Insert]  
+
+ Financials:  
+    - [Any financial information if mentioned]  
+
+ CAT Worksheets:  
+    - [If any catastrophe/hazard info appears]  
+
+ Specialty Schedules:  
+    - [Any special schedules referenced]  
+
+ Additional Exposure Details:  
+    - Total Locations: [Insert]  
+    - Main Operations: [Insert]  
+    - Property Details: [Insert]  
+    - Deductible Requested: $[Insert]  
+
+4. RISK REPORTS  
+ Engineering Surveys:  
+    - [If referenced]  
+
+ Safety Audits:  
+    - [If referenced]  
+
+5. COMPLIANCE DOCUMENTS  
+ Signed Application Forms  
+ Declarations  
+ Warranties & Indemnities  
+
+ Attached Files Included in the Submission:  
+    - [List packaged documents, e.g., application, loss runs, SOV]  
+
+
+ATTACHMENT SUMMARIES (file name followed by its summary):
+
+\"\"\" 
+{attachments_text}
+\"\"\"
+    """
+
+    response = client.chat.completions.create(
+        model=AZURE_OPENAI_CHAT_DEPLOYMENT,
+        messages=[{"role": "user", "content": prompt}],
+        max_tokens=512,
+        temperature=0.2,
+    )
+
+    try:
+        return response.choices[0].message.content.strip()
+    except Exception:
+        return getattr(response.choices[0].message, "content", "").strip()
