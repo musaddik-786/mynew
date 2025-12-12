@@ -3,7 +3,6 @@ This is my current code for summary_handler.py
 
 
 
-
 import os
 import json
 from typing import Dict, Any, List
@@ -209,6 +208,7 @@ async def summarize_blob_pdfs_layout(blob_urls: List[str]) -> Dict[str, Any]:
         print(filenamesummary_extracted_beautified)
         
         
+        #HERE WE CAN CALL THE EXTRACT REFS FROM ATTACHMENTS AND LOAD RAW EMAIL BODIES FOR REFS FUNCTIONS AND KEEP THE CALLING OF SUMMARIZE_ATTACHMENTS SAME AS BELOW 
 
         combined_summary_text = summarize_attachments(filenamesummary_extracted_beautified)
         print("Combined Submission Summary:")
@@ -291,3 +291,321 @@ async def summarize_blob_pdfs_layout(blob_urls: List[str]) -> Dict[str, Any]:
     return beautified
 
 
+
+
+
+This is my current summary storage utils .py (just for your reference)
+
+
+
+import os
+import aiofiles
+from azure.storage.blob.aio import BlobServiceClient
+from azure.core.exceptions import ResourceNotFoundError
+
+from summary_service import AZURE_STORAGE_CONNECTION_STRING, _parse_blob_url
+
+
+async def download_blob_to_input_folder(blob_url: str, input_folder: str = "input") -> str:
+    """
+    Downloads the blob at blob_url into input_folder (root-level) preserving filename.
+    Returns the local path to the downloaded file.
+    """
+    if not AZURE_STORAGE_CONNECTION_STRING:
+        raise RuntimeError("AZURE_STORAGE_CONNECTION_STRING not set")
+    
+    container, blob_path = _parse_blob_url(blob_url)
+    filename = os.path.basename(blob_path)
+    os.makedirs(input_folder, exist_ok=True)
+    local_path = os.path.join(input_folder, filename)
+
+    async with BlobServiceClient.from_connection_string(AZURE_STORAGE_CONNECTION_STRING) as service:
+        container_client = service.get_container_client(container)
+        blob_client = container_client.get_blob_client(blob_path)
+        try:
+            await blob_client.get_blob_properties()
+        except ResourceNotFoundError:
+            raise FileNotFoundError(f"Blob not found: container={container} blob={blob_path}")
+        stream = await blob_client.download_blob()
+        data = await stream.readall()
+
+    # write file async
+    async with aiofiles.open(local_path, "wb") as f:
+        await f.write(data)
+
+    return local_path
+
+
+
+# async def download_email_from_blob(reference: str, input_folder: str = "input"):
+#     print("Hi")
+    
+
+
+
+
+
+
+async def download_blob_to_input_folder_by_reference(
+    beautified_data: list,
+    output_folder: str = "email_body",
+    container_name: str = "attachment-downloader",
+    blob_name_template: str = "body_{ref}.txt",
+) -> dict:
+    """
+    Download blobs whose names are derived from reference numbers found in beautified_data.
+
+    Args:
+      beautified_data: list of dicts each containing "reference_number" (as produced by beautify_extracted_data)
+      output_folder: local folder to save downloaded email bodies
+      container_name: blob container name (default 'attachment-downloader')
+      blob_name_template: template for filename in blob storage, {ref} will be replaced by the reference number
+
+    Returns:
+      dict mapping reference_number -> {"status":"ok","path":local_path} or {"status":"error","error":msg}
+    """
+    results = {}
+
+    if not AZURE_STORAGE_CONNECTION_STRING:
+        raise RuntimeError("AZURE_STORAGE_CONNECTION_STRING not set")
+
+    # collect unique references
+    refs = set()
+    for item in beautified_data or []:
+        ref = item.get("reference_number") or item.get("reference") or None
+        if ref:
+            refs.add(str(ref))
+
+    if not refs:
+        return {"status": "no_refs", "message": "No reference numbers found in beautified_data", "details": {}}
+
+    os.makedirs(output_folder, exist_ok=True)
+
+    svc = BlobServiceClient.from_connection_string(AZURE_STORAGE_CONNECTION_STRING)
+
+    async with svc:
+        container_client = svc.get_container_client(container_name)
+        for ref in refs:
+            blob_name = blob_name_template.format(ref=ref)
+            local_path = os.path.join(output_folder, blob_name)
+
+            try:
+                blob_client = container_client.get_blob_client(blob_name)
+
+                # check existence
+                try:
+                    await blob_client.get_blob_properties()
+                except ResourceNotFoundError:
+                    results[ref] = {"status": "error", "error": f"Blob not found: container={container_name} blob={blob_name}"}
+                    continue
+
+                stream = await blob_client.download_blob()
+                data = await stream.readall()
+
+                # write file async
+                async with aiofiles.open(local_path, "wb") as f:
+                    await f.write(data)
+
+                results[ref] = {"status": "ok", "path": local_path}
+            except AzureError as ae:
+                results[ref] = {"status": "error", "error": f"AzureError: {ae}"}
+            except Exception as e:
+                results[ref] = {"status": "error", "error": str(e)}
+
+    return {"status": "done", "details": results}
+
+
+this is my current new summary.py
+
+
+
+from dotenv import load_dotenv
+import os
+import json
+from typing import List, Dict, Optional
+from openai import AzureOpenAI
+
+load_dotenv()
+AZURE_OPENAI_ENDPOINT = os.getenv("AZURE_OPENAI_ENDPOINT")
+AZURE_OPENAI_API_VERSION = os.getenv("AZURE_OPENAI_API_VERSION")
+AZURE_OPENAI_API_KEY = os.getenv("AZURE_OPENAI_API_KEY")
+AZURE_OPENAI_CHAT_DEPLOYMENT = os.getenv("AZURE_OPENAI_CHAT_DEPLOYMENT")
+
+if not (
+    AZURE_OPENAI_ENDPOINT
+    and AZURE_OPENAI_API_VERSION
+    and AZURE_OPENAI_API_KEY
+    and AZURE_OPENAI_CHAT_DEPLOYMENT
+):
+    raise RuntimeError("Azure OpenAI env vars missing.")
+
+client = AzureOpenAI(
+    api_key=AZURE_OPENAI_API_KEY,
+    api_version=AZURE_OPENAI_API_VERSION,
+    azure_endpoint=AZURE_OPENAI_ENDPOINT,
+)
+
+
+def extract_refs_from_attachments(attachments: List[Dict]) -> List[str]:
+    """Return unique refs from filenames (text before first underscore)."""
+    refs = []
+    for item in attachments or []:
+        fname = item.get("file_name", "") or ""
+        if "_" in fname:
+            refs.append(fname.split("_", 1)[0])
+    # keep unique in order
+    seen = set()
+    out = []
+    for r in refs:
+        if r not in seen:
+            seen.add(r)
+            out.append(r)
+    return out
+
+
+def load_raw_email_bodies_for_refs(refs: List[str], email_body_folder: str = "email_body") -> Dict[str, Dict]:
+    """
+    Load raw files named `body_<ref>.txt` from email_body_folder.
+    Returns dict: ref -> {"status": "ok", "path": ..., "raw": "<full text>"} or {"status":"missing"}
+    """
+    base = os.path.dirname(os.path.abspath(__file__))
+    out = {}
+    for ref in refs or []:
+        fname = f"body_{ref}.txt"
+        path = os.path.join(base, email_body_folder, fname)
+        if not os.path.exists(path):
+            out[ref] = {"status": "missing", "path": path}
+            continue
+        try:
+            with open(path, "r", encoding="utf-8", errors="ignore") as f:
+                raw = f.read()
+            out[ref] = {"status": "ok", "path": path, "raw": raw}
+        except Exception as e:
+            out[ref] = {"status": "error", "path": path, "error": str(e)}
+    return out
+
+
+def summarize_attachments(
+    attachments: List[Dict],
+) -> str:
+    """
+    Build combined submission summary. If email_bodies is None, this function
+    will attempt to load body_<ref>.txt for refs extracted from attachments.
+    We pass raw email text to the LLM and instruct it to use only the main content
+    (ignore salutations/signatures/contact lines) when including info.
+    """
+    # build attachments text
+    attachment_chunks = []
+    for item in attachments:
+        file_name = item.get("file_name", "unknown_file")
+        summary_text = item.get("summary", "")
+        chunk = f"FILENAME: {file_name}\nSUMMARY: {summary_text}"
+        attachment_chunks.append(chunk)
+    attachments_text = "\n\n".join(attachment_chunks)
+    attachments_text = attachments_text[:8000]
+
+    # load email bodies if not provided
+    if email_bodies is None:
+        refs = extract_refs_from_attachments(attachments)
+        email_bodies = load_raw_email_bodies_for_refs(refs)
+
+    # build email body section for prompt (raw)
+    email_chunks = []
+    if include_email_bodies_in_prompt and isinstance(email_bodies, dict):
+        for ref, meta in email_bodies.items():
+            if meta.get("status") == "ok":
+                raw = meta.get("raw", "") or ""
+                # keep reasonable amount
+                snippet = raw[:3000]
+                email_chunks.append(f"REFERENCE: {ref}\nRAW_EMAIL_BODY:\n{snippet}")
+    email_bodies_text = "\n\n---\n\n".join(email_chunks)
+    if len(email_bodies_text) > 6000:
+        email_bodies_text = email_bodies_text[:6000] + "\n[TRUNCATED]"
+
+    # final prompt: instruct model to ignore salutations/signatures and use main content only if relevant
+    prompt = f"""
+You are an experienced Commercial Insurance Underwriter.
+
+You are given multiple attachment documents (file names + short summaries) for a single submission.
+Additionally you may be given the RAW email body text(s) that accompanied the submission.
+
+INSTRUCTIONS ABOUT EMAIL BODIES:
+- The email bodies are raw; DO NOT assume they are perfectly formatted.
+- When using email text, use **only the main content** (i.e. the core submission details, requested limits, dates, TIV, etc.).
+  Ignore salutations ("Dear...", "Hi ..."), sign-offs ("Regards", "Kind regards", signatures), and contact lines (email addresses, phone numbers).
+- You may incorporate email-provided numeric details (e.g. requested limits, effective dates) into the appropriate section of the summary
+  BUT DO NOT invent anything not present in the attachments or emails.
+
+STRUCTURE OF OUTPUT (USE THIS TEMPLATE EXACTLY):
+
+SUBMISSION SUMMARY  
+Client: [Client Legal Name]  
+Date: [Submission or Document Date]
+
+1. SUBMISSION COVER LETTER / NARRATIVE  
+ Exposure Description:  
+    - [Describe business / operations]  
+    - [Property details if present]  
+
+ Placement Strategy:  
+    - [Program / carrier / broker if evident]  
+
+ Renewal Highlights:  
+    - [If any]  
+
+ Changes YOY:  
+    - [If any]  
+
+ Additional Overview Details:  
+    - Effective Date: [if present]  
+    - Submission Type: [New / Renewal / Other]  
+    - Current Situation: [as stated]
+
+2. LOSS HISTORY PACKAGE  
+ 5–10 Year Loss Runs:  
+    - [Summary if present]  
+
+ Large Loss Details:  
+    - [Significant claims]  
+
+ Trends Analysis:  
+    - [If present]  
+
+ Summary of Loss History:  
+    - Status: [Clean / Losses Reported]  
+    - Summary: [one-liner]  
+    - Major Incidents: [largest incident if present]
+
+3. EXPOSURE DATA  
+ COPE Information:  
+    - [Construction, Occupancy, Protection, Exposure]  
+
+ Statement of Values (SOV):  
+    - Total Insurable Value (TIV): $[Insert if present]  
+    - Building Limit: $[Insert]  
+    - Contents/BPP Limit: $[Insert]  
+    - Business Income: $[Insert]  
+
+ Financials:  
+    - [Any financial info]
+
+CAT Worksheets, Specialty schedules, etc. as needed.
+
+Attached files included:
+{attachments_text}
+
+# RAW EMAIL BODIES (if present; use them only to supplement / clarify)
+{email_bodies_text}
+    """
+
+    response = client.chat.completions.create(
+        model=AZURE_OPENAI_CHAT_DEPLOYMENT,
+        messages=[{"role": "user", "content": prompt}],
+        max_tokens=1024,
+        temperature=0.2,
+    )
+
+    try:
+        return response.choices[0].message.content.strip()
+    except Exception:
+        return getattr(response.choices[0].message, "content", "").strip()
