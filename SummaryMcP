@@ -1,4 +1,15 @@
-    prompt = f"""
+This is the additional thing I want in prompt
+
+prompt : if mail body says renewal only then consider it as renewal else consider it as new business , and if there is clash between any data for eg TIV in email is something and TIV from text we are gettign something else then prioritize mail body
+also if the llm feels in uncofident about the data then it should directly mention not present instead of mentioning something in the section that is not present anywhere
+so these are the additional things i want in my new prompt
+
+
+
+
+this is my current prompt in newsummary.py
+
+prompt = f"""
 You are an experienced Commercial Insurance Underwriter.
 
 You are given multiple attachment documents that belong to a SINGLE
