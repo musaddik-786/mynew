@@ -1,126 +1,68 @@
-prompt = f"""
-You are an experienced Commercial Insurance Underwriter.
+This is my filename format
+file_name: 123ASJKDB1JKBSAF_attachment_SOV.pdf,
+file_name: 123ASJKDB1JKBSAF_attachment_Loss_Run_HighTech_Solution.pdf
 
-You are given multiple attachment documents that belong to a SINGLE
-commercial insurance submission. For each document you only see:
-- the file name (which hints at document type, e.g. ACORD app, loss run, SOV)
-- a short summary of the contents.
+This is how i am extracting that filename  file_name = item.get("file_name")
+but now i want to extract only the original file name which is after the _attachment_ ie (Loss_Run_HighTech_Solution.pdf, SOV.pdf, etc)
 
-YOUR TASK:
-Produce ONE combined "Submission Summary" for the account that synthesizes
-all the information across all documents.
+i just want to use this line of code for it file_name = item.get("file_name")
+and store that filename in the same variable which is file_name
 
-VERY IMPORTANT RULES:
-1. Treat the file names and their summaries as the PRIMARY source of truth,
-   supplemented by the email body if provided.
-   - You may use the file name to infer the general document type
-     (e.g. application, loss runs, SOV, schedule).
-   - IMPORTANT: Do NOT invent any facts that are not clearly supported
-     by the attachment summaries or the email body.
+this is was the overall code that i was refferring to give this code in what i want
 
-2. EMAIL BODY PRIORITY & CONFLICT RESOLUTION:
-   - If the email body contains underwriting details (e.g. TIV, limits,
-     effective dates, requested coverage) AND those details conflict with
-     information in the attachment summaries, ALWAYS PRIORITIZE THE EMAIL BODY.
-   - The email body is considered the most recent broker communication.
 
-3. RENEWAL VS NEW BUSINESS LOGIC:
-   - If the email body explicitly mentions that the submission is a RENEWAL,
-     classify the submission as "Renewal".
-   - If the email body does NOT explicitly state renewal, classify the
-     submission as "New Business".
+def beautify_api_response(cleaned_payload: Dict[str, Any]) -> Dict[str, Any]:
+    """
+    Take cleaned_payload (the dict you return to API) and produce a
+    more human-friendly 'beautified' structure for display or Excel upload.
 
-4. HANDLING MISSING OR UNCERTAIN INFORMATION:
-   - If you are unsure about a value, date, limit, or detail, or if it is not
-     clearly stated anywhere, explicitly write "Not Present".
-   - Do NOT guess, infer, or fill placeholders with assumed values.
+    Input shape:
+      {
+        "combined_summary": "<string>",
+        "individualized_summary": [
+          {"file_name": ..., "summary": ..., "document_type": ..., "processed_summary": ...},
+          ...
+        ]
+      }
 
-5. Do NOT mention which document or file any detail came from.
-   - The final summary must read like a single coherent underwriting view,
-     not a list of documents.
+    Output shape (dict):
+      {
+        "combined_summary": "<normalized multi-line string>",
+        "individualized_summary": [
+           {
+             "file_name": "<filename>",
+             "summary": "<normalized single-paragraph summary>",
+             "document_type": "<ACORD|Loss Run|SOV>",
+             "processed_summary": "<normalized multi-line narrative>"
+           },
+           ...
+        ]
+      }
 
-6. Focus only on underwriting-relevant information, including:
-   - Named insured / client
-   - Locations and occupancy
-   - Operations / business activities
-   - Coverage dates and program structure
-   - Property values / limits / coinsurance
-   - Loss history and major incidents
-   - Any material hazards or underwriting notes
+    This function **does not** return 'text' or raw LLM outputs with \n escapes.
+    """
+    out = {"combined_summary": None, "individualized_summary": []}
 
-IMPORTANT ABOUT EMAIL BODIES:
-- If raw email body text is present below, use it only to supplement or clarify
-  facts from the attachments.
-- Use ONLY the main content of the email (core submission facts).
-- Ignore salutations ("Dear ..."), sign-offs ("Regards", "Kind regards"),
-  and signature/contact information.
+    combined = cleaned_payload.get("combined_summary")
+    out["combined_summary"] = normalize_text(combined) if combined else None
 
-STRUCTURE OF YOUR OUTPUT (USE THIS EXACT TEMPLATE):
+    indiv = cleaned_payload.get("individualized_summary", [])
+    beautified_list = []
+    if isinstance(indiv, Iterable):
+        for item in indiv:
+            # defensive: ensure keys exist
+            file_name = item.get("file_name")
+            summary = item.get("summary")
+            doc_type = item.get("document_type")
+            processed = item.get("processed_summary")
 
-SUBMISSION SUMMARY  
-Client: [Client Legal Name]  
-Date: [Submission or Document Date]
+            beautified_item = {
+                "file_name": file_name,
+                "summary": normalize_text(summary) if summary else None,
+                "document_type": doc_type,
+                "processed_summary": normalize_text(processed) if processed else None,
+            }
+            beautified_list.append(beautified_item)
 
-1. SUBMISSION COVER LETTER / NARRATIVE  
- Exposure Description:  
-    - [Describe what the business does]  
-    - [Main operations / physical activities]  
-    - [Property details if present]  
-
- Placement Strategy:  
-    - [Placement goals or program approach if evident]  
-
- Renewal Highlights:  
-    - [Notable updates if present, else "Not Present"]  
-
- Changes YOY:  
-    - [Changes if present, else "Not Present"]  
-
- Additional Overview Details:  
-    - Effective Date: [date or "Not Present"]  
-    - Submission Type: [Renewal / New Business]  
-    - Current Situation: [Reason for submission or "Not Present"]  
-
-2. LOSS HISTORY PACKAGE  
- 5–10 Year Loss Runs:  
-    - [Summary if present, else "Not Present"]  
-
- Large Loss Details:  
-    - [Details or "Not Present"]  
-
- Trends Analysis:  
-    - [Analysis or "Not Present"]  
-
- Summary of Loss History:  
-    - Status: [Clean / Losses Reported / Not Present]  
-    - Summary: [one sentence or "Not Present"]  
-    - Major Incidents: [largest incident or "Not Present"]  
-
-3. EXPOSURE DATA  
- COPE Information (Construction, Occupancy, Protection, Exposure):  
-    - [Details or "Not Present"]  
-
- Statement of Values (SOV):  
-    - Total Insurable Value (TIV): $[value or "Not Present"]  
-    - Building Limit: $[value or "Not Present"]  
-    - Contents/BPP Limit: $[value or "Not Present"]  
-    - Business Income: $[value or "Not Present"]  
-
- Financials:  
-    - [Details or "Not Present"]  
-
- CAT Worksheets / Specialty Schedules:  
-    - [Details or "Not Present"]  
-
- Additional Exposure Details:  
-    - Total Locations: [value or "Not Present"]  
-    - Main Operations: [value or "Not Present"]  
-    - Property Details: [value or "Not Present"]  
-    - Deductible Requested: $[value or "Not Present"]  
-
-Attached files included:
-{attachments_text}
-
-# RAW EMAIL BODIES (if present; use them only to supplement / clarify)
-{email_bodies_text}
-"""
+    out["individualized_summary"] = beautified_list
+    return out
