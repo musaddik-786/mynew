@@ -1,292 +1,153 @@
-You’re 100% right to doubt this.
-This code is NOT correct RAG, and more importantly: it will not run.
+import os
+import json
+from datetime import date
+from pathlib import Path
 
-Let me be very clear and systematic (beginner-friendly, no shortcuts).
-
-⸻
-
-1️⃣ High-level verdict
-
-❌ This is not a valid RAG implementation
-❌ It has syntax errors
-❌ It mixes FAISS + Chroma incorrectly
-❌ Missing imports and undefined variables
-❌ RAG chain wiring is broken
-
-But ✅ your intention is correct — you are trying to build:
-
-Load document → chunk → embed → store → retrieve → answer
-
-So let’s fix this properly and cleanly.
-
-⸻
-
-2️⃣ What RAG ACTUALLY needs (conceptually)
-
-A correct RAG pipeline has 5 clear steps:
-
-Document
-   ↓
-Chunking
-   ↓
-Embeddings
-   ↓
-Vector Store
-   ↓
-Retriever → LLM → Answer
-
-Your code breaks at almost every step.
-
-⸻
-
-3️⃣ Major problems in YOUR code (line-by-line truth)
-
-❌ Problem 1: Wrong & unused imports
-
-You import Azure Blob, Form Recognizer, tempfile etc.
-
-from azure.storage.blob import BlobClient
-from azure.ai.formrecognizer import DocumentAnalysisClient
-
-❌ NONE of these are used
-❌ RAG does not need them here
-
-👉 Remove them
-
-⸻
-
-❌ Problem 2: FAISS vs Chroma confusion
-
-def build_vectorstore_from_text(text: str) -> FAISS:
-
-But inside you do:
-
-vectordstore = Chroma.from_documents(
-    chunks,
-    embedding=embeddings,
-    persist_directory=persist_directory,
-    collection_name=collection_name
-)
-
-❌ FAISS is never imported
-❌ You say FAISS but use Chroma
-❌ chunks, persist_directory, collection_name are undefined
-❌ Variable name typo: vectordstore vs vectorstore
-
-👉 This will crash immediately
-
-⸻
-
-❌ Problem 3: Undefined variables
-
-These DO NOT EXIST:
-
-chunks
-persist_directory
-collection_name
-
-Python will raise:
-
-NameError: name 'chunks' is not defined
+from agentic_doc.parse import parse
+from agentic_doc.utils import viz_parsed_document
 
 
-⸻
 
-❌ Problem 4: RAG chain is syntactically broken
-
-This line is completely invalid Python:
-
-rag_chain({"asda":sad,"sad":wqd} promnpt model stroutparser())
-
-❌ random tokens
-❌ not even valid syntax
-❌ execution stops here
-
-⸻
-
-❌ Problem 5: Missing critical imports
-
-You use:
-
-ChatOpenAI
-ChatPromptTemplate
-RunnablePassthrough
-StrOutputParser
-
-But you never import them.
-
-⸻
-
-❌ Problem 6: load_env() does not exist
-
-load_env()
-
-❌ The function is load_dotenv()
-❌ This is another crash
-
-⸻
-
-4️⃣ Why this is NOT RAG (conceptually)
-
-Your code never correctly does:
-
-✔️ Retriever returning documents
-✔️ Injecting retrieved context into prompt
-✔️ Vector store properly created
-✔️ Clean LCEL chain
-
-So no — this is not valid RAG.
-
-⸻
-
-5️⃣ Let me give you a CORRECT, MINIMAL, CLEAN RAG
-
-This is real RAG, no fluff.
-
-✅ rag_simple_correct.py
+# BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+# input_folder = os.path.join(BASE_DIR, "input")
+# result_folder = os.path.join(BASE_DIR, "output")
 
 import os
-from dotenv import load_dotenv
-
-from langchain_text_splitters import RecursiveCharacterTextSplitter
-from langchain_openai import AzureOpenAIEmbeddings, ChatOpenAI
-from langchain_chroma import Chroma
-
-from langchain_core.prompts import ChatPromptTemplate
-from langchain_core.runnables import RunnablePassthrough
-from langchain_core.output_parsers import StrOutputParser
-from langchain_core.documents import Document
+os.environ["VISION_AGENT_API_KEY"] = "czj"
 
 
-⸻
-
-✅ Load document
-
-def load_document_text(file_path: str) -> str:
-    with open(file_path, "r", encoding="utf-8") as f:
-        return f.read()
+BASE_DIR = Path(__file__).parent.resolve()
+input_folder = BASE_DIR / "input"
+result_folder = BASE_DIR / "output"
+groundings_folder = BASE_DIR / "groundings"  # define if needed
 
 
-⸻
+    # Create the output folder if it doesn't exist
+if not os.path.exists(input_folder):
+    os.makedirs(input_folder)
 
-✅ Build Vector Store (REAL “R” of RAG)
+if not os.path.exists(result_folder):
+    os.makedirs(result_folder)
 
-def build_vectorstore(text: str):
+# output_file_path = os.path.join(OUTPUT_FOLDER, blob_name)
 
-    splitter = RecursiveCharacterTextSplitter(
-        chunk_size=800,
-        chunk_overlap=100
-    )
+file_paths =[
+    str(p)
+    for p in input_folder.iterdir()
+    if p.suffix.lower() in [".pdf",".png",".jpg",".jpeg"]
+]
 
-    documents = splitter.create_documents([text])
+file_paths
 
-    embeddings = AzureOpenAIEmbeddings(
-        azure_deployment=os.getenv("AZURE_OPENAI_EMBEDDING_DEPLOYMENT_NAME"),
-        openai_api_key=os.getenv("AZURE_OPENAI_API_KEY"),
-        openai_api_version=os.getenv("AZURE_OPENAI_API_VERSION"),
-        azure_endpoint=os.getenv("AZURE_OPENAI_ENDPOINT"),
-    )
+parse_result = parse(
+   documents=file_paths,
+   result_save_dir=str(result_folder),
+   grounding_save_dir=str(groundings_folder),
+   include_marginalia=True,
+   include_metadata_in_markdown=True,
+)
 
-    vectorstore = Chroma.from_documents(
-        documents=documents,
-        embedding=embeddings,
-        persist_directory="./chroma_db"
-    )
-
-    return vectorstore
-
-
-⸻
-
-✅ Build RAG Chain (Retriever + Generator)
-
-def build_rag_chain(vectorstore):
-
-    retriever = vectorstore.as_retriever(search_kwargs={"k": 3})
-
-    prompt = ChatPromptTemplate.from_template("""
-You are an assistant answering questions from an insurance document.
-
-Use ONLY the context below.
-If not found, say "I don't know based on the document."
-
-Context:
-{context}
-
-Question:
-{question}
-
-Answer:
-""")
-
-    model = ChatOpenAI(
-        temperature=0.0,
-        azure_deployment=os.getenv("AZURE_OPENAI_CHAT_DEPLOYMENT"),
-    )
-
-    rag_chain = (
-        {
-            "context": retriever,
-            "question": RunnablePassthrough()
-        }
-        | prompt
-        | model
-        | StrOutputParser()
-    )
-
-    return rag_chain
+for result in parse_result:
+    print(result.markdown)
 
 
-⸻
-
-✅ Main Execution
-
-def main():
-    load_dotenv()
-
-    text = load_document_text("data/insurance_guide.txt")
-
-    vectorstore = build_vectorstore(text)
-
-    rag_chain = build_rag_chain(vectorstore)
-
-    while True:
-        q = input("Question: ")
-        if q.lower() == "exit":
-            break
-
-        answer = rag_chain.invoke(q)
-        print("\nAnswer:", answer)
-        print("-" * 50)
-
-if __name__ == "__main__":
-    main()
 
 
-⸻
 
-6️⃣ Final honest summary
+(venv) PS C:\Users\2000137378\Desktop\newproject\LandingAI> python practice.py
+2025-12-19 11:52:25 [info   ] Settings loaded: {
+  "endpoint_host": "https://api.va.landing.ai",
+  "vision_agent_api_key": "[REDACTED]",
+  "batch_size": 4,
+  "max_workers": 5,
+  "max_retries": 3,
+  "max_retry_wait_time": 60,
+  "retry_logging_style": "log_msg",
+  "pdf_to_image_dpi": 96,
+  "split_size": 10,
+  "extraction_split_size": 50
+} [agentic_doc.config] (config.py:172)
+Traceback (most recent call last):
+  File "C:\Users\2000137378\Desktop\newproject\LandingAI\venv\Lib\site-packages\urllib3\connectionpool.py", line 464, in _make_request
+    self._validate_conn(conn)
+  File "C:\Users\2000137378\Desktop\newproject\LandingAI\venv\Lib\site-packages\urllib3\connectionpool.py", line 1093, in _validate_conn
+    conn.connect()
+  File "C:\Users\2000137378\Desktop\newproject\LandingAI\venv\Lib\site-packages\urllib3\connection.py", line 796, in connect        
+    sock_and_verified = _ssl_wrap_socket_and_match_hostname(      
+                        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^      
+  File "C:\Users\2000137378\Desktop\newproject\LandingAI\venv\Lib\site-packages\urllib3\connection.py", line 975, in _ssl_wrap_socket_and_match_hostname
+    ssl_sock = ssl_wrap_socket(
+               ^^^^^^^^^^^^^^^^
+  File "C:\Users\2000137378\Desktop\newproject\LandingAI\venv\Lib\site-packages\urllib3\util\ssl_.py", line 483, in ssl_wrap_socket 
+    ssl_sock = _ssl_wrap_socket_impl(sock, context, tls_in_tls, server_hostname)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\2000137378\Desktop\newproject\LandingAI\venv\Lib\site-packages\urllib3\util\ssl_.py", line 527, in _ssl_wrap_socket_impl
+    return ssl_context.wrap_socket(sock, server_hostname=server_hostname)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Program Files\Python311\Lib\ssl.py", line 517, in wrap_socket
+    return self.sslsocket_class._create(
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Program Files\Python311\Lib\ssl.py", line 1075, in _create
+    self.do_handshake()
+  File "C:\Program Files\Python311\Lib\ssl.py", line 1346, in do_handshake
+    self._sslobj.do_handshake()
+ssl.SSLCertVerificationError: [SSL: CERTIFICATE_VERIFY_FAILED] certificate verify failed: self signed certificate in certificate chain (_ssl.c:1002)
 
-Aspect	Your Code	Correct RAG
-Structure	❌ Broken	✅ Clean
-Runs?	❌ No	✅ Yes
-Retriever works?	❌ No	✅ Yes
-Embeddings correct?	⚠️ Partial	✅ Yes
-LangChain LCEL	❌ Invalid	✅ Correct
+During handling of the above exception, another exception occurred:
 
+Traceback (most recent call last):
+  File "C:\Users\2000137378\Desktop\newproject\LandingAI\venv\Lib\site-packages\urllib3\connectionpool.py", line 787, in urlopen    
+    response = self._make_request(
+               ^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\2000137378\Desktop\newproject\LandingAI\venv\Lib\site-packages\urllib3\connectionpool.py", line 488, in _make_request
+    raise new_e
+urllib3.exceptions.SSLError: [SSL: CERTIFICATE_VERIFY_FAILED] certificate verify failed: self signed certificate in certificate chain (_ssl.c:1002)
 
-⸻
+The above exception was the direct cause of the following exception:
 
-7️⃣ Important learning (this is key for you)
+Traceback (most recent call last):
+  File "C:\Users\2000137378\Desktop\newproject\LandingAI\venv\Lib\site-packages\requests\adapters.py", line 644, in send
+    resp = conn.urlopen(
+           ^^^^^^^^^^^^^
+  File "C:\Users\2000137378\Desktop\newproject\LandingAI\venv\Lib\site-packages\urllib3\connectionpool.py", line 841, in urlopen    
+    retries = retries.increment(
+              ^^^^^^^^^^^^^^^^^^
+  File "C:\Users\2000137378\Desktop\newproject\LandingAI\venv\Lib\site-packages\urllib3\util\retry.py", line 519, in increment      
+    raise MaxRetryError(_pool, url, reason) from reason  # type: ignore[arg-type]
+    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+urllib3.exceptions.MaxRetryError: HTTPSConnectionPool(host='api.va.landing.ai', port=443): Max retries exceeded with url: /v1/tools/agentic-document-analysis (Caused by SSLError(SSLCertVerificationError(1, '[SSL: CERTIFICATE_VERIFY_FAILED] certificate verify failed: self signed certificate in certificate chain (_ssl.c:1002)'))) 
 
-RAG is not about dumping libraries
-RAG is about FLOW
+During handling of the above exception, another exception occurred:
 
-If you want, next we can:
-	•	🔍 Trace RAG step-by-step with data
-	•	🧠 Visualize how retriever injects context
-	•	🧪 Debug why answers hallucinate
-	•	🏗 Convert this into FastAPI RAG service
-	•	📦 Plug this into your OmniCore agent
+Traceback (most recent call last):
+  File "C:\Users\2000137378\Desktop\newproject\LandingAI\venv\Lib\site-packages\agentic_doc\utils.py", line 33, in check_endpoint_and_api_key
+    response = requests.head(endpoint_url, headers=headers, timeout=5)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\2000137378\Desktop\newproject\LandingAI\venv\Lib\site-packages\requests\api.py", line 100, in head
+    return request("head", url, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\2000137378\Desktop\newproject\LandingAI\venv\Lib\site-packages\requests\api.py", line 59, in request
+    return session.request(method=method, url=url, **kwargs)      
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^      
+  File "C:\Users\2000137378\Desktop\newproject\LandingAI\venv\Lib\site-packages\requests\sessions.py", line 589, in request
+    resp = self.send(prep, **send_kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\2000137378\Desktop\newproject\LandingAI\venv\Lib\site-packages\requests\sessions.py", line 703, in send
+    r = adapter.send(request, **kwargs)
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\2000137378\Desktop\newproject\LandingAI\venv\Lib\site-packages\requests\adapters.py", line 675, in send
+    raise SSLError(e, request=request)
+requests.exceptions.SSLError: HTTPSConnectionPool(host='api.va.landing.ai', port=443): Max retries exceeded with url: /v1/tools/agentic-document-analysis (Caused by SSLError(SSLCertVerificationError(1, '[SSL: CERTIFICATE_VERIFY_FAILED] certificate verify failed: self signed certificate in certificate chain (_ssl.c:1002)')))     
 
-Just tell me what level you want next.
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "C:\Users\2000137378\Desktop\newproject\LandingAI\practice.py", line 42, in <module>
+    parse_result = parse(
+                   ^^^^^^
+  File "C:\Users\2000137378\Desktop\newproject\LandingAI\venv\Lib\site-packages\agentic_doc\parse.py", line 103, in parse
+    check_endpoint_and_api_key(
+  File "C:\Users\2000137378\Desktop\newproject\LandingAI\venv\Lib\site-packages\agentic_doc\utils.py", line 35, in check_endpoint_and_api_key
+    raise ValueError(f'The endpoint URL "{endpoint_url}" is down or invalid.')
+ValueError: The endpoint URL "https://api.va.landing.ai/v1/tools/agentic-document-analysis" is down or invalid.
+(venv) PS C:\Users\2000137378\Desktop\newproject\LandingAI> 
