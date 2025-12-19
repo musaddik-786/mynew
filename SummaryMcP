@@ -1,2 +1,50 @@
-import ssl
-ssl._create_default_https_context = ssl._create_unverified_context
+import os
+import json
+from datetime import date
+from pathlib import Path
+
+from agentic_doc.parse import parse
+from agentic_doc.utils import viz_parsed_document
+
+
+# BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+# input_folder = os.path.join(BASE_DIR, "input")
+# result_folder = os.path.join(BASE_DIR, "output")
+
+import os
+os.environ["VISION_AGENT_API_KEY"] = "czR3bnB0cWt2ZjBzeHBzdGZwYmV3Okg5a25BaGl6SHdaMTdueEVNREFSRWhwMWNtYWxyUDVj"
+
+
+BASE_DIR = Path(__file__).parent.resolve()
+input_folder = BASE_DIR / "input"
+result_folder = BASE_DIR / "output"
+groundings_folder = BASE_DIR / "groundings"  # define if needed
+
+
+    # Create the output folder if it doesn't exist
+if not os.path.exists(input_folder):
+    os.makedirs(input_folder)
+
+if not os.path.exists(result_folder):
+    os.makedirs(result_folder)
+
+# output_file_path = os.path.join(OUTPUT_FOLDER, blob_name)
+
+file_paths =[
+    str(p)
+    for p in input_folder.iterdir()
+    if p.suffix.lower() in [".pdf",".png",".jpg",".jpeg"]
+]
+
+file_paths
+
+parse_result = parse(
+   documents=file_paths,
+   result_save_dir=str(result_folder),
+   grounding_save_dir=str(groundings_folder),
+   include_marginalia=True,
+   include_metadata_in_markdown=True,
+)
+
+for result in parse_result:
+    print(result.markdown)
