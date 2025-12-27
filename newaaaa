@@ -1,117 +1,39 @@
-import os
-from dotenv import load_dotenv
-from pypdf import PdfReader
-
-from langchain_openai import AzureChatOpenAI, AzureOpenAIEmbeddings
-from langchain_chroma import Chroma
-from langchain_text_splitters import RecursiveCharacterTextSplitter
-from langchain_core.prompts import ChatPromptTemplate
-from langchain_core.runnables import RunnablePassthrough
-
-# -------------------------------------------------
-# Load environment variables (ONCE)
-# -------------------------------------------------
-load_dotenv()
-
-AZURE_OPENAI_API_KEY = os.getenv("AZURE_OPENAI_API_KEY")
-AZURE_OPENAI_ENDPOINT = os.getenv("AZURE_OPENAI_ENDPOINT")
-AZURE_OPENAI_API_VERSION = os.getenv("AZURE_OPENAI_API_VERSION")
-
-CHAT_DEPLOYMENT = os.getenv("AZURE_OPENAI_CHAT_DEPLOYMENT")
-EMBED_DEPLOYMENT = os.getenv("AZURE_OPENAI_EMBEDDING_DEPLOYMENT_NAME")
-
-# Hard fail early if config is wrong
-assert EMBED_DEPLOYMENT, "Embedding deployment name missing"
-assert CHAT_DEPLOYMENT, "Chat deployment name missing"
-
-# -------------------------------------------------
-# PDF Reader
-# -------------------------------------------------
-def read_pdf_text(pdf_path: str) -> str:
-    reader = PdfReader(pdf_path)
-    text = ""
-    for page in reader.pages:
-        text += page.extract_text() or ""
-    return text
-
-# -------------------------------------------------
-# Chunking
-# -------------------------------------------------
-def create_documents(text: str):
-    splitter = RecursiveCharacterTextSplitter(
-        chunk_size=1000,
-        chunk_overlap=200
-    )
-    return splitter.create_documents([text])
-
-# -------------------------------------------------
-# Main RAG
-# -------------------------------------------------
-def rag_chat(pdf_path: str):
-    print("📄 Reading PDF...")
-    text = read_pdf_text(pdf_path)
-
-    print("✂️ Splitting text...")
-    documents = create_documents(text)
-
-    print("🔢 Initializing Azure embeddings...")
-    embeddings = AzureOpenAIEmbeddings(
-        azure_deployment=EMBED_DEPLOYMENT,   # ✅ DEPLOYMENT NAME
-        openai_api_key=AZURE_OPENAI_API_KEY,
-        azure_endpoint=AZURE_OPENAI_ENDPOINT,
-        openai_api_version=AZURE_OPENAI_API_VERSION,
-        chunk_size=1024
-    )
-
-    print("📦 Creating vector store...")
+(venv) jarvis@Jarvis-agent-vm:~/Musaddique/API_to_llmpromt$ python3 main.py 
+Connected to Azure storage connection string
+container name : output-results  Blob_name 123ASJKDB1JKBSAF_attachment_Acord_125_High_tech_solution.pdf
+This is my container_blob_name ['output-results', '123ASJKDB1JKBSAF_attachment_Acord_125_High_tech_solution.pdf']
+File downloaded successfully: /home/jarvis/Musaddique/API_to_llmpromt/output/123ASJKDB1JKBSAF_attachment_Acord_125_High_tech_solution.pdf
+📄 Reading PDF...
+✂️ Splitting text...
+🔢 Initializing Azure embeddings...
+📦 Creating vector store...
+Traceback (most recent call last):
+  File "/home/jarvis/Musaddique/API_to_llmpromt/main.py", line 23, in <module>
+    rag_chat(downloaded_pdf_path)
+  File "/home/jarvis/Musaddique/API_to_llmpromt/prompt.py", line 67, in rag_chat
     vectorstore = Chroma.from_documents(
-        documents=documents,
-        embedding=embeddings,
-        persist_directory="./chroma_db"
-    )
-
-    retriever = vectorstore.as_retriever(search_kwargs={"k": 4})
-
-    print("🤖 Initializing chat model...")
-    llm = AzureChatOpenAI(
-        deployment_name=CHAT_DEPLOYMENT,
-        openai_api_key=AZURE_OPENAI_API_KEY,
-        azure_endpoint=AZURE_OPENAI_ENDPOINT,
-        openai_api_version=AZURE_OPENAI_API_VERSION,
-        temperature=0
-    )
-
-    prompt = ChatPromptTemplate.from_template(
-        """You are a helpful assistant.
-Use ONLY the context below to answer the question.
-If the answer is not in the context, say "Not found in document".
-
-Context:
-{context}
-
-Question:
-{question}
-"""
-    )
-
-    def format_docs(docs):
-        return "\n\n".join(doc.page_content for doc in docs)
-
-    rag_chain = (
-        {
-            "context": retriever | format_docs,
-            "question": RunnablePassthrough(),
-        }
-        | prompt
-        | llm
-    )
-
-    print("\n✅ RAG chat started (type 'exit')\n")
-
-    while True:
-        query = input("Question: ")
-        if query.lower() == "exit":
-            break
-
-        response = rag_chain.invoke(query)
-        print("\nAnswer:\n", response.content, "\n")
+                  ^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/jarvis/Musaddique/API_to_llmpromt/venv/lib/python3.11/site-packages/langchain_chroma/vectorstores.py", line 1431, in from_documents
+    return cls.from_texts(
+           ^^^^^^^^^^^^^^^
+  File "/home/jarvis/Musaddique/API_to_llmpromt/venv/lib/python3.11/site-packages/langchain_chroma/vectorstores.py", line 1365, in from_texts
+    chroma_collection.add_texts(
+  File "/home/jarvis/Musaddique/API_to_llmpromt/venv/lib/python3.11/site-packages/langchain_chroma/vectorstores.py", line 627, in add_texts
+    embeddings = self._embedding_function.embed_documents(texts)
+                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/jarvis/Musaddique/API_to_llmpromt/venv/lib/python3.11/site-packages/langchain_openai/embeddings/base.py", line 709, in embed_documents
+    return self._get_len_safe_embeddings(
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/jarvis/Musaddique/API_to_llmpromt/venv/lib/python3.11/site-packages/langchain_openai/embeddings/base.py", line 576, in _get_len_safe_embeddings
+    response = self.client.create(input=batch_tokens, **client_kwargs)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/jarvis/Musaddique/API_to_llmpromt/venv/lib/python3.11/site-packages/openai/resources/embeddings.py", line 132, in create
+    return self._post(
+           ^^^^^^^^^^^
+  File "/home/jarvis/Musaddique/API_to_llmpromt/venv/lib/python3.11/site-packages/openai/_base_client.py", line 1259, in post
+    return cast(ResponseT, self.request(cast_to, opts, stream=stream, stream_cls=stream_cls))
+                           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/jarvis/Musaddique/API_to_llmpromt/venv/lib/python3.11/site-packages/openai/_base_client.py", line 1047, in request
+    raise self._make_status_error_from_response(err.response) from None
+openai.PermissionDeniedError: Error code: 403 - {'error': {'code': '403', 'message': 'Public access is disabled. Please configure private endpoint.'}}
+(venv) jarvis@Jarvis-agent-vm:~/Musaddique/API_to_llmpromt$ 
