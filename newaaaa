@@ -10,9 +10,9 @@ File downloaded successfully: C:\Users\2000137378\Desktop\newproject\API_to_llmp
 Traceback (most recent call last):
   File "C:\Users\2000137378\Desktop\newproject\API_to_llmpromt\main.py", line 36, in <module>
     rag_chat(downloaded_pdf_path)
-  File "C:\Users\2000137378\Desktop\newproject\API_to_llmpromt\prompt.py", line 296, in rag_chat
-    vectorstore = Chroma.from_documents(
-                  ^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\2000137378\Desktop\newproject\API_to_llmpromt\prompt.py", line 303, in rag_chat
+    embedding=embeddings,
+              ^^^^^^^^^^^
   File "C:\Users\2000137378\Desktop\newproject\API_to_llmpromt\venv\Lib\site-packages\langchain_chroma\vectorstores.py", line 1431, in from_documents
     return cls.from_texts(
            ^^^^^^^^^^^^^^^
