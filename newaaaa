@@ -1,35 +1,28 @@
 import os
 from dotenv import load_dotenv
-from PyPDF2 import PdfReader
-# from langchain.embeddings.openai import OpenAIEmbeddings
-# from langchain.vectorstores import Chroma
-# from langchain.chains import ConversationalRetrievalChain
-# from langchain.chat_models import AzureChatOpenAI
+from pypdf import PdfReader
 
-
-
-
-# from langchain.embeddings import OpenAIEmbeddings
-from langchain_openai import OpenAIEmbeddings
-# from langchain.chat_models import AzureChatOpenAI
-from langchain_openai import AzureChatOpenAI
-
+from langchain_openai import OpenAIEmbeddings, AzureChatOpenAI
 from langchain_chroma import Chroma
+from langchain.chains.conversational_retrieval.base import ConversationalRetrievalChain
+from langchain_text_splitters import RecursiveCharacterTextSplitter
+from langchain_core.documents import Document
 
-from langchain.chains import ConversationalRetrievalChain
-# from langchain_openai import ConversationalRetrievalChain
-# from langchain.chains.conversational_retrieval.base import ConversationalRetrievalChain
-
-
-# from langchain.chains import ConversationalRetrievalChain
-
+# -------------------------------------------------
+# Load environment variables
+# -------------------------------------------------
 load_dotenv()
 
 AZURE_OPENAI_API_KEY = os.getenv("AZURE_OPENAI_API_KEY")
 AZURE_OPENAI_ENDPOINT = os.getenv("AZURE_OPENAI_ENDPOINT")
 AZURE_OPENAI_API_VERSION = os.getenv("AZURE_OPENAI_API_VERSION")
-AZURE_OPENAI_CHAT_DEPLOYMENT = os.getenv("AZURE_OPENAI_CHAT_DEPLOYMENT")
 
+AZURE_OPENAI_CHAT_DEPLOYMENT = os.getenv("AZURE_OPENAI_CHAT_DEPLOYMENT")
+AZURE_OPENAI_EMBEDDING_DEPLOYMENT = os.getenv("AZURE_OPENAI_EMBEDDING_DEPLOYMENT")
+
+# -------------------------------------------------
+# Read PDF
+# -------------------------------------------------
 def read_pdf_text(pdf_path: str) -> str:
     reader = PdfReader(pdf_path)
     text = ""
@@ -37,35 +30,43 @@ def read_pdf_text(pdf_path: str) -> str:
         text += page.extract_text() or ""
     return text
 
-def chunk_text(text: str, chunk_size: int = 1000, chunk_overlap: int = 200) -> list[str]:
-    """Split text into chunks with overlap for better context."""
-    chunks = []
-    start = 0
-    text_length = len(text)
-    while start < text_length:
-        end = min(start + chunk_size, text_length)
-        chunks.append(text[start:end])
-        start += chunk_size - chunk_overlap
-    return chunks
+# -------------------------------------------------
+# Create document chunks
+# -------------------------------------------------
+def create_documents(text: str):
+    splitter = RecursiveCharacterTextSplitter(
+        chunk_size=1000,
+        chunk_overlap=200
+    )
+    return splitter.create_documents([text])
 
+# -------------------------------------------------
+# Main RAG function
+# -------------------------------------------------
 def rag_chat(pdf_path: str):
-    # 1. Read and chunk PDF text
-    document_text = read_pdf_text(pdf_path)
-    documents = chunk_text(document_text)
+    print("📄 Reading PDF...")
+    text = read_pdf_text(pdf_path)
 
-    # 2. Initialize embedding model
+    print("✂️ Splitting into chunks...")
+    documents = create_documents(text)
+
+    print("🔢 Creating embeddings...")
     embeddings = OpenAIEmbeddings(
-        deployment=AZURE_OPENAI_CHAT_DEPLOYMENT,
-        model="text-embedding-3-large",
+        deployment=AZURE_OPENAI_EMBEDDING_DEPLOYMENT,
         openai_api_key=AZURE_OPENAI_API_KEY,
         openai_api_base=AZURE_OPENAI_ENDPOINT,
-        openai_api_version=AZURE_OPENAI_API_VERSION
+        openai_api_version=AZURE_OPENAI_API_VERSION,
     )
 
-    # 3. Create Chroma vector store from documents
-    vector_store = Chroma.from_texts(documents, embeddings)
+    print("📦 Creating / loading vector store...")
+    vector_store = Chroma.from_documents(
+        documents=documents,
+        embedding=embeddings,
+        persist_directory="./chroma_db"
+    )
+    vector_store.persist()
 
-    # 4. Initialize Azure OpenAI Chat model
+    print("🤖 Initializing chat model...")
     chat_model = AzureChatOpenAI(
         deployment_name=AZURE_OPENAI_CHAT_DEPLOYMENT,
         openai_api_key=AZURE_OPENAI_API_KEY,
@@ -74,36 +75,35 @@ def rag_chat(pdf_path: str):
         temperature=0
     )
 
-    # 5. Setup Conversational Retrieval Chain
+    print("🔗 Creating RAG chain...")
     qa_chain = ConversationalRetrievalChain.from_llm(
         llm=chat_model,
-        retriever=vector_store.as_retriever(),
+        retriever=vector_store.as_retriever(search_kwargs={"k": 4}),
         return_source_documents=True
     )
 
     chat_history = []
 
-    print("You can now chat with your PDF. Type 'exit' to stop.")
+    print("\n✅ You can now chat with your PDF (type 'exit' to quit)\n")
+
     while True:
         query = input("Question: ")
         if query.lower() == "exit":
             break
 
-        result = qa_chain({"question": query, "chat_history": chat_history})
+        result = qa_chain({
+            "question": query,
+            "chat_history": chat_history
+        })
+
         answer = result["answer"]
         chat_history.append((query, answer))
 
-        print(f"Answer: {answer}\n")
+        print(f"\nAnswer:\n{answer}\n")
 
+# -------------------------------------------------
+# Entry point
+# -------------------------------------------------
 if __name__ == "__main__":
-    pdf_file_path = "output/your_downloaded_file.pdf"  # Update with your file path
+    pdf_file_path = "output/your_downloaded_file.pdf"  # <-- change this
     rag_chat(pdf_file_path)
-
-
-(venv) PS C:\Users\2000137378\Desktop\newproject\API_to_llmpromt> python main.py
-Traceback (most recent call last):
-  File "C:\Users\2000137378\Desktop\newproject\API_to_llmpromt\main.py", line 6, in <module>
-    from prompt import rag_chat
-  File "C:\Users\2000137378\Desktop\newproject\API_to_llmpromt\prompt.py", line 19, in <module>
-    from langchain.chains import ConversationalRetrievalChain
-ModuleNotFoundError: No module named 'langchain.chains'
