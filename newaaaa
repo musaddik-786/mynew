@@ -1,291 +1,390 @@
-main.py
-
-import os 
-from dotenv import load_dotenv
-from handler import load_blob_url
-from handler import blobsplitter
-from handler import downloadblob
-from prompt import rag_chat
-
-load_dotenv()
-
-if __name__ == "__main__":
-    try:  
-        Blob_path = os.environ.get("BLOB_URL")
-        if Blob_path.startswith('"') and Blob_path.endswith('"'):
-            Blob_path = Blob_path[1:-1]
-    except Exception as e:
-        print(f"Blob url is missing", e)
-    else:
-        connection_string = load_blob_url()
-        names = blobsplitter(Blob_path)
-        downloaded_pdf_path = downloadblob(names, connection_string)
-
-        # Now call rag_chat with the downloaded PDF path
-        rag_chat(downloaded_pdf_path)
-
-
-prompt.py
-
-
 import os
+import json
+import logging
+from typing import Dict, Any, List
 from dotenv import load_dotenv
-from pypdf import PdfReader
-
-from langchain_openai import OpenAIEmbeddings, AzureChatOpenAI
+from langchain.chains import LLMChain
+# from langchain.prompts import PromptTemplate
+from langchain_core.prompts import PromptTemplate
+# from langchain_community.chat_models import AzureChatOpenAI
+from langchain_openai import AzureChatOpenAI, AzureOpenAIEmbeddings
+# from langchain_community.vectorstores import Chroma
 from langchain_chroma import Chroma
-from langchain_text_splitters import RecursiveCharacterTextSplitter
-from langchain_core.documents import Document
-from langchain_core.prompts import ChatPromptTemplate
-from langchain_core.runnables import RunnablePassthrough
+# from langchain_community.embeddings import AzureOpenAIEmbeddings
+from azure.storage.blob import BlobServiceClient, ContainerClient
+from azure.core.exceptions import ResourceExistsError
+import re
+from datetime import datetime
+from urllib.parse import urlparse, unquote
 
-# -------------------------------------------------
-# Load env
-# -------------------------------------------------
+# Load environment variables
 load_dotenv()
 
-AZURE_OPENAI_API_KEY = os.getenv("AZURE_OPENAI_API_KEY")
-AZURE_OPENAI_ENDPOINT = os.getenv("AZURE_OPENAI_ENDPOINT")
-AZURE_OPENAI_API_VERSION = os.getenv("AZURE_OPENAI_API_VERSION")
+# Configure logging
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
-CHAT_DEPLOYMENT = os.getenv("AZURE_OPENAI_CHAT_DEPLOYMENT")
-EMBED_DEPLOYMENT = os.getenv("AZURE_OPENAI_EMBEDDING_DEPLOYMENT_NAME")
-
-print(AZURE_OPENAI_API_KEY)
-print(AZURE_OPENAI_ENDPOINT)
-print(AZURE_OPENAI_API_VERSION)
-print(CHAT_DEPLOYMENT)
-print(EMBED_DEPLOYMENT)
-
-
+# Initialize Azure OpenAI embeddings
+embeddings = AzureOpenAIEmbeddings(
+    azure_deployment=os.getenv("AZURE_OPENAI_EMBEDDING_DEPLOYMENT_NAME"),
+    openai_api_key=os.getenv("AZURE_OPENAI_API_KEY"),
+    openai_api_version=os.getenv("AZURE_OPENAI_API_VERSION"),
+    azure_endpoint=os.getenv("AZURE_OPENAI_ENDPOINT"),
+    chunk_size=1024
+)
 
 
-# -------------------------------------------------
-# PDF Reader
-# -------------------------------------------------
-def read_pdf_text(pdf_path: str) -> str:
-    reader = PdfReader(pdf_path)
-    text = ""
-    for page in reader.pages:
-        text += page.extract_text() or ""
-    return text
-
-# -------------------------------------------------
-# Chunking
-# -------------------------------------------------
-def create_documents(text: str):
-    splitter = RecursiveCharacterTextSplitter(
-        chunk_size=1000,
-        chunk_overlap=200
-    )
-    return splitter.create_documents([text])
-
-# -------------------------------------------------
-# Main RAG
-# -------------------------------------------------
-def rag_chat(pdf_path: str):
-    print("📄 Reading PDF...")
-    text = read_pdf_text(pdf_path)
-
-    print("✂️ Splitting text...")
-    documents = create_documents(text)
-
-    print("🔢 Embeddings...")
-    embeddings = OpenAIEmbeddings(
-        deployment=EMBED_DEPLOYMENT,
-        openai_api_key=AZURE_OPENAI_API_KEY,
-        openai_api_base=AZURE_OPENAI_ENDPOINT,
-        openai_api_version=AZURE_OPENAI_API_VERSION,
-    )
-
-    print("📦 Vector store...")
-    vectorstore = Chroma.from_documents(
-        documents,
-        embedding=embeddings,
-        persist_directory="./chroma_db"
-    )
-
-    retriever = vectorstore.as_retriever(search_kwargs={"k": 4})
-
-    print("🤖 Chat model...")
+def group_attributes_by_category(attributes_dict: Dict[str, str]) -> Dict[str, Any]:
+    """
+    Group extracted attributes into logical categories using LLM-based semantic categorization.
+    
+    Dynamically analyzes extracted underwriting attributes and groups them into semantic categories
+    based on context, without relying on hardcoded keyword mappings.
+    
+    The LLM determines the most logical grouping based on the specific fields present in the document.
+    """
+    
     llm = AzureChatOpenAI(
-        deployment_name=CHAT_DEPLOYMENT,
-        openai_api_key=AZURE_OPENAI_API_KEY,
-        openai_api_base=AZURE_OPENAI_ENDPOINT,
-        openai_api_version=AZURE_OPENAI_API_VERSION,
-        temperature=0
+        openai_api_key=os.getenv("AZURE_OPENAI_API_KEY"),
+        azure_endpoint=os.getenv("AZURE_OPENAI_ENDPOINT"),
+        openai_api_version=os.getenv("AZURE_OPENAI_API_VERSION"),
+        deployment_name=os.getenv("AZURE_OPENAI_CHAT_DEPLOYMENT"),
+        temperature=0,
+        top_p=1
     )
+    
+    # Create the dynamic categorization prompt
+    grouping_prompt = PromptTemplate(
+        input_variables=["attributes_json"],
+        template="""You are a JSON data formatter for insurance underwriting documents.
 
-    prompt = ChatPromptTemplate.from_template(
-        """You are a helpful assistant.
-Use the context below to answer the question.
+The following JSON contains extracted attributes from a non-ACORD insurance submission form.
+These fields were extracted using semantic search and LLM-based information retrieval from submission documents.
 
-Context:
-{context}
+Your task is to group these fields logically based on semantic context.
 
-Question:
-{question}
+Requirements:
+1. Group fields logically. The grouping is FLEXIBLE — create categories as needed based on the context of the fields present.
+
+2. Analyze the semantic meaning of each attribute name and value to determine the best category fit.
+
+3. Each attribute should appear in exactly one category.
+
+4. If an attribute doesn't fit standard categories, place it in "Other".
+
+5. Do NOT create empty categories.
+
+INPUT ATTRIBUTES (extracted from non-ACORD submission form):
+{attributes_json}
+
+TASK:
+1. Analyze each attribute name and value semantically
+2. Identify groupings based on contextual meaning (e.g., "Named insured" → Insured category, "Year built" → Property category)
+3. Group all semantically related attributes together
+4. Create category names that are meaningful and clear for insurance underwriting context
+5. Preserve exact attribute names and values as provided
+
+RESPONSE FORMAT (STRICT JSON ONLY):
+Return ONLY valid JSON with this structure - no commentary, no markdown, no explanations:
+{{
+  "Category Name 1": {{
+    "attribute_name_1": "value_1",
+    "attribute_name_2": "value_2"
+  }},
+  "Category Name 2": {{
+    "attribute_name_3": "value_3"
+  }},
+  "Other": {{
+    "attribute_name_4": "value_4"
+  }}
+}}
+
+CRITICAL RULES:
+- Return ONLY the JSON object, nothing else
+- Preserve exact attribute names (do NOT modify them)
+- Preserve exact values (do NOT modify them)
+- Category names should be descriptive and capitalized
+- Ensure ALL attributes from input are included in output in exactly one category
+- If no clear category fit, use "Other" category
 """
     )
+    
+    chain = LLMChain(llm=llm, prompt=grouping_prompt)
+    
+    try:
+        # Convert attributes dict to JSON string for the prompt
+        attributes_json = json.dumps(attributes_dict, indent=2)
+        
+        print("🧠 Grouping attributes using LLM semantic analysis...")
+        
+        # Get categorization from LLM
+        raw_response = chain.run({
+            "attributes_json": attributes_json
+        }).strip()
+        
+        # Parse the JSON response
+        try:
+            # Remove markdown code blocks if present
+            clean_response = re.sub(r"```(?:json)?|```", "", raw_response.strip())
+            grouped_data = json.loads(clean_response)
+            
+            # Validate the response
+            if isinstance(grouped_data, dict) and len(grouped_data) > 0:
+                # Ensure all categories contain dictionaries with content
+                cleaned_grouped = {}
+                for category, fields in grouped_data.items():
+                    if isinstance(fields, dict) and len(fields) > 0:
+                        cleaned_grouped[category] = fields
+                
+                if cleaned_grouped:
+                    print(f"✅ Successfully grouped attributes into {len(cleaned_grouped)} categories")
+                    return cleaned_grouped
+                else:
+                    logger.warning("No valid grouped data received from LLM, using flat structure")
+                    return {"All Attributes": attributes_dict}
+            else:
+                logger.warning("Invalid grouped data structure from LLM, using flat structure")
+                return {"All Attributes": attributes_dict}
+                
+        except (json.JSONDecodeError, KeyError, TypeError) as e:
+            logger.warning(f"Could not parse grouping response from LLM: {raw_response}")
+            logger.warning(f"Error details: {e}")
+            # Fallback to flat structure
+            return {"All Attributes": attributes_dict}
+            
+    except Exception as e:
+        logger.error(f"Error in LLM-based attribute grouping: {e}")
+        # Fallback to flat structure
+        return {"All Attributes": attributes_dict}
 
-    def format_docs(docs):
-        return "\n\n".join(doc.page_content for doc in docs)
 
-    rag_chain = (
-        {
-            "context": retriever | format_docs,
-            "question": RunnablePassthrough(),
-        }
-        | prompt
-        | llm
+def extract_with_llm(vectordb: Any, attributes: List[str]) -> Dict[str, Any]:
+    """Extract values from vectorized content using pure semantic search and LLM parsing"""
+    print("🔎 Extracting values using semantic search...")
+
+    llm = AzureChatOpenAI(
+        openai_api_key=os.getenv("AZURE_OPENAI_API_KEY"),
+        azure_endpoint=os.getenv("AZURE_OPENAI_ENDPOINT"),
+        openai_api_version=os.getenv("AZURE_OPENAI_API_VERSION"),
+        deployment_name=os.getenv("AZURE_OPENAI_CHAT_DEPLOYMENT"),
+        temperature=0,
+        top_p=1
     )
 
-    print("\n✅ Chat started (type 'exit')\n")
+    # Extract values for each attribute using semantic search
+    attribute_values = {}
+    attribute_prompt = PromptTemplate(
+        input_variables=["context", "attribute"],
+        template="""You are an expert commercial property insurance underwriter assistant.
 
-    while True:
-        query = input("Question: ")
-        if query.lower() == "exit":
-            break
+Your task is to extract structured underwriting data from submission documents provided by various brokers.
 
-        response = rag_chain.invoke(query)
-        print("\nAnswer:\n", response.content, "\n")
+The layout, terminology, and formatting may vary across documents.
 
-# -------------------------------------------------
-# Run
-# -------------------------------------------------
-if __name__ == "__main__":
-    rag_chat("output/your_downloaded_file.pdf")
+RESPONSE FORMAT:
 
-handler.py
+{{"amount": "VALUE"}}
 
-import os 
-from service import require_env
-from dotenv import load_dotenv
-from service import blob_splitter, dowload_blob
+ATTRIBUTE: {attribute}
+
+CONTEXT: {context}
+
+If any field is not found in the provided context, return {{"amount": null}}.
+
+Do not guess values not supported by the text.
+"""
+    )
+    chain = LLMChain(llm=llm, prompt=attribute_prompt)
+
+    for attribute in attributes:
+        print(f"🧠 Extracting: {attribute}")
+        
+        # Get focused search terms based on attribute type
+        search_terms = {
+            "abcd": "example terms"
+        }
+        
+        # Build comprehensive search query
+        search_query = attribute
+        for key, terms in search_terms.items():
+            if key in attribute.lower():
+                search_query = f"{attribute} {terms}"
+                break
+                
+        # Get relevant chunks with larger k value
+        relevant_chunks = vectordb.similarity_search(
+            search_query,
+            k=200  # Significantly increased for better context
+        )
+        
+        if not relevant_chunks:
+            attribute_values[attribute] = "Not Found"
+            continue
+
+        # Combine relevant chunks
+        context = "\n".join([chunk.page_content for chunk in relevant_chunks])
+        
+        try:
+            raw_response = chain.run({
+                "context": context,
+                "attribute": attribute
+            }).strip()
+            
+            # Parse the JSON response to extract the actual value
+            try:
+                # Remove markdown code blocks if present
+                clean_response = re.sub(r"```(?:json)?|```", "", raw_response.strip())
+                parsed_response = json.loads(clean_response)
+                value = parsed_response.get("amount", "Not Found")
+                
+                # Handle null values
+                if value is None:
+                    value = "Not Found"
+                else:
+                    value = str(value).strip()
+                
+                # Only keep non-empty values
+                if value and value.lower() not in ["not found", "not provided", "n/a", ""]:
+                    attribute_values[attribute] = value
+                else:
+                    attribute_values[attribute] = "Not Found"
+            except (json.JSONDecodeError, KeyError, TypeError) as e:
+                logger.warning(f"Could not parse JSON response for {attribute}: {raw_response}")
+                attribute_values[attribute] = "Not Found"
+                
+        except Exception as e:
+            logger.error(f"Error extracting {attribute}: {e}")
+            attribute_values[attribute] = "Not Found"
+
+    return attribute_values
+
+def _get_container_client_for_output(output_container_name: str) -> ContainerClient:
+    """Get container client for uploading outputs"""
+    connection_string = os.getenv("AZURE_BLOB_CONNECTION_STRING") or os.getenv("AZURE_STORAGE_CONNECTION_STRING")
+
+    if connection_string:
+        blob_service_client = BlobServiceClient.from_connection_string(connection_string)
+        return blob_service_client.get_container_client(output_container_name)
+
+    raise RuntimeError("No Azure Blob connection string found for uploading output")
 
 
-load_dotenv()
-
-def load_blob_url()->str:
+def _upload_bytes_to_container(container_client: ContainerClient, blob_name: str, data: bytes) -> str:
+    """Upload bytes to blob container and return URL"""
     try:
-        connection_string = require_env()
-    except Exception as e:
-        print(f"There is a error ",e)
-    else:
-        print("Connected to Azure storage connection string")
-        return connection_string
+        container_client.create_container()
+    except ResourceExistsError:
+        pass
+    except Exception:
+        pass
 
-#blob_url:list[str]
-
-def blobsplitter(blob_url:str)->list[str]:
-    try:
-        names = blob_splitter(blob_url)
-    except:
-        raise Exception ("blob_url is missing from env")
-
-    else:
-        return names
-
-def downloadblob(names, connectionstring):
-    try:
-        file_path = dowload_blob(names, connectionstring)
-        return file_path
-    except:
-        raise Exception("unable to download blob")
-
-service.py
-
-import os
-from dotenv import load_dotenv
-from azure.storage.blob import BlobServiceClient
-
-
-load_dotenv()
-
-AZURE_STORAGE_CONNECTION_STRING = os.environ.get("AZURE_STORAGE_CONNECTION_STRING")
-AZURE_STORAGE_ACCOUNT_NAME = os.environ.get("AZURE_STORAGE_ACCOUNT_NAME")
-def require_env()->str:
-    """Ensures Required environment variables exists"""
-    if not AZURE_STORAGE_CONNECTION_STRING:
-        raise Exception("Missing Azure_Storage_Connection_String")
-    
-    if not AZURE_STORAGE_ACCOUNT_NAME:
-        raise Exception("Missing Azure_Storage_Account_Name")
-    else:
-        return AZURE_STORAGE_CONNECTION_STRING
-
-
-def blob_splitter(blob_urls:str)-> list[str]:
-    parts = blob_urls.split("/")
-    container_name = parts[3]
-    blob_name = parts[4]
-    print(f"container name : {container_name}", f" Blob_name {blob_name}")
-    return [container_name, blob_name]
-
-def dowload_blob(container_blob_name, connection_string):
-    print(f"This is my container_blob_name {container_blob_name}")
-
-    container_name = container_blob_name[0]
-    blob_name = container_blob_name[1]
-
-    blob_service_client = BlobServiceClient.from_connection_string(connection_string)
-    container_client = blob_service_client.get_container_client(container_name)
-
-        # Download the blob
     blob_client = container_client.get_blob_client(blob_name)
-    # download_file_path = os.path.basename(blob_name)
+    blob_client.upload_blob(data, overwrite=True)
+    return blob_client.url
 
-    BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-    OUTPUT_FOLDER = os.path.join(BASE_DIR, "output")
 
-    # Create the output folder if it doesn't exist
-    if not os.path.exists(OUTPUT_FOLDER):
-        os.makedirs(OUTPUT_FOLDER)
-
-    output_file_path = os.path.join(OUTPUT_FOLDER, blob_name)
-
-    with open(output_file_path, "wb") as file:
-        file.write(blob_client.download_blob().readall())
-
-    print(f"File downloaded successfully: {output_file_path}")
-
-    return output_file_path
-
-Connected to Azure storage connection string
-container name : output-results  Blob_name 123ASJKDB1JKBSAF_attachment_Acord_125_High_tech_solution.pdf
-This is my container_blob_name ['output-results', '123ASJKDB1JKBSAF_attachment_Acord_125_High_tech_solution.pdf']
-File downloaded successfully: C:\Users\2000137378\Desktop\newproject\API_to_llmpromt\output\123ASJKDB1JKBSAF_attachment_Acord_125_High_tech_solution.pdf
-📄 Reading PDF...
-✂️ Splitting text...
-🔢 Embeddings...
-📦 Vector store...
-Traceback (most recent call last):
-  File "C:\Users\2000137378\Desktop\newproject\API_to_llmpromt\main.py", line 23, in <module>
-    rag_chat(downloaded_pdf_path)
-  File "C:\Users\2000137378\Desktop\newproject\API_to_llmpromt\prompt.py", line 305, in rag_chat
-    vectorstore = Chroma.from_documents(
-                  ^^^^^^^^^^^^^^^^^^^^^^
-  File "C:\Users\2000137378\Desktop\newproject\API_to_llmpromt\venv\Lib\site-packages\langchain_chroma\vectorstores.py", line 1431, in from_documents
-    return cls.from_texts(
-           ^^^^^^^^^^^^^^^
-  File "C:\Users\2000137378\Desktop\newproject\API_to_llmpromt\venv\Lib\site-packages\langchain_chroma\vectorstores.py", line 1365, in from_texts
-    chroma_collection.add_texts(
-  File "C:\Users\2000137378\Desktop\newproject\API_to_llmpromt\venv\Lib\site-packages\langchain_chroma\vectorstores.py", line 627, in add_texts
-    embeddings = self._embedding_function.embed_documents(texts)
-                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "C:\Users\2000137378\Desktop\newproject\API_to_llmpromt\venv\Lib\site-packages\langchain_openai\embeddings\base.py", line 709, in embed_documents
-    return self._get_len_safe_embeddings(
-           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "C:\Users\2000137378\Desktop\newproject\API_to_llmpromt\venv\Lib\site-packages\langchain_openai\embeddings\base.py", line 576, in _get_len_safe_embeddings
-    response = self.client.create(input=batch_tokens, **client_kwargs)
-               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "C:\Users\2000137378\Desktop\newproject\API_to_llmpromt\venv\Lib\site-packages\openai\resources\embeddings.py", line 132, in create
-    return self._post(
-           ^^^^^^^^^^^
-  File "C:\Users\2000137378\Desktop\newproject\API_to_llmpromt\venv\Lib\site-packages\openai\_base_client.py", line 1259, in post
-    return cast(ResponseT, self.request(cast_to, opts, stream=stream, stream_cls=stream_cls))
-                           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "C:\Users\2000137378\Desktop\newproject\API_to_llmpromt\venv\Lib\site-packages\openai\_base_client.py", line 1047, in request
-    raise self._make_status_error_from_response(err.response) from None
-openai.NotFoundError: Error code: 404 - {'error': {'code': '404', 'message': 'Resource not found'}}
-(venv) PS C:\Users\2000137378\Desktop\newproject\API_to_llmpromt> 
+async def process_retrieval(vector_db_path: str, attributes: List[str]) -> Dict[str, Any]:
+    """Main processing function for retrieval using semantic search
+    
+    Args:
+        vector_db_path: Can be either:
+            1. Local absolute path from pdf_vectorizer output: /home/jarvis/rohan/Quote_Extraction_MCP/data/vec_db/pdf_name
+            2. Blob URL (fallback): https://... - will extract pdf name and construct local path
+        attributes: List of attributes to extract
+    
+    Returns:
+        Dict with extraction results and metadata
+    """
+    try:
+        # Handle both blob URLs and local paths
+        if vector_db_path.startswith(("http://", "https://")):
+            # This is a blob URL - extract the PDF name and construct local path
+            logger.warning(f"Received blob URL instead of local path. Extracting PDF name...")
+            path = unquote(urlparse(vector_db_path).path)
+            file_name_with_ext = os.path.basename(path)
+            pdf_name = os.path.splitext(file_name_with_ext)[0]
+            
+            # Construct the local vector_db_path
+            vdb_base_path = os.getenv("VDB_PATH", "./data/vec_db")
+            vector_db_path = os.path.abspath(os.path.join(vdb_base_path, pdf_name))
+            logger.info(f"Reconstructed local vector_db_path: {vector_db_path}")
+        else:
+            # Ensure it's an absolute path
+            vector_db_path = os.path.abspath(vector_db_path)
+        
+        # Get safe collection name from vector_db_path
+        # Remove all invalid characters: parentheses, brackets, special chars
+        # ChromaDB only allows: [a-zA-Z0-9._-]
+        safe_name = os.path.basename(vector_db_path).lower()
+        safe_name = safe_name.replace(" ", "_").replace("-", "_").replace(".", "_")
+        # Remove parentheses and other special characters
+        safe_name = "".join(c if c.isalnum() or c in "._-" else "" for c in safe_name)
+        # Ensure it starts and ends with alphanumeric
+        safe_name = safe_name.strip("._-")
+        collection_name = f"{safe_name}_collection"
+        persist_directory = os.path.join(vector_db_path, "chroma_db", safe_name)
+        
+        # Verify the vector DB exists
+        if not os.path.exists(persist_directory):
+            raise FileNotFoundError(f"Vector database not found at: {persist_directory}")
+        
+        # Load the vector store
+        print(f"📚 Loading vector store from {persist_directory}")
+        vectordb = Chroma(
+            embedding_function=embeddings,
+            persist_directory=persist_directory,
+            collection_name=collection_name
+        )
+        
+        # Extract values using semantic search
+        extracted_data = extract_with_llm(vectordb, attributes)
+        
+        # Group attributes by logical categories
+        grouped_data = group_attributes_by_category(extracted_data)
+        
+        # Create local directory for outputs using the vector_db_path parent
+        local_output_dir = os.path.abspath(os.path.join(os.path.dirname(vector_db_path), "extraction_outputs"))
+        os.makedirs(local_output_dir, exist_ok=True)
+        
+        # Save locally first
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        pdf_name = os.path.basename(vector_db_path)
+        local_filename = f"{pdf_name}_extraction_{timestamp}.json"
+        local_path = os.path.join(local_output_dir, local_filename)
+        
+        # Save JSON locally
+        with open(local_path, "w", encoding="utf-8") as f:
+            json.dump(grouped_data, f, indent=2)
+        print(f"💾 Saved local output to: {local_path}")
+        
+        # Upload results to blob storage
+        output_container = _get_container_client_for_output("output-results")
+        blob_name = local_filename
+        
+        json_data = json.dumps(grouped_data, indent=2).encode('utf-8')
+        output_url = _upload_bytes_to_container(output_container, blob_name, json_data)
+        
+        return {
+            "is_extracted": True,
+            "metadata": {
+                "is_extracted": True,
+                "is_error": False,
+                "error_message": None,
+                "output_blob_url": output_url,
+                "source_pdf": pdf_name,
+                "local_output_path": local_path,
+                "vector_db_path": vector_db_path
+            }
+        }
+        
+    except Exception as e:
+        logger.exception("Error in retrieval process")
+        return {
+            "is_extracted": False,
+            "metadata": {
+                "is_extracted": False,
+                "is_error": True,
+                "error_message": str(e),
+                "output_blob_url": None
+            }
+        }
