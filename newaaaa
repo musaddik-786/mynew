@@ -1,4 +1,15 @@
 (venv) PS C:\Users\2000137378\Desktop\newproject\API_to_llmpromt> python main.py
+python-dotenv could not parse statement starting at line 22
+python-dotenv could not parse statement starting at line 22
+python-dotenv could not parse statement starting at line 22
+python-dotenv could not parse statement starting at line 22
+python-dotenv could not parse statement starting at line 22
+python-dotenv could not parse statement starting at line 22
+python-dotenv could not parse statement starting at line 22
+python-dotenv could not parse statement starting at line 22
+python-dotenv could not parse statement starting at line 22
+python-dotenv could not parse statement starting at line 22
+python-dotenv could not parse statement starting at line 22
 Connected to Azure storage connection string
 container name : output-results  Blob_name 123ASJKDB1JKBSAF_attachment_Acord_125_High_tech_solution.pdf
 This is my container_blob_name ['output-results', '123ASJKDB1JKBSAF_attachment_Acord_125_High_tech_solution.pdf']
@@ -7,12 +18,13 @@ File downloaded successfully: C:\Users\2000137378\Desktop\newproject\API_to_llmp
 ✂️ Splitting text...
 🔢 Embeddings...
 📦 Vector store...
+python-dotenv could not parse statement starting at line 22
 Traceback (most recent call last):
   File "C:\Users\2000137378\Desktop\newproject\API_to_llmpromt\main.py", line 36, in <module>
     rag_chat(downloaded_pdf_path)
-  File "C:\Users\2000137378\Desktop\newproject\API_to_llmpromt\prompt.py", line 303, in rag_chat
-    embedding=embeddings,
-              ^^^^^^^^^^^
+  File "C:\Users\2000137378\Desktop\newproject\API_to_llmpromt\prompt.py", line 301, in rag_chat
+    vectorstore = Chroma.from_documents(
+                  ^^^^^^^^^^^^^^^^^^^^^^
   File "C:\Users\2000137378\Desktop\newproject\API_to_llmpromt\venv\Lib\site-packages\langchain_chroma\vectorstores.py", line 1431, in from_documents
     return cls.from_texts(
            ^^^^^^^^^^^^^^^
