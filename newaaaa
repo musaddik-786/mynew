@@ -1,39 +1,661 @@
-(venv) jarvis@Jarvis-agent-vm:~/Musaddique/API_to_llmpromt$ python3 main.py 
-Connected to Azure storage connection string
-container name : output-results  Blob_name 123ASJKDB1JKBSAF_attachment_Acord_125_High_tech_solution.pdf
-This is my container_blob_name ['output-results', '123ASJKDB1JKBSAF_attachment_Acord_125_High_tech_solution.pdf']
-File downloaded successfully: /home/jarvis/Musaddique/API_to_llmpromt/output/123ASJKDB1JKBSAF_attachment_Acord_125_High_tech_solution.pdf
-📄 Reading PDF...
-✂️ Splitting text...
-🔢 Initializing Azure embeddings...
-📦 Creating vector store...
-Traceback (most recent call last):
-  File "/home/jarvis/Musaddique/API_to_llmpromt/main.py", line 23, in <module>
-    rag_chat(downloaded_pdf_path)
-  File "/home/jarvis/Musaddique/API_to_llmpromt/prompt.py", line 67, in rag_chat
-    vectorstore = Chroma.from_documents(
-                  ^^^^^^^^^^^^^^^^^^^^^^
-  File "/home/jarvis/Musaddique/API_to_llmpromt/venv/lib/python3.11/site-packages/langchain_chroma/vectorstores.py", line 1431, in from_documents
-    return cls.from_texts(
-           ^^^^^^^^^^^^^^^
-  File "/home/jarvis/Musaddique/API_to_llmpromt/venv/lib/python3.11/site-packages/langchain_chroma/vectorstores.py", line 1365, in from_texts
-    chroma_collection.add_texts(
-  File "/home/jarvis/Musaddique/API_to_llmpromt/venv/lib/python3.11/site-packages/langchain_chroma/vectorstores.py", line 627, in add_texts
-    embeddings = self._embedding_function.embed_documents(texts)
-                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "/home/jarvis/Musaddique/API_to_llmpromt/venv/lib/python3.11/site-packages/langchain_openai/embeddings/base.py", line 709, in embed_documents
-    return self._get_len_safe_embeddings(
-           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "/home/jarvis/Musaddique/API_to_llmpromt/venv/lib/python3.11/site-packages/langchain_openai/embeddings/base.py", line 576, in _get_len_safe_embeddings
-    response = self.client.create(input=batch_tokens, **client_kwargs)
-               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "/home/jarvis/Musaddique/API_to_llmpromt/venv/lib/python3.11/site-packages/openai/resources/embeddings.py", line 132, in create
-    return self._post(
-           ^^^^^^^^^^^
-  File "/home/jarvis/Musaddique/API_to_llmpromt/venv/lib/python3.11/site-packages/openai/_base_client.py", line 1259, in post
-    return cast(ResponseT, self.request(cast_to, opts, stream=stream, stream_cls=stream_cls))
-                           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "/home/jarvis/Musaddique/API_to_llmpromt/venv/lib/python3.11/site-packages/openai/_base_client.py", line 1047, in request
-    raise self._make_status_error_from_response(err.response) from None
-openai.PermissionDeniedError: Error code: 403 - {'error': {'code': '403', 'message': 'Public access is disabled. Please configure private endpoint.'}}
-(venv) jarvis@Jarvis-agent-vm:~/Musaddique/API_to_llmpromt$ 
+final_processor.py
+
+
+
+import os
+import json
+from dotenv import load_dotenv
+from openai import AzureOpenAI
+
+# ------------------ CONFIG ------------------
+load_dotenv()
+
+client = AzureOpenAI(
+    azure_endpoint=os.getenv("AZURE_OPENAI_ENDPOINT"),
+    api_key=os.getenv("AZURE_OPENAI_API_KEY"),
+    api_version="2024-05-01-preview"
+)
+
+MODEL = os.getenv("AZURE_OPENAI_CHAT_DEPLOYMENT")
+CONFIDENCE_THRESHOLD = 0.5
+# OUTPUT_FILE = "final_output.json"
+output_dir = os.path.join(os.getcwd(), "output")
+INPUT_FILE = os.path.join(output_dir, "output.json")
+
+os.makedirs(output_dir, exist_ok=True)
+OUTPUT_FILE = os.path.join(output_dir, "final_output.json")
+MAX_CHARS = 12000
+
+
+def chunk_text(text, max_chars=MAX_CHARS):
+    """Split long text into safe chunks for OpenAI input."""
+    chunks, current, length = [], [], 0
+    for line in text.splitlines():
+        if length + len(line) > max_chars:
+            chunks.append("\n".join(current))
+            current, length = [], 0
+        current.append(line)
+        length += len(line)
+    if current:
+        chunks.append("\n".join(current))
+    return chunks
+
+
+#New Subham's code
+def clean_field_name(name: str) -> str:
+    """Remove prefixes like 'LOB - ' and normalize casing."""
+    name = name.replace("LOB -", "").strip()
+    return name.title()
+
+def simplify_fields(raw_json):
+    """Simplify Azure Doc Intelligence output with confidence preserved."""
+    simplified = {}
+    docs = raw_json.get("documents", [])
+    if not docs:
+        return simplified
+
+    for doc in docs:
+        for key, value in doc.get("fields", {}).items():
+            val = value.get("valueString") or value.get("content") or value.get("valueBoolean")
+            conf = value.get("confidence", None)
+            if val in [None, ""]:
+                continue
+            cleaned_key = clean_field_name(key)
+            simplified[cleaned_key] = {"value": val, "confidence": conf}
+    return simplified
+def build_prompt(cleaned_data):
+    """Structured prompt for GPT (dynamic grouping)."""
+    return f"""
+You are a JSON data formatter. The following JSON is the output from Azure Document Intelligence for an ACORD insurance form.
+
+Return only valid JSON (no commentary, no markdown, no explanations).
+
+Requirements:
+1. Group fields logically (Line of Business, Policy, Broker, Insured, Address, etc.) based on semantic context. 
+   The grouping is flexible — create categories as needed.
+2. Each field must show its value and confidence exactly as in the input JSON, e.g.:
+   "Field Name": "Value, confidence - 0.87"
+   Do not recalculate or lower confidence values.
+3. If a field is repeated, include all instances under the most relevant group.
+4. Combine split tokens like ["6:00", "AM"] → "6:00 AM".
+5. Do not compute averages — Python will handle total_confidence and overall_total_confidence.
+
+Cleaned JSON input:
+{json.dumps(cleaned_data, indent=2)}
+"""
+
+def process_chunk(chunk):
+    """Send one chunk to GPT and ensure JSON-only output."""
+    response = client.chat.completions.create(
+        model=MODEL,
+        temperature=0,
+        messages=[
+            {"role": "system", "content": "You are a precise document understanding assistant that outputs only JSON."},
+            {"role": "user", "content": build_prompt(chunk)},
+        ]
+    )
+
+    text = response.choices[0].message.content.strip()
+    try:
+        start = text.find("{")
+        end = text.rfind("}") + 1
+        json_text = text[start:end]
+        return json.loads(json_text)
+    except Exception:
+        print("⚠️ Warning: GPT output not clean JSON. Attempting recovery.")
+        return {"error": "Invalid JSON returned", "raw_output": text}
+
+def calculate_overall_confidence(original_json):
+    """Calculate overall average confidence directly from original JSON."""
+    def extract_confidences(obj):
+        confidences = []
+        if isinstance(obj, dict):
+            for key, value in obj.items():
+                if key == "confidence" and isinstance(value, (int, float)):
+                    confidences.append(value)
+                else:
+                    confidences.extend(extract_confidences(value))
+        elif isinstance(obj, list):
+            for item in obj:
+                confidences.extend(extract_confidences(item))
+        return confidences
+
+    confidences = extract_confidences(original_json)
+    if confidences:
+        return sum(confidences) / len(confidences)
+    return None
+
+def add_confidence_averages(grouped_data, original_data):
+    """Compute total_confidence per group using original JSON confidence values."""
+    confidence_lookup = {clean_field_name(k): v.get("confidence") for k, v in original_data.items()}
+
+    for group, fields in grouped_data.items():
+        if not isinstance(fields, dict):
+            continue
+        confidences = []
+        for field in fields.keys():
+            if field in confidence_lookup and confidence_lookup[field] is not None:
+                confidences.append(confidence_lookup[field])
+        if confidences:
+            avg_conf = sum(confidences) / len(confidences)
+            grouped_data[group]["total_confidence"] = avg_conf
+    return grouped_data
+
+def process_azure_output(json_data):
+    """Process entire Doc Intelligence JSON with GPT grouping + confidence math."""
+    simplified = simplify_fields(json_data)
+    text_data = json.dumps(simplified, indent=2)
+    chunks = chunk_text(text_data)
+    final_combined = {}
+
+    for chunk in chunks:
+        result = process_chunk(chunk)
+        if isinstance(result, dict):
+            for k, v in result.items():
+                if k in final_combined and isinstance(v, dict):
+                    final_combined[k].update(v)
+                else:
+                    final_combined[k] = v
+
+    # Add group averages
+    final_combined = add_confidence_averages(final_combined, simplified)
+
+    # Add overall average from original JSON
+    overall_avg = calculate_overall_confidence(json_data)
+    if overall_avg is not None:
+        final_combined["Document_Confidence_Score"] = overall_avg
+
+    with open(OUTPUT_FILE, "w", encoding="utf-8") as f:
+        json.dump(final_combined, f, indent=2, ensure_ascii=False)
+
+    print(f"Clean JSON written to {OUTPUT_FILE}")
+    return final_combined
+
+# ------------------ MAIN ------------------
+if __name__ == "__main__":
+
+    json_path = os.path.join("output","output.json")
+    with open(INPUT_FILE, "r", encoding="utf-8") as f:
+        raw_json = json.load(f)
+
+    process_azure_output(raw_json)
+
+
+
+image_processor.py
+
+
+import os
+import json
+import uuid
+import re
+from datetime import datetime
+from dotenv import load_dotenv
+
+from azure.core.credentials import AzureKeyCredential
+from azure.ai.documentintelligence import DocumentIntelligenceClient
+from azure.storage.blob.aio import BlobServiceClient
+from azure.core.exceptions import ResourceNotFoundError
+
+from service import _require_env, get_env_values, AZURE_STORAGE_CONNECTION_STRING, _parse_blob_url
+from final_processor import process_azure_output  # Importing the final processor function
+
+load_dotenv()
+
+
+def collect_total_confidences(obj, out_list):
+    """
+    Recursively search obj (dict/list) and append any numeric values found under
+    keys named 'total_confidence' to out_list.
+    """
+    if isinstance(obj, dict):
+        for k, v in obj.items():
+            if k == "total_confidence":
+                # Accept ints/floats only
+                try:
+                    # If it's already numeric (int/float), use directly; else try to convert
+                    if isinstance(v, (int, float)):
+                        out_list.append(float(v))
+                    else:
+                        out_list.append(float(v))
+                except Exception:
+                    # ignore non-convertible values
+                    pass
+            else:
+                collect_total_confidences(v, out_list)
+    elif isinstance(obj, list):
+        for item in obj:
+            collect_total_confidences(item, out_list)
+    # other types ignored
+
+
+async def analyze_file_async(bloburl: str) -> dict:
+    """
+    Download the PDF from bloburl, analyze it with Azure Document Intelligence,
+    save the JSON locally inside ./output/output.json,
+    read the JSON from the file, process it with final_processor.py,
+    compute Document_Confidence_Score and append it to the final JSON,
+    and upload the final JSON to Azure Blob Storage.
+
+    The uploaded final JSON filename will be in this format:
+      <Reference>_attachment_<OriginalFileNameWithoutExtension>_extraction_<YYYYMMDD_HHMMSS>.json
+    """
+
+    try:
+        _require_env()
+    except Exception as e:
+        return {"status": False, "error": str(e)}
+
+    endpoint, key, model_id = get_env_values()
+
+    try:
+        src_container, src_blob = _parse_blob_url(bloburl)
+    except Exception as e:
+        return {"status": False, "error": f"Invalid BlobUrl: {e}"}
+
+    source_file_name = os.path.basename(src_blob) if src_blob else "unknown.pdf"
+    source_file_name = os.path.basename(source_file_name)
+
+    if not AZURE_STORAGE_CONNECTION_STRING:
+        return {"status": False, "error": "Missing AZURE_STORAGE_CONNECTION_STRING in .env"}
+
+    try:
+        async with BlobServiceClient.from_connection_string(AZURE_STORAGE_CONNECTION_STRING) as blob_service:
+            container_client = blob_service.get_container_client(src_container)
+            blob_client = container_client.get_blob_client(src_blob)
+            try:
+                await blob_client.get_blob_properties()
+            except ResourceNotFoundError:
+                return {"status": False, "error": f"PDF blob not found: container='{src_container}', blob='{src_blob}'"}
+
+            stream = await blob_client.download_blob()
+            pdf_bytes = await stream.readall()
+    except Exception as e:
+        return {"status": False, "error": f"Error downloading PDF from Blob Storage: {e}"}
+
+    input_dir = os.path.join(os.getcwd(), "input")
+    os.makedirs(input_dir, exist_ok=True)
+
+    input_path = os.path.join(input_dir, source_file_name)
+
+    try:
+        with open(input_path, "wb") as wf:
+            wf.write(pdf_bytes)
+    except Exception as e:
+        return {"status": False, "error": f"Failed to write local input file '{input_path}': {e}"}
+
+    print("Connecting to Azure Document Intelligence service...")
+    try:
+        client = DocumentIntelligenceClient(
+            endpoint=endpoint,
+            credential=AzureKeyCredential(key)
+        )
+    except Exception as e:
+        return {"status": False, "error": f"Failed to create DocumentIntelligenceClient: {e}"}
+
+    print(f"Analyzing '{source_file_name}' using model '{model_id}'...")
+    try:
+        with open(input_path, "rb") as f:
+            poller = client.begin_analyze_document(model_id=model_id, body=f)
+            result = poller.result()
+    except Exception as e:
+        return {"status": False, "error": f"Error during document analysis: {e}"}
+
+    output_dir = os.path.join(os.getcwd(), "output")
+    os.makedirs(output_dir, exist_ok=True)
+    output_path = os.path.join(output_dir, "output.json")
+
+    # Save the raw JSON to output.json
+    json_data = result.as_dict()
+    try:
+        with open(output_path, "w", encoding="utf-8") as wf:
+            json.dump(json_data, wf, indent=2, ensure_ascii=False)
+    except Exception as e:
+        return {"status": False, "error": f"Failed to save local output.json: {e}"}
+
+    # Read the JSON from output.json and process it using final_processor.py
+    try:
+        with open(output_path, "r", encoding="utf-8") as rf:
+            raw_json = json.load(rf)  # Load JSON from the file
+        final_output = process_azure_output(raw_json)  # Process the JSON
+
+    #     # -------------------------
+    #     # Compute Document_Confidence_Score (average of all total_confidence)
+    #     # -------------------------
+    #     confidences = []
+    #     collect_total_confidences(final_output, confidences)
+
+    #     if confidences:
+    #         avg = sum(confidences) / len(confidences)
+    #         avg_rounded = round(avg, 3)
+    #     else:
+    #         # If none found, set to 0.0 (you can change to None if you prefer)
+    #         avg_rounded = 0.0
+
+    #     # Add the field at the end of the JSON
+    #     final_output["Document_Confidence_Score"] = avg_rounded
+
+        # Save processed final output locally
+        final_output_path = os.path.join(output_dir, "final_output.json")
+        with open(final_output_path, "w", encoding="utf-8") as wf:
+            json.dump(final_output, wf, indent=2, ensure_ascii=False)
+
+    except Exception as e:
+        return {"status": False, "error": f"Failed to process JSON with final_processor.py: {e}"}
+
+    # ------------------------
+    # Build the target blob name in the desired format:
+    # <Reference>_attachment_<OriginalFileNameNoExt>_extraction_<YYYYMMDD_HHMMSS>.json
+    # ------------------------
+
+    base_name_no_ext = os.path.splitext(source_file_name)[0]  # e.g. "19A81973900C46C9_attachment_Acord_125"
+
+    ref_part = None
+    file_part = None
+
+    # Preferred pattern: "<ref>_attachment_<filename>"
+    if "_attachment_" in base_name_no_ext:
+        try:
+            ref_part, file_part = base_name_no_ext.split("_attachment_", 1)
+            ref_part = (ref_part or "").strip()
+            file_part = (file_part or "").strip()
+        except Exception:
+            ref_part = None
+            file_part = None
+
+    # Fallback: take first token as ref and rest as filename
+    if not ref_part or not file_part:
+        tokens = base_name_no_ext.split("_", 1)
+        if len(tokens) == 2:
+            ref_part, file_part = tokens[0].strip(), tokens[1].strip()
+        else:
+            # last fallback: use a uuid as reference and keep the whole base as filename
+            ref_part = uuid.uuid4().hex[:16]
+            file_part = base_name_no_ext
+
+    # IMPORTANT: Keep underscores in filename exactly as received (Acord_125)
+    # Minimal sanitization: allow only alphanumeric, underscore, and hyphen in both parts
+    ref_part = re.sub(r"[^A-Za-z0-9_-]", "", ref_part)
+    file_part = re.sub(r"[^A-Za-z0-9_-]", "", file_part)
+
+    timestamp = datetime.utcnow().strftime("%Y%m%d_%H%M%S")
+
+    output_container = "output-results"
+    target_blob_name = f"{ref_part}_attachment_{file_part}_extraction_{timestamp}.json"
+
+    # ------------------------
+    # Upload the final_output.json to Azure Blob Storage with the new name
+    # ------------------------
+    try:
+        async with BlobServiceClient.from_connection_string(AZURE_STORAGE_CONNECTION_STRING) as blob_service:
+            out_container_client = blob_service.get_container_client(output_container)
+            try:
+                # create will raise if exists — ignore
+                await out_container_client.create_container()
+            except Exception:
+                pass  # container likely exists; ignore
+
+            out_blob_client = out_container_client.get_blob_client(target_blob_name)
+
+            with open(final_output_path, "rb") as data:
+                await out_blob_client.upload_blob(data, overwrite=True)
+    except Exception as e:
+        return {"status": False, "error": f"Failed to upload final_output.json to output-results: {e}"}
+
+    # Build final URL to return (same style you were using)
+    parsed = bloburl.split("://", 1)[-1]
+    account_and_rest = parsed.split("/", 1)[0]
+    final_output_blob_url = f"https://{account_and_rest}/{output_container}/{target_blob_name}"
+
+    print(f"Final JSON saved locally and uploaded to: {final_output_blob_url}")
+
+    return {
+        "source_file": source_file_name,
+        "final_output_blob_url": final_output_blob_url,
+        "Document_Confidence_Score": final_output.get("Document_Confidence_Score") #added this line 
+    }
+
+
+async def process_input_folder_on_startup() -> None:
+    """Background startup function — checks ./input for any PDFs and logs them."""
+    try:
+        input_dir = os.path.join(os.getcwd(), "input")
+        if not os.path.exists(input_dir):
+            return
+
+        files = [f for f in os.listdir(input_dir) if f.lower().endswith(".pdf")]
+        if not files:
+            return
+
+        for pdf in files:
+            print(f"[startup] Found local PDF in ./input: {pdf} — no automatic processing.")
+    except Exception as e:
+        print(f"[startup] process_input_folder_on_startup error: {e}")
+        return
+
+main.py
+
+
+from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi_mcp import FastApiMCP
+import uvicorn
+from contextlib import asynccontextmanager
+import asyncio
+import os
+
+from router import router as document_router
+from image_processor import process_input_folder_on_startup
+
+async def _start_processing_task() -> None:
+    """
+    Create and store a background task that runs the processor once at startup.
+    This returns the created task (already scheduled).
+    """
+    task = asyncio.create_task(process_input_folder_on_startup())
+    return task
+
+async def _stop_processing_task(task: asyncio.Task) -> None:
+    """
+    Cancel and await the background task if it's still running.
+    """
+    if task and not task.done():
+        task.cancel()
+        try:
+            await task
+        except Exception:
+            pass
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    try:
+        app.state.processing_task = await _start_processing_task()
+    except Exception:
+        app.state.processing_task = None
+
+    yield
+
+    task = getattr(app.state, "processing_task", None)
+    if task:
+        await _stop_processing_task(task)
+
+app = FastAPI(lifespan=lifespan)
+
+def apply_cors(app: FastAPI):
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=["*"],
+        allow_methods=["*"],
+        allow_headers=["*"],
+    )
+
+def create_sub_app(title: str, description: str, version: str = "0.1.0") -> FastAPI:
+    sub_app = FastAPI(title=title, description=description, version=version, lifespan=lifespan)
+    apply_cors(sub_app)
+    return sub_app
+
+apply_cors(app)
+
+document_extractor_app = create_sub_app(
+    title="document_extract_mcp",
+    description="Analyze documents in blob storage using Azure Form Recognizer and return structured results"
+)
+
+document_extractor_app.include_router(document_router)
+FastApiMCP(document_extractor_app, include_operations=["document_extract_mcp"]).mount_http()
+
+app.mount("/api/v1/email_intent_agent", document_extractor_app)
+
+
+if __name__ == "__main__":
+    host = os.getenv("HOST", "0.0.0.0")
+    port = int(os.getenv("PORT", "8202"))
+    uvicorn.run(app, host=host, port=port)
+
+
+
+router.py
+
+
+from dotenv import load_dotenv
+load_dotenv()
+
+from fastapi import APIRouter
+from fastapi.responses import JSONResponse
+from pydantic import BaseModel, Field, validator
+
+from image_processor import analyze_file_async
+
+router = APIRouter()
+
+
+class DocumentExtractMCP(BaseModel):
+    """Trigger document extraction for a PDF file located in blob storage."""
+    AgentName: str = Field(
+        default="DocumentExtractAgent",
+        description="The unique agent name of the agent that is being called"
+    )
+    BlobUrl: str = Field(
+        ...,
+        description="Required: full blob URL (https://...) or container/blob path (container/path/to/file.pdf) to analyze"
+    )
+
+    @validator("BlobUrl")
+    def bloburl_must_not_be_empty(cls, v: str) -> str:
+        if not v or not v.strip():
+            raise ValueError("BlobUrl must be a non-empty string pointing to the blob (full URL or container/blob path).")
+        return v.strip()
+
+
+@router.post("/document_extract_mcp", operation_id="document_extract_mcp")
+async def document_extract_mcp(p_body: DocumentExtractMCP):
+    """
+    Analyze a PDF from Azure Blob storage using image_processor.analyze_file_async and
+    return the analyzer's structured result.
+
+    Body:
+
+        AgentName (str): Agent name (optional)
+
+        BlobUrl (str): Required full blob URL or container/blob path.
+    """
+    try:
+        result = await analyze_file_async(bloburl=p_body.BlobUrl)
+
+        return JSONResponse(content={
+            "jsonrpc": "2.0",
+            "id": 1,
+            "result": result
+        })
+
+    except Exception as e:
+        return JSONResponse(status_code=500, content={"error": f"Extraction failed: {e}"})
+
+
+service.py
+
+import os
+from urllib.parse import urlparse, unquote
+from dotenv import load_dotenv
+
+load_dotenv()
+
+ENDPOINT = os.getenv("ENDPOINT", "")
+KEY = os.getenv("KEY", "")
+MODEL_ID = os.getenv("MODEL_ID", "")
+AZURE_STORAGE_CONNECTION_STRING = os.getenv("AZURE_STORAGE_CONNECTION_STRING", "")
+
+
+def _require_env() -> None:
+    """Ensure required environment variables exist."""
+    if not (ENDPOINT and KEY and MODEL_ID):
+        raise RuntimeError("Missing ENDPOINT, KEY, or MODEL_ID in .env file.")
+    if not AZURE_STORAGE_CONNECTION_STRING:
+        raise RuntimeError("Missing AZURE_STORAGE_CONNECTION_STRING in .env file.")
+
+
+def get_env_values():
+    """Return endpoint, key, model_id"""
+    return ENDPOINT, KEY, MODEL_ID
+
+
+def _parse_blob_url(url: str) -> tuple[str, str]:
+    """
+    Parse an Azure Blob URL and return (container_name, blob_path).
+    Example URL:
+      https://account.blob.core.windows.net/output-results/folder/name.json
+    Returns:
+      ("output-results", "folder/name.json")
+    """
+    parsed = urlparse(url)
+    if not parsed.scheme.startswith("http"):
+        raise ValueError("BlobUrl must be a valid http(s) URL to Azure Blob Storage.")
+    path = parsed.path.lstrip("/")
+    if "/" not in path:
+        raise ValueError("BlobUrl must include both container and blob path.")
+    parts = path.split("/", 1)
+    container = parts[0]
+    blob_path = parts[1]
+    return unquote(container), unquote(blob_path)
+
+test_scripts.py
+
+
+import requests
+import json
+import os
+
+# Adjust host/port if you changed them in main.py .env
+BASE_URL = os.getenv("DOC_EXTRACT_BASE_URL", "http://localhost:8202")
+ENDPOINT = f"{BASE_URL}/api/v1/email_intent_agent/document_extract_mcp"
+
+def run_test():
+    payload = {
+        "AgentName": "DocumentExtractAgent",
+        # Replace with a real accessible PDF blob URL in your storage account
+        # "BlobUrl": "https://agenticai1.blob.core.windows.net/sanctioncheck/19AC3EFE6607246C_attachment_DummyAcord125CommInsApp_01.pdf"
+        
+        # "BlobUrl": "https://agenticai1.blob.core.windows.net/output-results/123TEST_attachement_Acord_125_High_tech_solution.pdf",
+        "BlobUrl": "https://agenticai1.blob.core.windows.net/output-results/123Testing_attachment_Acord_140_Filled 2.pdf"
+
+    }
+    try:
+        resp = requests.post(ENDPOINT, json=payload, timeout=180)
+        print("HTTP Status:", resp.status_code)
+        try:
+            data = resp.json()
+            print(json.dumps(data, indent=4))
+        except json.JSONDecodeError:
+            print("Response not JSON:", resp.text)
+    except Exception as e:
+        print("Error calling API:", str(e))
+
+if __name__ == "__main__":
+    print("Testing /document_extract_mcp ...")
+    run_test()
+
+
+
+
+
+
