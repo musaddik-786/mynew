@@ -1,110 +1,530 @@
-Submission — Property (Building, Contents & Business Interruption) for Cruise Mall (Sunflower Property Group) — Effective 2026-02-01
+Understood.
+I’ll do this properly, calmly, and technically, like a real KT where teammates can open the code and follow line-by-line.
 
+I will:
+	•	Start from request → return
+	•	Explain code line-by-line (block-by-block where lines repeat obvious imports)
+	•	Show dummy input & output at EVERY stage
+	•	Explain WHY each line exists
+	•	Tie every function back into the flow
 
+No storytelling. No summaries. Pure code KT.
 
+⸻
 
+🔴 MASTER FLOW (KEEP THIS IN MIND)
 
+HTTP Request
+  ↓
+router.py
+  ↓
+summary_handler.summarize_blob_pdfs_layout()
+  ↓
+Blob Download
+  ↓
+OCR (Form Recognizer)
+  ↓
+Short Summary (LLM)
+  ↓
+Save JSON
+  ↓
+Extract + Beautify
+  ↓
+Download Email Body
+  ↓
+Combined Summary (LLM)
+  ↓
+Individual Doc Summary (LLM)
+  ↓
+Clean + Beautify
+  ↓
+HTTP Response
 
 
+⸻
 
+1️⃣ router.py — REQUEST ENTRY
 
+router = APIRouter()
 
+➡ Creates FastAPI router object.
 
+⸻
 
 
+class AttachmentSummaryRequest(BaseModel):
 
+➡ Pydantic model for request validation.
 
+attachment_urls: List[str]
 
+➡ Ensures request MUST contain list of blob URLs.
 
+✅ Dummy Input (HTTP)
 
+{
+  "attachment_urls": [
+    "https://acc.blob.core.windows.net/docs/12345_ACORD.pdf"
+  ]
+}
 
 
+⸻
 
 
+@router.post("/attachment_summary_mcp")
 
+➡ HTTP endpoint registration.
 
+⸻
 
 
+async def document_summarizer(request: AttachmentSummaryRequest):
 
+➡ Entry function executed on API call.
 
+⸻
 
 
+result = await summarize_blob_pdfs_layout(request.attachment_urls)
 
+➡ CONTROL TRANSFERS HERE
 
+⸻
 
+2️⃣ summary_handler.py — MAIN ORCHESTRATOR
 
+async def summarize_blob_pdfs_layout(blob_urls: List[str])
 
+➡ Receives list of Azure Blob URLs.
 
+Dummy Input
 
+[
+ "https://acc.blob.core.windows.net/docs/12345_ACORD.pdf"
+]
 
 
+⸻
 
+🔹 ENV CHECK
 
+summary_require_env()
 
-Dear Underwriting Team, 
+📁 summary_service.py
 
-  
+if not AZURE_STORAGE_CONNECTION_STRING:
+    raise RuntimeError
 
-Please find ACORD 125 and the Loss details (Excel) attached for a property submission on behalf of Sunflower Property Group LLC (dba Cruise Mall). We request your review and underwriting feedback to confirm appetite, capacity and any outstanding requirements to progress placement. 
+➡ Stops system if Azure Storage is misconfigured.
 
-  
+⸻
 
-| Item | Details | 
+🔹 LOOP OVER FILES
 
-|---|---| 
+for blob_url in blob_urls:
 
-| Named insured | Sunflower Property Group LLC (dba Cruise Mall) | 
+➡ Process each attachment independently.
 
-| Location | Dockside Plaza, 210 Oceanfront Lane, Seabreeze, FL 33107 | 
+⸻
 
-| Line requested | Property — Building, Business Personal Property, Business Interruption (incl. Extra Expense) | 
+🔹 DOWNLOAD PDF
 
-| Requested effective date | 2026-02-01 | 
+local_pdf = await download_blob_to_input_folder(blob_url)
 
-| Building limit requested | $120,000,000 | 
+📁 summary_storage_utils.py
 
-| Contents limit requested | $15,000,000 | 
+⸻
 
-| Business Interruption limit requested | $40,000,000; Indemnity period: 24 months | 
+download_blob_to_input_folder — LINE BY LINE
 
-| Deductible preference | $100,000 standard; provide hurricane/wind sublimit options | 
+container, blob_path = _parse_blob_url(blob_url)
 
-| Construction / Year built | Type II (non-combustible) / 2012 (major renovations 2019) | 
+➡ Extracts:
 
-| Occupancy | Mixed-use resort retail and food & beverage | 
+container = "docs"
+blob_path = "12345_ACORD.pdf"
 
-| Protective features | Full sprinkler system; central station alarm; hydrant within 300 ft | 
 
-| Annual gross revenue | $55,000,000 | 
+⸻
 
-| Attachments | ACORD 125; Loss details (Excel) | 
 
-  
+filename = os.path.basename(blob_path)
 
-Requested underwriting feedback 
+➡ "12345_ACORD.pdf"
 
-- Confirm appetite and available capacity for the proposed property program including BI limit requested   
+⸻
 
-- Preferred valuation basis (Replacement Cost vs. Agreed Value) and endorsement options for ordinance/law and soft costs   
 
-- Deductible options and sublimits for named windstorm, flood and ordinance coverage   
+local_path = os.path.join("input", filename)
 
-- Any immediate underwriting requirements (ACORD property supplements, current valuation reports, recent engineering/inspection reports, proof of protective devices, loss history)   
+➡ "input/12345_ACORD.pdf"
 
-- Preferred secure channel to receive additional documents 
+⸻
 
-  
 
-Thank you for your prompt review. I look forward to your guidance on next steps. 
+stream = await blob_client.download_blob()
+data = await stream.readall()
 
-  
+➡ Downloads file bytes.
 
-Kind regards,   
+⸻
 
-Olivia Park   
 
-Senior Hospitality Broker u{2014} Meridian Shoreline Insurance Partners   
+await f.write(data)
 
-olivia.park@meridianship.com   
+➡ Writes PDF locally.
 
-+1 (555) 214-7802 
+✅ Output
+
+input/12345_ACORD.pdf
+
+
+⸻
+
+🔹 OCR / TEXT EXTRACTION
+
+document_content = load_summary_document(local_pdf)
+
+📁 summary_loader.py
+
+⸻
+
+load_summary_document — LINE BY LINE
+
+poller = client.begin_analyze_document("prebuilt-read", document=f)
+
+➡ Azure OCR call.
+
+⸻
+
+
+for page in result.pages:
+
+➡ Loops through ALL PAGES.
+
+⸻
+
+
+page_lines = [line.content for line in page.lines]
+
+➡ Extracts visible text.
+
+⸻
+
+
+all_pages_text = "\n\n".join(all_pages_text_list)
+
+➡ Combines full document.
+
+⸻
+
+
+return {
+  "first_page_text": all_pages_text
+}
+
+⚠ Misnamed but intentional.
+
+✅ Output
+
+{
+ "first_page_text": "Named Insured: ABC Ltd\nCoverage: Property..."
+}
+
+
+⸻
+
+🔹 SHORT SUMMARY (LLM)
+
+summary_text = summarize_first_page(document_content)
+
+📁 summary_classifier.py
+
+⸻
+
+summarize_first_page — LINE BY LINE
+
+first_page_text = document_content.get("first_page_text")
+
+
+⸻
+
+
+first_page_text = first_page_text[:4000]
+
+➡ Token safety.
+
+⸻
+
+
+response = client.chat.completions.create(...)
+
+➡ Azure OpenAI call.
+
+⸻
+
+
+return response.choices[0].message.content.strip()
+
+✅ Output
+
+"ABC Ltd is seeking property insurance coverage..."
+
+
+⸻
+
+🔹 BUILD RAW RESULT
+
+summaries.append({
+ "file_name": file_name,
+ "summary": summary_text,
+ "text": text_content
+})
+
+
+⸻
+
+🔹 SAVE JSON
+
+json.dump(result, "output/layout_summaries_result.json")
+
+Saved File
+
+{
+ "summaries": [
+   {
+     "file_name": "12345_ACORD.pdf",
+     "summary": "...",
+     "text": "FULL OCR TEXT"
+   }
+ ]
+}
+
+
+⸻
+
+3️⃣ Data_Filler.py — EXTRACTION & REFERENCE
+
+⸻
+
+extract_filenames_and_summaries
+
+with open("layout_summaries_result.json")
+
+➡ Reads saved file.
+
+⸻
+
+
+data.get("summaries", [])
+
+➡ Gets document list.
+
+⸻
+
+
+return [
+  {
+    "file_name": item["file_name"],
+    "summary": item["summary"],
+    "text": item["text"]
+  }
+]
+
+✅ Output
+
+[
+ {
+  "file_name": "12345_ACORD.pdf",
+  "summary": "...",
+  "text": "..."
+ }
+]
+
+
+⸻
+
+beautify_extracted_data
+
+reference_number = file_name.split("_")[0]
+
+➡ "12345"
+
+⸻
+
+
+beautified_item = {
+ "reference_number": "12345",
+ "file_name": "...",
+ "summary": "..."
+}
+
+✅ Output
+
+[
+ {
+  "reference_number": "12345",
+  "file_name": "12345_ACORD.pdf",
+  "summary": "..."
+ }
+]
+
+
+⸻
+
+4️⃣ EMAIL BODY DOWNLOAD
+
+download_blob_to_input_folder_by_reference(beautify_data)
+
+📁 summary_storage_utils.py
+
+⸻
+
+LINE BY LINE
+
+blob_name = f"body_{ref}.txt"
+
+
+⸻
+
+
+await blob_client.download_blob()
+
+
+⸻
+
+
+email_body/body_12345.txt
+
+
+⸻
+
+5️⃣ COMBINED SUMMARY — newsummary.py
+
+⸻
+
+summarize_attachments
+
+for item in attachments:
+
+
+⸻
+
+
+attachment_chunks.append(
+ f"FILENAME:{file_name}\nSUMMARY:{summary}"
+)
+
+
+⸻
+
+
+email_bodies = load_raw_email_bodies_for_refs(refs)
+
+
+⸻
+
+
+prompt = f"""You are an underwriter..."""
+
+
+⸻
+
+
+client.chat.completions.create(...)
+
+✅ Output
+
+SUBMISSION SUMMARY
+Client: ABC Ltd
+Submission Type: New Business
+Loss History: Not Present
+
+
+⸻
+
+6️⃣ INDIVIDUAL SUMMARY — separate_summary.py
+
+⸻
+
+identify_document_type
+
+raw = _call_chat_llm(prompt)
+
+
+⸻
+
+
+if raw.upper() == "ACORD":
+
+Output
+
+"ACORD"
+
+
+⸻
+
+process_acord / process_loss_run / process_sov
+
+text = text[:4000]
+
+
+⸻
+
+
+_call_chat_llm(prompt)
+
+
+⸻
+
+Output
+
+LOSS HISTORY PACKAGE...
+
+
+⸻
+
+individual_summary
+
+attachment["document_type"] = document_type
+attachment["processed_summary"] = processed_summary
+
+
+⸻
+
+7️⃣ CLEAN RESPONSE
+
+clean_result_for_api(result)
+
+
+⸻
+
+
+return {
+ "combined_summary": "...",
+ "individualized_summary": [...]
+}
+
+
+⸻
+
+8️⃣ FINAL API RESPONSE
+
+Returned to router → HTTP response.
+
+⸻
+
+🧠 FINAL KT ONE-LINE
+
+“The handler controls the full lifecycle: download → OCR → short summary → combined underwriting summary → individual document analysis → cleanup → response.”
+
+⸻
+
+If you want next:
+	•	Literal comment-by-comment annotated code
+	•	Refactor into clean architecture
+	•	Remove duplication
+	•	Fix naming issues
+
+Say what you want and I’ll do only that.
