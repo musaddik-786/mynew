@@ -1,530 +1,224 @@
-Understood.
-I’ll do this properly, calmly, and technically, like a real KT where teammates can open the code and follow line-by-line.
+Perfect, this is clear 👍
+I’ll keep everything aligned with your existing MCP + FastAPI structure, and I’ll only do what you asked:
+	•	Router accepts the MCP response
+	•	Calls a handler function
+	•	Handler extracts is_Sanctioned
+	•	Stores it in another variable
+	•	Returns a JSON-RPC–compatible result
+	•	Provide a test_script.py that uses the given input payload
 
-I will:
-	•	Start from request → return
-	•	Explain code line-by-line (block-by-block where lines repeat obvious imports)
-	•	Show dummy input & output at EVERY stage
-	•	Explain WHY each line exists
-	•	Tie every function back into the flow
-
-No storytelling. No summaries. Pure code KT.
+No extra logic, no assumptions.
 
 ⸻
 
-🔴 MASTER FLOW (KEEP THIS IN MIND)
+1️⃣ What we are building (flow clarity)
 
-HTTP Request
-  ↓
+Incoming MCP payload (already processed by some tool):
+
+{
+  "jsonrpc": "2.0",
+  "id": 1,
+  "result": {
+    "status": true,
+    "results": [
+      {
+        "Extracted Name": "Berkshire Hathaway",
+        "is_Sanctioned": false
+      }
+    ]
+  }
+}
+
+Flow you want:
+
 router.py
-  ↓
-summary_handler.summarize_blob_pdfs_layout()
-  ↓
-Blob Download
-  ↓
-OCR (Form Recognizer)
-  ↓
-Short Summary (LLM)
-  ↓
-Save JSON
-  ↓
-Extract + Beautify
-  ↓
-Download Email Body
-  ↓
-Combined Summary (LLM)
-  ↓
-Individual Doc Summary (LLM)
-  ↓
-Clean + Beautify
-  ↓
-HTTP Response
+  └── receives payload
+      └── calls handler function
+          └── extracts is_Sanctioned
+              └── stores in variable
+                  └── returns result
 
 
 ⸻
 
-1️⃣ router.py — REQUEST ENTRY
+2️⃣ Router file (file_router.py)
+
+Purpose
+	•	Accept full MCP response
+	•	Call handler
+	•	Return JSON-RPC envelope
+
+from fastapi import APIRouter
+from fastapi.responses import JSONResponse
+from pydantic import BaseModel
+from handler import extract_sanction_status
+import traceback
+import sys
 
 router = APIRouter()
 
-➡ Creates FastAPI router object.
 
-⸻
+class SanctionResponseRequest(BaseModel):
+    jsonrpc: str
+    id: int
+    result: dict
 
 
-class AttachmentSummaryRequest(BaseModel):
-
-➡ Pydantic model for request validation.
-
-attachment_urls: List[str]
-
-➡ Ensures request MUST contain list of blob URLs.
-
-✅ Dummy Input (HTTP)
-
-{
-  "attachment_urls": [
-    "https://acc.blob.core.windows.net/docs/12345_ACORD.pdf"
-  ]
-}
-
-
-⸻
-
-
-@router.post("/attachment_summary_mcp")
-
-➡ HTTP endpoint registration.
-
-⸻
-
-
-async def document_summarizer(request: AttachmentSummaryRequest):
-
-➡ Entry function executed on API call.
-
-⸻
-
-
-result = await summarize_blob_pdfs_layout(request.attachment_urls)
-
-➡ CONTROL TRANSFERS HERE
-
-⸻
-
-2️⃣ summary_handler.py — MAIN ORCHESTRATOR
-
-async def summarize_blob_pdfs_layout(blob_urls: List[str])
-
-➡ Receives list of Azure Blob URLs.
-
-Dummy Input
-
-[
- "https://acc.blob.core.windows.net/docs/12345_ACORD.pdf"
-]
-
-
-⸻
-
-🔹 ENV CHECK
-
-summary_require_env()
-
-📁 summary_service.py
-
-if not AZURE_STORAGE_CONNECTION_STRING:
-    raise RuntimeError
-
-➡ Stops system if Azure Storage is misconfigured.
-
-⸻
-
-🔹 LOOP OVER FILES
-
-for blob_url in blob_urls:
-
-➡ Process each attachment independently.
-
-⸻
-
-🔹 DOWNLOAD PDF
-
-local_pdf = await download_blob_to_input_folder(blob_url)
-
-📁 summary_storage_utils.py
-
-⸻
-
-download_blob_to_input_folder — LINE BY LINE
-
-container, blob_path = _parse_blob_url(blob_url)
-
-➡ Extracts:
-
-container = "docs"
-blob_path = "12345_ACORD.pdf"
-
-
-⸻
-
-
-filename = os.path.basename(blob_path)
-
-➡ "12345_ACORD.pdf"
-
-⸻
-
-
-local_path = os.path.join("input", filename)
-
-➡ "input/12345_ACORD.pdf"
-
-⸻
-
-
-stream = await blob_client.download_blob()
-data = await stream.readall()
-
-➡ Downloads file bytes.
-
-⸻
-
-
-await f.write(data)
-
-➡ Writes PDF locally.
-
-✅ Output
-
-input/12345_ACORD.pdf
-
-
-⸻
-
-🔹 OCR / TEXT EXTRACTION
-
-document_content = load_summary_document(local_pdf)
-
-📁 summary_loader.py
-
-⸻
-
-load_summary_document — LINE BY LINE
-
-poller = client.begin_analyze_document("prebuilt-read", document=f)
-
-➡ Azure OCR call.
-
-⸻
-
-
-for page in result.pages:
-
-➡ Loops through ALL PAGES.
-
-⸻
-
-
-page_lines = [line.content for line in page.lines]
-
-➡ Extracts visible text.
-
-⸻
-
-
-all_pages_text = "\n\n".join(all_pages_text_list)
-
-➡ Combines full document.
-
-⸻
-
-
-return {
-  "first_page_text": all_pages_text
-}
-
-⚠ Misnamed but intentional.
-
-✅ Output
-
-{
- "first_page_text": "Named Insured: ABC Ltd\nCoverage: Property..."
-}
-
-
-⸻
-
-🔹 SHORT SUMMARY (LLM)
-
-summary_text = summarize_first_page(document_content)
-
-📁 summary_classifier.py
-
-⸻
-
-summarize_first_page — LINE BY LINE
-
-first_page_text = document_content.get("first_page_text")
-
-
-⸻
-
-
-first_page_text = first_page_text[:4000]
-
-➡ Token safety.
-
-⸻
-
-
-response = client.chat.completions.create(...)
-
-➡ Azure OpenAI call.
-
-⸻
-
-
-return response.choices[0].message.content.strip()
-
-✅ Output
-
-"ABC Ltd is seeking property insurance coverage..."
-
-
-⸻
-
-🔹 BUILD RAW RESULT
-
-summaries.append({
- "file_name": file_name,
- "summary": summary_text,
- "text": text_content
-})
-
-
-⸻
-
-🔹 SAVE JSON
-
-json.dump(result, "output/layout_summaries_result.json")
-
-Saved File
-
-{
- "summaries": [
-   {
-     "file_name": "12345_ACORD.pdf",
-     "summary": "...",
-     "text": "FULL OCR TEXT"
-   }
- ]
-}
-
-
-⸻
-
-3️⃣ Data_Filler.py — EXTRACTION & REFERENCE
-
-⸻
-
-extract_filenames_and_summaries
-
-with open("layout_summaries_result.json")
-
-➡ Reads saved file.
-
-⸻
-
-
-data.get("summaries", [])
-
-➡ Gets document list.
-
-⸻
-
-
-return [
-  {
-    "file_name": item["file_name"],
-    "summary": item["summary"],
-    "text": item["text"]
-  }
-]
-
-✅ Output
-
-[
- {
-  "file_name": "12345_ACORD.pdf",
-  "summary": "...",
-  "text": "..."
- }
-]
-
-
-⸻
-
-beautify_extracted_data
-
-reference_number = file_name.split("_")[0]
-
-➡ "12345"
-
-⸻
-
-
-beautified_item = {
- "reference_number": "12345",
- "file_name": "...",
- "summary": "..."
-}
-
-✅ Output
-
-[
- {
-  "reference_number": "12345",
-  "file_name": "12345_ACORD.pdf",
-  "summary": "..."
- }
-]
-
-
-⸻
-
-4️⃣ EMAIL BODY DOWNLOAD
-
-download_blob_to_input_folder_by_reference(beautify_data)
-
-📁 summary_storage_utils.py
-
-⸻
-
-LINE BY LINE
-
-blob_name = f"body_{ref}.txt"
-
-
-⸻
-
-
-await blob_client.download_blob()
-
-
-⸻
-
-
-email_body/body_12345.txt
-
-
-⸻
-
-5️⃣ COMBINED SUMMARY — newsummary.py
-
-⸻
-
-summarize_attachments
-
-for item in attachments:
-
-
-⸻
-
-
-attachment_chunks.append(
- f"FILENAME:{file_name}\nSUMMARY:{summary}"
+@router.post(
+    "/Licensing_&_Sanction_Checker_MCP",
+    operation_id="Licensing_&_Sanction_Checker_MCP",
+    summary="Extract is_Sanctioned flag from MCP response"
 )
+async def sanction_router(request: SanctionResponseRequest):
+    try:
+        # Call handler
+        is_sanctioned_flag = extract_sanction_status(request.result)
+
+        return JSONResponse(
+            content={
+                "jsonrpc": "2.0",
+                "id": request.id,
+                "result": {
+                    "status": True,
+                    "is_Sanctioned": is_sanctioned_flag
+                }
+            },
+            status_code=200
+        )
+
+    except Exception as e:
+        tb = traceback.format_exc()
+        print(tb, file=sys.stderr)
+
+        return JSONResponse(
+            content={
+                "jsonrpc": "2.0",
+                "id": request.id,
+                "result": {
+                    "status": False,
+                    "error": str(e),
+                    "trace": tb
+                }
+            },
+            status_code=200
+        )
 
 
 ⸻
 
+3️⃣ Handler file (handler.py)
 
-email_bodies = load_raw_email_bodies_for_refs(refs)
+Purpose
+	•	Pure logic
+	•	No FastAPI
+	•	No MCP
+	•	Just extraction
+
+def extract_sanction_status(mcp_result: dict) -> bool:
+    """
+    Extracts 'is_Sanctioned' from MCP result payload
+    """
+
+    # Example variable you asked for
+    is_sanctioned = False
+
+    # Safety checks
+    if not mcp_result:
+        return is_sanctioned
+
+    results = mcp_result.get("results", [])
+
+    if not results:
+        return is_sanctioned
+
+    # Extract from first record
+    is_sanctioned = results[0].get("is_Sanctioned", False)
+
+    # This variable is now stored and usable
+    return is_sanctioned
+
+📌 Key point
+is_sanctioned is now:
+	•	Stored in a variable
+	•	Reusable later (DB, decision engine, eligibility logic, etc.)
+
+⸻
+
+4️⃣ main.py (NO CHANGE REQUIRED ✅)
+
+Your existing main.py is already correct for this use case.
+
+✔ MCP mounting
+✔ Router inclusion
+✔ Sub-app structure
+
+So no edits needed here.
+
+⸻
+
+5️⃣ Test script (test_script.py)
+
+Purpose
+	•	Run server
+	•	Send exact MCP input
+	•	Verify output
+
+import requests
+
+url = "http://localhost:8601/api/v1/eligibility_agent/Licensing_&_Sanction_Checker_MCP"
+
+payload = {
+    "jsonrpc": "2.0",
+    "id": 1,
+    "result": {
+        "status": True,
+        "results": [
+            {
+                "Extracted Name": "Berkshire Hathaway",
+                "is_Sanctioned": False
+            }
+        ]
+    }
+}
+
+response = requests.post(url, json=payload)
+
+print("Status Code:", response.status_code)
+print("Response JSON:")
+print(response.json())
 
 
 ⸻
 
+6️⃣ Expected Output
 
-prompt = f"""You are an underwriter..."""
-
-
-⸻
-
-
-client.chat.completions.create(...)
-
-✅ Output
-
-SUBMISSION SUMMARY
-Client: ABC Ltd
-Submission Type: New Business
-Loss History: Not Present
-
-
-⸻
-
-6️⃣ INDIVIDUAL SUMMARY — separate_summary.py
-
-⸻
-
-identify_document_type
-
-raw = _call_chat_llm(prompt)
-
-
-⸻
-
-
-if raw.upper() == "ACORD":
-
-Output
-
-"ACORD"
-
-
-⸻
-
-process_acord / process_loss_run / process_sov
-
-text = text[:4000]
-
-
-⸻
-
-
-_call_chat_llm(prompt)
-
-
-⸻
-
-Output
-
-LOSS HISTORY PACKAGE...
-
-
-⸻
-
-individual_summary
-
-attachment["document_type"] = document_type
-attachment["processed_summary"] = processed_summary
-
-
-⸻
-
-7️⃣ CLEAN RESPONSE
-
-clean_result_for_api(result)
-
-
-⸻
-
-
-return {
- "combined_summary": "...",
- "individualized_summary": [...]
+{
+  "jsonrpc": "2.0",
+  "id": 1,
+  "result": {
+    "status": true,
+    "is_Sanctioned": false
+  }
 }
 
 
 ⸻
 
-8️⃣ FINAL API RESPONSE
-
-Returned to router → HTTP response.
-
-⸻
-
-🧠 FINAL KT ONE-LINE
-
-“The handler controls the full lifecycle: download → OCR → short summary → combined underwriting summary → individual document analysis → cleanup → response.”
+7️⃣ Why this design is MCP-safe ✔
+	•	JSON-RPC envelope preserved
+	•	Router only orchestrates
+	•	Handler does single responsibility
+	•	Easily chainable in OmniCore / eligibility engine
+	•	No coupling with blob URLs or extraction agents
 
 ⸻
 
-If you want next:
-	•	Literal comment-by-comment annotated code
-	•	Refactor into clean architecture
-	•	Remove duplication
-	•	Fix naming issues
+Next logical step (when you’re ready)
+	•	Store is_Sanctioned in:
+	•	eligibility context
+	•	underwriting decision object
+	•	policy issuance gate
 
-Say what you want and I’ll do only that.
+If you want, next we can:
+	•	plug this into OmniCore flow
+	•	or add decision branching (sanctioned → reject)
