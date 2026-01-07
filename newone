@@ -65,3 +65,153 @@ async def compare_files(request: CompareRequest):
             },
             status_code=200
         )
+in try i want to just call that function which is taking the input from request and then that function should extract has the is_Sanctioned field and store it in the other variable 
+just as we were doing here inside try block
+  try:
+        result = await compare_name_with_sanctions(json_file_url=request.jsonfilepath)
+
+@router.post(
+    "/Licensing_&_Sanction_Checker_MCP",
+    operation_id="Licensing_&_Sanction_Checker_MCP",
+    summary="Compare JSON (Owner/Insured/Contact/NAMED INSURED(S)) from blob URL with local sanctions CSV."
+)
+async def compare_files(request: CompareRequest):
+    """
+    Receives the JSON blob URL from the Data Extraction Agent and performs the comparison.
+    Returns a JSON-RPC envelope for consistency with your duplicate attachment checker.
+    This wrapper ensures 'result' is always a JSON object (not null) and logs unexpected errors.
+    """
+    try:
+        result = await compare_name_with_sanctions(json_file_url=request.jsonfilepath)
+        # Guard: ensure result is a dict (JSON object). If not, convert to error dict.
+        if result is None or not isinstance(result, dict):
+            result = {"status": False, "error": "Internal: handler returned no result (None or non-dict)."}
+        return JSONResponse(
+            content={
+                "jsonrpc": "2.0",
+                "id": 1,
+                "result": result
+            },
+            status_code=200
+        )
+    except Exception as e:
+        # Log traceback server-side for debugging
+        tb = traceback.format_exc()
+        print("Unexpected error in compare_files:", file=sys.stderr)
+        print(tb, file=sys.stderr)
+        # Return JSON-RPC with an error object (still in result so client keeps consistent shape)
+        return JSONResponse(
+            content={
+                "jsonrpc": "2.0",
+                "id": 1,
+                "result": {"status": False, "error": f"Unexpected server error: {str(e)}", "trace": tb}
+            },
+            status_code=200
+        )
+
+and that function should be defined in some other file like handler.py where it takes
+
+also this is my main.py current;y
+
+
+from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi_mcp import FastApiMCP
+import uvicorn
+
+from file_router import router as file_router
+
+
+def apply_cors(app: FastAPI):
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=["*"],
+        allow_methods=["*"],
+        allow_headers=["*"],
+    )
+
+
+def create_sub_app(title: str, description: str, version: str = "0.1.0") -> FastAPI:
+    sub = FastAPI(title=title, description=description, version=version)
+    apply_cors(sub)
+    return sub
+
+
+app = FastAPI()
+apply_cors(app)
+
+file_app = create_sub_app(
+    title="Licensing & Sanction Checker MCP",
+    description="Receives JSON blob URL from Data Extraction Agent and compares extracted name with local sanctions CSV."
+)
+file_app.include_router(file_router)
+
+# Expose ONLY this operation id via MCP HTTP (client will use transport='http')
+FastApiMCP(file_app, include_operations=["Licensing_&_Sanction_Checker_MCP"]).mount_http()
+
+# Mount the sub-app under this prefix (keep as-is per your request)
+app.mount("/api/v1/eligibility_agent", file_app)
+
+
+if __name__ == "__main__":
+    uvicorn.run(app, host="0.0.0.0", port=8601)
+
+
+and this is my test script.py for some other use case refer the structureand create a test_script.py for the current usecase 
+
+
+from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi_mcp import FastApiMCP
+import uvicorn
+
+from file_router import router as file_router
+
+
+def apply_cors(app: FastAPI):
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=["*"],
+        allow_methods=["*"],
+        allow_headers=["*"],
+    )
+
+
+def create_sub_app(title: str, description: str, version: str = "0.1.0") -> FastAPI:
+    sub = FastAPI(title=title, description=description, version=version)
+    apply_cors(sub)
+    return sub
+
+
+app = FastAPI()
+apply_cors(app)
+
+file_app = create_sub_app(
+    title="Licensing & Sanction Checker MCP",
+    description="Receives JSON blob URL from Data Extraction Agent and compares extracted name with local sanctions CSV."
+)
+file_app.include_router(file_router)
+
+# Expose ONLY this operation id via MCP HTTP (client will use transport='http')
+FastApiMCP(file_app, include_operations=["Licensing_&_Sanction_Checker_MCP"]).mount_http()
+
+# Mount the sub-app under this prefix (keep as-is per your request)
+app.mount("/api/v1/eligibility_agent", file_app)
+
+
+if __name__ == "__main__":
+    uvicorn.run(app, host="0.0.0.0", port=8601)
+
+this is how our current input for our current mcp will be 
+Tool:Licensing_and_Sanction_Checker_MCP] {
+"jsonrpc": "2.0",
+"id": 1,
+"result": {
+"status": true,
+"results": [
+{
+"Extracted Name": "Berkshire Hathaway",
+"is_Sanctioned": false
+}}}
+
+so lets use this in testscript .py and test 
