@@ -1,37 +1,458 @@
-import requests
+models.py 
+ 
+"""
+SQLModel definitions for agent_submission_intake table
+Maps to PostgreSQL table schema with auto-generated fields
+"""
+ 
+from sqlmodel import SQLModel, Field
+from sqlalchemy import Column, JSON, func
+from typing import Optional, Any
+from datetime import datetime
+from pydantic import BaseModel
+ 
+ 
+class SubmissionIntake(SQLModel, table=True):
+    """
+    SQLModel for agent_submission_intake table
+    Maps directly to PostgreSQL table columns
+    """
+    __tablename__ = "agent_submission_intake"
+   
+    # Auto-generated fields (handled by database)
+    id: Optional[int] = Field(default=None, primary_key=True)
+   
+    # Required fields (from email data)
+    reference_number: str = Field(..., description="Unique reference ID from email")
+   
+    # Optional fields (populated from email)
+    customer_name: Optional[str] = Field(default=None, description="Customer name from email")
+    broker_agent_name: Optional[str] = Field(default=None, description="Broker/Agent name from email")
+    date_time_received: Optional[datetime] = Field(default=None, description="Date and time email was received")
+    email_subject: Optional[str] = Field(default=None, description="Email subject")
+    email_body: Optional[str] = Field(default=None, description="Email body content or blob URL")
+    sender_email_address: Optional[str] = Field(default=None, description="Sender email address")
+    risk_details: Optional[str] = Field(default=None, description="Formatted risk details")
+    has_attachments: Optional[bool] = Field(default=False, description="Whether email has attachments")
+    attachment_count: Optional[int] = Field(default=0, description="Number of attachments")
+    attachments_info: Optional[Any] = Field(default=None, sa_column=Column(JSON), description="JSON info about attachments")
+   
+    # Optional fields (for future use)
+    submission_summary: Optional[str] = Field(default=None, description="Summary of submission")
+    document_summary: Optional[str] = Field(default=None, description="Summary of documents")
+   
+    # Status fields
+    processed: Optional[bool] = Field(default=False, description="Whether submission is processed")
+    processed_at: Optional[datetime] = Field(default=None, description="When submission was processed")
+   
+    # Note: created_at is NOT included here
+    # It's managed entirely by PostgreSQL with DEFAULT now()
+    # No need to manage it from Python
+ 
+ 
+class PropertyDetails(BaseModel):
+    """Property details extracted from email - for input validation"""
+    property_name: str = Field(..., description="Name of the property")
+    property_address: str = Field(..., description="Address of the property")
+    property_type: str = Field(..., description="Type of property")
+    broker_name: str = Field(default="N/A", description="Broker/Agent name")
+    customer_name: str = Field(default="N/A", description="Customer name")
+ 
+ 
+class Attachment(BaseModel):
+    """Email attachment information - for input validation"""
+    filename: str = Field(..., description="Name of the attachment")
+    type: str = Field(..., description="Type of attachment")
+    size: Optional[int] = Field(default=None, description="Size of the attachment in bytes")
+    content_type: Optional[str] = Field(default=None, description="MIME type of the attachment")
+    blob_url: Optional[str] = Field(default=None, description="Blob storage URL of the attachment")
+ 
+ 
+class EmailData(BaseModel):
+    """
+    Email data input model - mirrors email_writer_mcp structure
+    Used for FastAPI validation and input
+    """
+    reference_id: str = Field(..., description="Unique reference ID from email")
+    subject: str = Field(..., description="Email subject")
+    body_bloburl: str = Field(..., description="Blob storage URL of email body")
+    sender: str = Field(..., description="Sender email address")
+    received_date: str = Field(..., description="Date and time email was received")
+    has_attachments: bool = Field(default=False, description="Whether email has attachments")
+    attachments: list[Attachment] = Field(default_factory=list, description="List of attachments")
+    property_details: PropertyDetails = Field(..., description="Property details extracted from email")
+ 
+ 
+class SubmissionIntakeMCP(BaseModel):
+    """Submission Intake MCP - writes email data to PostgreSQL"""
+    AgentName: str = Field(default="SubmissionIntakeAgent", description="The unique agent name")
+    UserId: str = Field(default="system", description="The unique user id")
+ 
+ 
+writer.py
+ 
+import os
 import json
-
-BASE_URL = "http://localhost:8601/api/v1/eligibility_agent/Licensing_&_Sanction_Checker_MCP"
-
-def run_test():
-    payload = {
-        "jsonrpc": "2.0",
-        "id": 1,
-        "result": {
-            "status": True,
-            "results": [
-                {
-                    "Extracted Name": "Berkshire Hathaway",
-                    "is_Sanctioned": False
-                }
-            ]
-        }
-    }
-
+import logging
+from datetime import datetime
+from email.utils import parsedate_to_datetime
+from sqlmodel import Session, create_engine, select
+from sqlalchemy.pool import NullPool
+from models import SubmissionIntake
+from dotenv import load_dotenv
+ 
+# Load environment variables
+load_dotenv()
+ 
+# Configure logging
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
+ 
+ 
+def _get_postgres_connection_string() -> str:
+    """Get PostgreSQL connection string from environment variables"""
+    pghost = os.getenv("PGHOST")
+    pguser = os.getenv("PGUSER")
+    pgport = os.getenv("PGPORT", "5432")
+    pgdatabase = os.getenv("PGDATABASE", "postgres")
+    pgpassword = os.getenv("PGPASSWORD")
+ 
+    if not all([pghost, pguser, pgpassword]):
+        raise RuntimeError("PostgreSQL connection configuration not found in environment variables")
+ 
+    # Connection string format: postgresql+psycopg://user:password@host:port/database
+    # Using +psycopg to specify psycopg3 driver (not psycopg2)
+    connection_string = f"postgresql+psycopg://{pguser}:{pgpassword}@{pghost}:{pgport}/{pgdatabase}"
+    return connection_string
+ 
+ 
+def _get_postgres_engine():
+    """Create SQLAlchemy engine for PostgreSQL connection"""
+    connection_string = _get_postgres_connection_string()
+    # Use NullPool to avoid connection pooling issues in containerized environments
+    engine = create_engine(connection_string, echo=False, poolclass=NullPool)
+    return engine
+ 
+ 
+def _format_risk_details(property_details: dict) -> str:
+    """
+    Format property details into risk details string
+    Same logic as email_writer_mcp
+    """
+    return f"Property Name: {property_details.get('property_name', 'N/A')}, Address: {property_details.get('property_address', 'N/A')}, Type: {property_details.get('property_type', 'N/A')}"
+ 
+ 
+def write_submission_intake_to_postgres(email_data: dict) -> dict:
+    """
+    Write email data to agent_submission_intake PostgreSQL table
+   
+    This mirrors the logic of write_email_data_to_excel but targets PostgreSQL instead
+   
+    Args:
+        email_data: Dictionary containing extracted email information
+       
+    Returns:
+        dict: Status of the write operation
+    """
     try:
-        resp = requests.post(BASE_URL, json=payload, timeout=180)
-        print("HTTP Status:", resp.status_code)
-
+        print("Starting PostgreSQL write process...")
+       
+        # Get database engine
+        engine = _get_postgres_engine()
+        print(f"Connected to PostgreSQL database")
+       
+        # Format attachment info as JSON string
+        attachments_info = json.dumps(email_data.get("attachments", []), indent=2) if email_data.get("attachments") else None
+       
+        # Parse received_date string to datetime
+        # Email dates come in RFC 2822 format: "Tue, 23 Dec 2025 17:22:03 +0530"
         try:
-            data = resp.json()
-            print(json.dumps(data, indent=4))
-        except Exception:
-            print("Response not JSON:", resp.text)
-
+            received_date_str = email_data.get("received_date", "")
+            date_time_received = parsedate_to_datetime(received_date_str)
+            print(f"Successfully parsed date: {date_time_received}")
+        except (ValueError, AttributeError, TypeError) as e:
+            print(f"Warning: Could not parse date '{email_data.get('received_date')}': {str(e)}")
+            date_time_received = None
+       
+        # Create SubmissionIntake record with same logic as Excel writer
+        # Maps EmailData fields to agent_submission_intake columns
+        submission_record = SubmissionIntake(
+            reference_number=email_data.get("reference_id", ""),
+            email_subject=email_data.get("subject", ""),
+            email_body=email_data.get("body_bloburl", ""),  # Use blob URL same as Excel
+            sender_email_address=email_data.get("sender", ""),
+            date_time_received=date_time_received,
+            risk_details=_format_risk_details(email_data.get("property_details", {})),
+            broker_agent_name=email_data.get("property_details", {}).get("broker_name", "N/A"),
+            customer_name=email_data.get("property_details", {}).get("customer_name", "N/A"),
+            has_attachments=email_data.get("has_attachments", False),
+            attachment_count=len(email_data.get("attachments", [])),
+            attachments_info=attachments_info if attachments_info else None,
+            # Other fields remain NULL/default as per requirements
+            submission_summary=None,
+            document_summary=None,
+            processed=False,
+            processed_at=None
+        )
+       
+        print(f"Created SubmissionIntake record: reference_number={submission_record.reference_number}")
+       
+        # Insert into database
+        with Session(engine) as session:
+            session.add(submission_record)  # ORM insert, add object to session which is been staged not commited
+            session.commit() # Commit the transaction to persist changes, exceutes insert SQL, works like insert SQL query
+            session.refresh(submission_record) # Get auto generated ID from Db
+           
+            print(f"Successfully inserted record into agent_submission_intake")
+            print(f"Record ID: {submission_record.id}")
+            print(f"Rows in table after insert: {len(session.exec(select(SubmissionIntake)).all())}")
+       
+        return {
+            "is_written": True,
+            "error": None,
+            "table_name": "agent_submission_intake",
+            "record_id": submission_record.id,
+            "reference_number": submission_record.reference_number,
+            "row_count": 1
+        }
+       
     except Exception as e:
-        print("Error calling API:", str(e))
-
-
+        print(f"Error writing to PostgreSQL: {str(e)}")
+        print(f"Error type: {type(e).__name__}")
+        import traceback
+        print(f"Full error traceback: {traceback.format_exc()}")
+       
+        return {
+            "is_written": False,
+            "error": str(e),
+            "table_name": "agent_submission_intake",
+            "record_id": None,
+            "reference_number": None,
+            "row_count": 0
+        }
+ 
+ 
+main.py 
+ 
+from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi_mcp import FastApiMCP
+import uvicorn
+from dotenv import load_dotenv
+import os
+from router import router
+from contextlib import asynccontextmanager
+ 
+# Load environment variables
+load_dotenv()
+ 
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    # Startup
+    yield
+    # Shutdown
+ 
+app = FastAPI(lifespan=lifespan)
+ 
+def apply_cors(app: FastAPI):
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=["*"],
+        allow_methods=["*"],
+        allow_headers=["*"],
+    )
+ 
+def create_sub_app(title: str, description: str, version: str = "1.0.0") -> FastAPI:
+    app = FastAPI(title=title, description=description, version=version, lifespan=lifespan)
+    apply_cors(app)
+    return app
+ 
+apply_cors(app)
+ 
+submission_intake_app = create_sub_app(
+    title="submission_intake_mcp",
+    description="Writes extracted email data to PostgreSQL agent_submission_intake table"
+)
+submission_intake_app.include_router(router)
+FastApiMCP(submission_intake_app, include_operations=["write_submission_intake_to_postgres"]).mount_http()
+app.mount("/api/v1/submission_intake_mcp", submission_intake_app)
+ 
 if __name__ == "__main__":
-    print("Testing /Licensing_&_Sanction_Checker_MCP ...")
-    run_test()
+    port = int(os.getenv("PORT", 8002))
+    uvicorn.run(app, host="0.0.0.0", port=port)
+ 
+ 
+router.py 
+ 
+from fastapi import APIRouter
+from pydantic import BaseModel, Field
+from typing import List, Optional
+from models import EmailData, PropertyDetails, Attachment
+from writer import write_submission_intake_to_postgres
+from fastapi.responses import JSONResponse
+ 
+router = APIRouter()
+ 
+ 
+class SubmissionIntakeMCP(BaseModel):
+    """Submission Intake MCP - writes email data to PostgreSQL"""
+    AgentName: str = Field(default="SubmissionIntakeAgent", description="The unique agent name")
+    UserId: str = Field(default="system", description="The unique user id")
+ 
+ 
+@router.post("/write_submission_intake_to_postgres", operation_id="write_submission_intake_to_postgres")
+async def write_submission_intake_to_postgres_endpoint(email_data: EmailData):
+    """
+    Write extracted email data to PostgreSQL agent_submission_intake table
+   
+    This endpoint takes email metadata extracted by the Email MCP and writes it to the
+    agent_submission_intake PostgreSQL table. Each call inserts a new record.
+   
+    Maps the following fields:
+    - reference_id → reference_number
+    - subject → email_subject
+    - body_bloburl → email_body
+    - sender → sender_email_address
+    - received_date → date_time_received
+    - property_details → risk_details, broker_agent_name, customer_name
+    - attachments → attachments_info, attachment_count, has_attachments
+   
+    Args:
+        email_data (EmailData): Extracted email data with property details
+   
+    Returns:
+        JSONResponse: Contains write status and metadata
+    """
+    try:
+        # Convert Pydantic model to dict
+        email_dict = email_data.dict()
+       
+        # Call the writer function
+        result = write_submission_intake_to_postgres(email_dict)
+       
+        return JSONResponse(content={
+            "jsonrpc": "2.0",
+            "id": 1,
+            "result": {
+                "is_written": result["is_written"],
+                "error": result["error"],
+                "table_name": result["table_name"],
+                "record_id": result["record_id"],
+                "reference_number": result["reference_number"],
+                "row_count": result["row_count"]
+            }
+        })
+       
+    except Exception as e:
+        return JSONResponse(
+            content={
+                "jsonrpc": "2.0",
+                "id": 1,
+                "error": {
+                    "code": 500,
+                    "message": f"Error writing submission intake to PostgreSQL: {str(e)}"
+                }
+            },
+            status_code=500
+        )
+ 
+ 
+requirements.txt 
+ 
+uvicorn
+pydantic
+sqlmodel
+sqlalchemy
+psycopg[binary]
+python-dotenv
+aiofiles==23.2.1
+fastapi==0.118.3
+fastapi_mcp==0.4.0
+ 
+ 
+test_main.py 
+ 
+"""
+Test script for submission_intake_mcp
+Tests PostgreSQL connection and data insertion
+"""
+ 
+import asyncio
+import json
+from datetime import datetime
+from models import EmailData, PropertyDetails, Attachment
+from writer import write_submission_intake_to_postgres
+ 
+# Sample test data - same structure as email_writer_mcp
+sample_email_data = {
+    "reference_id": "REF-2025-001",
+    "subject": "Property Quote Request - Demo",
+    "body_bloburl": "https://example.blob.core.windows.net/emails/ref-001-body.txt",
+    "sender": "broker@example.com",
+    "received_date": "2025-12-23T10:30:00",
+    "has_attachments": True,
+    "attachments": [
+        {
+            "filename": "property_details.pdf",
+            "type": "document",
+            "size": 1024000,
+            "content_type": "application/pdf",
+            "blob_url": "https://example.blob.core.windows.net/attachments/property_details.pdf"
+        }
+    ],
+    "property_details": {
+        "property_name": "Downtown Office Complex",
+        "property_address": "123 Main St, New York, NY 10001",
+        "property_type": "Commercial",
+        "broker_name": "John Smith",
+        "customer_name": "ABC Corporation"
+    }
+}
+ 
+def test_postgres_connection():
+    """Test PostgreSQL connection and write operation"""
+    print("=" * 60)
+    print("SUBMISSION INTAKE MCP - PostgreSQL Test")
+    print("=" * 60)
+    print()
+   
+    print("1. Testing data insertion into agent_submission_intake table...")
+    print()
+    print(f"Sample data to insert:")
+    print(f"  - Reference ID: {sample_email_data['reference_id']}")
+    print(f"  - Subject: {sample_email_data['subject']}")
+    print(f"  - Sender: {sample_email_data['sender']}")
+    print(f"  - Customer: {sample_email_data['property_details']['customer_name']}")
+    print(f"  - Broker: {sample_email_data['property_details']['broker_name']}")
+    print()
+   
+    try:
+        # Call the writer function
+        result = write_submission_intake_to_postgres(sample_email_data)
+       
+        print("=" * 60)
+        print("RESULT:")
+        print("=" * 60)
+        print(f"Write Status: {result['is_written']}")
+        print(f"Table Name: {result['table_name']}")
+        print(f"Record ID: {result['record_id']}")
+        print(f"Reference Number: {result['reference_number']}")
+        print(f"Row Count: {result['row_count']}")
+       
+        if result['error']:
+            print(f"Error: {result['error']}")
+        else:
+            print("✅ Data successfully written to PostgreSQL!")
+       
+    except Exception as e:
+        print(f"❌ Error during test: {str(e)}")
+        import traceback
+        traceback.print_exc()
+   
+    print()
+    print("=" * 60)
+ 
+if __name__ == "__main__":
+    test_postgres_connection()
+ 
+ 
