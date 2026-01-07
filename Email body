@@ -1,224 +1,24 @@
-Perfect, this is clear 👍
-I’ll keep everything aligned with your existing MCP + FastAPI structure, and I’ll only do what you asked:
-	•	Router accepts the MCP response
-	•	Calls a handler function
-	•	Handler extracts is_Sanctioned
-	•	Stores it in another variable
-	•	Returns a JSON-RPC–compatible result
-	•	Provide a test_script.py that uses the given input payload
-
-No extra logic, no assumptions.
-
-⸻
-
-1️⃣ What we are building (flow clarity)
-
-Incoming MCP payload (already processed by some tool):
-
-{
-  "jsonrpc": "2.0",
-  "id": 1,
-  "result": {
-    "status": true,
-    "results": [
-      {
-        "Extracted Name": "Berkshire Hathaway",
-        "is_Sanctioned": false
-      }
-    ]
-  }
-}
-
-Flow you want:
-
-router.py
-  └── receives payload
-      └── calls handler function
-          └── extracts is_Sanctioned
-              └── stores in variable
-                  └── returns result
-
-
-⸻
-
-2️⃣ Router file (file_router.py)
-
-Purpose
-	•	Accept full MCP response
-	•	Call handler
-	•	Return JSON-RPC envelope
-
-from fastapi import APIRouter
-from fastapi.responses import JSONResponse
-from pydantic import BaseModel
-from handler import extract_sanction_status
-import traceback
-import sys
-
-router = APIRouter()
-
-
-class SanctionResponseRequest(BaseModel):
-    jsonrpc: str
-    id: int
-    result: dict
-
-
-@router.post(
-    "/Licensing_&_Sanction_Checker_MCP",
-    operation_id="Licensing_&_Sanction_Checker_MCP",
-    summary="Extract is_Sanctioned flag from MCP response"
-)
-async def sanction_router(request: SanctionResponseRequest):
-    try:
-        # Call handler
-        is_sanctioned_flag = extract_sanction_status(request.result)
-
-        return JSONResponse(
-            content={
-                "jsonrpc": "2.0",
-                "id": request.id,
-                "result": {
-                    "status": True,
-                    "is_Sanctioned": is_sanctioned_flag
-                }
-            },
-            status_code=200
-        )
-
-    except Exception as e:
-        tb = traceback.format_exc()
-        print(tb, file=sys.stderr)
-
-        return JSONResponse(
-            content={
-                "jsonrpc": "2.0",
-                "id": request.id,
-                "result": {
-                    "status": False,
-                    "error": str(e),
-                    "trace": tb
-                }
-            },
-            status_code=200
-        )
-
-
-⸻
-
-3️⃣ Handler file (handler.py)
-
-Purpose
-	•	Pure logic
-	•	No FastAPI
-	•	No MCP
-	•	Just extraction
-
-def extract_sanction_status(mcp_result: dict) -> bool:
-    """
-    Extracts 'is_Sanctioned' from MCP result payload
-    """
-
-    # Example variable you asked for
-    is_sanctioned = False
-
-    # Safety checks
-    if not mcp_result:
-        return is_sanctioned
-
-    results = mcp_result.get("results", [])
-
-    if not results:
-        return is_sanctioned
-
-    # Extract from first record
-    is_sanctioned = results[0].get("is_Sanctioned", False)
-
-    # This variable is now stored and usable
-    return is_sanctioned
-
-📌 Key point
-is_sanctioned is now:
-	•	Stored in a variable
-	•	Reusable later (DB, decision engine, eligibility logic, etc.)
-
-⸻
-
-4️⃣ main.py (NO CHANGE REQUIRED ✅)
-
-Your existing main.py is already correct for this use case.
-
-✔ MCP mounting
-✔ Router inclusion
-✔ Sub-app structure
-
-So no edits needed here.
-
-⸻
-
-5️⃣ Test script (test_script.py)
-
-Purpose
-	•	Run server
-	•	Send exact MCP input
-	•	Verify output
-
 import requests
+import json
 
-url = "http://localhost:8601/api/v1/eligibility_agent/Licensing_&_Sanction_Checker_MCP"
+BASE_URL = "http://localhost:8667/api/v1/layout/layout_detection_mcp"
 
-payload = {
-    "jsonrpc": "2.0",
-    "id": 1,
-    "result": {
-        "status": True,
-        "results": [
-            {
-                "Extracted Name": "Berkshire Hathaway",
-                "is_Sanctioned": False
-            }
-        ]
+def run_test():
+    payload = {
+        "attachment_url": "https://agenticai1.blob.core.windows.net/attachment-downloader/19A7327F47AC4E3F_attachment_Test%20Quote%201.3.pdf"
+        #   "attachment_url": "https://agenticai1.blob.core.windows.net/attachment-downloader/Test%20Quote%201%201.pdf"
     }
-}
+    try:
+        resp = requests.post(BASE_URL, json=payload, timeout=180)
+        print("HTTP Status:", resp.status_code)
+        try:
+            data = resp.json()
+            print(json.dumps(data, indent=4))
+        except Exception:
+            print("Response not JSON:", resp.text)
+    except Exception as e:
+        print("Error calling API:", str(e))
 
-response = requests.post(url, json=payload)
-
-print("Status Code:", response.status_code)
-print("Response JSON:")
-print(response.json())
-
-
-⸻
-
-6️⃣ Expected Output
-
-{
-  "jsonrpc": "2.0",
-  "id": 1,
-  "result": {
-    "status": true,
-    "is_Sanctioned": false
-  }
-}
-
-
-⸻
-
-7️⃣ Why this design is MCP-safe ✔
-	•	JSON-RPC envelope preserved
-	•	Router only orchestrates
-	•	Handler does single responsibility
-	•	Easily chainable in OmniCore / eligibility engine
-	•	No coupling with blob URLs or extraction agents
-
-⸻
-
-Next logical step (when you’re ready)
-	•	Store is_Sanctioned in:
-	•	eligibility context
-	•	underwriting decision object
-	•	policy issuance gate
-
-If you want, next we can:
-	•	plug this into OmniCore flow
-	•	or add decision branching (sanctioned → reject)
+if __name__ == "__main__":
+    print("Testing /layout_detection_mcp ...")
+    run_test()
