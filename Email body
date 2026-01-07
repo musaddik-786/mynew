@@ -1,184 +1,214 @@
-Excellent, thanks for sharing the full reference.
-I’ll now do this properly and consistently with your existing PostgreSQL + MCP pattern.
-
-You want to:
-	•	Connect to PostgreSQL
-	•	Access table ref_eligibility_check
-	•	Read / update column Licensing and Sanction Check
-	•	Use the output of your Licensing & Sanction Checker MCP
-(is_Sanctioned: true | false)
-	•	Follow the same architectural style as:
-	•	models.py
-	•	writer.py
-	•	router.py
-	•	test_script.py
-
-No shortcuts. No redesign.
+Perfect — now the requirement is very clear, and this is an important shift in logic.
+I’ll restate it once (to lock correctness), then give you complete, consistent code.
 
 ⸻
 
-1️⃣ Assumption (explicit & important)
+✅ EXACT REQUIREMENT (locked)
 
-PostgreSQL column names with spaces must be quoted.
-So this column:
+You already have a PostgreSQL table:
 
-"Licensing and Sanction Check"
+Table: ref_eligibility_check
 
-I’ll map it safely using SQLAlchemy Column(..., quote=True).
+This table already contains rows, with columns like:
+	•	Eligibility Status → values: Eligible / Not Eligible
+	•	Reason Summary
+	•	Line of Business
+	•	Location Risk Zone
+	•	Business Type
+	•	Licensing and Sanction Check
+	•	Source of Check
+	•	Approval Flag
 
-If later you rename it to licensing_and_sanction_check, everything becomes easier — but I’ll respect the current schema.
+Now your MCP produces:
+
+"is_Sanctioned": true | false
+
+Business rule
+	•	If is_Sanctioned = true
+	•	Treat submission as Not Eligible
+	•	Fetch the row where Eligibility Status = 'Not Eligible'
+	•	Read values from the above columns
+	•	Print / return them from a function
+
+🚫 No inserts
+🚫 No updates
+✅ Only SELECT + RETURN
 
 ⸻
 
-2️⃣ models.py (NEW – eligibility model)
+🧠 High-level flow (what we’ll build)
+
+MCP Router
+   ↓
+handler / service function
+   ↓
+SELECT * FROM ref_eligibility_check
+WHERE "Eligibility Status" = 'Not Eligible'
+   ↓
+Return column values
+
+
+⸻
+
+1️⃣ models.py – READ-ONLY mapping
 
 📁 models.py
 
 from sqlmodel import SQLModel, Field
-from sqlalchemy import Column, Boolean
+from sqlalchemy import Column, String, Boolean
 from typing import Optional
 
 
 class RefEligibilityCheck(SQLModel, table=True):
-    """
-    SQLModel for ref_eligibility_check table
-    """
-
     __tablename__ = "ref_eligibility_check"
 
     id: Optional[int] = Field(default=None, primary_key=True)
 
-    reference_number: str = Field(
-        ..., description="Reference number linking to submission"
+    eligibility_status: str = Field(
+        sa_column=Column("Eligibility Status", String, quote=True)
     )
 
-    # Column name has spaces → must be quoted
-    licensing_and_sanction_check: Optional[bool] = Field(
+    reason_summary: Optional[str] = Field(
         default=None,
-        sa_column=Column(
-            "Licensing and Sanction Check",
-            Boolean,
-            quote=True
-        ),
-        description="Result of licensing & sanction check"
+        sa_column=Column("Reason Summary", String, quote=True)
     )
 
-✔ Maps exactly to PostgreSQL
-✔ Handles spaced column name
-✔ Boolean storage
+    line_of_business: Optional[str] = Field(
+        default=None,
+        sa_column=Column("Line of Business", String, quote=True)
+    )
+
+    location_risk_zone: Optional[str] = Field(
+        default=None,
+        sa_column=Column("Location Risk Zone", String, quote=True)
+    )
+
+    business_type: Optional[str] = Field(
+        default=None,
+        sa_column=Column("Business Type", String, quote=True)
+    )
+
+    licensing_and_sanction_check: Optional[str] = Field(
+        default=None,
+        sa_column=Column("Licensing and Sanction Check", String, quote=True)
+    )
+
+    source_of_check: Optional[str] = Field(
+        default=None,
+        sa_column=Column("Source of Check", String, quote=True)
+    )
+
+    approval_flag: Optional[bool] = Field(
+        default=None,
+        sa_column=Column("Approval Flag", Boolean, quote=True)
+    )
+
+✔ Handles spaces in column names
+✔ No assumptions about inserts
+✔ Clean SQLModel mapping
 
 ⸻
 
-3️⃣ writer.py (WRITE sanction result)
+2️⃣ db.py – PostgreSQL connection (reusable)
 
-📁 writer.py
+📁 db.py
 
 import os
-from sqlmodel import Session, create_engine, select
+from sqlmodel import create_engine
 from sqlalchemy.pool import NullPool
 from dotenv import load_dotenv
-from models import RefEligibilityCheck
 
 load_dotenv()
 
 
-def _get_postgres_connection_string() -> str:
-    pghost = os.getenv("PGHOST")
-    pguser = os.getenv("PGUSER")
-    pgport = os.getenv("PGPORT", "5432")
-    pgdatabase = os.getenv("PGDATABASE", "postgres")
-    pgpassword = os.getenv("PGPASSWORD")
-
-    if not all([pghost, pguser, pgpassword]):
-        raise RuntimeError("PostgreSQL connection configuration missing")
-
-    return f"postgresql+psycopg://{pguser}:{pgpassword}@{pghost}:{pgport}/{pgdatabase}"
-
-
-def _get_postgres_engine():
+def get_engine():
     return create_engine(
-        _get_postgres_connection_string(),
-        echo=False,
-        poolclass=NullPool
+        f"postgresql+psycopg://{os.getenv('PGUSER')}:{os.getenv('PGPASSWORD')}"
+        f"@{os.getenv('PGHOST')}:{os.getenv('PGPORT', '5432')}/{os.getenv('PGDATABASE')}",
+        poolclass=NullPool,
+        echo=False
     )
 
 
-def write_licensing_sanction_result(
-    reference_number: str,
-    is_sanctioned: bool
-) -> dict:
-    """
-    Writes Licensing & Sanction result to ref_eligibility_check table
-    """
-    try:
-        engine = _get_postgres_engine()
+⸻
 
-        record = RefEligibilityCheck(
-            reference_number=reference_number,
-            licensing_and_sanction_check=not is_sanctioned
+3️⃣ handler.py – CORE BUSINESS LOGIC (MOST IMPORTANT)
+
+📁 handler.py
+
+from sqlmodel import Session, select
+from models import RefEligibilityCheck
+from db import get_engine
+
+
+def fetch_not_eligible_details(is_sanctioned: bool) -> dict:
+    """
+    If is_sanctioned is True, fetch Not Eligible row
+    and return required columns.
+    """
+
+    if not is_sanctioned:
+        return {
+            "eligible": True,
+            "message": "No sanction hit. Eligibility unaffected."
+        }
+
+    engine = get_engine()
+
+    with Session(engine) as session:
+        stmt = select(RefEligibilityCheck).where(
+            RefEligibilityCheck.eligibility_status == "Not Eligible"
         )
+        record = session.exec(stmt).first()
 
-        with Session(engine) as session:
-            session.add(record)
-            session.commit()
-            session.refresh(record)
+        if not record:
+            return {
+                "eligible": False,
+                "error": "No Not Eligible configuration found in ref_eligibility_check"
+            }
 
+        # Collect required columns
         return {
-            "is_written": True,
-            "record_id": record.id,
-            "reference_number": reference_number,
-            "licensing_and_sanction_check": record.licensing_and_sanction_check
+            "eligible": False,
+            "eligibility_status": record.eligibility_status,
+            "reason_summary": record.reason_summary,
+            "line_of_business": record.line_of_business,
+            "location_risk_zone": record.location_risk_zone,
+            "business_type": record.business_type,
+            "licensing_and_sanction_check": record.licensing_and_sanction_check,
+            "source_of_check": record.source_of_check,
+            "approval_flag": record.approval_flag
         }
 
-    except Exception as e:
-        return {
-            "is_written": False,
-            "error": str(e),
-            "reference_number": reference_number
-        }
-
-🔑 Important business logic note
-
-I assumed:
-
-licensing_and_sanction_check = NOT is_sanctioned
-
-Meaning:
-	•	is_Sanctioned = True → ❌ eligibility fails
-	•	is_Sanctioned = False → ✅ eligibility passes
-
-If you want direct mapping instead, tell me and I’ll flip it.
+📌 This function is where the rule lives
+📌 Router & MCP just call it
+📌 Easy to extend later (other checks)
 
 ⸻
 
-4️⃣ router.py (MCP entry point)
+4️⃣ router.py – MCP entry point
 
 📁 router.py
 
 from fastapi import APIRouter
-from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
-from writer import write_licensing_sanction_result
+from fastapi.responses import JSONResponse
+from handler import fetch_not_eligible_details
 
 router = APIRouter()
 
 
-class LicensingSanctionMCPRequest(BaseModel):
-    reference_number: str = Field(..., description="Submission reference number")
-    is_Sanctioned: bool = Field(..., description="Sanction result from MCP")
+class SanctionCheckRequest(BaseModel):
+    is_Sanctioned: bool = Field(..., description="Result from sanction checker MCP")
 
 
 @router.post(
-    "/write_licensing_sanction_result",
-    operation_id="write_licensing_sanction_result"
+    "/licensing_sanction_eligibility",
+    operation_id="licensing_sanction_eligibility"
 )
-async def write_licensing_sanction_result_endpoint(
-    request: LicensingSanctionMCPRequest
-):
-    result = write_licensing_sanction_result(
-        reference_number=request.reference_number,
-        is_sanctioned=request.is_Sanctioned
-    )
+async def licensing_sanction_eligibility(request: SanctionCheckRequest):
+
+    result = fetch_not_eligible_details(request.is_Sanctioned)
 
     return JSONResponse(
         content={
@@ -188,78 +218,127 @@ async def write_licensing_sanction_result_endpoint(
         }
     )
 
-✔ Same pattern as your submission intake MCP
-✔ Clean MCP boundary
-✔ No DB logic in router
 
 ⸻
 
-5️⃣ test_script.py (CLIENT test – matches your style)
+5️⃣ main.py – MCP bootstrap (as discussed earlier)
+
+📁 main.py
+
+from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi_mcp import FastApiMCP
+import uvicorn
+from router import router
+
+
+def apply_cors(app: FastAPI):
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=["*"],
+        allow_methods=["*"],
+        allow_headers=["*"],
+    )
+
+
+def create_sub_app(title: str, description: str):
+    app = FastAPI(title=title, description=description)
+    apply_cors(app)
+    return app
+
+
+app = FastAPI()
+apply_cors(app)
+
+eligibility_app = create_sub_app(
+    title="Eligibility Sanction MCP",
+    description="Derives eligibility based on sanction results"
+)
+
+eligibility_app.include_router(router)
+
+FastApiMCP(
+    eligibility_app,
+    include_operations=["licensing_sanction_eligibility"]
+).mount_http()
+
+app.mount("/api/v1/eligibility_agent", eligibility_app)
+
+
+if __name__ == "__main__":
+    uvicorn.run(app, host="0.0.0.0", port=8601)
+
+
+⸻
+
+6️⃣ test_script.py – CLIENT TEST (your exact style)
 
 📁 test_script.py
 
 import requests
 import json
 
-BASE_URL = "http://localhost:8601/api/v1/eligibility_agent/write_licensing_sanction_result"
+BASE_URL = "http://localhost:8601/api/v1/eligibility_agent/licensing_sanction_eligibility"
+
 
 def run_test():
     payload = {
-        "reference_number": "REF-2026-001",
-        "is_Sanctioned": False
+        "is_Sanctioned": True
     }
 
     try:
-        resp = requests.post(BASE_URL, json=payload, timeout=180)
+        resp = requests.post(BASE_URL, json=payload, timeout=120)
         print("HTTP Status:", resp.status_code)
 
         try:
-            data = resp.json()
-            print(json.dumps(data, indent=4))
+            print(json.dumps(resp.json(), indent=4))
         except Exception:
-            print("Response not JSON:", resp.text)
+            print("Non-JSON response:", resp.text)
 
     except Exception as e:
         print("Error calling API:", str(e))
 
 
 if __name__ == "__main__":
-    print("Testing write_licensing_sanction_result MCP ...")
+    print("Testing Licensing & Sanction Eligibility MCP...")
     run_test()
 
 
 ⸻
 
-6️⃣ End-to-end flow (now complete)
+✅ FINAL RESULT WHEN is_Sanctioned = true
 
-Licensing & Sanction MCP
-        ↓
-is_Sanctioned = false
-        ↓
-Router
-        ↓
-writer.py
-        ↓
-ref_eligibility_check
-"Licensing and Sanction Check" = TRUE
+{
+  "jsonrpc": "2.0",
+  "id": 1,
+  "result": {
+    "eligible": false,
+    "eligibility_status": "Not Eligible",
+    "reason_summary": "...",
+    "line_of_business": "...",
+    "location_risk_zone": "...",
+    "business_type": "...",
+    "licensing_and_sanction_check": "...",
+    "source_of_check": "...",
+    "approval_flag": false
+  }
+}
 
-
-⸻
-
-7️⃣ Why this fits your architecture perfectly
-
-✅ Same SQLModel usage
-✅ Same writer / router separation
-✅ Same MCP JSON-RPC envelope
-✅ Same test script style
-✅ Safe handling of spaced column names
-✅ Ready to plug into OmniCore eligibility flow
 
 ⸻
 
-Next logical step (only if you say so)
-	•	Update instead of insert (UPSERT by reference_number)
-	•	Join with agent_submission_intake
-	•	Drive final eligibility decision MCP
+🧠 Why this design is correct & future-proof
+	•	✔ No hard-coding business rules
+	•	✔ DB is the single source of truth
+	•	✔ MCP stays orchestration-only
+	•	✔ Easy to add other eligibility dimensions
+	•	✔ Matches your existing agent architecture
 
-You’re building this exactly the right way.
+⸻
+
+If you want next, we can:
+	•	merge multiple eligibility MCPs
+	•	compute final eligibility decision
+	•	or add explainability logging (why rejected)
+
+Just say the word.
