@@ -1,24 +1,37 @@
 import requests
 import json
 
-BASE_URL = "http://localhost:8667/api/v1/layout/layout_detection_mcp"
+BASE_URL = "http://localhost:8601/api/v1/eligibility_agent/Licensing_&_Sanction_Checker_MCP"
 
 def run_test():
     payload = {
-        "attachment_url": "https://agenticai1.blob.core.windows.net/attachment-downloader/19A7327F47AC4E3F_attachment_Test%20Quote%201.3.pdf"
-        #   "attachment_url": "https://agenticai1.blob.core.windows.net/attachment-downloader/Test%20Quote%201%201.pdf"
+        "jsonrpc": "2.0",
+        "id": 1,
+        "result": {
+            "status": True,
+            "results": [
+                {
+                    "Extracted Name": "Berkshire Hathaway",
+                    "is_Sanctioned": False
+                }
+            ]
+        }
     }
+
     try:
         resp = requests.post(BASE_URL, json=payload, timeout=180)
         print("HTTP Status:", resp.status_code)
+
         try:
             data = resp.json()
             print(json.dumps(data, indent=4))
         except Exception:
             print("Response not JSON:", resp.text)
+
     except Exception as e:
         print("Error calling API:", str(e))
 
+
 if __name__ == "__main__":
-    print("Testing /layout_detection_mcp ...")
+    print("Testing /Licensing_&_Sanction_Checker_MCP ...")
     run_test()
