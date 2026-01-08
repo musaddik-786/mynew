@@ -1,57 +1,78 @@
-# document_loader.py
-
-from dotenv import load_dotenv
-import os
-from azure.ai.formrecognizer import DocumentAnalysisClient
-from azure.core.credentials import AzureKeyCredential
-
-# Load environment variables from .env file
-load_dotenv()
-
-# Fetch variables
-endpoint = os.getenv("AZURE_FORMRECOG_ENDPOINT")
-key = os.getenv("AZURE_FORMRECOG_KEY")
-
-# Fail fast if missing
-if not endpoint:
-    raise ValueError("AZURE_FORMRECOG_ENDPOINT is not set. Check your .env file.")
-if not key:
-    raise ValueError("AZURE_FORMRECOG_KEY is not set. Check your .env file.")
-
-# Create the client using the key and endpoint
-client = DocumentAnalysisClient(endpoint=endpoint, credential=AzureKeyCredential(key))
+from sqlmodel import Session, select
+from models import RefEligibilityCheck, AgentSubmissionIntake
+from db import get_engine
 
 
-def load_document(file_path: str) -> dict:
+def process_sanction_and_eligibility(mcp_result: dict) -> dict:
     """
-    Extract ONLY the text of the FIRST PAGE
-    using Form Recognizer's prebuilt-read model.
-
-    Returns a dict with:
-      - "first_page_text": text of page 1
+    1. Extract is_Sanctioned (NO DEFAULTS)
+    2. Decide Eligible / Not Eligible
+    3. Fetch rule from ref_eligibility_check
+    4. Fetch latest reference_number from agent_submission_intake
+    5. Return combined response
     """
-    with open(file_path, "rb") as f:
-        # ✅ Use prebuilt-read and restrict to first page only
-        poller = client.begin_analyze_document(
-            "prebuilt-read",
-            document=f,
-            pages="1",  # tell Form Recognizer we only care about page 1
+
+    # ---------- VALIDATION ----------
+    if not isinstance(mcp_result, dict):
+        return {"status": False, "error": "Invalid MCP result format"}
+
+    results = mcp_result.get("results")
+    if not isinstance(results, list) or not results:
+        return {"status": False, "error": "'results' missing or empty"}
+
+    record = results[0]
+
+    if "is_Sanctioned" not in record:
+        return {"status": False, "error": "'is_Sanctioned' missing in MCP response"}
+
+    if not isinstance(record["is_Sanctioned"], bool):
+        return {"status": False, "error": "'is_Sanctioned' must be boolean"}
+
+    is_sanctioned = record["is_Sanctioned"]
+
+    # ---------- DECISION ----------
+    eligibility_status = "Not Eligible" if is_sanctioned else "Eligible"
+
+    engine = get_engine()
+
+    with Session(engine) as session:
+        # ---------- FETCH LATEST reference_number ----------
+        latest_ref_stmt = (
+            select(AgentSubmissionIntake)
+            .order_by(AgentSubmissionIntake.id.desc())
         )
-        result = poller.result()
+        latest_submission = session.exec(latest_ref_stmt).first()
 
-    # Defensive: make sure we have at least one page
-    if not result.pages:
-        return {"first_page_text": ""}
+        if not latest_submission or not latest_submission.reference_number:
+            return {
+                "status": False,
+                "error": "No reference_number found in agent_submission_intake"
+            }
 
-    first_page = result.pages[0]
-    lines = [line.content for line in first_page.lines]
-    first_page_text = "\n".join(lines)
+        reference_number = latest_submission.reference_number
 
-    # Optional debug
-    print("First page text (truncated to 500 chars):")
-    print(first_page_text[:500])
-    print("\n---- END OF FIRST PAGE PREVIEW ----\n")
+        # ---------- FETCH ELIGIBILITY RULE ----------
+        rule_stmt = select(RefEligibilityCheck).where(
+            RefEligibilityCheck.eligibility_status == eligibility_status
+        )
+        rule = session.exec(rule_stmt).first()
 
-    return {
-        "first_page_text": first_page_text
-    }
+        if not rule:
+            return {
+                "status": False,
+                "error": f"No rule found for Eligibility Status = {eligibility_status}"
+            }
+
+        # ---------- RESPONSE ----------
+        return {
+            "status": True,
+            "reference_number": reference_number,
+            "eligibility_status": rule.eligibility_status,
+            "reason_summary": rule.reason_summary,
+            "line_of_business": rule.line_of_business,
+            "location_risk_zone": rule.location_risk_zone,
+            "business_type": rule.business_type,
+            "licensing_and_sanction_check": rule.licensing_and_sanction_check,
+            "source_of_check": rule.source_of_check,
+            "approval_flag": rule.approval_flag
+        }
