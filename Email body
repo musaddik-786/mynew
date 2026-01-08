@@ -1,16 +1,28 @@
-Perfect — now the requirement is very clear, and this is an important shift in logic.
-I’ll restate it once (to lock correctness), then give you complete, consistent code.
+Perfect — this time your requirement is fully precise, and you’re right to insist on correctness.
+Below is a clean, merged, single-MCP solution, with no defaults, strict validation, and DB-driven eligibility.
+
+I will give you complete code, file by file, exactly matching your architecture.
 
 ⸻
 
-✅ EXACT REQUIREMENT (locked)
+✅ FINAL, LOCKED BUSINESS RULE
 
-You already have a PostgreSQL table:
+From the SAME MCP (Licensing_&_Sanction_Checker_MCP):
 
-Table: ref_eligibility_check
+Input
 
-This table already contains rows, with columns like:
-	•	Eligibility Status → values: Eligible / Not Eligible
+"is_Sanctioned": true | false
+
+Decision logic
+
+is_Sanctioned	Eligibility Status used
+true	Not Eligible
+false	Eligible
+missing	❌ ERROR (handled & returned)
+
+Output
+
+From ref_eligibility_check, fetch the row matching eligibility status and return:
 	•	Reason Summary
 	•	Line of Business
 	•	Location Risk Zone
@@ -19,40 +31,15 @@ This table already contains rows, with columns like:
 	•	Source of Check
 	•	Approval Flag
 
-Now your MCP produces:
-
-"is_Sanctioned": true | false
-
-Business rule
-	•	If is_Sanctioned = true
-	•	Treat submission as Not Eligible
-	•	Fetch the row where Eligibility Status = 'Not Eligible'
-	•	Read values from the above columns
-	•	Print / return them from a function
-
-🚫 No inserts
-🚫 No updates
-✅ Only SELECT + RETURN
+🚫 No defaults
+🚫 No inserts / updates
+✅ Only SELECT
+✅ Same MCP
+✅ Same router
 
 ⸻
 
-🧠 High-level flow (what we’ll build)
-
-MCP Router
-   ↓
-handler / service function
-   ↓
-SELECT * FROM ref_eligibility_check
-WHERE "Eligibility Status" = 'Not Eligible'
-   ↓
-Return column values
-
-
-⸻
-
-1️⃣ models.py – READ-ONLY mapping
-
-📁 models.py
+1️⃣ models.py (table mapping)
 
 from sqlmodel import SQLModel, Field
 from sqlalchemy import Column, String, Boolean
@@ -69,49 +56,37 @@ class RefEligibilityCheck(SQLModel, table=True):
     )
 
     reason_summary: Optional[str] = Field(
-        default=None,
         sa_column=Column("Reason Summary", String, quote=True)
     )
 
     line_of_business: Optional[str] = Field(
-        default=None,
         sa_column=Column("Line of Business", String, quote=True)
     )
 
     location_risk_zone: Optional[str] = Field(
-        default=None,
         sa_column=Column("Location Risk Zone", String, quote=True)
     )
 
     business_type: Optional[str] = Field(
-        default=None,
         sa_column=Column("Business Type", String, quote=True)
     )
 
     licensing_and_sanction_check: Optional[str] = Field(
-        default=None,
         sa_column=Column("Licensing and Sanction Check", String, quote=True)
     )
 
     source_of_check: Optional[str] = Field(
-        default=None,
         sa_column=Column("Source of Check", String, quote=True)
     )
 
     approval_flag: Optional[bool] = Field(
-        default=None,
         sa_column=Column("Approval Flag", Boolean, quote=True)
     )
 
-✔ Handles spaces in column names
-✔ No assumptions about inserts
-✔ Clean SQLModel mapping
 
 ⸻
 
-2️⃣ db.py – PostgreSQL connection (reusable)
-
-📁 db.py
+2️⃣ db.py (PostgreSQL connection)
 
 import os
 from sqlmodel import create_engine
@@ -132,158 +107,153 @@ def get_engine():
 
 ⸻
 
-3️⃣ handler.py – CORE BUSINESS LOGIC (MOST IMPORTANT)
-
-📁 handler.py
+3️⃣ handler.py (ALL logic lives here)
 
 from sqlmodel import Session, select
 from models import RefEligibilityCheck
 from db import get_engine
 
 
-def fetch_not_eligible_details(is_sanctioned: bool) -> dict:
+def process_sanction_and_eligibility(mcp_result: dict) -> dict:
     """
-    If is_sanctioned is True, fetch Not Eligible row
-    and return required columns.
+    - Extract is_Sanctioned (NO DEFAULTS)
+    - Decide eligibility status
+    - Fetch corresponding row from ref_eligibility_check
+    - Return column values
     """
 
-    if not is_sanctioned:
+    # ---------- VALIDATION ----------
+    if not isinstance(mcp_result, dict):
         return {
-            "eligible": True,
-            "message": "No sanction hit. Eligibility unaffected."
+            "status": False,
+            "error": "Invalid MCP result format (expected dict)"
         }
 
-    engine = get_engine()
+    results = mcp_result.get("results")
+    if not isinstance(results, list) or not results:
+        return {
+            "status": False,
+            "error": "'results' missing or empty in MCP response"
+        }
 
+    record = results[0]
+
+    if "is_Sanctioned" not in record:
+        return {
+            "status": False,
+            "error": "'is_Sanctioned' field missing in MCP response"
+        }
+
+    is_sanctioned = record["is_Sanctioned"]
+
+    if not isinstance(is_sanctioned, bool):
+        return {
+            "status": False,
+            "error": "'is_Sanctioned' must be boolean"
+        }
+
+    # ---------- DECISION ----------
+    eligibility_status = "Not Eligible" if is_sanctioned else "Eligible"
+
+    # ---------- DB FETCH ----------
+    engine = get_engine()
     with Session(engine) as session:
         stmt = select(RefEligibilityCheck).where(
-            RefEligibilityCheck.eligibility_status == "Not Eligible"
+            RefEligibilityCheck.eligibility_status == eligibility_status
         )
-        record = session.exec(stmt).first()
+        row = session.exec(stmt).first()
 
-        if not record:
+        if not row:
             return {
-                "eligible": False,
-                "error": "No Not Eligible configuration found in ref_eligibility_check"
+                "status": False,
+                "error": f"No row found for Eligibility Status = '{eligibility_status}'"
             }
 
-        # Collect required columns
+        # ---------- RESPONSE ----------
         return {
-            "eligible": False,
-            "eligibility_status": record.eligibility_status,
-            "reason_summary": record.reason_summary,
-            "line_of_business": record.line_of_business,
-            "location_risk_zone": record.location_risk_zone,
-            "business_type": record.business_type,
-            "licensing_and_sanction_check": record.licensing_and_sanction_check,
-            "source_of_check": record.source_of_check,
-            "approval_flag": record.approval_flag
+            "status": True,
+            "eligibility_status": row.eligibility_status,
+            "reason_summary": row.reason_summary,
+            "line_of_business": row.line_of_business,
+            "location_risk_zone": row.location_risk_zone,
+            "business_type": row.business_type,
+            "licensing_and_sanction_check": row.licensing_and_sanction_check,
+            "source_of_check": row.source_of_check,
+            "approval_flag": row.approval_flag
         }
 
-📌 This function is where the rule lives
-📌 Router & MCP just call it
-📌 Easy to extend later (other checks)
+📌 Important:
+There is NO fallback, NO default, NO silent behavior.
 
 ⸻
 
-4️⃣ router.py – MCP entry point
-
-📁 router.py
+4️⃣ router.py (SAME MCP, extended logic)
 
 from fastapi import APIRouter
-from pydantic import BaseModel, Field
 from fastapi.responses import JSONResponse
-from handler import fetch_not_eligible_details
+from pydantic import BaseModel
+from handler import process_sanction_and_eligibility
 
 router = APIRouter()
 
 
-class SanctionCheckRequest(BaseModel):
-    is_Sanctioned: bool = Field(..., description="Result from sanction checker MCP")
+class LicensingSanctionMCPRequest(BaseModel):
+    jsonrpc: str
+    id: int
+    result: dict
 
 
 @router.post(
-    "/licensing_sanction_eligibility",
-    operation_id="licensing_sanction_eligibility"
+    "/Licensing_&_Sanction_Checker_MCP",
+    operation_id="Licensing_&_Sanction_Checker_MCP"
 )
-async def licensing_sanction_eligibility(request: SanctionCheckRequest):
+async def licensing_sanction_checker_mcp(request: LicensingSanctionMCPRequest):
 
-    result = fetch_not_eligible_details(request.is_Sanctioned)
+    decision = process_sanction_and_eligibility(request.result)
 
     return JSONResponse(
         content={
-            "jsonrpc": "2.0",
-            "id": 1,
-            "result": result
-        }
+            "jsonrpc": request.jsonrpc,
+            "id": request.id,
+            "result": decision
+        },
+        status_code=200
     )
 
 
 ⸻
 
-5️⃣ main.py – MCP bootstrap (as discussed earlier)
+5️⃣ main.py (UNCHANGED – already correct)
 
-📁 main.py
+Use the same main.py you already have that exposes:
 
-from fastapi import FastAPI
-from fastapi.middleware.cors import CORSMiddleware
-from fastapi_mcp import FastApiMCP
-import uvicorn
-from router import router
+include_operations=["Licensing_&_Sanction_Checker_MCP"]
 
-
-def apply_cors(app: FastAPI):
-    app.add_middleware(
-        CORSMiddleware,
-        allow_origins=["*"],
-        allow_methods=["*"],
-        allow_headers=["*"],
-    )
-
-
-def create_sub_app(title: str, description: str):
-    app = FastAPI(title=title, description=description)
-    apply_cors(app)
-    return app
-
-
-app = FastAPI()
-apply_cors(app)
-
-eligibility_app = create_sub_app(
-    title="Eligibility Sanction MCP",
-    description="Derives eligibility based on sanction results"
-)
-
-eligibility_app.include_router(router)
-
-FastApiMCP(
-    eligibility_app,
-    include_operations=["licensing_sanction_eligibility"]
-).mount_http()
-
-app.mount("/api/v1/eligibility_agent", eligibility_app)
-
-
-if __name__ == "__main__":
-    uvicorn.run(app, host="0.0.0.0", port=8601)
-
+No changes needed.
 
 ⸻
 
-6️⃣ test_script.py – CLIENT TEST (your exact style)
-
-📁 test_script.py
+6️⃣ test_script.py (your exact style)
 
 import requests
 import json
 
-BASE_URL = "http://localhost:8601/api/v1/eligibility_agent/licensing_sanction_eligibility"
+BASE_URL = "http://localhost:8601/api/v1/eligibility_agent/Licensing_&_Sanction_Checker_MCP"
 
 
 def run_test():
     payload = {
-        "is_Sanctioned": True
+        "jsonrpc": "2.0",
+        "id": 1,
+        "result": {
+            "status": True,
+            "results": [
+                {
+                    "Extracted Name": "Berkshire Hathaway",
+                    "is_Sanctioned": False
+                }
+            ]
+        }
     }
 
     try:
@@ -293,52 +263,69 @@ def run_test():
         try:
             print(json.dumps(resp.json(), indent=4))
         except Exception:
-            print("Non-JSON response:", resp.text)
+            print("Response not JSON:", resp.text)
 
     except Exception as e:
         print("Error calling API:", str(e))
 
 
 if __name__ == "__main__":
-    print("Testing Licensing & Sanction Eligibility MCP...")
+    print("Testing Licensing & Sanction Checker MCP...")
     run_test()
 
 
 ⸻
 
-✅ FINAL RESULT WHEN is_Sanctioned = true
+✅ Example Outputs
+
+✅ is_Sanctioned = false
 
 {
-  "jsonrpc": "2.0",
-  "id": 1,
-  "result": {
-    "eligible": false,
-    "eligibility_status": "Not Eligible",
-    "reason_summary": "...",
-    "line_of_business": "...",
-    "location_risk_zone": "...",
-    "business_type": "...",
-    "licensing_and_sanction_check": "...",
-    "source_of_check": "...",
-    "approval_flag": false
-  }
+  "status": true,
+  "eligibility_status": "Eligible",
+  "reason_summary": "...",
+  "line_of_business": "...",
+  "location_risk_zone": "...",
+  "business_type": "...",
+  "licensing_and_sanction_check": "...",
+  "source_of_check": "...",
+  "approval_flag": true
+}
+
+❌ is_Sanctioned = true
+
+{
+  "status": true,
+  "eligibility_status": "Not Eligible",
+  "reason_summary": "...",
+  "line_of_business": "...",
+  "location_risk_zone": "...",
+  "business_type": "...",
+  "licensing_and_sanction_check": "...",
+  "source_of_check": "...",
+  "approval_flag": false
+}
+
+❌ Missing is_Sanctioned
+
+{
+  "status": false,
+  "error": "'is_Sanctioned' field missing in MCP response"
 }
 
 
 ⸻
 
-🧠 Why this design is correct & future-proof
-	•	✔ No hard-coding business rules
-	•	✔ DB is the single source of truth
-	•	✔ MCP stays orchestration-only
-	•	✔ Easy to add other eligibility dimensions
-	•	✔ Matches your existing agent architecture
+🧠 Why this is the correct final design
+	•	Single MCP = single capability
+	•	DB = source of truth for eligibility meaning
+	•	No silent assumptions
+	•	Strong validation
+	•	Matches your existing OmniCore + MCP architecture
 
-⸻
+You were right to push for this clarity — this is production-grade eligibility logic.
 
-If you want next, we can:
-	•	merge multiple eligibility MCPs
-	•	compute final eligibility decision
-	•	or add explainability logging (why rejected)
-
-Just say the word.
+If you want next:
+	•	combine multiple eligibility checks
+	•	add audit logging
+	•	or build final underwriting decision MCP
