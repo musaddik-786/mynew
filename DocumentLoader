@@ -1,6 +1,170 @@
+(venv) Jarvis@JarvisPhase2:~/Musaddique/Eligibility_DataFiller$ python3 main.py 
+INFO:     Started server process [26630]
+INFO:     Waiting for application startup.
+INFO:     Application startup complete.
+INFO:     Uvicorn running on http://0.0.0.0:8601 (Press CTRL+C to quit)
+INFO:     127.0.0.1:60740 - "POST /api/v1/eligibility_agent/Licensing_%26_Sanction_Checker_MCP HTTP/1.1" 500 Internal Server Error
+ERROR:    Exception in ASGI application
+Traceback (most recent call last):
+  File "/home/Jarvis/Musaddique/Eligibility_DataFiller/venv/lib/python3.11/site-packages/sqlalchemy/engine/base.py", line 1967, in _exec_single_context
+    self.dialect.do_execute(
+  File "/home/Jarvis/Musaddique/Eligibility_DataFiller/venv/lib/python3.11/site-packages/sqlalchemy/engine/default.py", line 952, in do_execute
+    cursor.execute(statement, parameters)
+  File "/home/Jarvis/Musaddique/Eligibility_DataFiller/venv/lib/python3.11/site-packages/psycopg/cursor.py", line 117, in execute
+    raise ex.with_traceback(None)
+psycopg.errors.DatatypeMismatch: column "eligibility_check_date_time" is of type timestamp without time zone but expression is of type character varying
+LINE 1: ...RCHAR, $6::VARCHAR, $7::VARCHAR, $8::VARCHAR, $9, $10::VARCH...
+                                                             ^
+HINT:  You will need to rewrite or cast the expression.
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "/home/Jarvis/Musaddique/Eligibility_DataFiller/venv/lib/python3.11/site-packages/uvicorn/protocols/http/h11_impl.py", line 410, in run_asgi
+    result = await app(  # type: ignore[func-returns-value]
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/Jarvis/Musaddique/Eligibility_DataFiller/venv/lib/python3.11/site-packages/uvicorn/middleware/proxy_headers.py", line 60, in __call__
+    return await self.app(scope, receive, send)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/Jarvis/Musaddique/Eligibility_DataFiller/venv/lib/python3.11/site-packages/fastapi/applications.py", line 1133, in __call__
+    await super().__call__(scope, receive, send)
+  File "/home/Jarvis/Musaddique/Eligibility_DataFiller/venv/lib/python3.11/site-packages/starlette/applications.py", line 113, in __call__
+    await self.middleware_stack(scope, receive, send)
+  File "/home/Jarvis/Musaddique/Eligibility_DataFiller/venv/lib/python3.11/site-packages/starlette/middleware/errors.py", line 186, in __call__
+    raise exc
+  File "/home/Jarvis/Musaddique/Eligibility_DataFiller/venv/lib/python3.11/site-packages/starlette/middleware/errors.py", line 164, in __call__
+    await self.app(scope, receive, _send)
+  File "/home/Jarvis/Musaddique/Eligibility_DataFiller/venv/lib/python3.11/site-packages/starlette/middleware/cors.py", line 85, in __call__
+    await self.app(scope, receive, send)
+  File "/home/Jarvis/Musaddique/Eligibility_DataFiller/venv/lib/python3.11/site-packages/starlette/middleware/exceptions.py", line 63, in __call__
+    await wrap_app_handling_exceptions(self.app, conn)(scope, receive, send)
+  File "/home/Jarvis/Musaddique/Eligibility_DataFiller/venv/lib/python3.11/site-packages/starlette/_exception_handler.py", line 53, in wrapped_app
+    raise exc
+  File "/home/Jarvis/Musaddique/Eligibility_DataFiller/venv/lib/python3.11/site-packages/starlette/_exception_handler.py", line 42, in wrapped_app
+    await app(scope, receive, sender)
+  File "/home/Jarvis/Musaddique/Eligibility_DataFiller/venv/lib/python3.11/site-packages/fastapi/middleware/asyncexitstack.py", line 18, in __call__
+    await self.app(scope, receive, send)
+  File "/home/Jarvis/Musaddique/Eligibility_DataFiller/venv/lib/python3.11/site-packages/starlette/routing.py", line 716, in __call__
+    await self.middleware_stack(scope, receive, send)
+  File "/home/Jarvis/Musaddique/Eligibility_DataFiller/venv/lib/python3.11/site-packages/starlette/routing.py", line 736, in app
+    await route.handle(scope, receive, send)
+  File "/home/Jarvis/Musaddique/Eligibility_DataFiller/venv/lib/python3.11/site-packages/starlette/routing.py", line 462, in handle
+    await self.app(scope, receive, send)
+  File "/home/Jarvis/Musaddique/Eligibility_DataFiller/venv/lib/python3.11/site-packages/fastapi/applications.py", line 1133, in __call__
+    await super().__call__(scope, receive, send)
+  File "/home/Jarvis/Musaddique/Eligibility_DataFiller/venv/lib/python3.11/site-packages/starlette/applications.py", line 113, in __call__
+    await self.middleware_stack(scope, receive, send)
+  File "/home/Jarvis/Musaddique/Eligibility_DataFiller/venv/lib/python3.11/site-packages/starlette/middleware/errors.py", line 186, in __call__
+    raise exc
+  File "/home/Jarvis/Musaddique/Eligibility_DataFiller/venv/lib/python3.11/site-packages/starlette/middleware/errors.py", line 164, in __call__
+    await self.app(scope, receive, _send)
+  File "/home/Jarvis/Musaddique/Eligibility_DataFiller/venv/lib/python3.11/site-packages/starlette/middleware/cors.py", line 85, in __call__
+    await self.app(scope, receive, send)
+  File "/home/Jarvis/Musaddique/Eligibility_DataFiller/venv/lib/python3.11/site-packages/starlette/middleware/exceptions.py", line 63, in __call__
+    await wrap_app_handling_exceptions(self.app, conn)(scope, receive, send)
+  File "/home/Jarvis/Musaddique/Eligibility_DataFiller/venv/lib/python3.11/site-packages/starlette/_exception_handler.py", line 53, in wrapped_app
+    raise exc
+  File "/home/Jarvis/Musaddique/Eligibility_DataFiller/venv/lib/python3.11/site-packages/starlette/_exception_handler.py", line 42, in wrapped_app
+    await app(scope, receive, sender)
+  File "/home/Jarvis/Musaddique/Eligibility_DataFiller/venv/lib/python3.11/site-packages/fastapi/middleware/asyncexitstack.py", line 18, in __call__
+    await self.app(scope, receive, send)
+  File "/home/Jarvis/Musaddique/Eligibility_DataFiller/venv/lib/python3.11/site-packages/starlette/routing.py", line 716, in __call__
+    await self.middleware_stack(scope, receive, send)
+  File "/home/Jarvis/Musaddique/Eligibility_DataFiller/venv/lib/python3.11/site-packages/starlette/routing.py", line 736, in app
+    await route.handle(scope, receive, send)
+  File "/home/Jarvis/Musaddique/Eligibility_DataFiller/venv/lib/python3.11/site-packages/starlette/routing.py", line 290, in handle
+    await self.app(scope, receive, send)
+  File "/home/Jarvis/Musaddique/Eligibility_DataFiller/venv/lib/python3.11/site-packages/fastapi/routing.py", line 123, in app
+    await wrap_app_handling_exceptions(app, request)(scope, receive, send)
+  File "/home/Jarvis/Musaddique/Eligibility_DataFiller/venv/lib/python3.11/site-packages/starlette/_exception_handler.py", line 53, in wrapped_app
+    raise exc
+  File "/home/Jarvis/Musaddique/Eligibility_DataFiller/venv/lib/python3.11/site-packages/starlette/_exception_handler.py", line 42, in wrapped_app
+    await app(scope, receive, sender)
+  File "/home/Jarvis/Musaddique/Eligibility_DataFiller/venv/lib/python3.11/site-packages/fastapi/routing.py", line 109, in app
+    response = await f(request)
+               ^^^^^^^^^^^^^^^^
+  File "/home/Jarvis/Musaddique/Eligibility_DataFiller/venv/lib/python3.11/site-packages/fastapi/routing.py", line 387, in app
+    raw_response = await run_endpoint_function(
+                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/Jarvis/Musaddique/Eligibility_DataFiller/venv/lib/python3.11/site-packages/fastapi/routing.py", line 288, in run_endpoint_function
+    return await dependant.call(**values)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/Jarvis/Musaddique/Eligibility_DataFiller/file_router.py", line 94, in licensing_sanction_checker_mcp
+    decision = process_sanction_and_eligibility(request.result)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/Jarvis/Musaddique/Eligibility_DataFiller/handler.py", line 127, in process_sanction_and_eligibility
+    session.commit()
+  File "/home/Jarvis/Musaddique/Eligibility_DataFiller/venv/lib/python3.11/site-packages/sqlalchemy/orm/session.py", line 2030, in commit
+    trans.commit(_to_root=True)
+  File "<string>", line 2, in commit
+  File "/home/Jarvis/Musaddique/Eligibility_DataFiller/venv/lib/python3.11/site-packages/sqlalchemy/orm/state_changes.py", line 137, in _go
+    ret_value = fn(self, *arg, **kw)
+                ^^^^^^^^^^^^^^^^^^^^
+  File "/home/Jarvis/Musaddique/Eligibility_DataFiller/venv/lib/python3.11/site-packages/sqlalchemy/orm/session.py", line 1311, in commit
+    self._prepare_impl()
+  File "<string>", line 2, in _prepare_impl
+  File "/home/Jarvis/Musaddique/Eligibility_DataFiller/venv/lib/python3.11/site-packages/sqlalchemy/orm/state_changes.py", line 137, in _go
+    ret_value = fn(self, *arg, **kw)
+                ^^^^^^^^^^^^^^^^^^^^
+  File "/home/Jarvis/Musaddique/Eligibility_DataFiller/venv/lib/python3.11/site-packages/sqlalchemy/orm/session.py", line 1286, in _prepare_impl
+    self.session.flush()
+  File "/home/Jarvis/Musaddique/Eligibility_DataFiller/venv/lib/python3.11/site-packages/sqlalchemy/orm/session.py", line 4331, in flush
+    self._flush(objects)
+  File "/home/Jarvis/Musaddique/Eligibility_DataFiller/venv/lib/python3.11/site-packages/sqlalchemy/orm/session.py", line 4466, in _flush
+    with util.safe_reraise():
+  File "/home/Jarvis/Musaddique/Eligibility_DataFiller/venv/lib/python3.11/site-packages/sqlalchemy/util/langhelpers.py", line 224, in __exit__
+    raise exc_value.with_traceback(exc_tb)
+  File "/home/Jarvis/Musaddique/Eligibility_DataFiller/venv/lib/python3.11/site-packages/sqlalchemy/orm/session.py", line 4427, in _flush
+    flush_context.execute()
+  File "/home/Jarvis/Musaddique/Eligibility_DataFiller/venv/lib/python3.11/site-packages/sqlalchemy/orm/unitofwork.py", line 466, in execute
+    rec.execute(self)
+  File "/home/Jarvis/Musaddique/Eligibility_DataFiller/venv/lib/python3.11/site-packages/sqlalchemy/orm/unitofwork.py", line 642, in execute
+    util.preloaded.orm_persistence.save_obj(
+  File "/home/Jarvis/Musaddique/Eligibility_DataFiller/venv/lib/python3.11/site-packages/sqlalchemy/orm/persistence.py", line 93, in save_obj
+    _emit_insert_statements(
+  File "/home/Jarvis/Musaddique/Eligibility_DataFiller/venv/lib/python3.11/site-packages/sqlalchemy/orm/persistence.py", line 1233, in _emit_insert_statements
+    result = connection.execute(
+             ^^^^^^^^^^^^^^^^^^^
+  File "/home/Jarvis/Musaddique/Eligibility_DataFiller/venv/lib/python3.11/site-packages/sqlalchemy/engine/base.py", line 1419, in execute
+    return meth(
+           ^^^^^
+  File "/home/Jarvis/Musaddique/Eligibility_DataFiller/venv/lib/python3.11/site-packages/sqlalchemy/sql/elements.py", line 527, in _execute_on_connection
+    return connection._execute_clauseelement(
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/Jarvis/Musaddique/Eligibility_DataFiller/venv/lib/python3.11/site-packages/sqlalchemy/engine/base.py", line 1641, in _execute_clauseelement
+    ret = self._execute_context(
+          ^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/Jarvis/Musaddique/Eligibility_DataFiller/venv/lib/python3.11/site-packages/sqlalchemy/engine/base.py", line 1846, in _execute_context
+    return self._exec_single_context(
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/Jarvis/Musaddique/Eligibility_DataFiller/venv/lib/python3.11/site-packages/sqlalchemy/engine/base.py", line 1986, in _exec_single_context
+    self._handle_dbapi_exception(
+  File "/home/Jarvis/Musaddique/Eligibility_DataFiller/venv/lib/python3.11/site-packages/sqlalchemy/engine/base.py", line 2363, in _handle_dbapi_exception
+    raise sqlalchemy_exception.with_traceback(exc_info[2]) from e
+  File "/home/Jarvis/Musaddique/Eligibility_DataFiller/venv/lib/python3.11/site-packages/sqlalchemy/engine/base.py", line 1967, in _exec_single_context
+    self.dialect.do_execute(
+  File "/home/Jarvis/Musaddique/Eligibility_DataFiller/venv/lib/python3.11/site-packages/sqlalchemy/engine/default.py", line 952, in do_execute
+    cursor.execute(statement, parameters)
+  File "/home/Jarvis/Musaddique/Eligibility_DataFiller/venv/lib/python3.11/site-packages/psycopg/cursor.py", line 117, in execute
+    raise ex.with_traceback(None)
+sqlalchemy.exc.ProgrammingError: (psycopg.errors.DatatypeMismatch) column "eligibility_check_date_time" is of type timestamp without time zone but expression is of type character varying
+LINE 1: ...RCHAR, $6::VARCHAR, $7::VARCHAR, $8::VARCHAR, $9, $10::VARCH...
+                                                             ^
+HINT:  You will need to rewrite or cast the expression.
+[SQL: INSERT INTO agent_eligibility (reference_number, eligibility_status, reason_summary, line_of_business, location_risk_zone, business_type, licensing_sanction_check, source_of_check, approval_flag, eligibility_check_date_time) VALUES (%(reference_number)s::VARCHAR, %(eligibility_status)s::VARCHAR, %(reason_summary)s::VARCHAR, %(line_of_business)s::VARCHAR, %(location_risk_zone)s::VARCHAR, %(business_type)s::VARCHAR, %(licensing_sanction_check)s::VARCHAR, %(source_of_check)s::VARCHAR, %(approval_flag)s, %(eligibility_check_date_time)s::VARCHAR) RETURNING agent_eligibility.id]
+[parameters: {'reference_number': '19B92D69F14DBB4A', 'eligibility_status': 'Not Eligible', 'reason_summary': 'Entity found in sanction list.', 'line_of_business': 'Commercial Property', 'location_risk_zone': 'High', 'business_type': 'New Business', 'licensing_sanction_check': 'Not Cleared', 'source_of_check': 'OFAC SDN, EU Sanctions, UN Sanctions', 'approval_flag': False, 'eligibility_check_date_time': '08012026 06:03:11 PM'}]
+(Background on this error at: https://sqlalche.me/e/20/f405)
+
+
+handler.py
+
+
+# from service import _require_env, _parse_blob_url
 from sqlmodel import Session, select
-from models import RefEligibilityCheck, AgentSubmissionIntake
+from models import RefEligibilityCheck ,  AgentSubmissionIntake, AgentEligibility
 from db import get_engine
+from datetime import datetime
+from zoneinfo import ZoneInfo
 
 
 def process_sanction_and_eligibility(mcp_result: dict) -> dict:
@@ -9,33 +173,48 @@ def process_sanction_and_eligibility(mcp_result: dict) -> dict:
     2. Decide Eligible / Not Eligible
     3. Fetch rule from ref_eligibility_check
     4. Fetch latest reference_number from agent_submission_intake
-    5. Return combined response
+    5. Insert into agent_eligibility
+    6. Return combined response
     """
 
     # ---------- VALIDATION ----------
     if not isinstance(mcp_result, dict):
-        return {"status": False, "error": "Invalid MCP result format"}
+        return {
+            "status": False,
+            "error": "Invalid MCP result format (expected dict)"
+        }
 
     results = mcp_result.get("results")
     if not isinstance(results, list) or not results:
-        return {"status": False, "error": "'results' missing or empty"}
+        return {
+            "status": False,
+            "error": "'results' missing or empty in MCP response"
+        }
 
     record = results[0]
 
     if "is_Sanctioned" not in record:
-        return {"status": False, "error": "'is_Sanctioned' missing in MCP response"}
-
-    if not isinstance(record["is_Sanctioned"], bool):
-        return {"status": False, "error": "'is_Sanctioned' must be boolean"}
+        return {
+            "status": False,
+            "error": "'is_Sanctioned' field missing in MCP response"
+        }
 
     is_sanctioned = record["is_Sanctioned"]
+
+    if not isinstance(is_sanctioned, bool):
+        return {
+            "status": False,
+            "error": "'is_Sanctioned' must be boolean"
+        }
 
     # ---------- DECISION ----------
     eligibility_status = "Not Eligible" if is_sanctioned else "Eligible"
 
+    # ---------- DB FETCH ----------
     engine = get_engine()
-
     with Session(engine) as session:
+
+
         # ---------- FETCH LATEST reference_number ----------
         latest_ref_stmt = (
             select(AgentSubmissionIntake)
@@ -51,28 +230,175 @@ def process_sanction_and_eligibility(mcp_result: dict) -> dict:
 
         reference_number = latest_submission.reference_number
 
-        # ---------- FETCH ELIGIBILITY RULE ----------
-        rule_stmt = select(RefEligibilityCheck).where(
+
+
+        stmt = select(RefEligibilityCheck).where(
             RefEligibilityCheck.eligibility_status == eligibility_status
         )
-        rule = session.exec(rule_stmt).first()
+        row = session.exec(stmt).first()
 
-        if not rule:
+        if not row:
             return {
                 "status": False,
-                "error": f"No rule found for Eligibility Status = {eligibility_status}"
+                "error": f"No row found for Eligibility Status = '{eligibility_status}'"
             }
+
+        try: 
+            now = datetime.now()
+
+            # formatted_datetime = now.strftime("%d%m%Y %I:%M:%S %p")
+            now_ist = datetime.now(ZoneInfo("Asia/Kolkata"))
+
+            formatted_datetime = now_ist.strftime("%d%m%Y %I:%M:%S %p")
+        
+        except Exception as e:
+            return{
+            "status" : False,
+            "error": f"Error generating date and time: {e}"
+            }
+
+            
+        agent_row = AgentEligibility(
+           reference_number=reference_number,
+           eligibility_status=row.eligibility_status,
+           reason_summary=row.reason_summary,
+           line_of_business=row.line_of_business,
+           location_risk_zone=row.location_risk_zone,
+           business_type=row.business_type,
+           licensing_and_sanction_check=row.licensing_and_sanction_check,
+           source_of_check=row.source_of_check,
+           approval_flag = row.approval_flag,
+           eligibility_check_date_time= formatted_datetime
+        )
+
+        session.add(agent_row)
+        session.commit()
+        session.refresh(agent_row)
+
+
 
         # ---------- RESPONSE ----------
         return {
             "status": True,
-            "reference_number": reference_number,
-            "eligibility_status": rule.eligibility_status,
-            "reason_summary": rule.reason_summary,
-            "line_of_business": rule.line_of_business,
-            "location_risk_zone": rule.location_risk_zone,
-            "business_type": rule.business_type,
-            "licensing_and_sanction_check": rule.licensing_and_sanction_check,
-            "source_of_check": rule.source_of_check,
-            "approval_flag": rule.approval_flag
+            "reference_number" : reference_number,
+            "eligibility_status": row.eligibility_status,
+            "reason_summary": row.reason_summary,
+            "line_of_business": row.line_of_business,
+            "location_risk_zone": row.location_risk_zone,
+            "business_type": row.business_type,
+            "licensing_and_sanction_check": row.licensing_and_sanction_check,
+            "source_of_check": row.source_of_check,
+            "approval_flag": row.approval_flag,
+            "eligibility_check_date_time": formatted_datetime
         }
+
+
+
+
+
+
+model.py
+
+from sqlmodel import SQLModel, Field
+from sqlalchemy import Column, String, Boolean
+from typing import Optional
+
+
+
+# from typing import Optional
+from datetime import datetime
+from sqlalchemy import Column, TIMESTAMP
+# from sqlmodel import SQLModel, Field
+
+
+
+class RefEligibilityCheck(SQLModel, table=True):
+    __tablename__ = "ref_eligibility_check"
+
+
+    id: Optional[int] = Field(default=None, primary_key = True)
+    
+    reason_summary: Optional[str] = Field(
+        sa_column=Column("reason_summary", String)
+    )
+
+    line_of_business: Optional[str] = Field(
+        sa_column=Column("line_of_business", String)
+    )
+
+    location_risk_zone: Optional[str] = Field(
+        sa_column=Column("location_risk_zone", String)
+    )
+
+    business_type: Optional[str] = Field(
+        sa_column=Column("business_type", String)
+    )
+
+    licensing_and_sanction_check: Optional[str] = Field(
+        sa_column=Column("licensing_sanction_check", String)
+    )
+
+    source_of_check: Optional[str] = Field(
+        sa_column=Column("source_of_check", String)
+    )
+
+    eligibility_status: Optional[str] = Field(
+        sa_column=Column("eligibility_status", String)
+    )
+
+    approval_flag: Optional[bool] = Field(
+        sa_column=Column("approval_flag", Boolean)
+    )
+
+class AgentSubmissionIntake(SQLModel, table=True):
+    __tablename__ = "agent_submission_intake"
+
+    id:Optional[int] = Field(default=None, primary_key=True)
+
+    reference_number: Optional[str] = Field(default=None)
+
+
+class AgentEligibility(SQLModel, table=True):
+    __tablename__="agent_eligibility"
+
+    id: Optional [int] = Field(default = None, primary_key = True)
+
+    reference_number: Optional[str] = Field(
+    sa_column=Column("reference_number", String)
+    )
+
+    eligibility_status: Optional[str] = Field(
+        sa_column=Column("eligibility_status", String)
+    )  
+
+    reason_summary: Optional[str] = Field(
+        sa_column=Column("reason_summary", String)
+    )
+
+    line_of_business: Optional[str] = Field(
+       sa_column=Column("line_of_business", String)
+   )
+
+    location_risk_zone: Optional[str] = Field(
+       sa_column=Column("location_risk_zone", String)
+   )
+
+    business_type: Optional[str] = Field(
+       sa_column=Column("business_type", String)
+   )   
+ 
+    licensing_and_sanction_check: Optional[str] = Field(
+       sa_column=Column("licensing_sanction_check", String)
+   )
+
+    source_of_check: Optional[str] = Field(
+       sa_column=Column("source_of_check", String)
+   )
+
+    approval_flag: Optional[bool] = Field(
+       sa_column=Column("approval_flag", Boolean)
+   )
+
+    eligibility_check_date_time : Optional[bool] = Field(
+    sa_column=Column("eligibility_check_date_time", String)
+   )
