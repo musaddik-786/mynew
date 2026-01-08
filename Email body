@@ -10,3 +10,58 @@ CREATE TABLE ref_eligibility_check (
     approval_flag BOOLEAN NULL,
     approval_date_time TIMESTAMP WITHOUT TIME ZONE NULL
 );
+
+
+INSERT INTO ref_eligibility_check (
+    reason_summary,
+    line_of_business,
+    location_risk_zone,
+    business_type,
+    licensing_sanction_check,
+    source_of_check,
+    eligibility_status,
+    approval_flag,
+    approval_date_time
+) VALUES
+(
+    'Within sum insured limits and approved risk zone',
+    'Commercial Property',
+    'Medium',
+    'New Business',
+    'Cleared',
+    'OFAC SDN, EU Sanctions, UN Sanctions',
+    'Eligible',
+    FALSE,
+    NULL
+),
+(
+    'Entity found in sanction list.',
+    'Commercial Property',
+    'High',
+    'New Business',
+    'Not Cleared',
+    'OFAC SDN, EU Sanctions, UN Sanctions',
+    'Not Eligible',
+    FALSE,
+    NULL
+);
+
+
+
+
+(venv) Jarvis@JarvisPhase2:~/Musaddique/Eligibility_DataFiller$ python3 main.py
+INFO:     Started server process [6025]
+INFO:     Waiting for application startup.
+INFO:     Application startup complete.
+INFO:     Uvicorn running on http://0.0.0.0:8601 (Press CTRL+C to quit)
+INFO:     127.0.0.1:45084 - "POST /api/v1/eligibility_agent/Licensing_%26_Sanction_Checker_MCP HTTP/1.1" 500 Internal Server Error
+ERROR:    Exception in ASGI application
+Traceback (most recent call last):
+  File "/home/Jarvis/Musaddique/Eligibility_DataFiller/venv/lib/python3.11/site-packages/sqlalchemy/engine/base.py", line 1967, in _exec_single_context
+    self.dialect.do_execute(
+  File "/home/Jarvis/Musaddique/Eligibility_DataFiller/venv/lib/python3.11/site-packages/sqlalchemy/engine/default.py", line 952, in do_execute
+    cursor.execute(statement, parameters)
+  File "/home/Jarvis/Musaddique/Eligibility_DataFiller/venv/lib/python3.11/site-packages/psycopg/cursor.py", line 117, in execute
+    raise ex.with_traceback(None)
+psycopg.errors.UndefinedColumn: column ref_eligibility_check.id does not exist
+LINE 1: SELECT ref_eligibility_check.id, ref_eligibility_check."Elig...
