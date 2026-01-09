@@ -1,29 +1,115 @@
-{
-  "Broker Information": {
-    "Agency_Customer_Id": "542198, confidence - 0.976",
-    "Agency": "Prime Brokers Ltd., confidence - 0.95",
-    "Contact Name": "William Grey, confidence - 0.96",
-    "Emailaddress": "greywilliam@primebrokers.com, confidence - 0.973",
-    "Phone": "+1 202 406 789, confidence - 0.818",
-    "Producer'S Signature": "William Grey, confidence - 0.587",
-    "Producer'S Name Please Print": "William Grey, confidence - 0.45",
-    "total_confidence": 0.8162857142857142
-  },
-  "Carrier Information": {
-    "Carrier": "Phoenix Insurers Ltd., confidence - 0.938",
-    "total_confidence": 0.938
-  },
-  "Policy Information": {
-    "Program Code": "P1, confidence - 0.963",
-    "Company Policy Or Program Name": "Program 1, confidence - 0.972",
-    "Proposed Eff Date": "07/15/2025, confidence - 0.97",
-    "Proposed Exp Date": "07/15/2028, confidence - 0.974",
-    "Billing Plan - Direct": ":unselected:, confidence - 0.676",
-    "Billing Plan - Agency": ":selected:, confidence - 0.961",
-    "Deposit": "$, confidence - 0.612",
-    "Minimum Premium": "$ $ , confidence - 0.448",
-    "total_confidence": 0.8220000000000002
-  },
+import os
+import json
+from typing import Optional, Dict
+import pandas as pd
+from azure.storage.blob.aio import BlobServiceClient
+from azure.core.exceptions import ResourceNotFoundError
+from dotenv import load_dotenv
+
+from service import _require_env, _parse_blob_url
+
+load_dotenv()
+
+AZURE_STORAGE_CONNECTION_STRING = os.environ.get("AZURE_STORAGE_CONNECTION_STRING", "")
+LOCAL_CSV_PATH = os.path.join("input", "sanctions.csv")
+
+
+async def compare_name_with_sanctions(json_file_url: str) -> Dict:
+    """
+    Flow:
+      1) Parse blob URL -> (container, blob_name)
+      2) Download JSON (async)
+      3) Dynamically search for target labels in any nested structure
+      4) Read local CSV input/sanctions.csv
+      5) Case-insensitive exact match against entity_name
+      6) Save outputs to ./output and return structured result (with 'status')
+    """
+
+    try:
+        _require_env()
+    except Exception as e:
+        return {"status": False, "error": str(e)}
+
+    try:
+        container_name, blob_name = _parse_blob_url(json_file_url)
+    except Exception as e:
+        return {"status": False, "error": f"Invalid jsonfilepath: {e}"}
+
+    try:
+        async with BlobServiceClient.from_connection_string(AZURE_STORAGE_CONNECTION_STRING) as blob_service:
+            container_client = blob_service.get_container_client(container_name)
+            blob_client = container_client.get_blob_client(blob_name)
+            try:
+                await blob_client.get_blob_properties()
+            except ResourceNotFoundError:
+                return {"status": False, "error": f"JSON blob not found: container='{container_name}', blob='{blob_name}'"}
+
+            stream = await blob_client.download_blob()
+            raw_bytes = await stream.readall()
+    except Exception as e:
+        return {"status": False, "error": f"Error connecting to Azure Blob Storage: {e}"}
+
+    # Python dict
+    try:
+        data = json.loads(raw_bytes.decode("utf-8"))
+    except Exception as e:
+        return {"status": False, "error": f"Failed to parse JSON: {e}"}
+
+    # Target labels to search for dynamically
+    target_labels = {"ownername", "insuredname", "contactname", "namedinsured(s)", 
+                     "applicant/firstnameinsured", "insured/applicant", "namedinsured", 
+                     "namedinsureds", "firstnameinsured", "applicantname"}
+    extracted_name: Optional[str] = None
+
+    def search_nested(data: dict) -> Optional[str]:
+        """
+        Recursively search for any field matching target labels in nested dictionaries.
+        """
+        for key, value in data.items():
+            if isinstance(value, dict):  # If the value is a nested dictionary, recurse
+                result = search_nested(value)
+                if result:
+                    return result
+            elif isinstance(key, str):
+                normalized_key = key.lower().replace(" ", "").replace(":", "")
+                if normalized_key in target_labels:
+                    return value.split(",")[0].strip()  # Extract name before confidence value
+        return None
+
+    extracted_name = search_nested(data)
+
+    if not extracted_name:
+        return {"status": False, "error": "No matching name field found in JSON."}
+
+    if not os.path.exists(LOCAL_CSV_PATH):
+        return {"status": False, "error": f"Local CSV not found at '{LOCAL_CSV_PATH}'"}
+
+    try:
+        csv_df = pd.read_csv(LOCAL_CSV_PATH)
+    except Exception as e:
+        return {"status": False, "error": f"Failed to read CSV '{LOCAL_CSV_PATH}': {e}"}
+
+    if "entity_name" not in csv_df.columns:
+        return {"status": False, "error": "CSV must contain 'entity_name' column"}
+
+    def norm(s: str) -> str:
+        return s.strip().lower() if isinstance(s, str) else ""
+
+    entity_set = {norm(x) for x in csv_df["entity_name"].dropna() if isinstance(x, str) and x.strip()}
+    is_unique = norm(extracted_name) in entity_set
+
+    results = [{"Extracted Name": extracted_name, "is_Sanctioned": is_unique}]
+
+    try:
+        os.makedirs("./output", exist_ok=True)
+        json_output = "./output/comparison_results.json"
+        with open(json_output, "w", encoding="utf-8") as f:
+            json.dump({"results": results}, f, indent=4, ensure_ascii=False)
+    except Exception as e:
+        return {"status": False, "error": f"Failed saving results: {e}"}
+
+    return {"status": True, "results": results}
+
 
 
 
