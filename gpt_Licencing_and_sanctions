@@ -1,3 +1,32 @@
+{
+  "Broker Information": {
+    "Agency_Customer_Id": "542198, confidence - 0.976",
+    "Agency": "Prime Brokers Ltd., confidence - 0.95",
+    "Contact Name": "William Grey, confidence - 0.96",
+    "Emailaddress": "greywilliam@primebrokers.com, confidence - 0.973",
+    "Phone": "+1 202 406 789, confidence - 0.818",
+    "Producer'S Signature": "William Grey, confidence - 0.587",
+    "Producer'S Name Please Print": "William Grey, confidence - 0.45",
+    "total_confidence": 0.8162857142857142
+  },
+  "Carrier Information": {
+    "Carrier": "Phoenix Insurers Ltd., confidence - 0.938",
+    "total_confidence": 0.938
+  },
+  "Policy Information": {
+    "Program Code": "P1, confidence - 0.963",
+    "Company Policy Or Program Name": "Program 1, confidence - 0.972",
+    "Proposed Eff Date": "07/15/2025, confidence - 0.97",
+    "Proposed Exp Date": "07/15/2028, confidence - 0.974",
+    "Billing Plan - Direct": ":unselected:, confidence - 0.676",
+    "Billing Plan - Agency": ":selected:, confidence - 0.961",
+    "Deposit": "$, confidence - 0.612",
+    "Minimum Premium": "$ $ , confidence - 0.448",
+    "total_confidence": 0.8220000000000002
+  },
+
+
+
 file_router.py
 
 
