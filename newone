@@ -1,3 +1,164 @@
+import os
+import json
+from dotenv import load_dotenv
+from openai import AzureOpenAI
+
+# ------------------ CONFIG ------------------
+load_dotenv()
+
+client = AzureOpenAI(
+    azure_endpoint=os.getenv("AZURE_OPENAI_ENDPOINT"),
+    api_key=os.getenv("AZURE_OPENAI_API_KEY"),
+    api_version="2024-05-01-preview"
+)
+
+MODEL = os.getenv("AZURE_OPENAI_CHAT_DEPLOYMENT")
+
+output_dir = os.path.join(os.getcwd(), "output")
+os.makedirs(output_dir, exist_ok=True)
+
+INPUT_FILE = os.path.join(output_dir, "output.json")
+OUTPUT_FILE = os.path.join(output_dir, "final_output.json")
+
+MAX_CHARS = 12000
+
+
+# ------------------ HELPERS ------------------
+def chunk_text(text, max_chars=MAX_CHARS):
+    chunks, current, length = [], [], 0
+    for line in text.splitlines():
+        if length + len(line) > max_chars:
+            chunks.append("\n".join(current))
+            current, length = [], 0
+        current.append(line)
+        length += len(line)
+    if current:
+        chunks.append("\n".join(current))
+    return chunks
+
+
+def clean_field_name(name: str) -> str:
+    return name.strip().title()
+
+
+# ------------------ MANUAL JSON PROCESSING ------------------
+def simplify_manual_json(raw_json):
+    """
+    Convert manual JSON into simplified internal format.
+    """
+    simplified = {}
+    for k, v in raw_json.items():
+        if not isinstance(v, dict):
+            continue
+        value = v.get("value")
+        confidence = v.get("confidence")
+        if value is None:
+            continue
+        simplified[clean_field_name(k)] = {
+            "value": value,
+            "confidence": confidence
+        }
+    return simplified
+
+
+def build_prompt(cleaned_data):
+    return f"""
+You are a JSON data formatter.
+
+Return ONLY valid JSON.
+
+Rules:
+1. Group fields logically (Policy, Insured, Broker, Address, etc.).
+2. Format each field as:
+   "Field Name": "Value, confidence - 0.95"
+3. Do NOT calculate averages.
+
+Input JSON:
+{json.dumps(cleaned_data, indent=2)}
+"""
+
+
+def process_chunk(chunk_dict):
+    response = client.chat.completions.create(
+        model=MODEL,
+        temperature=0,
+        messages=[
+            {"role": "system", "content": "Return only JSON."},
+            {"role": "user", "content": build_prompt(chunk_dict)}
+        ]
+    )
+
+    text = response.choices[0].message.content.strip()
+    start = text.find("{")
+    end = text.rfind("}") + 1
+    return json.loads(text[start:end])
+
+
+# ------------------ CONFIDENCE ------------------
+def add_group_confidence(grouped_data, original_data):
+    lookup = {k: v["confidence"] for k, v in original_data.items()}
+
+    for group, fields in grouped_data.items():
+        if not isinstance(fields, dict):
+            continue
+        confs = []
+        for field in fields.keys():
+            if field in lookup and lookup[field] is not None:
+                confs.append(lookup[field])
+        if confs:
+            grouped_data[group]["total_confidence"] = sum(confs) / len(confs)
+    return grouped_data
+
+
+def calculate_document_confidence(original_data):
+    confs = [v["confidence"] for v in original_data.values() if v.get("confidence") is not None]
+    return sum(confs) / len(confs) if confs else None
+
+
+# ------------------ MAIN PIPELINE ------------------
+def process_manual_json(raw_json):
+    simplified = simplify_manual_json(raw_json)
+
+    text_data = json.dumps(simplified, indent=2)
+    chunks = chunk_text(text_data)
+
+    final_output = {}
+
+    for chunk in chunks:
+        chunk_dict = json.loads(chunk)
+        grouped = process_chunk(chunk_dict)
+        for k, v in grouped.items():
+            final_output.setdefault(k, {}).update(v)
+
+    final_output = add_group_confidence(final_output, simplified)
+
+    doc_conf = calculate_document_confidence(simplified)
+    if doc_conf is not None:
+        final_output["Document_Confidence_Score"] = doc_conf
+
+    with open(OUTPUT_FILE, "w", encoding="utf-8") as f:
+        json.dump(final_output, f, indent=2, ensure_ascii=False)
+
+    print(f"✅ Final JSON written to {OUTPUT_FILE}")
+    return final_output
+
+
+# ------------------ RUN ------------------
+if __name__ == "__main__":
+    with open(INPUT_FILE, "r", encoding="utf-8") as f:
+        raw_json = json.load(f)
+
+    process_manual_json(raw_json)
+
+
+
+
+
+
+
+
+
+
 This was my earlier code 
 final_processor.py
 
