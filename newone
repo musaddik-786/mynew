@@ -1,217 +1,208 @@
-Tool:Licensing_and_Sanction_Checker_MCP] {
-"jsonrpc": "2.0",
-"id": 1,
-"result": {
-"status": true,
-"results": [
-{
-"Extracted Name": "Berkshire Hathaway",
-"is_Sanctioned": false
-}}}
+#BELOW IS ABSOLUTE WORKING CODE 
+import os
+import json
+from dotenv import load_dotenv
+from openai import AzureOpenAI
 
-I want to create a routerfile function for mcp that accpets the above response and that funtion should store the "is_Sanctioned": false is some variable 
+# ------------------ CONFIG ------------------
+load_dotenv()
 
-below is my example router of some other mcp refer its structure but the use case is different as i explained above
-
-from fastapi import APIRouter
-from fastapi.responses import JSONResponse
-from pydantic import BaseModel, Field
-from handler import compare_name_with_sanctions
-import traceback
-import sys
-
-router = APIRouter()
-
-
-class CompareRequest(BaseModel):
-    jsonfilepath: str = Field(..., description="Full Azure Blob URL to the extracted JSON.")
-
-
-@router.post(
-    "/Licensing_&_Sanction_Checker_MCP",
-    operation_id="Licensing_&_Sanction_Checker_MCP",
-    summary="Compare JSON (Owner/Insured/Contact/NAMED INSURED(S)) from blob URL with local sanctions CSV."
+client = AzureOpenAI(
+    azure_endpoint=os.getenv("AZURE_OPENAI_ENDPOINT"),
+    api_key=os.getenv("AZURE_OPENAI_API_KEY"),
+    api_version="2024-05-01-preview"
 )
-async def compare_files(request: CompareRequest):
-    """
-    Receives the JSON blob URL from the Data Extraction Agent and performs the comparison.
-    Returns a JSON-RPC envelope for consistency with your duplicate attachment checker.
-    This wrapper ensures 'result' is always a JSON object (not null) and logs unexpected errors.
-    """
-    try:
-        result = await compare_name_with_sanctions(json_file_url=request.jsonfilepath)
-        # Guard: ensure result is a dict (JSON object). If not, convert to error dict.
-        if result is None or not isinstance(result, dict):
-            result = {"status": False, "error": "Internal: handler returned no result (None or non-dict)."}
-        return JSONResponse(
-            content={
-                "jsonrpc": "2.0",
-                "id": 1,
-                "result": result
-            },
-            status_code=200
-        )
-    except Exception as e:
-        # Log traceback server-side for debugging
-        tb = traceback.format_exc()
-        print("Unexpected error in compare_files:", file=sys.stderr)
-        print(tb, file=sys.stderr)
-        # Return JSON-RPC with an error object (still in result so client keeps consistent shape)
-        return JSONResponse(
-            content={
-                "jsonrpc": "2.0",
-                "id": 1,
-                "result": {"status": False, "error": f"Unexpected server error: {str(e)}", "trace": tb}
-            },
-            status_code=200
-        )
-in try i want to just call that function which is taking the input from request and then that function should extract has the is_Sanctioned field and store it in the other variable 
-just as we were doing here inside try block
-  try:
-        result = await compare_name_with_sanctions(json_file_url=request.jsonfilepath)
 
-@router.post(
-    "/Licensing_&_Sanction_Checker_MCP",
-    operation_id="Licensing_&_Sanction_Checker_MCP",
-    summary="Compare JSON (Owner/Insured/Contact/NAMED INSURED(S)) from blob URL with local sanctions CSV."
-)
-async def compare_files(request: CompareRequest):
-    """
-    Receives the JSON blob URL from the Data Extraction Agent and performs the comparison.
-    Returns a JSON-RPC envelope for consistency with your duplicate attachment checker.
-    This wrapper ensures 'result' is always a JSON object (not null) and logs unexpected errors.
-    """
-    try:
-        result = await compare_name_with_sanctions(json_file_url=request.jsonfilepath)
-        # Guard: ensure result is a dict (JSON object). If not, convert to error dict.
-        if result is None or not isinstance(result, dict):
-            result = {"status": False, "error": "Internal: handler returned no result (None or non-dict)."}
-        return JSONResponse(
-            content={
-                "jsonrpc": "2.0",
-                "id": 1,
-                "result": result
-            },
-            status_code=200
-        )
-    except Exception as e:
-        # Log traceback server-side for debugging
-        tb = traceback.format_exc()
-        print("Unexpected error in compare_files:", file=sys.stderr)
-        print(tb, file=sys.stderr)
-        # Return JSON-RPC with an error object (still in result so client keeps consistent shape)
-        return JSONResponse(
-            content={
-                "jsonrpc": "2.0",
-                "id": 1,
-                "result": {"status": False, "error": f"Unexpected server error: {str(e)}", "trace": tb}
-            },
-            status_code=200
-        )
+MODEL = os.getenv("AZURE_OPENAI_CHAT_DEPLOYMENT")
+CONFIDENCE_THRESHOLD = 0.5
+# OUTPUT_FILE = "final_output.json"
+output_dir = os.path.join(os.getcwd(), "output")
+INPUT_FILE = os.path.join(output_dir, "output.json")
 
-and that function should be defined in some other file like handler.py where it takes
-
-also this is my main.py current;y
+os.makedirs(output_dir, exist_ok=True)
+OUTPUT_FILE = os.path.join(output_dir, "final_output.json")
+MAX_CHARS = 12000
 
 
-from fastapi import FastAPI
-from fastapi.middleware.cors import CORSMiddleware
-from fastapi_mcp import FastApiMCP
-import uvicorn
+def chunk_text(text, max_chars=MAX_CHARS):
+    """Split long text into safe chunks for OpenAI input."""
+    chunks, current, length = [], [], 0
+    for line in text.splitlines():
+        if length + len(line) > max_chars:
+            chunks.append("\n".join(current))
+            current, length = [], 0
+        current.append(line)
+        length += len(line)
+    if current:
+        chunks.append("\n".join(current))
+    return chunks
 
-from file_router import router as file_router
+
+#New Subham's code
+def clean_field_name(name: str) -> str:
+    """Remove prefixes like 'LOB - ' and normalize casing."""
+    name = name.replace("LOB -", "").strip()
+    return name.title()
 
 
-def apply_cors(app: FastAPI):
-    app.add_middleware(
-        CORSMiddleware,
-        allow_origins=["*"],
-        allow_methods=["*"],
-        allow_headers=["*"],
+#New Subham's code
+def simplify_fields(raw_json):
+    """Simplify Azure Doc Intelligence output with confidence preserved."""
+    simplified = {}
+    docs = raw_json.get("documents", [])
+    if not docs:
+        return simplified
+
+    for doc in docs:
+        for key, value in doc.get("fields", {}).items():
+            val = value.get("valueString") or value.get("content") or value.get("valueBoolean")
+            conf = value.get("confidence", None)
+            if val in [None, ""]:
+                continue
+            cleaned_key = clean_field_name(key)
+            simplified[cleaned_key] = {"value": val, "confidence": conf}
+    return simplified
+
+
+
+
+
+
+
+
+
+
+#New Subham's code
+def build_prompt(cleaned_data):
+    """Structured prompt for GPT (dynamic grouping)."""
+    return f"""
+You are a JSON data formatter. The following JSON is the output from Azure Document Intelligence for an ACORD insurance form.
+
+Return only valid JSON (no commentary, no markdown, no explanations).
+
+Requirements:
+1. Group fields logically (Line of Business, Policy, Broker, Insured, Address, etc.) based on semantic context. 
+   The grouping is flexible — create categories as needed.
+2. Each field must show its value and confidence exactly as in the input JSON, e.g.:
+   "Field Name": "Value, confidence - 0.87"
+   Do not recalculate or lower confidence values.
+3. If a field is repeated, include all instances under the most relevant group.
+4. Combine split tokens like ["6:00", "AM"] → "6:00 AM".
+5. Do not compute averages — Python will handle total_confidence and overall_total_confidence.
+
+Cleaned JSON input:
+{json.dumps(cleaned_data, indent=2)}
+"""
+
+#New Subham's code
+
+def process_chunk(chunk):
+    """Send one chunk to GPT and ensure JSON-only output."""
+    response = client.chat.completions.create(
+        model=MODEL,
+        temperature=0,
+        messages=[
+            {"role": "system", "content": "You are a precise document understanding assistant that outputs only JSON."},
+            {"role": "user", "content": build_prompt(chunk)},
+        ]
     )
 
+    text = response.choices[0].message.content.strip()
+    try:
+        start = text.find("{")
+        end = text.rfind("}") + 1
+        json_text = text[start:end]
+        return json.loads(json_text)
+    except Exception:
+        print("⚠️ Warning: GPT output not clean JSON. Attempting recovery.")
+        return {"error": "Invalid JSON returned", "raw_output": text}
 
-def create_sub_app(title: str, description: str, version: str = "0.1.0") -> FastAPI:
-    sub = FastAPI(title=title, description=description, version=version)
-    apply_cors(sub)
-    return sub
+#New Subham's code
+def calculate_overall_confidence(original_json):
+    """Calculate overall average confidence directly from original JSON."""
+    def extract_confidences(obj):
+        confidences = []
+        if isinstance(obj, dict):
+            for key, value in obj.items():
+                if key == "confidence" and isinstance(value, (int, float)):
+                    confidences.append(value)
+                else:
+                    confidences.extend(extract_confidences(value))
+        elif isinstance(obj, list):
+            for item in obj:
+                confidences.extend(extract_confidences(item))
+        return confidences
 
+    confidences = extract_confidences(original_json)
+    if confidences:
+        return sum(confidences) / len(confidences)
+    return None
 
-app = FastAPI()
-apply_cors(app)
+def add_confidence_averages(grouped_data, original_data):
+    """Compute total_confidence per group using original JSON confidence values."""
+    confidence_lookup = {clean_field_name(k): v.get("confidence") for k, v in original_data.items()}
 
-file_app = create_sub_app(
-    title="Licensing & Sanction Checker MCP",
-    description="Receives JSON blob URL from Data Extraction Agent and compares extracted name with local sanctions CSV."
-)
-file_app.include_router(file_router)
+    for group, fields in grouped_data.items():
+        if not isinstance(fields, dict):
+            continue
+        confidences = []
+        for field in fields.keys():
+            if field in confidence_lookup and confidence_lookup[field] is not None:
+                confidences.append(confidence_lookup[field])
+        if confidences:
+            avg_conf = sum(confidences) / len(confidences)
+            grouped_data[group]["total_confidence"] = avg_conf
+    return grouped_data
 
-# Expose ONLY this operation id via MCP HTTP (client will use transport='http')
-FastApiMCP(file_app, include_operations=["Licensing_&_Sanction_Checker_MCP"]).mount_http()
+def process_azure_output(json_data):
+    """Process entire Doc Intelligence JSON with GPT grouping + confidence math."""
+    simplified = simplify_fields(json_data)
+    text_data = json.dumps(simplified, indent=2)
+    chunks = chunk_text(text_data)
+    final_combined = {}
 
-# Mount the sub-app under this prefix (keep as-is per your request)
-app.mount("/api/v1/eligibility_agent", file_app)
+    for chunk in chunks:
+        result = process_chunk(chunk)
+        if isinstance(result, dict):
+            for k, v in result.items():
+                if k in final_combined and isinstance(v, dict):
+                    final_combined[k].update(v)
+                else:
+                    final_combined[k] = v
 
+    # Add group averages
+    final_combined = add_confidence_averages(final_combined, simplified)
 
+    # Add overall average from original JSON
+    overall_avg = calculate_overall_confidence(json_data)
+    if overall_avg is not None:
+        final_combined["Document_Confidence_Score"] = overall_avg
+
+    with open(OUTPUT_FILE, "w", encoding="utf-8") as f:
+        json.dump(final_combined, f, indent=2, ensure_ascii=False)
+
+    print(f"Clean JSON written to {OUTPUT_FILE}")
+    return final_combined
+
+# ------------------ MAIN ------------------
 if __name__ == "__main__":
-    uvicorn.run(app, host="0.0.0.0", port=8601)
+    output_dir = os.path.join(os.getcwd(), "output")
+    os.makedirs(output_dir, exist_ok=True)
+    output_path = os.path.join(output_dir, "output.json")
+    
+    with open(output_path, "r", encoding="utf-8") as rf:
+        raw_json = json.load(rf) 
+    final_output = process_azure_output(raw_json)
 
 
-and this is my test script.py for some other use case refer the structureand create a test_script.py for the current usecase 
+    json_path = os.path.join("output","output.json")
+    with open(INPUT_FILE, "r", encoding="utf-8") as f:
+        raw_json = json.load(f)
 
 
-from fastapi import FastAPI
-from fastapi.middleware.cors import CORSMiddleware
-from fastapi_mcp import FastApiMCP
-import uvicorn
 
-from file_router import router as file_router
-
-
-def apply_cors(app: FastAPI):
-    app.add_middleware(
-        CORSMiddleware,
-        allow_origins=["*"],
-        allow_methods=["*"],
-        allow_headers=["*"],
-    )
-
-
-def create_sub_app(title: str, description: str, version: str = "0.1.0") -> FastAPI:
-    sub = FastAPI(title=title, description=description, version=version)
-    apply_cors(sub)
-    return sub
-
-
-app = FastAPI()
-apply_cors(app)
-
-file_app = create_sub_app(
-    title="Licensing & Sanction Checker MCP",
-    description="Receives JSON blob URL from Data Extraction Agent and compares extracted name with local sanctions CSV."
-)
-file_app.include_router(file_router)
-
-# Expose ONLY this operation id via MCP HTTP (client will use transport='http')
-FastApiMCP(file_app, include_operations=["Licensing_&_Sanction_Checker_MCP"]).mount_http()
-
-# Mount the sub-app under this prefix (keep as-is per your request)
-app.mount("/api/v1/eligibility_agent", file_app)
-
-
-if __name__ == "__main__":
-    uvicorn.run(app, host="0.0.0.0", port=8601)
-
-this is how our current input for our current mcp will be 
-Tool:Licensing_and_Sanction_Checker_MCP] {
-"jsonrpc": "2.0",
-"id": 1,
-"result": {
-"status": true,
-"results": [
+why is the json only getting generated with confidence score 
+below is my final_output.json that is getting generated
 {
-"Extracted Name": "Berkshire Hathaway",
-"is_Sanctioned": false
-}}}
-
-so lets use this in testscript .py and test 
+  "Document_Confidence_Score": 0.9646877414822562
+}
