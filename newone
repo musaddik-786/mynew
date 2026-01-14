@@ -1,3 +1,224 @@
+import os
+import json
+from dotenv import load_dotenv
+from openai import AzureOpenAI
+
+# ------------------ CONFIG ------------------
+load_dotenv()
+
+client = AzureOpenAI(
+    azure_endpoint=os.getenv("AZURE_OPENAI_ENDPOINT"),
+    api_key=os.getenv("AZURE_OPENAI_API_KEY"),
+    api_version="2024-05-01-preview"
+)
+
+MODEL = os.getenv("AZURE_OPENAI_CHAT_DEPLOYMENT")
+
+output_dir = os.path.join(os.getcwd(), "output")
+os.makedirs(output_dir, exist_ok=True)
+
+INPUT_FILE = os.path.join(output_dir, "output.json")
+OUTPUT_FILE = os.path.join(output_dir, "final_output.json")
+
+MAX_CHARS = 12000
+
+
+# -------------------------------------------------
+# Split long text into safe chunks for GPT
+# -------------------------------------------------
+def chunk_text(text, max_chars=MAX_CHARS):
+    chunks, current, length = [], [], 0
+    for line in text.splitlines():
+        if length + len(line) > max_chars:
+            chunks.append("\n".join(current))
+            current, length = [], 0
+        current.append(line)
+        length += len(line)
+    if current:
+        chunks.append("\n".join(current))
+    return chunks
+
+
+# -------------------------------------------------
+# Extract WORDS + confidence (OCR-based)
+# -------------------------------------------------
+def simplify_fields(raw_json):
+    """
+    Extract OCR words from:
+    analyzeResult -> pages[] -> words[]
+    """
+    simplified = {}
+
+    pages = raw_json.get("analyzeResult", {}).get("pages", [])
+    if not pages:
+        return simplified
+
+    index = 1
+    for page in pages:
+        for word in page.get("words", []):
+            text = word.get("content")
+            conf = word.get("confidence")
+
+            if not text or conf is None:
+                continue
+
+            simplified[f"Word_{index}"] = {
+                "value": text,
+                "confidence": conf
+            }
+            index += 1
+
+    return simplified
+
+
+# -------------------------------------------------
+# GPT prompt
+# -------------------------------------------------
+def build_prompt(cleaned_data):
+    return f"""
+You are a JSON data formatter.
+
+The following JSON contains OCR words with confidence values extracted
+from an insurance document.
+
+Return ONLY valid JSON (no commentary).
+
+Rules:
+1. Group words logically (Policy, Insured, Address, Dates, etc.).
+2. Each field must be:
+   "Field Name": "Value, confidence - 0.87"
+3. Do NOT invent confidence.
+4. Do NOT compute averages.
+
+Input:
+{json.dumps(cleaned_data, indent=2)}
+"""
+
+
+# -------------------------------------------------
+# GPT call (JSON only)
+# -------------------------------------------------
+def process_chunk(chunk):
+    response = client.chat.completions.create(
+        model=MODEL,
+        temperature=0,
+        messages=[
+            {"role": "system", "content": "You output only valid JSON."},
+            {"role": "user", "content": build_prompt(chunk)},
+        ]
+    )
+
+    text = response.choices[0].message.content.strip()
+    try:
+        start = text.find("{")
+        end = text.rfind("}") + 1
+        return json.loads(text[start:end])
+    except Exception:
+        return {"error": "Invalid JSON from GPT", "raw_output": text}
+
+
+# -------------------------------------------------
+# Calculate overall OCR confidence
+# -------------------------------------------------
+def calculate_overall_confidence(original_json):
+    def extract_confidences(obj):
+        confidences = []
+        if isinstance(obj, dict):
+            for k, v in obj.items():
+                if k == "confidence" and isinstance(v, (int, float)):
+                    confidences.append(v)
+                else:
+                    confidences.extend(extract_confidences(v))
+        elif isinstance(obj, list):
+            for item in obj:
+                confidences.extend(extract_confidences(item))
+        return confidences
+
+    confidences = extract_confidences(original_json)
+    if confidences:
+        return sum(confidences) / len(confidences)
+    return None
+
+
+# -------------------------------------------------
+# Group-level confidence
+# -------------------------------------------------
+def add_confidence_averages(grouped_data, original_words):
+    lookup = {
+        k: v["confidence"]
+        for k, v in original_words.items()
+        if "confidence" in v
+    }
+
+    for group, fields in grouped_data.items():
+        if not isinstance(fields, dict):
+            continue
+
+        confidences = []
+        for field in fields:
+            if field in lookup:
+                confidences.append(lookup[field])
+
+        if confidences:
+            grouped_data[group]["total_confidence"] = sum(confidences) / len(confidences)
+
+    return grouped_data
+
+
+# -------------------------------------------------
+# MAIN PROCESSOR
+# -------------------------------------------------
+def process_azure_output(json_data):
+    simplified = simplify_fields(json_data)
+
+    text_data = json.dumps(simplified, indent=2)
+    chunks = chunk_text(text_data)
+
+    final_output = {}
+
+    for chunk in chunks:
+        result = process_chunk(chunk)
+        if isinstance(result, dict):
+            for k, v in result.items():
+                if k in final_output and isinstance(v, dict):
+                    final_output[k].update(v)
+                else:
+                    final_output[k] = v
+
+    final_output = add_confidence_averages(final_output, simplified)
+
+    overall_conf = calculate_overall_confidence(json_data)
+    if overall_conf is not None:
+        final_output["Document_Confidence_Score"] = overall_conf
+
+    with open(OUTPUT_FILE, "w", encoding="utf-8") as f:
+        json.dump(final_output, f, indent=2, ensure_ascii=False)
+
+    print(f"✅ final_output.json written to {OUTPUT_FILE}")
+    return final_output
+
+
+# -------------------------------------------------
+# ENTRY POINT
+# -------------------------------------------------
+if __name__ == "__main__":
+    with open(INPUT_FILE, "r", encoding="utf-8") as f:
+        raw_json = json.load(f)
+
+    process_azure_output(raw_json)
+
+
+
+
+
+
+
+
+
+
+
+
+
 This is my json 
 
 
