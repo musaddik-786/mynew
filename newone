@@ -1,3 +1,25 @@
+I am still getting 
+
+{
+  "Document_Confidence_Score": 0.9327781997721158
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 import os
 import json
 from dotenv import load_dotenv
