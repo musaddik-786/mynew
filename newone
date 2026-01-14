@@ -19,6 +19,190 @@ INPUT_FILE = os.path.join(output_dir, "output.json")
 OUTPUT_FILE = os.path.join(output_dir, "final_output.json")
 
 os.makedirs(output_dir, exist_ok=True)
+MAX_CHARS = 12000
+
+# ------------------ UTILS ------------------
+
+def chunk_text(text, max_chars=MAX_CHARS):
+    chunks, current, length = [], [], 0
+    for line in text.splitlines():
+        if length + len(line) > max_chars:
+            chunks.append("\n".join(current))
+            current, length = [], 0
+        current.append(line)
+        length += len(line)
+    if current:
+        chunks.append("\n".join(current))
+    return chunks
+
+# ------------------ CORE EXTRACTION ------------------
+
+def simplify_fields(raw_json):
+    """
+    SAFE extraction from:
+    analyzeResult -> pages[] -> words[]
+    """
+
+    if raw_json is None:
+        raise ValueError("❌ raw_json is None. JSON was not loaded correctly.")
+
+    if not isinstance(raw_json, dict):
+        raise ValueError("❌ raw_json is not a dictionary.")
+
+    analyze_result = raw_json.get("analyzeResult")
+    if not analyze_result:
+        raise ValueError("❌ 'analyzeResult' missing in JSON.")
+
+    pages = analyze_result.get("pages")
+    if not pages:
+        raise ValueError("❌ 'pages' missing in analyzeResult.")
+
+    simplified = {}
+    index = 1
+
+    for page in pages:
+        words = page.get("words", [])
+        for word in words:
+            text = word.get("content")
+            confidence = word.get("confidence")
+
+            if text is None or confidence is None:
+                continue
+
+            simplified[f"Word_{index}"] = {
+                "value": text,
+                "confidence": confidence
+            }
+            index += 1
+
+    if not simplified:
+        raise ValueError("❌ No OCR words extracted.")
+
+    print(f"✅ Extracted {len(simplified)} words")
+    return simplified
+
+# ------------------ GPT ------------------
+
+def build_prompt(cleaned_data):
+    return f"""
+You are a JSON formatter.
+
+Group OCR words into meaningful insurance sections.
+
+Rules:
+- Output ONLY valid JSON
+- Keep confidence unchanged
+- Do NOT compute averages
+
+Input:
+{json.dumps(cleaned_data, indent=2)}
+"""
+
+def process_chunk(chunk):
+    response = client.chat.completions.create(
+        model=MODEL,
+        temperature=0,
+        messages=[
+            {"role": "system", "content": "Return only JSON."},
+            {"role": "user", "content": build_prompt(chunk)}
+        ]
+    )
+
+    text = response.choices[0].message.content.strip()
+    start = text.find("{")
+    end = text.rfind("}") + 1
+    return json.loads(text[start:end])
+
+# ------------------ CONFIDENCE ------------------
+
+def calculate_overall_confidence(original_json):
+    def extract(obj):
+        vals = []
+        if isinstance(obj, dict):
+            for k, v in obj.items():
+                if k == "confidence" and isinstance(v, (int, float)):
+                    vals.append(v)
+                else:
+                    vals.extend(extract(v))
+        elif isinstance(obj, list):
+            for i in obj:
+                vals.extend(extract(i))
+        return vals
+
+    vals = extract(original_json)
+    return sum(vals) / len(vals) if vals else None
+
+# ------------------ PIPELINE ------------------
+
+def process_azure_output(raw_json):
+    simplified = simplify_fields(raw_json)
+
+    chunks = chunk_text(json.dumps(simplified, indent=2))
+    final_output = {}
+
+    for chunk in chunks:
+        result = process_chunk(chunk)
+        for k, v in result.items():
+            if k in final_output and isinstance(v, dict):
+                final_output[k].update(v)
+            else:
+                final_output[k] = v
+
+    overall_conf = calculate_overall_confidence(raw_json)
+    final_output["Document_Confidence_Score"] = overall_conf
+
+    with open(OUTPUT_FILE, "w", encoding="utf-8") as f:
+        json.dump(final_output, f, indent=2)
+
+    print(f"✅ Final JSON written to {OUTPUT_FILE}")
+    return final_output
+
+# ------------------ ENTRY ------------------
+
+if __name__ == "__main__":
+    if not os.path.exists(INPUT_FILE):
+        raise FileNotFoundError(f"❌ {INPUT_FILE} not found")
+
+    with open(INPUT_FILE, "r", encoding="utf-8") as f:
+        raw_json = json.load(f)
+
+    process_azure_output(raw_json)
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+import os
+import json
+from dotenv import load_dotenv
+from openai import AzureOpenAI
+
+# ------------------ CONFIG ------------------
+load_dotenv()
+
+client = AzureOpenAI(
+    azure_endpoint=os.getenv("AZURE_OPENAI_ENDPOINT"),
+    api_key=os.getenv("AZURE_OPENAI_API_KEY"),
+    api_version="2024-05-01-preview"
+)
+
+MODEL = os.getenv("AZURE_OPENAI_CHAT_DEPLOYMENT")
+
+output_dir = os.path.join(os.getcwd(), "output")
+INPUT_FILE = os.path.join(output_dir, "output.json")
+OUTPUT_FILE = os.path.join(output_dir, "final_output.json")
+
+os.makedirs(output_dir, exist_ok=True)
 
 MAX_CHARS = 12000
 
