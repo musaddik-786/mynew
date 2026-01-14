@@ -1,4 +1,3 @@
-
 import os
 import json
 from dotenv import load_dotenv
@@ -15,7 +14,7 @@ client = AzureOpenAI(
 
 MODEL = os.getenv("AZURE_OPENAI_CHAT_DEPLOYMENT")
 CONFIDENCE_THRESHOLD = 0.5
-# OUTPUT_FILE = "final_output.json"
+
 output_dir = os.path.join(os.getcwd(), "output")
 INPUT_FILE = os.path.join(output_dir, "output.json")
 
@@ -45,28 +44,36 @@ def clean_field_name(name: str) -> str:
     return name.title()
 
 
-
+# 🔴 ONLY THIS FUNCTION IS CHANGED
 #New Subham's code
 def simplify_fields(raw_json):
     """Simplify Azure Doc Intelligence output with confidence preserved."""
+
     simplified = {}
-    docs = raw_json.get("words", [])
-    if not docs:
+
+    analyze_result = raw_json.get("analyzeResult", {})
+    pages = analyze_result.get("pages", [])
+
+    if not pages:
         return simplified
 
-    for doc in docs:
-        for key, value in doc.get("fields", {}).items():
-            val = value.get("valueString") or value.get("content") or value.get("valueBoolean")
-            conf = value.get("confidence", None)
-            if val in [None, ""]:
+    for page in pages:
+        words = page.get("words", [])
+        for word in words:
+            val = word.get("content")
+            conf = word.get("confidence")
+
+            if val in [None, ""] or conf is None:
                 continue
-            cleaned_key = clean_field_name(key)
-            simplified[cleaned_key] = {"value": val, "confidence": conf}
+
+            cleaned_key = clean_field_name(val)
+            simplified[cleaned_key] = {
+                "value": val,
+                "confidence": conf
+            }
+
     return simplified
-
-
-
-
+# 🔴 END OF ONLY CHANGE
 
 
 #New Subham's code
@@ -93,7 +100,6 @@ Cleaned JSON input:
 
 
 #New Subham's code
-
 def process_chunk(chunk):
     """Send one chunk to GPT and ensure JSON-only output."""
     response = client.chat.completions.create(
@@ -114,7 +120,6 @@ def process_chunk(chunk):
     except Exception:
         print("⚠️ Warning: GPT output not clean JSON. Attempting recovery.")
         return {"error": "Invalid JSON returned", "raw_output": text}
-
 
 
 #New Subham's code
@@ -138,6 +143,7 @@ def calculate_overall_confidence(original_json):
         return sum(confidences) / len(confidences)
     return None
 
+
 def add_confidence_averages(grouped_data, original_data):
     """Compute total_confidence per group using original JSON confidence values."""
     confidence_lookup = {clean_field_name(k): v.get("confidence") for k, v in original_data.items()}
@@ -153,6 +159,7 @@ def add_confidence_averages(grouped_data, original_data):
             avg_conf = sum(confidences) / len(confidences)
             grouped_data[group]["total_confidence"] = avg_conf
     return grouped_data
+
 
 def process_azure_output(json_data):
     """Process entire Doc Intelligence JSON with GPT grouping + confidence math."""
@@ -170,10 +177,8 @@ def process_azure_output(json_data):
                 else:
                     final_combined[k] = v
 
-    # Add group averages
     final_combined = add_confidence_averages(final_combined, simplified)
 
-    # Add overall average from original JSON
     overall_avg = calculate_overall_confidence(json_data)
     if overall_avg is not None:
         final_combined["Document_Confidence_Score"] = overall_avg
@@ -184,15 +189,11 @@ def process_azure_output(json_data):
     print(f"✅ Clean JSON written to {OUTPUT_FILE}")
     return final_combined
 
+
 # ------------------ MAIN ------------------
 if __name__ == "__main__":
 
-    json_path = os.path.join("output","output.json")
     with open(INPUT_FILE, "r", encoding="utf-8") as f:
         raw_json = json.load(f)
 
     process_azure_output(raw_json)
-
-
-
-
