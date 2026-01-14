@@ -1,344 +1,131 @@
-import os
-import json
-from dotenv import load_dotenv
-from openai import AzureOpenAI
-
-# ------------------ CONFIG ------------------
-load_dotenv()
-
-client = AzureOpenAI(
-    azure_endpoint=os.getenv("AZURE_OPENAI_ENDPOINT"),
-    api_key=os.getenv("AZURE_OPENAI_API_KEY"),
-    api_version="2024-05-01-preview"
-)
-
-MODEL = os.getenv("AZURE_OPENAI_CHAT_DEPLOYMENT")
-
-output_dir = os.path.join(os.getcwd(), "output")
-os.makedirs(output_dir, exist_ok=True)
-
-OUTPUT_FILE = os.path.join(output_dir, "final_output.json")
-MAX_CHARS = 12000
-
-
-# ------------------ TEXT CHUNKING ------------------
-def chunk_text(text, max_chars=MAX_CHARS):
-    chunks, current, length = [], [], 0
-    for line in text.splitlines():
-        if length + len(line) > max_chars:
-            chunks.append("\n".join(current))
-            current, length = [], 0
-        current.append(line)
-        length += len(line)
-    if current:
-        chunks.append("\n".join(current))
-    return chunks
-
-
-# ------------------ GPT PROMPT ------------------
-def build_prompt(raw_text):
-    return f"""
-You are an insurance document understanding assistant.
-
-The following text is OCR output of an ACORD insurance form.
-
-Extract and group the information logically into structured JSON.
-Examples of groups: Policy, Insured, Agency, Premises, Coverage, Deductibles, Signatures, etc.
-
-Rules:
-- Return ONLY valid JSON
-- Do not include explanations
-- Do not invent data
-- Preserve original values as-is
-
-OCR TEXT:
-{raw_text}
-"""
-
-
-# ------------------ GPT CALL ------------------
-def process_chunk(chunk):
-    response = client.chat.completions.create(
-        model=MODEL,
-        temperature=0,
-        messages=[
-            {"role": "system", "content": "Return only valid JSON."},
-            {"role": "user", "content": build_prompt(chunk)},
-        ]
-    )
-
-    text = response.choices[0].message.content.strip()
-
-    try:
-        start = text.find("{")
-        end = text.rfind("}") + 1
-        return json.loads(text[start:end])
-    except Exception:
-        return {
-            "error": "Invalid JSON returned by GPT",
-            "raw_output": text
-        }
-
-
-# ------------------ DOCUMENT CONFIDENCE ------------------
-def calculate_document_confidence(raw_json):
-    confidences = []
-
-    for page in raw_json.get("pages", []):
-        for word in page.get("words", []):
-            conf = word.get("confidence")
-            if isinstance(conf, (int, float)):
-                confidences.append(conf)
-
-    if confidences:
-        return round(sum(confidences) / len(confidences), 3)
-
-    return None
-
-
-# ------------------ MAIN PROCESSOR ------------------
-def process_azure_output(json_data):
-    """
-    Entry point called from image_processor.py
-    """
-
-    # 1️⃣ Extract OCR text
-    text_data = json_data.get("content", "")
-    if not text_data:
-        raise ValueError("No OCR content found in output.json")
-
-    # 2️⃣ Chunk text for GPT
-    chunks = chunk_text(text_data)
-
-    final_output = {}
-
-    # 3️⃣ Send chunks to GPT and merge results
-    for chunk in chunks:
-        result = process_chunk(chunk)
-        if isinstance(result, dict):
-            for k, v in result.items():
-                if k in final_output and isinstance(v, dict):
-                    final_output[k].update(v)
-                else:
-                    final_output[k] = v
-
-    # 4️⃣ Calculate document confidence from word confidence
-    doc_conf = calculate_document_confidence(json_data)
-    if doc_conf is not None:
-        final_output["Document_Confidence_Score"] = doc_conf
-
-    # 5️⃣ Save final output
-    with open(OUTPUT_FILE, "w", encoding="utf-8") as f:
-        json.dump(final_output, f, indent=2, ensure_ascii=False)
-
-    print(f"✅ Final JSON written to {OUTPUT_FILE}")
-    return final_output
-
-
-# ------------------ LOCAL TEST ------------------
-if __name__ == "__main__":
-    input_path = os.path.join(output_dir, "output.json")
-    with open(input_path, "r", encoding="utf-8") as f:
-        raw_json = json.load(f)
-
-    process_azure_output(raw_json)
-
-
-
-
-
-
-This is how my output.json look like i want instead of documents it should take whatever is written in the "content" that is after "stringIndexType" as that consists of all the data 
-
 {
-  "apiVersion": "2024-11-30",
-  "modelId": "4ACORDFORM",
-  "stringIndexType": "textElements",
-  "content": "ACORD®\n®\nAGENCY CUSTOMER ID: 542198\nPROPERTY SECTION\nDATE (MM/DD/YYYY)\n07/15/2025\nAGENCY NAME\nPrime Brokers Ltd.\nCARRIER\nPhoenix Insurers Ltd.\nNAIC CODE\nPOLICY NUMBER\nEFFECTIVE DATE\nNAMED INSURED(S)\nBerkshire Hathaway\nBLANKET SUMMARY\nBLKT #\nAMOUNT\nTYPE\nBLKT #\nAMOUNT\n1\n80000000\nMultiple Locations\nPREMISES INFORMATION\nPREMISES #: 1\nSTREET ADDRESS: 123 Penny Lane, Springfield, Illinois\nBUILDING #: NB01\nBLDG DESCRIPTION: Commercial Offices\nSUBJECT OF INSURANCE\nAMOUNT\nCOINS %\nVALU- ATION\nCAUSES OF LOSS\nINFLATION GUARD %\nDED\nDED TYPE\nBLKT #\nFORMS AND CONDITIONS TO APPLY\nEarthquake\n12000000\nFire\n16000000\nFlood\n7000000\nADDITIONAL INFORMATION :unselected: BUSINESS INCOME / EXTRA EXPENSE - Attach ACORD 810 :unselected: VALUE REPORTING INFORMATION - Attach ACORD 811\nADDITIONAL COVERAGES, OPTIONS, RESTRICTIONS, ENDORSEMENTS AND RATING INFORMATION\nSPOILAGE COVERAGE (Y / N)\nDESCRIPTION OF PROPERTY COVERED LIMIT $\nN\n$\nREFRIG MAINT AGREEMENT (Y / N) N\nOPTIONS :unselected: BREAKDOWN OR CONTAMINATION :unselected: POWER OUTAGE :unselected: SELLING PRICE :unselected:\nSINKHOLE COVERAGE (Required in Florida) :unselected: ACCEPT COVERAGE :unselected: REJECT COVERAGE\nLIMIT: $\nMINE SUBSIDENCE COVERAGE (Required in IL, IN, KY and WV) :unselected: ACCEPT COVERAGE :unselected: REJECT COVERAGE\nLIMIT: $ :unselected: PROPERTY HAS BEEN DESIGNATED AN HISTORICAL LANDMARK\n# OF OPEN SIDES ON STRUCTURE:\nCONSTRUCTION TYPE\nDISTANCE TO HYDRANT FIRE STAT\nFIRE DISTRICT\nCODE NUMBER\nPROT CL\n# STORIES\n# BASM'TS\nYR BUILT\nTOTAL AREA\nFire Resistive (Steel,Reinforced)\n20 FT 2 MI\n25\n2\n2012\n250000 sq.ft\nBUILDING IMPROVEMENTS :selected: WIRING, YR: 2012 :unselected: PLUMBING, YR:\nBLDG CODE GRADE\nTAX CODE\nROOF TYPE\nOTHER OCCUPANCIES :selected: ROOFING, YR: 2012 :unselected: HEATING, YR: :unselected: SEMI- RESISTIVE :unselected: OTHER:\nYR:\nWIND CLASS :selected: RESISTIVE :unselected: :unselected: HEATING SOURCE INCL WOODBURNING STOVE OR FIREPLACE INSERT\nDATE\nINSTALLED:\nMANUFACTURER:\nPRIMARY HEAT :unselected: BOILER :unselected: SOLID FUEL :unselected:\nSECONDARY HEAT :unselected: BOILER :unselected: SOLID FUEL :unselected:\nIF BOILER, IS INSURANCE PLACED ELSEWHERE? N Y/N\nIF BOILER, IS INSURANCE PLACED ELSEWHERE? N Y/N\nRIGHT EXPOSURE & DISTANCE\nLEFT EXPOSURE & DISTANCE\nFRONT EXPOSURE & DISTANCE\nREAR EXPOSURE & DISTANCE\nBURGLAR ALARM TYPE\nCERTIFICATE #\nEXPIRATION DATE :unselected:\nCENTRAL :unselected:\nSTATION LOCAL GONG\n2 Automatic Alarms on each floor :unselected: WITH KEYS\nBURGLAR ALARM INSTALLED AND SERVICED BY Secure Tech Services Ltd.\nEXTENT\nGRADE\n# GUARDS / WATCHMEN 22 :unselected: CLOCK HOURLY :unselected:\nPREMISES FIRE PROTECTION (Sprinklers, Standpipes, CO2 / Chemical Systems)\n% SPRNK\nFIRE ALARM MANUFACTURER :unselected: CENTRAL STATION\nSprinklers on all floors :unselected: LOCAL GONG\nADDITIONAL INTEREST :unselected: ACORD 45 attached for additional names\nINTEREST\nNAME AND ADDRESS RANK:\nEVIDENCE: :unselected: CERTIFICATE\nINTEREST IN ITEM NUMBER :unselected: LENDER'S LOSS PAYABLE\nLOCATION:\nBUILDING: :unselected: LOSS PAYEE\nITEM CLASS:\nITEM: :unselected:\nMORTGAGEE :unselected:\nITEM DESCRIPTION\nREFERENCE / LOAN #:\nACORD 140 (2016/03)\nAttach to ACORD 125 @ 1985-2015 ACORD CORPORATION. All rights reserved. The ACORD name and logo are registered marks of ACORD\nDEDUCTIBLE\nTYPE :unselected: :selected: :unselected: :unselected: :selected: :unselected: :unselected: :unselected: :unselected: :selected: :selected: :unselected: :unselected: :unselected: :unselected: :unselected: :unselected:\nAGENCY CUSTOMER ID: 542198\nADDITIONAL PREMISES INFORMATION\nPREMISES #: 2\nSTREET ADDRESS: 214 Fret Avenue, Minneapolis, Minnesota\nBUILDING #: NB02\nBLDG DESCRIPTION: Commercial Offices\nSUBJECT OF INSURANCE\nAMOUNT\nCOINS %\nVALU- ATION\nCAUSES OF LOSS\nINFLATION GUARD %\nDED\nDED TYPE\nBLKT #\nFORMS AND CONDITIONS TO APPLY\nFire\n9000000\nEarthquake\n7000000\nFlood\n4000000\nADDITIONAL INFORMATION :unselected: BUSINESS INCOME / EXTRA EXPENSE - Attach ACORD 810 :unselected: VALUE REPORTING INFORMATION - Attach ACORD 811\nADDITIONAL COVERAGES, OPTIONS, RESTRICTIONS, ENDORSEMENTS AND RATING INFORMATION\nSPOILAGE COVERAGE (Y / N)\nDESCRIPTION OF PROPERTY COVERED\nN\nLIMIT\nREFRIG MAINT AGREEMENT (Y / N) N\nOPTIONS\n$ :unselected:\nBREAKDOWN OR CONTAMINATION\nSELLING\nDEDUCTIBLE :unselected:\nPOWER OUTAGE :unselected:\nPRICE\n$ :unselected:\nSINKHOLE COVERAGE (Required in Florida) :unselected: ACCEPT COVERAGE :unselected: REJECT COVERAGE\nLIMIT: $\nMINE SUBSIDENCE COVERAGE (Required in IL, IN, KY and WV) :unselected: ACCEPT COVERAGE :unselected: REJECT COVERAGE LIMIT: $\n# OF OPEN SIDES ON STRUCTURE: :unselected: PROPERTY HAS BEEN DESIGNATED AN HISTORICAL LANDMARK\nCONSTRUCTION TYPE\nDISTANCE TO HYDRANT FIRE STAT\nFIRE DISTRICT\nCODE NUMBER\nPROT CL\n# STORIES\n# BASM'TS\nYR BUILT\nTOTAL AREA\nFire Resistive (Steel,Reinforced)\n20 FT 3 MI\n15\n2\n2018\n170000 sq.ft\nBLDG CODE GRADE\nTAX CODE\nROOF TYPE\nOTHER OCCUPANCIES :selected: ROOFING, YR: 2018 :unselected: HEATING SOURCE INCL WOODBURNING STOVE OR FIREPLACE INSERT\nDATE INSTALLED: :unselected: OTHER:\nYR: :unselected: RESISTIVE :unselected:\nMANUFACTURER:\nPRIMARY HEAT :unselected: BOILER :unselected: SOLID FUEL :unselected:\nSECONDARY HEAT :unselected: BOILER :unselected: SOLID FUEL :unselected:\nIF BOILER, IS INSURANCE PLACED ELSEWHERE? N Y/N\nIF BOILER, IS INSURANCE PLACED ELSEWHERE? N Y/N\nRIGHT EXPOSURE & DISTANCE\nLEFT EXPOSURE & DISTANCE\nFRONT EXPOSURE & DISTANCE\nREAR EXPOSURE & DISTANCE\nBURGLAR ALARM TYPE\nCERTIFICATE #\nEXPIRATION DATE :unselected: CENTRAL :unselected:\nSTATION\nLOCAL GONG\n2 Automatic Alarms on each floor :unselected:\nWITH KEYS\nBURGLAR ALARM INSTALLED AND SERVICED BY\nEXTENT GRADE\n# GUARDS / WATCHMEN :unselected:\nCLOCK HOURLY\nSecure Tech Services Ltd.\n16 :unselected:\nPREMISES FIRE PROTECTION (Sprinklers, Standpipes, CO2 / Chemical Systems)\n% SPRNK FIRE ALARM MANUFACTURER :unselected:\nCENTRAL STATION\nSprinklers on all floors and Basement :unselected:\nLOCAL GONG\nADDITIONAL INTEREST :unselected: ACORD 45 attached for additional names\nINTEREST\nNAME AND ADDRESS RANK:\nEVIDENCE: :unselected: CERTIFICATE :unselected:\nLENDER'S LOSS PAYABLE :unselected:\nLOSS PAYEE :unselected: :unselected:\nMORTGAGEE\nREFERENCE / LOAN #:\nINTEREST IN ITEM NUMBER\nLOCATION:\nBUILDING:\nITEM CLASS:\nITEM:\nITEM DESCRIPTION\nREMARKS (ACORD 101, Additional Remarks Schedule, may be attached if more space is required)\nACORD 140 (2016/03)\nPage 2 of 3\nBUILDING IMPROVEMENTS WIND CLASS :selected: WIRING, YR: 2018 :selected: PLUMBING, YR: 2018 :unselected: HEATING, YR: :unselected: SEMI- RESISTIVE :selected: :selected: :unselected: :selected: :unselected: :unselected: :unselected: :selected: :unselected: :unselected: :unselected: :unselected: :unselected: :unselected: :unselected: :unselected: :unselected:\nSIGNATURE\nAGENCY CUSTOMER ID: 542198\nApplicable in AL, AR, DC, LA, MD, NM, RI and WV Any person who knowingly (or willfully)* presents a false or fraudulent claim for payment of a loss or benefit or knowingly (or willfully)* presents false information in an application for insurance is guilty of a crime and may be subject to fines and confinement in prison. * Applies in MD Only.\nApplicable in CO\nIt is unlawful to knowingly provide false, incomplete, or misleading facts or information to an insurance company for the purpose of defrauding or attempting to defraud the company. Penalties may include imprisonment, fines, denial of insurance and civil damages. Any insurance company or agent of an insurance company who knowingly provides false, incomplete, or misleading facts or information to a policyholder or claimant for the purpose of defrauding or attempting to defraud the policyholder or claimant with regard to a settlement or award payable from insurance proceeds shall be reported to the Colorado Division of Insurance within the Department of Regulatory Agencies.\nApplicable in FL and OK\nAny person who knowingly and with intent to injure, defraud, or deceive any insurer files a statement of claim or an application containing any false, incomplete, or misleading information is guilty of a felony (of the third degree) *. * Applies in FL Only.\nApplicable in KS\nAny person who, knowingly and with intent to defraud, presents, causes to be presented or prepares with knowledge or belief that it will be presented to or by an insurer, purported insurer, broker or any agent thereof, any written statement as part of, or in support of, an application for the issuance of, or the rating of an insurance policy for personal or commercial insurance, or a claim for payment or other benefit pursuant to an insurance policy for commercial or personal insurance which such person knows to contain materially false information concerning any fact material thereto; or conceals, for the purpose of misleading, information concerning any fact material thereto commits a fraudulent insurance act.\nApplicable in KY, NY, OH and PA\nAny person who knowingly and with intent to defraud any insurance company or other person files an application for insurance or statement of claim containing any materially false information or conceals for the purpose of misleading, information concerning any fact material thereto commits a fraudulent insurance act, which is a crime and subjects such person to criminal and civil penalties* (not to exceed five thousand dollars and the stated value of the claim for each such violation) *. * Applies in NY Only.\nApplicable in ME, TN, VA and WA\nIt is a crime to knowingly provide false, incomplete or misleading information to an insurance company for the purpose of defrauding the company. Penalties (may)* include imprisonment, fines and denial of insurance benefits. * Applies in ME Only.\nApplicable in NJ Any person who includes any false or misleading information on an application for an insurance policy is subject to criminal and civil penalties.\nApplicable in OR\nAny person who knowingly and with intent to defraud or solicit another to defraud the insurer by submitting an application containing a false statement as to any material fact may be violating state law.\nApplicable in PR\nAny person who knowingly and with the intention of defrauding presents false information in an insurance application, or presents, helps, or causes the presentation of a fraudulent claim for the payment of a loss or any other benefit, or presents more than one claim for the same damage or loss, shall incur a felony and, upon conviction, shall be sanctioned for each violation by a fine of not less than five thousand dollars ($5,000) and not more than ten thousand dollars ($10,000), or a fixed term of imprisonment for three (3) years, or both penalties. Should aggravating circumstances [be] present, the penalty thus established may be increased to a maximum of five (5) years, if extenuating circumstances are present, it may be reduced to a minimum of two (2) years.\nTHE UNDERSIGNED IS AN AUTHORIZED REPRESENTATIVE OF THE APPLICANT AND REPRESENTS THAT REASONABLE INQUIRY HAS BEEN MADE TO OBTAIN THE ANSWERS TO QUESTIONS ON THIS APPLICATION. HE/SHE REPRESENTS THAT THE ANSWERS ARE TRUE, CORRECT AND COMPLETE TO THE BEST OF HIS/HER KNOWLEDGE.\nPRODUCER'S SIGNATURE William Grey\nPRODUCER'S NAME (Please Print) William Grey\nSTATE PRODUCER LICENSE NO (Required in Florida)\nAPPLICANT'S SIGNATURE DATE Berkshire Hathway 07/15/2025\nNATIONAL PRODUCER NUMBER 100-002541\nACORD 140 (2016/03)\nPage 3 of 3",
-  "pages": [
-    {
-      "pageNumber": 1,
-      "angle": -0.01590000092983246,
-      "width": 8.5,
-      "height": 11,
-      "unit": "inch",
-      "words": [
-        {
-          "content": "ACORD®",
-          "polygon": [
-            0.3111,
-            0.6306,
-            1.2064,
-            0.6273,
-            1.2064,
-            0.7897,
-            0.3105,
-            0.7871
-          ],
-          "confidence": 0.292,
-          "span": {
-            "offset": 0,
-            "length": 6
-          }
-        },
-        {
-          "content": "®",
-          "polygon": [
-            1.1687,
-            0.5925,
-            1.2507,
-            0.591,
-            1.2507,
-            0.6667,
-            1.168,
-            0.6663
-          ],
-          "confidence": 0.757,
-          "span": {
-            "offset": 7,
-            "length": 1
-          }
-        },
-        {
-          "content": "AGENCY",
-          "polygon": [
-            3.8876,
-            0.3727,
-            4.371,
-            0.3681,
-            4.3706,
-            0.4898,
-            3.8875,
-            0.4927
-          ],
-          "confidence": 0.997,
-          "span": {
-            "offset": 9,
-            "length": 6
-          }
-        },
-        {
-          "content": "CUSTOMER",
-          "polygon": [
-            4.4073,
-            0.3679,
-            5.0397,
-            0.3608,
-            5.0394,
-            0.4851,
-            4.4068,
-            0.4896
-          ],
-          "confidence": 0.996,
-          "span": {
-            "offset": 16,
-            "length": 8
-          }
-        },
-        {
-          "content": "ID:",
-          "polygon": [
-            5.0739,
-            0.3602,
-            5.2129,
-            0.3589,
-            5.2126,
-            0.4839,
-            5.0736,
-            0.4851
-          ],
-          "confidence": 0.992,
-          "span": {
-            "offset": 25,
-            "length": 3
-          }
-        },
-        {
-          "content": "542198",
-          "polygon": [
-            5.2632,
-            0.3588,
-            5.6439,
-            0.3535,
-            5.6436,
-            0.4771,
-            5.263,
-            0.4832
-          ],
-          "confidence": 0.996,
-          "span": {
-            "offset": 29,
-            "length": 6
-          }
-        },
-        {
-          "content": "PROPERTY",
-          "polygon": [
-            3.1468,
-            0.6463,
-            4.222,
-            0.6456,
-            4.2215,
-            0.8389,
-            3.1459,
-            0.8408
-          ],
-          "confidence": 0.995,
-          "span": {
-            "offset": 36,
-            "length": 8
-          }
-        },
-        {
-          "content": "SECTION",
-          "polygon": [
-            4.2825,
-            0.6457,
-            5.152,
-            0.6448,
-            5.152,
-            0.8404,
-            4.282,
-            0.8389
-          ],
-          "confidence": 0.995,
-          "span": {
-            "offset": 45,
-            "length": 7
-          }
-        },
-        {
-          "content": "DATE",
-          "polygon": [
-            7.231,
-            0.6133,
-            7.4582,
-            0.6144,
-            7.4579,
-            0.7146,
-            7.2308,
-            0.7136
-          ],
-          "confidence": 0.988,
-          "span": {
-            "offset": 53,
-            "length": 4
-          }
-        },
-        {
-          "content": "(MM/DD/YYYY)",
-          "polygon": [
-            7.4847,
-            0.6146,
-            8.0668,
-            0.6135,
-            8.066,
-            0.7166,
-            7.4845,
-            0.7148
-          ],
-          "confidence": 0.991,
-          "span": {
-            "offset": 58,
-            "length": 12
-          }
+  "LineOfBusiness": {
+    "Carrier": "Phoenix Insurers Ltd., confidence - 0.882",
+    "Blanket Summary Blkt 1": "1, confidence - 0.925",
+    "Blanket Summary Amount 1": "80000000, confidence - 0.729",
+    "Blanket Summary Amount 2": "16000000\n7000000, confidence - 0.171",
+    "Blanket Summary Type 1": "Multiple Locations, confidence - 0.886",
+    "Subject Of Insurance 1": "Earthquake\nFire, confidence - 0.494",
+    "Subject Of Insurance 2": "Flood, confidence - 0.31",
+    "Amount 1": "12000000, confidence - 0.516",
+    "Business Income/Extra Expense - Attach Acord 810": ":unselected:, confidence - 0.689",
+    "Value Reporting Information - Attach Acord 811": ":unselected:, confidence - 0.754",
+    "Spoilage/Coverage": "N, confidence - 0.215",
+    "Refrigmaint Agreement": "N, confidence - 0.125",
+    "Breakdown Or Contamination": ":unselected:, confidence - 0.959",
+    "Power Outage": ":unselected:, confidence - 0.485",
+    "Selling Price": ":unselected:, confidence - 0.803",
+    "Sinkhole Accept Coverage": ":unselected:, confidence - 0.494",
+    "Sinkhole Reject Coverage": ":unselected:, confidence - 0.501",
+    "Mine Subsidence Accept Coverage": ":unselected:, confidence - 0.556",
+    "Mine Subsidence Reject Coverage": ":unselected:, confidence - 0.285",
+    "Mine Subsidence Coverage Acceptance Coverage": ":unselected:, confidence - 0.408",
+    "Mine Subsidence Coverage Reject Coverage Ai": ":unselected:, confidence - 0.434",
+    "Mine Subsidence Coverage Limit Ai": "$, confidence - 0.811",
+    "Soi 1": "Fire, confidence - 0.328",
+    "total_confidence": 0.5547826086956521
+  },
+  "Policy": {
+    "Agency_Customer_Id": "542198, confidence - 0.969",
+    "Date (Mm/Dd/Yy)": "07/15/2025, confidence - 0.932",
+    "Date 2": "07/15/2025, confidence - 0.568",
+    "National Producer Number 2": "100-002541, confidence - 0.971",
+    "total_confidence": 0.86
+  },
+  "Broker": {
+    "Producer'S Signature": "William Grey, confidence - 0.589",
+    "Producer'S Name Please Print": "William Grey, confidence - 0.373",
+    "Agency Name": "Prime Brokers Ltd., confidence - 0.298",
+    "total_confidence": 0.42
+  },
+  "Insured": {
+    "Named Insureds": "Berkshire Hathaway, confidence - 0.412",
+    "Applicant'S Signature 2": "Berkshire Hathway, confidence - 0.955",
+    "total_confidence": 0.6835
+  },
+  "Premises": {
+    "Premises": "1, confidence - 0.827",
+    "Building": "NB01, confidence - 0.972",
+    "Street Address": "123 Penny Lane, Springfield, Illinois, confidence - 0.93",
+    "Bldg Description": "Commercial Offices, confidence - 0.97",
+    "Total Area": "250000 sq.ft, confidence - 0.434",
+    "Total Area 2": "170000 sq.ft, confidence - 0.468",
+    "Stories 2": "15, confidence - 0.235",
+    "Basmts": "2, confidence - 0.229",
+    "Yr Built": "2012, confidence - 0.492",
+    "Property Has Been Designated Landmark": ":unselected:, confidence - 0.705",
+    "Name And Address Evidence Certificate": ":unselected:, confidence - 0.436",
+    "total_confidence": 0.608909090909091
+  },
+  "Construction": {
+    "Construction Type": "Fire Resistive (Steel,Reinforced), confidence - 0.619",
+    "Construction Type 2": "Fire Resistive (Steel,Reinforced), confidence - 0.512",
+    "Distance To Hydrant": "20 FT, confidence - 0.296",
+    "Distance From Hydrant": "20 FT, confidence - 0.26",
+    "Distance From Fire Station": "2, confidence - 0.172",
+    "Fire District": "3 MI, confidence - 0.123",
+    "Prot Cl": "25, confidence - 0.553",
+    "total_confidence": 0.36214285714285716
+  },
+  "BuildingImprovements": {
+    "Wiring Improvment": ":selected:, confidence - 0.695",
+    "Wiring Year": "2012, confidence - 0.428",
+    "Wiring Rework Year": "2018, confidence - 0.678",
+    "Roofing Imrovement": ":selected:, confidence - 0.774",
+    "Roofing Year 2": "2018, confidence - 0.434",
+    "Plumbing Improvements": ":unselected:, confidence - 0.82",
+    "Plumbing Improvements 2": ":selected:, confidence - 0.805",
+    "Plumbing Year 2": "2018, confidence - 0.588",
+    "Heating Imrovements": ":unselected:, confidence - 0.689",
+    "Heating Improvements 2": ":unselected:, confidence - 0.709",
+    "Heating Year": "2012, confidence - 0.525",
+    "Other Improvements": ":unselected:, confidence - 0.428",
+    "Other Field Building Improvements": "PRIMARY HEAT, confidence - 0.289",
+    "Building Improvement Other": ":unselected:, confidence - 0.408",
+    "total_confidence": 0.5907142857142856
+  },
+  "WindClass": {
+    "Wind Class Resistive": ":selected:, confidence - 0.439",
+    "Wind Class Semi-Resistive": ":unselected:, confidence - 0.625",
+    "Wind Class Other": ":unselected:, confidence - 0.371",
+    "Wind Class Resistive 2": ":unselected:, confidence - 0.337",
+    "Wind Class Semi-Resistive 2": ":unselected:, confidence - 0.555",
+    "Wind Class Other 2": ":unselected:, confidence - 0.59",
+    "total_confidence": 0.48616666666666664
+  },
+  "Heating": {
+    "Heating Source Incl Woodburning Stove Or Fireplace Insert": ":unselected:, confidence - 0.584",
+    "Primary Heat Boiler": ":unselected:, confidence - 0.805",
+    "Primary Heat Solid Fuel": ":unselected:, confidence - 0.892",
+    "Primary Heat Other": ":unselected:, confidence - 0.833",
+    "If Boiler, Is Insurance Placed Elsewhere?": "N Y/N, confidence - 0.565",
+    "Secondary Heat Boiler": ":unselected:, confidence - 0.845",
+    "Secondary Heat Solid Fuel": ":unselected:, confidence - 0.812",
+    "Secondary Heat If Boiler, Is Insurance Placed Elsewhere?": "N Y/N, confidence - 0.791",
+    "Is Insurance Placed Elsewhere?": "N, confidence - 0.826",
+    "Insurance Placed Elsewhere?": "N Y/N, confidence - 0.599",
+    "total_confidence": 0.7552000000000001
+  },
+  "Security": {
+    "Burglar Alarm Type": "2 Automatic Alarms on each floor, confidence - 0.434",
+    "Burglar Alarm Type 2": "2 Automatic Alarms on each floor, confidence - 0.511",
+    "Central Station": ":unselected:, confidence - 0.829",
+    "Central Station 2": ":unselected:, confidence - 0.775",
+    "Central Station 3": ":unselected:, confidence - 0.454",
+    "Local Gong": ":unselected:, confidence - 0.803",
+    "Local Gong 3": ":unselected:, confidence - 0.625",
+    "With Keys": ":unselected:, confidence - 0.647",
+    "Burglar Alarm Installed And Serviced By": "Secure Tech Services Ltd., confidence - 0.483",
+    "Clock Hourly": ":unselected:, confidence - 0.665",
+    "Gaurds Field": ":unselected:, confidence - 0.245",
+    "Guards Field Value": "22, confidence - 0.447",
+    "total_confidence": 0.5765
+  },
+  "FireProtection": {
+    "Premises Fire Protection": "Sprinklers on all floors, confidence - 0.501",
+    "Premises Fire Protection 2": "Sprinklers on all floors and Basement, confidence - 0.506",
+    "Central Station Fire": ":unselected:, confidence - 0.607",
+    "total_confidence": 0.538
+  },
+  "Document_Confidence_Score": 0.932767185719704
+}
