@@ -1,131 +1,800 @@
-{
-  "LineOfBusiness": {
-    "Carrier": "Phoenix Insurers Ltd., confidence - 0.882",
-    "Blanket Summary Blkt 1": "1, confidence - 0.925",
-    "Blanket Summary Amount 1": "80000000, confidence - 0.729",
-    "Blanket Summary Amount 2": "16000000\n7000000, confidence - 0.171",
-    "Blanket Summary Type 1": "Multiple Locations, confidence - 0.886",
-    "Subject Of Insurance 1": "Earthquake\nFire, confidence - 0.494",
-    "Subject Of Insurance 2": "Flood, confidence - 0.31",
-    "Amount 1": "12000000, confidence - 0.516",
-    "Business Income/Extra Expense - Attach Acord 810": ":unselected:, confidence - 0.689",
-    "Value Reporting Information - Attach Acord 811": ":unselected:, confidence - 0.754",
-    "Spoilage/Coverage": "N, confidence - 0.215",
-    "Refrigmaint Agreement": "N, confidence - 0.125",
-    "Breakdown Or Contamination": ":unselected:, confidence - 0.959",
-    "Power Outage": ":unselected:, confidence - 0.485",
-    "Selling Price": ":unselected:, confidence - 0.803",
-    "Sinkhole Accept Coverage": ":unselected:, confidence - 0.494",
-    "Sinkhole Reject Coverage": ":unselected:, confidence - 0.501",
-    "Mine Subsidence Accept Coverage": ":unselected:, confidence - 0.556",
-    "Mine Subsidence Reject Coverage": ":unselected:, confidence - 0.285",
-    "Mine Subsidence Coverage Acceptance Coverage": ":unselected:, confidence - 0.408",
-    "Mine Subsidence Coverage Reject Coverage Ai": ":unselected:, confidence - 0.434",
-    "Mine Subsidence Coverage Limit Ai": "$, confidence - 0.811",
-    "Soi 1": "Fire, confidence - 0.328",
-    "total_confidence": 0.5547826086956521
-  },
-  "Policy": {
-    "Agency_Customer_Id": "542198, confidence - 0.969",
-    "Date (Mm/Dd/Yy)": "07/15/2025, confidence - 0.932",
-    "Date 2": "07/15/2025, confidence - 0.568",
-    "National Producer Number 2": "100-002541, confidence - 0.971",
-    "total_confidence": 0.86
-  },
-  "Broker": {
-    "Producer'S Signature": "William Grey, confidence - 0.589",
-    "Producer'S Name Please Print": "William Grey, confidence - 0.373",
-    "Agency Name": "Prime Brokers Ltd., confidence - 0.298",
-    "total_confidence": 0.42
-  },
-  "Insured": {
-    "Named Insureds": "Berkshire Hathaway, confidence - 0.412",
-    "Applicant'S Signature 2": "Berkshire Hathway, confidence - 0.955",
-    "total_confidence": 0.6835
-  },
-  "Premises": {
-    "Premises": "1, confidence - 0.827",
-    "Building": "NB01, confidence - 0.972",
-    "Street Address": "123 Penny Lane, Springfield, Illinois, confidence - 0.93",
-    "Bldg Description": "Commercial Offices, confidence - 0.97",
-    "Total Area": "250000 sq.ft, confidence - 0.434",
-    "Total Area 2": "170000 sq.ft, confidence - 0.468",
-    "Stories 2": "15, confidence - 0.235",
-    "Basmts": "2, confidence - 0.229",
-    "Yr Built": "2012, confidence - 0.492",
-    "Property Has Been Designated Landmark": ":unselected:, confidence - 0.705",
-    "Name And Address Evidence Certificate": ":unselected:, confidence - 0.436",
-    "total_confidence": 0.608909090909091
-  },
-  "Construction": {
-    "Construction Type": "Fire Resistive (Steel,Reinforced), confidence - 0.619",
-    "Construction Type 2": "Fire Resistive (Steel,Reinforced), confidence - 0.512",
-    "Distance To Hydrant": "20 FT, confidence - 0.296",
-    "Distance From Hydrant": "20 FT, confidence - 0.26",
-    "Distance From Fire Station": "2, confidence - 0.172",
-    "Fire District": "3 MI, confidence - 0.123",
-    "Prot Cl": "25, confidence - 0.553",
-    "total_confidence": 0.36214285714285716
-  },
-  "BuildingImprovements": {
-    "Wiring Improvment": ":selected:, confidence - 0.695",
-    "Wiring Year": "2012, confidence - 0.428",
-    "Wiring Rework Year": "2018, confidence - 0.678",
-    "Roofing Imrovement": ":selected:, confidence - 0.774",
-    "Roofing Year 2": "2018, confidence - 0.434",
-    "Plumbing Improvements": ":unselected:, confidence - 0.82",
-    "Plumbing Improvements 2": ":selected:, confidence - 0.805",
-    "Plumbing Year 2": "2018, confidence - 0.588",
-    "Heating Imrovements": ":unselected:, confidence - 0.689",
-    "Heating Improvements 2": ":unselected:, confidence - 0.709",
-    "Heating Year": "2012, confidence - 0.525",
-    "Other Improvements": ":unselected:, confidence - 0.428",
-    "Other Field Building Improvements": "PRIMARY HEAT, confidence - 0.289",
-    "Building Improvement Other": ":unselected:, confidence - 0.408",
-    "total_confidence": 0.5907142857142856
-  },
-  "WindClass": {
-    "Wind Class Resistive": ":selected:, confidence - 0.439",
-    "Wind Class Semi-Resistive": ":unselected:, confidence - 0.625",
-    "Wind Class Other": ":unselected:, confidence - 0.371",
-    "Wind Class Resistive 2": ":unselected:, confidence - 0.337",
-    "Wind Class Semi-Resistive 2": ":unselected:, confidence - 0.555",
-    "Wind Class Other 2": ":unselected:, confidence - 0.59",
-    "total_confidence": 0.48616666666666664
-  },
-  "Heating": {
-    "Heating Source Incl Woodburning Stove Or Fireplace Insert": ":unselected:, confidence - 0.584",
-    "Primary Heat Boiler": ":unselected:, confidence - 0.805",
-    "Primary Heat Solid Fuel": ":unselected:, confidence - 0.892",
-    "Primary Heat Other": ":unselected:, confidence - 0.833",
-    "If Boiler, Is Insurance Placed Elsewhere?": "N Y/N, confidence - 0.565",
-    "Secondary Heat Boiler": ":unselected:, confidence - 0.845",
-    "Secondary Heat Solid Fuel": ":unselected:, confidence - 0.812",
-    "Secondary Heat If Boiler, Is Insurance Placed Elsewhere?": "N Y/N, confidence - 0.791",
-    "Is Insurance Placed Elsewhere?": "N, confidence - 0.826",
-    "Insurance Placed Elsewhere?": "N Y/N, confidence - 0.599",
-    "total_confidence": 0.7552000000000001
-  },
-  "Security": {
-    "Burglar Alarm Type": "2 Automatic Alarms on each floor, confidence - 0.434",
-    "Burglar Alarm Type 2": "2 Automatic Alarms on each floor, confidence - 0.511",
-    "Central Station": ":unselected:, confidence - 0.829",
-    "Central Station 2": ":unselected:, confidence - 0.775",
-    "Central Station 3": ":unselected:, confidence - 0.454",
-    "Local Gong": ":unselected:, confidence - 0.803",
-    "Local Gong 3": ":unselected:, confidence - 0.625",
-    "With Keys": ":unselected:, confidence - 0.647",
-    "Burglar Alarm Installed And Serviced By": "Secure Tech Services Ltd., confidence - 0.483",
-    "Clock Hourly": ":unselected:, confidence - 0.665",
-    "Gaurds Field": ":unselected:, confidence - 0.245",
-    "Guards Field Value": "22, confidence - 0.447",
-    "total_confidence": 0.5765
-  },
-  "FireProtection": {
-    "Premises Fire Protection": "Sprinklers on all floors, confidence - 0.501",
-    "Premises Fire Protection 2": "Sprinklers on all floors and Basement, confidence - 0.506",
-    "Central Station Fire": ":unselected:, confidence - 0.607",
-    "total_confidence": 0.538
-  },
-  "Document_Confidence_Score": 0.932767185719704
-}
+  "documents": [
+    {
+      "docType": "4ACORDFORM",
+      "boundingRegions": [
+        {
+          "pageNumber": 1,
+          "polygon": [
+            0,
+            0,
+            8.5,
+            0,
+            8.5,
+            11,
+            0,
+            11
+          ]
+        },
+        {
+          "pageNumber": 2,
+          "polygon": [
+            0,
+            0,
+            8.5,
+            0,
+            8.5,
+            11,
+            0,
+            11
+          ]
+        },
+        {
+          "pageNumber": 3,
+          "polygon": [
+            0,
+            0,
+            8.5,
+            0,
+            8.5,
+            11,
+            0,
+            11
+          ]
+        }
+      ],
+      "fields": {
+        "AGENCY_CUSTOMER_ID": {
+          "type": "string",
+          "valueString": "542198",
+          "content": "542198",
+          "boundingRegions": [
+            {
+              "pageNumber": 1,
+              "polygon": [
+                5.2611,
+                0.3588,
+                5.6439,
+                0.3531,
+                5.6458,
+                0.4775,
+                5.263,
+                0.4832
+              ]
+            }
+          ],
+          "confidence": 0.969,
+          "spans": [
+            {
+              "offset": 29,
+              "length": 6
+            }
+          ]
+        },
+        "DATE (MM/DD/YY)": {
+          "type": "string",
+          "valueString": "07/15/2025",
+          "content": "07/15/2025",
+          "boundingRegions": [
+            {
+              "pageNumber": 1,
+              "polygon": [
+                7.3597,
+                0.77,
+                7.9355,
+                0.7716,
+                7.9352,
+                0.8845,
+                7.3594,
+                0.8829
+              ]
+            }
+          ],
+          "confidence": 0.932,
+          "spans": [
+            {
+              "offset": 71,
+              "length": 10
+            }
+          ]
+        },
+        "CARRIER": {
+          "type": "string",
+          "valueString": "Phoenix Insurers Ltd.",
+          "content": "Phoenix Insurers Ltd.",
+          "boundingRegions": [
+            {
+              "pageNumber": 1,
+              "polygon": [
+                4.3072,
+                1.1106,
+                5.3678,
+                1.1106,
+                5.3678,
+                1.2263,
+                4.3072,
+                1.2263
+              ]
+            }
+          ],
+          "confidence": 0.882,
+          "spans": [
+            {
+              "offset": 121,
+              "length": 21
+            }
+          ]
+        },
+        "PRODUCER'S SIGNATURE": {
+          "type": "string",
+          "valueString": "William Grey",
+          "content": "William Grey",
+          "boundingRegions": [
+            {
+              "pageNumber": 3,
+              "polygon": [
+                0.3057,
+                10.018,
+                0.9582,
+                10.0258,
+                0.9567,
+                10.1468,
+                0.3043,
+                10.139
+              ]
+            }
+          ],
+          "confidence": 0.589,
+          "spans": [
+            {
+              "offset": 11119,
+              "length": 12
+            }
+          ]
+        },
+        "PRODUCER'S NAME PLEASE PRINT": {
+          "type": "string",
+          "valueString": "William Grey",
+          "content": "William Grey",
+          "boundingRegions": [
+            {
+              "pageNumber": 3,
+              "polygon": [
+                3.5964,
+                10.0196,
+                4.2459,
+                10.0274,
+                4.2445,
+                10.1487,
+                3.5949,
+                10.1409
+              ]
+            }
+          ],
+          "confidence": 0.373,
+          "spans": [
+            {
+              "offset": 11163,
+              "length": 12
+            }
+          ]
+        },
+        "agency name": {
+          "type": "string",
+          "valueString": "Prime Brokers Ltd.",
+          "content": "Prime Brokers Ltd.",
+          "boundingRegions": [
+            {
+              "pageNumber": 1,
+              "polygon": [
+                0.309,
+                1.1089,
+                1.2398,
+                1.1101,
+                1.2396,
+                1.2275,
+                0.3088,
+                1.2263
+              ]
+            }
+          ],
+          "confidence": 0.298,
+          "spans": [
+            {
+              "offset": 94,
+              "length": 18
+            }
+          ]
+        },
+        "named insureds": {
+          "type": "string",
+          "valueString": "Berkshire Hathaway",
+          "content": "Berkshire Hathaway",
+          "boundingRegions": [
+            {
+              "pageNumber": 1,
+              "polygon": [
+                4.312,
+                1.44,
+                5.3247,
+                1.4492,
+                5.3236,
+                1.5698,
+                4.3109,
+                1.5606
+              ]
+            }
+          ],
+          "confidence": 0.412,
+          "spans": [
+            {
+              "offset": 199,
+              "length": 18
+            }
+          ]
+        },
+        "BLANKET SUMMARY BLKT 1": {
+          "type": "string",
+          "valueString": "1",
+          "content": "1",
+          "boundingRegions": [
+            {
+              "pageNumber": 1,
+              "polygon": [
+                0.4188,
+                1.9492,
+                0.4759,
+                1.948,
+                0.4779,
+                2.0458,
+                0.4209,
+                2.047
+              ]
+            }
+          ],
+          "confidence": 0.925,
+          "spans": [
+            {
+              "offset": 267,
+              "length": 1
+            }
+          ]
+        },
+        "BLANKET SUMMARY AMOUNT 1": {
+          "type": "string",
+          "valueString": "80000000",
+          "content": "80000000",
+          "boundingRegions": [
+            {
+              "pageNumber": 1,
+              "polygon": [
+                0.8912,
+                1.9397,
+                1.3945,
+                1.9397,
+                1.3945,
+                2.0532,
+                0.8912,
+                2.0532
+              ]
+            }
+          ],
+          "confidence": 0.729,
+          "spans": [
+            {
+              "offset": 269,
+              "length": 8
+            }
+          ]
+        },
+        "BLANKET SUMMARY AMOUNT 2": {
+          "type": "string",
+          "valueString": "16000000\n7000000",
+          "content": "16000000\n7000000",
+          "boundingRegions": [
+            {
+              "pageNumber": 1,
+              "polygon": [
+                1.9494,
+                3.1074,
+                2.4572,
+                3.1082,
+                2.4565,
+                3.5548,
+                1.9487,
+                3.554
+              ]
+            }
+          ],
+          "confidence": 0.171,
+          "spans": [
+            {
+              "offset": 596,
+              "length": 8
+            },
+            {
+              "offset": 611,
+              "length": 7
+            }
+          ]
+        },
+        "BLANKET SUMMARY TYPE 1": {
+          "type": "string",
+          "valueString": "Multiple Locations",
+          "content": "Multiple Locations",
+          "boundingRegions": [
+            {
+              "pageNumber": 1,
+              "polygon": [
+                2.4918,
+                1.9384,
+                3.3978,
+                1.9386,
+                3.3978,
+                2.0674,
+                2.4918,
+                2.0672
+              ]
+            }
+          ],
+          "confidence": 0.886,
+          "spans": [
+            {
+              "offset": 278,
+              "length": 18
+            }
+          ]
+        },
+        "PREMISES": {
+          "type": "string",
+          "valueString": "1",
+          "content": "1",
+          "boundingRegions": [
+            {
+              "pageNumber": 1,
+              "polygon": [
+                2.6352,
+                2.2799,
+                2.695,
+                2.2759,
+                2.7016,
+                2.3754,
+                2.6419,
+                2.3794
+              ]
+            }
+          ],
+          "confidence": 0.827,
+          "spans": [
+            {
+              "offset": 330,
+              "length": 1
+            }
+          ]
+        },
+        "BUILDING": {
+          "type": "string",
+          "valueString": "NB01",
+          "content": "NB01",
+          "boundingRegions": [
+            {
+              "pageNumber": 1,
+              "polygon": [
+                2.5247,
+                2.4481,
+                2.8057,
+                2.4459,
+                2.8065,
+                2.551,
+                2.5255,
+                2.5532
+              ]
+            }
+          ],
+          "confidence": 0.972,
+          "spans": [
+            {
+              "offset": 398,
+              "length": 4
+            }
+          ]
+        },
+        "STREET ADDRESS": {
+          "type": "string",
+          "valueString": "123 Penny Lane, Springfield, Illinois",
+          "content": "123 Penny Lane, Springfield, Illinois",
+          "boundingRegions": [
+            {
+              "pageNumber": 1,
+              "polygon": [
+                3.7709,
+                2.2708,
+                5.5396,
+                2.2731,
+                5.5394,
+                2.3977,
+                3.7707,
+                2.3954
+              ]
+            }
+          ],
+          "confidence": 0.93,
+          "spans": [
+            {
+              "offset": 348,
+              "length": 37
+            }
+          ]
+        },
+        "BLDG DESCRIPTION": {
+          "type": "string",
+          "valueString": "Commercial Offices",
+          "content": "Commercial Offices",
+          "boundingRegions": [
+            {
+              "pageNumber": 1,
+              "polygon": [
+                3.8605,
+                2.441,
+                4.8373,
+                2.4468,
+                4.8366,
+                2.5614,
+                3.8598,
+                2.5556
+              ]
+            }
+          ],
+          "confidence": 0.97,
+          "spans": [
+            {
+              "offset": 421,
+              "length": 18
+            }
+          ]
+        },
+        "SUBJECT OF INSURANCE 1": {
+          "type": "string",
+          "valueString": "Earthquake\nFire",
+          "content": "Earthquake\nFire",
+          "boundingRegions": [
+            {
+              "pageNumber": 1,
+              "polygon": [
+                0.309,
+                2.7582,
+                0.8923,
+                2.7643,
+                0.8876,
+                3.2196,
+                0.3043,
+                3.2135
+              ]
+            }
+          ],
+          "confidence": 0.494,
+          "spans": [
+            {
+              "offset": 571,
+              "length": 10
+            },
+            {
+              "offset": 591,
+              "length": 4
+            }
+          ]
+        },
+        "SUBJECT OF INSURANCE 2": {
+          "type": "string",
+          "valueString": "Flood",
+          "content": "Flood",
+          "boundingRegions": [
+            {
+              "pageNumber": 1,
+              "polygon": [
+                0.3114,
+                3.435,
+                0.6036,
+                3.4361,
+                0.6032,
+                3.5487,
+                0.311,
+                3.5476
+              ]
+            }
+          ],
+          "confidence": 0.31,
+          "spans": [
+            {
+              "offset": 605,
+              "length": 5
+            }
+          ]
+        },
+        "AMOUNT 1": {
+          "type": "string",
+          "valueString": "12000000",
+          "content": "12000000",
+          "boundingRegions": [
+            {
+              "pageNumber": 1,
+              "polygon": [
+                1.9575,
+                2.7756,
+                2.457,
+                2.7757,
+                2.457,
+                2.8899,
+                1.9575,
+                2.8898
+              ]
+            }
+          ],
+          "confidence": 0.516,
+          "spans": [
+            {
+              "offset": 582,
+              "length": 8
+            }
+          ]
+        },
+        "BUSINESS INCOME/EXTRA EXPENSE - ATTACH ACORD 810": {
+          "type": "selectionMark",
+          "valueSelectionMark": "unselected",
+          "content": ":unselected:",
+          "boundingRegions": [
+            {
+              "pageNumber": 1,
+              "polygon": [
+                1.5963,
+                4.4153,
+                1.8024,
+                4.4165,
+                1.8015,
+                4.5814,
+                1.5954,
+                4.5802
+              ]
+            }
+          ],
+          "confidence": 0.689,
+          "spans": [
+            {
+              "offset": 642,
+              "length": 12
+            }
+          ]
+        },
+        "VALUE REPORTING INFORMATION - ATTACH ACORD 811": {
+          "type": "selectionMark",
+          "valueSelectionMark": "unselected",
+          "content": ":unselected:",
+          "boundingRegions": [
+            {
+              "pageNumber": 1,
+              "polygon": [
+                4.6983,
+                4.4133,
+                4.8996,
+                4.4139,
+                4.8991,
+                4.5832,
+                4.6978,
+                4.5826
+              ]
+            }
+          ],
+          "confidence": 0.754,
+          "spans": [
+            {
+              "offset": 706,
+              "length": 12
+            }
+          ]
+        },
+        "SPOILAGE/COVERAGE": {
+          "type": "string",
+          "valueString": "N",
+          "content": "N",
+          "boundingRegions": [
+            {
+              "pageNumber": 1,
+              "polygon": [
+                0.4929,
+                5.1938,
+                0.5909,
+                5.1888,
+                0.5965,
+                5.2985,
+                0.4985,
+                5.3035
+              ]
+            }
+          ],
+          "confidence": 0.215,
+          "spans": [
+            {
+              "offset": 913,
+              "length": 1
+            }
+          ]
+        },
+        "REFRIGMAINT AGREEMENT": {
+          "type": "string",
+          "valueString": "N",
+          "content": "N",
+          "boundingRegions": [
+            {
+              "pageNumber": 1,
+              "polygon": [
+                5.8957,
+                5.1944,
+                5.9932,
+                5.1908,
+                5.9971,
+                5.298,
+                5.8996,
+                5.3015
+              ]
+            }
+          ],
+          "confidence": 0.125,
+          "spans": [
+            {
+              "offset": 948,
+              "length": 1
+            }
+          ]
+        },
+        "BREAKDOWN OR CONTAMINATION": {
+          "type": "selectionMark",
+          "valueSelectionMark": "unselected",
+          "content": ":unselected:",
+          "boundingRegions": [
+            {
+              "pageNumber": 1,
+              "polygon": [
+                6.3017,
+                4.9093,
+                6.501,
+                4.9103,
+                6.5001,
+                5.0812,
+                6.3008,
+                5.0802
+              ]
+            }
+          ],
+          "confidence": 0.959,
+          "spans": [
+            {
+              "offset": 958,
+              "length": 12
+            }
+          ]
+        },
+        "POWER OUTAGE": {
+          "type": "selectionMark",
+          "valueSelectionMark": "unselected",
+          "content": ":unselected:",
+          "boundingRegions": [
+            {
+              "pageNumber": 1,
+              "polygon": [
+                6.2981,
+                5.0829,
+                6.4968,
+                5.0815,
+                6.498,
+                5.248,
+                6.2993,
+                5.2494
+              ]
+            }
+          ],
+          "confidence": 0.485,
+          "spans": [
+            {
+              "offset": 998,
+              "length": 12
+            }
+          ]
+        },
+        "SELLING PRICE": {
+          "type": "selectionMark",
+          "valueSelectionMark": "unselected",
+          "content": ":unselected:",
+          "boundingRegions": [
+            {
+              "pageNumber": 1,
+              "polygon": [
+                7.344,
+                5.0789,
+                7.5596,
+                5.0805,
+                7.5583,
+                5.2566,
+                7.3427,
+                5.255
+              ]
+            }
+          ],
+          "confidence": 0.803,
+          "spans": [
+            {
+              "offset": 1024,
+              "length": 12
+            }
+          ]
+        },
+        "SINKHOLE ACCEPT COVERAGE": {
+          "type": "selectionMark",
+          "valueSelectionMark": "unselected",
+          "content": ":unselected:",
+          "boundingRegions": [
+            {
+              "pageNumber": 1,
+              "polygon": [
+                3.6018,
+                5.4186,
+                3.7977,
+                5.4171,
+                3.7989,
+                5.5802,
+                3.603,
+                5.5817
+              ]
+            }
+          ],
+          "confidence": 0.494,
+          "spans": [
+            {
+              "offset": 1104,
+              "length": 12
+            }
+          ]
+        },
+        "SINKHOLE REJECT COVERAGE": {
+          "type": "selectionMark",
+          "valueSelectionMark": "unselected",
+          "content": ":unselected:",
+          "boundingRegions": [
+            {
+              "pageNumber": 1,
+              "polygon": [
+                4.8997,
+                5.416,
+                5.0981,
+                5.4163,
+                5.0979,
+                5.5827,
+                4.8995,
+                5.5825
+              ]
+            }
+          ],
+          "confidence": 0.501,
+          "spans": [
+            {
+              "offset": 1133,
+              "length": 12
+            }
+          ]
+        },
+        "MINE SUBSIDENCE ACCEPT COVERAGE": {
+          "type": "selectionMark",
+          "valueSelectionMark": "unselected",
+          "content": ":unselected:",
+          "boundingRegions": [
+            {
+              "pageNumber": 1,
+              "polygon": [
+                3.602,
+                5.588,
+                3.7992,
+                5.5865,
+                3.8004,
+                5.7477,
+                3.6032,
+                5.7492
+              ]
+            }
