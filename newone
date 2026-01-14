@@ -1,848 +1,194 @@
-import os
-import json
-from dotenv import load_dotenv
-from openai import AzureOpenAI
-
-# ------------------ CONFIG ------------------
-load_dotenv()
-
-client = AzureOpenAI(
-    azure_endpoint=os.getenv("AZURE_OPENAI_ENDPOINT"),
-    api_key=os.getenv("AZURE_OPENAI_API_KEY"),
-    api_version="2024-05-01-preview"
-)
-
-MODEL = os.getenv("AZURE_OPENAI_CHAT_DEPLOYMENT")
-
-output_dir = os.path.join(os.getcwd(), "output")
-os.makedirs(output_dir, exist_ok=True)
-
-INPUT_FILE = os.path.join(output_dir, "output.json")
-OUTPUT_FILE = os.path.join(output_dir, "final_output.json")
-
-MAX_CHARS = 12000
-
-
-# ------------------ HELPERS ------------------
-def chunk_text(text, max_chars=MAX_CHARS):
-    chunks, current, length = [], [], 0
-    for line in text.splitlines():
-        if length + len(line) > max_chars:
-            chunks.append("\n".join(current))
-            current, length = [], 0
-        current.append(line)
-        length += len(line)
-    if current:
-        chunks.append("\n".join(current))
-    return chunks
-
-
-def clean_field_name(name: str) -> str:
-    return name.strip().title()
-
-
-# ------------------ MANUAL JSON PROCESSING ------------------
-def simplify_manual_json(raw_json):
-    """
-    Convert manual JSON into simplified internal format.
-    """
-    simplified = {}
-    for k, v in raw_json.items():
-        if not isinstance(v, dict):
-            continue
-        value = v.get("value")
-        confidence = v.get("confidence")
-        if value is None:
-            continue
-        simplified[clean_field_name(k)] = {
-            "value": value,
-            "confidence": confidence
-        }
-    return simplified
-
-
-def build_prompt(cleaned_data):
-    return f"""
-You are a JSON data formatter.
-
-Return ONLY valid JSON.
-
-Rules:
-1. Group fields logically (Policy, Insured, Broker, Address, etc.).
-2. Format each field as:
-   "Field Name": "Value, confidence - 0.95"
-3. Do NOT calculate averages.
-
-Input JSON:
-{json.dumps(cleaned_data, indent=2)}
-"""
-
-
-def process_chunk(chunk_dict):
-    response = client.chat.completions.create(
-        model=MODEL,
-        temperature=0,
-        messages=[
-            {"role": "system", "content": "Return only JSON."},
-            {"role": "user", "content": build_prompt(chunk_dict)}
-        ]
-    )
-
-    text = response.choices[0].message.content.strip()
-    start = text.find("{")
-    end = text.rfind("}") + 1
-    return json.loads(text[start:end])
-
-
-# ------------------ CONFIDENCE ------------------
-def add_group_confidence(grouped_data, original_data):
-    lookup = {k: v["confidence"] for k, v in original_data.items()}
-
-    for group, fields in grouped_data.items():
-        if not isinstance(fields, dict):
-            continue
-        confs = []
-        for field in fields.keys():
-            if field in lookup and lookup[field] is not None:
-                confs.append(lookup[field])
-        if confs:
-            grouped_data[group]["total_confidence"] = sum(confs) / len(confs)
-    return grouped_data
-
-
-def calculate_document_confidence(original_data):
-    confs = [v["confidence"] for v in original_data.values() if v.get("confidence") is not None]
-    return sum(confs) / len(confs) if confs else None
-
-
-# ------------------ MAIN PIPELINE ------------------
-def process_manual_json(raw_json):
-    simplified = simplify_manual_json(raw_json)
-
-    text_data = json.dumps(simplified, indent=2)
-    chunks = chunk_text(text_data)
-
-    final_output = {}
-
-    for chunk in chunks:
-        chunk_dict = json.loads(chunk)
-        grouped = process_chunk(chunk_dict)
-        for k, v in grouped.items():
-            final_output.setdefault(k, {}).update(v)
-
-    final_output = add_group_confidence(final_output, simplified)
-
-    doc_conf = calculate_document_confidence(simplified)
-    if doc_conf is not None:
-        final_output["Document_Confidence_Score"] = doc_conf
-
-    with open(OUTPUT_FILE, "w", encoding="utf-8") as f:
-        json.dump(final_output, f, indent=2, ensure_ascii=False)
-
-    print(f"✅ Final JSON written to {OUTPUT_FILE}")
-    return final_output
-
-
-# ------------------ RUN ------------------
-if __name__ == "__main__":
-    with open(INPUT_FILE, "r", encoding="utf-8") as f:
-        raw_json = json.load(f)
-
-    process_manual_json(raw_json)
-
-
-
-
-
-
-
-
-
-
-This was my earlier code 
-final_processor.py
-
-
-import os
-import json
-from dotenv import load_dotenv
-from openai import AzureOpenAI
-
-# ------------------ CONFIG ------------------
-load_dotenv()
-
-client = AzureOpenAI(
-    azure_endpoint=os.getenv("AZURE_OPENAI_ENDPOINT"),
-    api_key=os.getenv("AZURE_OPENAI_API_KEY"),
-    api_version="2024-05-01-preview"
-)
-
-MODEL = os.getenv("AZURE_OPENAI_CHAT_DEPLOYMENT")
-CONFIDENCE_THRESHOLD = 0.5
-# OUTPUT_FILE = "final_output.json"
-output_dir = os.path.join(os.getcwd(), "output")
-INPUT_FILE = os.path.join(output_dir, "output.json")
-
-os.makedirs(output_dir, exist_ok=True)
-OUTPUT_FILE = os.path.join(output_dir, "final_output.json")
-MAX_CHARS = 12000
-
-
-def chunk_text(text, max_chars=MAX_CHARS):
-    """Split long text into safe chunks for OpenAI input."""
-    chunks, current, length = [], [], 0
-    for line in text.splitlines():
-        if length + len(line) > max_chars:
-            chunks.append("\n".join(current))
-            current, length = [], 0
-        current.append(line)
-        length += len(line)
-    if current:
-        chunks.append("\n".join(current))
-    return chunks
-
-
-#New Subham's code
-def clean_field_name(name: str) -> str:
-    """Remove prefixes like 'LOB - ' and normalize casing."""
-    name = name.replace("LOB -", "").strip()
-    return name.title()
-
-
-
-#New Subham's code
-def simplify_fields(raw_json):
-    """Simplify Azure Doc Intelligence output with confidence preserved."""
-    simplified = {}
-    docs = raw_json.get("documents", [])
-    if not docs:
-        return simplified
-
-    for doc in docs:
-        for key, value in doc.get("fields", {}).items():
-            val = value.get("valueString") or value.get("content") or value.get("valueBoolean")
-            conf = value.get("confidence", None)
-            if val in [None, ""]:
-                continue
-            cleaned_key = clean_field_name(key)
-            simplified[cleaned_key] = {"value": val, "confidence": conf}
-    return simplified
-
-
-#New Subham's code
-def build_prompt(cleaned_data):
-    """Structured prompt for GPT (dynamic grouping)."""
-    return f"""
-You are a JSON data formatter. The following JSON is the output from Azure Document Intelligence for an ACORD insurance form.
-
-Return only valid JSON (no commentary, no markdown, no explanations).
-
-Requirements:
-1. Group fields logically (Line of Business, Policy, Broker, Insured, Address, etc.) based on semantic context. 
-   The grouping is flexible — create categories as needed.
-2. Each field must show its value and confidence exactly as in the input JSON, e.g.:
-   "Field Name": "Value, confidence - 0.87"
-   Do not recalculate or lower confidence values.
-3. If a field is repeated, include all instances under the most relevant group.
-4. Combine split tokens like ["6:00", "AM"] → "6:00 AM".
-5. Do not compute averages — Python will handle total_confidence and overall_total_confidence.
-
-Cleaned JSON input:
-{json.dumps(cleaned_data, indent=2)}
-"""
-
-def process_chunk(chunk):
-    """Send one chunk to GPT and ensure JSON-only output."""
-    response = client.chat.completions.create(
-        model=MODEL,
-        temperature=0,
-        messages=[
-            {"role": "system", "content": "You are a precise document understanding assistant that outputs only JSON."},
-            {"role": "user", "content": build_prompt(chunk)},
-        ]
-    )
-
-    text = response.choices[0].message.content.strip()
-    try:
-        start = text.find("{")
-        end = text.rfind("}") + 1
-        json_text = text[start:end]
-        return json.loads(json_text)
-    except Exception:
-        print("⚠️ Warning: GPT output not clean JSON. Attempting recovery.")
-        return {"error": "Invalid JSON returned", "raw_output": text}
-
-#New Subham's code
-def calculate_overall_confidence(original_json):
-    """Calculate overall average confidence directly from original JSON."""
-    def extract_confidences(obj):
-        confidences = []
-        if isinstance(obj, dict):
-            for key, value in obj.items():
-                if key == "confidence" and isinstance(value, (int, float)):
-                    confidences.append(value)
-                else:
-                    confidences.extend(extract_confidences(value))
-        elif isinstance(obj, list):
-            for item in obj:
-                confidences.extend(extract_confidences(item))
-        return confidences
-
-    confidences = extract_confidences(original_json)
-    if confidences:
-        return sum(confidences) / len(confidences)
-    return None
-
-def add_confidence_averages(grouped_data, original_data):
-    """Compute total_confidence per group using original JSON confidence values."""
-    confidence_lookup = {clean_field_name(k): v.get("confidence") for k, v in original_data.items()}
-
-    for group, fields in grouped_data.items():
-        if not isinstance(fields, dict):
-            continue
-        confidences = []
-        for field in fields.keys():
-            if field in confidence_lookup and confidence_lookup[field] is not None:
-                confidences.append(confidence_lookup[field])
-        if confidences:
-            avg_conf = sum(confidences) / len(confidences)
-            grouped_data[group]["total_confidence"] = avg_conf
-    return grouped_data
-
-def process_azure_output(json_data):
-    """Process entire Doc Intelligence JSON with GPT grouping + confidence math."""
-    simplified = simplify_fields(json_data)
-    text_data = json.dumps(simplified, indent=2)
-    chunks = chunk_text(text_data)
-    final_combined = {}
-
-    for chunk in chunks:
-        result = process_chunk(chunk)
-        if isinstance(result, dict):
-            for k, v in result.items():
-                if k in final_combined and isinstance(v, dict):
-                    final_combined[k].update(v)
-                else:
-                    final_combined[k] = v
-
-    # Add group averages
-    final_combined = add_confidence_averages(final_combined, simplified)
-
-    # Add overall average from original JSON
-    overall_avg = calculate_overall_confidence(json_data)
-    if overall_avg is not None:
-        final_combined["Document_Confidence_Score"] = overall_avg
-
-    with open(OUTPUT_FILE, "w", encoding="utf-8") as f:
-        json.dump(final_combined, f, indent=2, ensure_ascii=False)
-
-    print(f"✅ Clean JSON written to {OUTPUT_FILE}")
-    return final_combined
-
-# ------------------ MAIN ------------------
-if __name__ == "__main__":
-
-    json_path = os.path.join("output","output.json")
-    with open(INPUT_FILE, "r", encoding="utf-8") as f:
-        raw_json = json.load(f)
-
-    process_azure_output(raw_json)
-
-
-
-image_processor.py
-
-import os
-import json
-import uuid
-import re
-from datetime import datetime
-from dotenv import load_dotenv
-
-from azure.core.credentials import AzureKeyCredential
-from azure.ai.documentintelligence import DocumentIntelligenceClient
-from azure.storage.blob.aio import BlobServiceClient
-from azure.core.exceptions import ResourceNotFoundError
-
-from .service import _require_env, get_env_values, AZURE_STORAGE_CONNECTION_STRING, _parse_blob_url
-from .final_processor import process_azure_output  # Importing the final processor function
-
-load_dotenv()
-
-
-def collect_total_confidences(obj, out_list):
-    """
-    Recursively search obj (dict/list) and append any numeric values found under
-    keys named 'total_confidence' to out_list.
-    """
-    if isinstance(obj, dict):
-        for k, v in obj.items():
-            if k == "total_confidence":
-                # Accept ints/floats only
-                try:
-                    # If it's already numeric (int/float), use directly; else try to convert
-                    if isinstance(v, (int, float)):
-                        out_list.append(float(v))
-                    else:
-                        out_list.append(float(v))
-                except Exception:
-                    # ignore non-convertible values
-                    pass
-            else:
-                collect_total_confidences(v, out_list)
-    elif isinstance(obj, list):
-        for item in obj:
-            collect_total_confidences(item, out_list)
-    # other types ignored
-
-
-async def analyze_file_async(bloburl: str) -> dict:
-    """
-    Download the PDF from bloburl, analyze it with Azure Document Intelligence,
-    save the JSON locally inside ./output/output.json,
-    read the JSON from the file, process it with final_processor.py,
-    compute Document_Confidence_Score and append it to the final JSON,
-    and upload the final JSON to Azure Blob Storage.
-
-    The uploaded final JSON filename will be in this format:
-      <Reference>_attachment_<OriginalFileNameWithoutExtension>_extraction_<YYYYMMDD_HHMMSS>.json
-    """
-
-    try:
-        _require_env()
-    except Exception as e:
-        return {"status": False, "error": str(e)}
-
-    endpoint, key, model_id = get_env_values()
-
-    try:
-        src_container, src_blob = _parse_blob_url(bloburl)
-    except Exception as e:
-        return {"status": False, "error": f"Invalid BlobUrl: {e}"}
-
-    source_file_name = os.path.basename(src_blob) if src_blob else "unknown.pdf"
-    source_file_name = os.path.basename(source_file_name)
-
-    if not AZURE_STORAGE_CONNECTION_STRING:
-        return {"status": False, "error": "Missing AZURE_STORAGE_CONNECTION_STRING in .env"}
-
-    try:
-        async with BlobServiceClient.from_connection_string(AZURE_STORAGE_CONNECTION_STRING) as blob_service:
-            container_client = blob_service.get_container_client(src_container)
-            blob_client = container_client.get_blob_client(src_blob)
-            try:
-                await blob_client.get_blob_properties()
-            except ResourceNotFoundError:
-                return {"status": False, "error": f"PDF blob not found: container='{src_container}', blob='{src_blob}'"}
-
-            stream = await blob_client.download_blob()
-            pdf_bytes = await stream.readall()
-    except Exception as e:
-        return {"status": False, "error": f"Error downloading PDF from Blob Storage: {e}"}
-
-    input_dir = os.path.join(os.getcwd(), "input")
-    os.makedirs(input_dir, exist_ok=True)
-
-    input_path = os.path.join(input_dir, source_file_name)
-
-    try:
-        with open(input_path, "wb") as wf:
-            wf.write(pdf_bytes)
-    except Exception as e:
-        return {"status": False, "error": f"Failed to write local input file '{input_path}': {e}"}
-
-    print("Connecting to Azure Document Intelligence service...")
-    try:
-        client = DocumentIntelligenceClient(
-            endpoint=endpoint,
-            credential=AzureKeyCredential(key)
-        )
-    except Exception as e:
-        return {"status": False, "error": f"Failed to create DocumentIntelligenceClient: {e}"}
-
-    print(f"Analyzing '{source_file_name}' using model '{model_id}'...")
-    try:
-        with open(input_path, "rb") as f:
-            poller = client.begin_analyze_document(model_id=model_id, body=f)
-            result = poller.result()
-    except Exception as e:
-        return {"status": False, "error": f"Error during document analysis: {e}"}
-
-    output_dir = os.path.join(os.getcwd(), "output")
-    os.makedirs(output_dir, exist_ok=True)
-    output_path = os.path.join(output_dir, "output.json")
-
-    # Save the raw JSON to output.json
-    json_data = result.as_dict()
-    try:
-        with open(output_path, "w", encoding="utf-8") as wf:
-            json.dump(json_data, wf, indent=2, ensure_ascii=False)
-    except Exception as e:
-        return {"status": False, "error": f"Failed to save local output.json: {e}"}
-
-    # Read the JSON from output.json and process it using final_processor.py
-    try:
-        with open(output_path, "r", encoding="utf-8") as rf:
-            raw_json = json.load(rf)  # Load JSON from the file
-        final_output = process_azure_output(raw_json)  # Process the JSON
-
-    #     # -------------------------
-    #     # Compute Document_Confidence_Score (average of all total_confidence)
-    #     # -------------------------
-    #     confidences = []
-    #     collect_total_confidences(final_output, confidences)
-
-    #     if confidences:
-    #         avg = sum(confidences) / len(confidences)
-    #         avg_rounded = round(avg, 3)
-    #     else:
-    #         # If none found, set to 0.0 (you can change to None if you prefer)
-    #         avg_rounded = 0.0
-
-    #     # Add the field at the end of the JSON
-    #     final_output["Document_Confidence_Score"] = avg_rounded
-
-        # Save processed final output locally
-        final_output_path = os.path.join(output_dir, "final_output.json")
-        with open(final_output_path, "w", encoding="utf-8") as wf:
-            json.dump(final_output, wf, indent=2, ensure_ascii=False)
-
-    except Exception as e:
-        return {"status": False, "error": f"Failed to process JSON with final_processor.py: {e}"}
-
-    # ------------------------
-    # Build the target blob name in the desired format:
-    # <Reference>_attachment_<OriginalFileNameNoExt>_extraction_<YYYYMMDD_HHMMSS>.json
-    # ------------------------
-
-    base_name_no_ext = os.path.splitext(source_file_name)[0]  # e.g. "19A81973900C46C9_attachment_Acord_125"
-
-    ref_part = None
-    file_part = None
-
-    # Preferred pattern: "<ref>_attachment_<filename>"
-    if "_attachment_" in base_name_no_ext:
-        try:
-            ref_part, file_part = base_name_no_ext.split("_attachment_", 1)
-            ref_part = (ref_part or "").strip()
-            file_part = (file_part or "").strip()
-        except Exception:
-            ref_part = None
-            file_part = None
-
-    # Fallback: take first token as ref and rest as filename
-    if not ref_part or not file_part:
-        tokens = base_name_no_ext.split("_", 1)
-        if len(tokens) == 2:
-            ref_part, file_part = tokens[0].strip(), tokens[1].strip()
-        else:
-            # last fallback: use a uuid as reference and keep the whole base as filename
-            ref_part = uuid.uuid4().hex[:16]
-            file_part = base_name_no_ext
-
-    # IMPORTANT: Keep underscores in filename exactly as received (Acord_125)
-    # Minimal sanitization: allow only alphanumeric, underscore, and hyphen in both parts
-    ref_part = re.sub(r"[^A-Za-z0-9_-]", "", ref_part)
-    file_part = re.sub(r"[^A-Za-z0-9_-]", "", file_part)
-
-    timestamp = datetime.utcnow().strftime("%Y%m%d_%H%M%S")
-
-    output_container = "output-results"
-    target_blob_name = f"{ref_part}_attachment_{file_part}_extraction_{timestamp}.json"
-
-    # ------------------------
-    # Upload the final_output.json to Azure Blob Storage with the new name
-    # ------------------------
-    try:
-        async with BlobServiceClient.from_connection_string(AZURE_STORAGE_CONNECTION_STRING) as blob_service:
-            out_container_client = blob_service.get_container_client(output_container)
-            try:
-                # create will raise if exists — ignore
-                await out_container_client.create_container()
-            except Exception:
-                pass  # container likely exists; ignore
-
-            out_blob_client = out_container_client.get_blob_client(target_blob_name)
-
-            with open(final_output_path, "rb") as data:
-                await out_blob_client.upload_blob(data, overwrite=True)
-    except Exception as e:
-        return {"status": False, "error": f"Failed to upload final_output.json to output-results: {e}"}
-
-    # Build final URL to return (same style you were using)
-    parsed = bloburl.split("://", 1)[-1]
-    account_and_rest = parsed.split("/", 1)[0]
-    final_output_blob_url = f"https://{account_and_rest}/{output_container}/{target_blob_name}"
-
-    print(f"Final JSON saved locally and uploaded to: {final_output_blob_url}")
-
-    return {
-        "source_file": source_file_name,
-        "final_output_blob_url": final_output_blob_url,
-        "Document_Confidence_Score": final_output.get("Document_Confidence_Score") #added this line 
-    }
-
-
-async def process_input_folder_on_startup() -> None:
-    """Background startup function — checks ./input for any PDFs and logs them."""
-    try:
-        input_dir = os.path.join(os.getcwd(), "input")
-        if not os.path.exists(input_dir):
-            return
-
-        files = [f for f in os.listdir(input_dir) if f.lower().endswith(".pdf")]
-        if not files:
-            return
-
-        for pdf in files:
-            print(f"[startup] Found local PDF in ./input: {pdf} — no automatic processing.")
-    except Exception as e:
-        print(f"[startup] process_input_folder_on_startup error: {e}")
-        return
-
-
-This is my current code where i created output.json manually
-final_processor.py
-
-#BELOW IS ABSOLUTE WORKING CODE 
-import os
-import json
-from dotenv import load_dotenv
-from openai import AzureOpenAI
-
-# ------------------ CONFIG ------------------
-load_dotenv()
-
-client = AzureOpenAI(
-    azure_endpoint=os.getenv("AZURE_OPENAI_ENDPOINT"),
-    api_key=os.getenv("AZURE_OPENAI_API_KEY"),
-    api_version="2024-05-01-preview"
-)
-
-MODEL = os.getenv("AZURE_OPENAI_CHAT_DEPLOYMENT")
-CONFIDENCE_THRESHOLD = 0.5
-# OUTPUT_FILE = "final_output.json"
-output_dir = os.path.join(os.getcwd(), "output")
-INPUT_FILE = os.path.join(output_dir, "output.json")
-
-os.makedirs(output_dir, exist_ok=True)
-OUTPUT_FILE = os.path.join(output_dir, "final_output.json")
-MAX_CHARS = 12000
-
-
-def chunk_text(text, max_chars=MAX_CHARS):
-    """Split long text into safe chunks for OpenAI input."""
-    chunks, current, length = [], [], 0
-    for line in text.splitlines():
-        if length + len(line) > max_chars:
-            chunks.append("\n".join(current))
-            current, length = [], 0
-        current.append(line)
-        length += len(line)
-    if current:
-        chunks.append("\n".join(current))
-    return chunks
-
-
-#New Subham's code
-def clean_field_name(name: str) -> str:
-    """Remove prefixes like 'LOB - ' and normalize casing."""
-    name = name.replace("LOB -", "").strip()
-    return name.title()
-
-
-#New Subham's code
-def simplify_fields(raw_json):
-    """Simplify Azure Doc Intelligence output with confidence preserved."""
-    simplified = {}
-    docs = raw_json.get("documents", [])
-    if not docs:
-        return simplified
-
-    for doc in docs:
-        for key, value in doc.get("fields", {}).items():
-            val = value.get("valueString") or value.get("content") or value.get("valueBoolean")
-            conf = value.get("confidence", None)
-            if val in [None, ""]:
-                continue
-            cleaned_key = clean_field_name(key)
-            simplified[cleaned_key] = {"value": val, "confidence": conf}
-    return simplified
-
-
-
-
-
-
-
-
-
-
-#New Subham's code
-def build_prompt(cleaned_data):
-    """Structured prompt for GPT (dynamic grouping)."""
-    return f"""
-You are a JSON data formatter. The following JSON is the output from Azure Document Intelligence for an ACORD insurance form.
-
-Return only valid JSON (no commentary, no markdown, no explanations).
-
-Requirements:
-1. Group fields logically (Line of Business, Policy, Broker, Insured, Address, etc.) based on semantic context. 
-   The grouping is flexible — create categories as needed.
-2. Each field must show its value and confidence exactly as in the input JSON, e.g.:
-   "Field Name": "Value, confidence - 0.87"
-   Do not recalculate or lower confidence values.
-3. If a field is repeated, include all instances under the most relevant group.
-4. Combine split tokens like ["6:00", "AM"] → "6:00 AM".
-5. Do not compute averages — Python will handle total_confidence and overall_total_confidence.
-
-Cleaned JSON input:
-{json.dumps(cleaned_data, indent=2)}
-"""
-
-#New Subham's code
-
-def process_chunk(chunk):
-    """Send one chunk to GPT and ensure JSON-only output."""
-    response = client.chat.completions.create(
-        model=MODEL,
-        temperature=0,
-        messages=[
-            {"role": "system", "content": "You are a precise document understanding assistant that outputs only JSON."},
-            {"role": "user", "content": build_prompt(chunk)},
-        ]
-    )
-
-    text = response.choices[0].message.content.strip()
-    try:
-        start = text.find("{")
-        end = text.rfind("}") + 1
-        json_text = text[start:end]
-        return json.loads(json_text)
-    except Exception:
-        print("⚠️ Warning: GPT output not clean JSON. Attempting recovery.")
-        return {"error": "Invalid JSON returned", "raw_output": text}
-
-#New Subham's code
-def calculate_overall_confidence(original_json):
-    """Calculate overall average confidence directly from original JSON."""
-    def extract_confidences(obj):
-        confidences = []
-        if isinstance(obj, dict):
-            for key, value in obj.items():
-                if key == "confidence" and isinstance(value, (int, float)):
-                    confidences.append(value)
-                else:
-                    confidences.extend(extract_confidences(value))
-        elif isinstance(obj, list):
-            for item in obj:
-                confidences.extend(extract_confidences(item))
-        return confidences
-
-    confidences = extract_confidences(original_json)
-    if confidences:
-        return sum(confidences) / len(confidences)
-    return None
-
-def add_confidence_averages(grouped_data, original_data):
-    """Compute total_confidence per group using original JSON confidence values."""
-    confidence_lookup = {clean_field_name(k): v.get("confidence") for k, v in original_data.items()}
-
-    for group, fields in grouped_data.items():
-        if not isinstance(fields, dict):
-            continue
-        confidences = []
-        for field in fields.keys():
-            if field in confidence_lookup and confidence_lookup[field] is not None:
-                confidences.append(confidence_lookup[field])
-        if confidences:
-            avg_conf = sum(confidences) / len(confidences)
-            grouped_data[group]["total_confidence"] = avg_conf
-    return grouped_data
-
-def process_azure_output(json_data):
-    """Process entire Doc Intelligence JSON with GPT grouping + confidence math."""
-    simplified = simplify_fields(json_data)
-    text_data = json.dumps(simplified, indent=2)
-    chunks = chunk_text(text_data)
-    final_combined = {}
-
-    for chunk in chunks:
-        result = process_chunk(chunk)
-        if isinstance(result, dict):
-            for k, v in result.items():
-                if k in final_combined and isinstance(v, dict):
-                    final_combined[k].update(v)
-                else:
-                    final_combined[k] = v
-
-    # Add group averages
-    final_combined = add_confidence_averages(final_combined, simplified)
-
-    # Add overall average from original JSON
-    overall_avg = calculate_overall_confidence(json_data)
-    if overall_avg is not None:
-        final_combined["Document_Confidence_Score"] = overall_avg
-
-    with open(OUTPUT_FILE, "w", encoding="utf-8") as f:
-        json.dump(final_combined, f, indent=2, ensure_ascii=False)
-
-    print(f"Clean JSON written to {OUTPUT_FILE}")
-    return final_combined
-
-# ------------------ MAIN ------------------
-if __name__ == "__main__":
-    output_dir = os.path.join(os.getcwd(), "output")
-    os.makedirs(output_dir, exist_ok=True)
-    output_path = os.path.join(output_dir, "output.json")
-    
-    with open(output_path, "r", encoding="utf-8") as rf:
-        raw_json = json.load(rf) 
-    final_output = process_azure_output(raw_json)
-
-
-    json_path = os.path.join("output","output.json")
-    with open(INPUT_FILE, "r", encoding="utf-8") as f:
-        raw_json = json.load(f)
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+This is how my output.json look like i want instead of documents it should take whatever is written in the "content" as that consists of all the data 
+
+{
+  "apiVersion": "2024-11-30",
+  "modelId": "4ACORDFORM",
+  "stringIndexType": "textElements",
+  "content": "ACORD®\n®\nAGENCY CUSTOMER ID: 542198\nPROPERTY SECTION\nDATE (MM/DD/YYYY)\n07/15/2025\nAGENCY NAME\nPrime Brokers Ltd.\nCARRIER\nPhoenix Insurers Ltd.\nNAIC CODE\nPOLICY NUMBER\nEFFECTIVE DATE\nNAMED INSURED(S)\nBerkshire Hathaway\nBLANKET SUMMARY\nBLKT #\nAMOUNT\nTYPE\nBLKT #\nAMOUNT\n1\n80000000\nMultiple Locations\nPREMISES INFORMATION\nPREMISES #: 1\nSTREET ADDRESS: 123 Penny Lane, Springfield, Illinois\nBUILDING #: NB01\nBLDG DESCRIPTION: Commercial Offices\nSUBJECT OF INSURANCE\nAMOUNT\nCOINS %\nVALU- ATION\nCAUSES OF LOSS\nINFLATION GUARD %\nDED\nDED TYPE\nBLKT #\nFORMS AND CONDITIONS TO APPLY\nEarthquake\n12000000\nFire\n16000000\nFlood\n7000000\nADDITIONAL INFORMATION :unselected: BUSINESS INCOME / EXTRA EXPENSE - Attach ACORD 810 :unselected: VALUE REPORTING INFORMATION - Attach ACORD 811\nADDITIONAL COVERAGES, OPTIONS, RESTRICTIONS, ENDORSEMENTS AND RATING INFORMATION\nSPOILAGE COVERAGE (Y / N)\nDESCRIPTION OF PROPERTY COVERED LIMIT $\nN\n$\nREFRIG MAINT AGREEMENT (Y / N) N\nOPTIONS :unselected: BREAKDOWN OR CONTAMINATION :unselected: POWER OUTAGE :unselected: SELLING PRICE :unselected:\nSINKHOLE COVERAGE (Required in Florida) :unselected: ACCEPT COVERAGE :unselected: REJECT COVERAGE\nLIMIT: $\nMINE SUBSIDENCE COVERAGE (Required in IL, IN, KY and WV) :unselected: ACCEPT COVERAGE :unselected: REJECT COVERAGE\nLIMIT: $ :unselected: PROPERTY HAS BEEN DESIGNATED AN HISTORICAL LANDMARK\n# OF OPEN SIDES ON STRUCTURE:\nCONSTRUCTION TYPE\nDISTANCE TO HYDRANT FIRE STAT\nFIRE DISTRICT\nCODE NUMBER\nPROT CL\n# STORIES\n# BASM'TS\nYR BUILT\nTOTAL AREA\nFire Resistive (Steel,Reinforced)\n20 FT 2 MI\n25\n2\n2012\n250000 sq.ft\nBUILDING IMPROVEMENTS :selected: WIRING, YR: 2012 :unselected: PLUMBING, YR:\nBLDG CODE GRADE\nTAX CODE\nROOF TYPE\nOTHER OCCUPANCIES :selected: ROOFING, YR: 2012 :unselected: HEATING, YR: :unselected: SEMI- RESISTIVE :unselected: OTHER:\nYR:\nWIND CLASS :selected: RESISTIVE :unselected: :unselected: HEATING SOURCE INCL WOODBURNING STOVE OR FIREPLACE INSERT\nDATE\nINSTALLED:\nMANUFACTURER:\nPRIMARY HEAT :unselected: BOILER :unselected: SOLID FUEL :unselected:\nSECONDARY HEAT :unselected: BOILER :unselected: SOLID FUEL :unselected:\nIF BOILER, IS INSURANCE PLACED ELSEWHERE? N Y/N\nIF BOILER, IS INSURANCE PLACED ELSEWHERE? N Y/N\nRIGHT EXPOSURE & DISTANCE\nLEFT EXPOSURE & DISTANCE\nFRONT EXPOSURE & DISTANCE\nREAR EXPOSURE & DISTANCE\nBURGLAR ALARM TYPE\nCERTIFICATE #\nEXPIRATION DATE :unselected:\nCENTRAL :unselected:\nSTATION LOCAL GONG\n2 Automatic Alarms on each floor :unselected: WITH KEYS\nBURGLAR ALARM INSTALLED AND SERVICED BY Secure Tech Services Ltd.\nEXTENT\nGRADE\n# GUARDS / WATCHMEN 22 :unselected: CLOCK HOURLY :unselected:\nPREMISES FIRE PROTECTION (Sprinklers, Standpipes, CO2 / Chemical Systems)\n% SPRNK\nFIRE ALARM MANUFACTURER :unselected: CENTRAL STATION\nSprinklers on all floors :unselected: LOCAL GONG\nADDITIONAL INTEREST :unselected: ACORD 45 attached for additional names\nINTEREST\nNAME AND ADDRESS RANK:\nEVIDENCE: :unselected: CERTIFICATE\nINTEREST IN ITEM NUMBER :unselected: LENDER'S LOSS PAYABLE\nLOCATION:\nBUILDING: :unselected: LOSS PAYEE\nITEM CLASS:\nITEM: :unselected:\nMORTGAGEE :unselected:\nITEM DESCRIPTION\nREFERENCE / LOAN #:\nACORD 140 (2016/03)\nAttach to ACORD 125 @ 1985-2015 ACORD CORPORATION. All rights reserved. The ACORD name and logo are registered marks of ACORD\nDEDUCTIBLE\nTYPE :unselected: :selected: :unselected: :unselected: :selected: :unselected: :unselected: :unselected: :unselected: :selected: :selected: :unselected: :unselected: :unselected: :unselected: :unselected: :unselected:\nAGENCY CUSTOMER ID: 542198\nADDITIONAL PREMISES INFORMATION\nPREMISES #: 2\nSTREET ADDRESS: 214 Fret Avenue, Minneapolis, Minnesota\nBUILDING #: NB02\nBLDG DESCRIPTION: Commercial Offices\nSUBJECT OF INSURANCE\nAMOUNT\nCOINS %\nVALU- ATION\nCAUSES OF LOSS\nINFLATION GUARD %\nDED\nDED TYPE\nBLKT #\nFORMS AND CONDITIONS TO APPLY\nFire\n9000000\nEarthquake\n7000000\nFlood\n4000000\nADDITIONAL INFORMATION :unselected: BUSINESS INCOME / EXTRA EXPENSE - Attach ACORD 810 :unselected: VALUE REPORTING INFORMATION - Attach ACORD 811\nADDITIONAL COVERAGES, OPTIONS, RESTRICTIONS, ENDORSEMENTS AND RATING INFORMATION\nSPOILAGE COVERAGE (Y / N)\nDESCRIPTION OF PROPERTY COVERED\nN\nLIMIT\nREFRIG MAINT AGREEMENT (Y / N) N\nOPTIONS\n$ :unselected:\nBREAKDOWN OR CONTAMINATION\nSELLING\nDEDUCTIBLE :unselected:\nPOWER OUTAGE :unselected:\nPRICE\n$ :unselected:\nSINKHOLE COVERAGE (Required in Florida) :unselected: ACCEPT COVERAGE :unselected: REJECT COVERAGE\nLIMIT: $\nMINE SUBSIDENCE COVERAGE (Required in IL, IN, KY and WV) :unselected: ACCEPT COVERAGE :unselected: REJECT COVERAGE LIMIT: $\n# OF OPEN SIDES ON STRUCTURE: :unselected: PROPERTY HAS BEEN DESIGNATED AN HISTORICAL LANDMARK\nCONSTRUCTION TYPE\nDISTANCE TO HYDRANT FIRE STAT\nFIRE DISTRICT\nCODE NUMBER\nPROT CL\n# STORIES\n# BASM'TS\nYR BUILT\nTOTAL AREA\nFire Resistive (Steel,Reinforced)\n20 FT 3 MI\n15\n2\n2018\n170000 sq.ft\nBLDG CODE GRADE\nTAX CODE\nROOF TYPE\nOTHER OCCUPANCIES :selected: ROOFING, YR: 2018 :unselected: HEATING SOURCE INCL WOODBURNING STOVE OR FIREPLACE INSERT\nDATE INSTALLED: :unselected: OTHER:\nYR: :unselected: RESISTIVE :unselected:\nMANUFACTURER:\nPRIMARY HEAT :unselected: BOILER :unselected: SOLID FUEL :unselected:\nSECONDARY HEAT :unselected: BOILER :unselected: SOLID FUEL :unselected:\nIF BOILER, IS INSURANCE PLACED ELSEWHERE? N Y/N\nIF BOILER, IS INSURANCE PLACED ELSEWHERE? N Y/N\nRIGHT EXPOSURE & DISTANCE\nLEFT EXPOSURE & DISTANCE\nFRONT EXPOSURE & DISTANCE\nREAR EXPOSURE & DISTANCE\nBURGLAR ALARM TYPE\nCERTIFICATE #\nEXPIRATION DATE :unselected: CENTRAL :unselected:\nSTATION\nLOCAL GONG\n2 Automatic Alarms on each floor :unselected:\nWITH KEYS\nBURGLAR ALARM INSTALLED AND SERVICED BY\nEXTENT GRADE\n# GUARDS / WATCHMEN :unselected:\nCLOCK HOURLY\nSecure Tech Services Ltd.\n16 :unselected:\nPREMISES FIRE PROTECTION (Sprinklers, Standpipes, CO2 / Chemical Systems)\n% SPRNK FIRE ALARM MANUFACTURER :unselected:\nCENTRAL STATION\nSprinklers on all floors and Basement :unselected:\nLOCAL GONG\nADDITIONAL INTEREST :unselected: ACORD 45 attached for additional names\nINTEREST\nNAME AND ADDRESS RANK:\nEVIDENCE: :unselected: CERTIFICATE :unselected:\nLENDER'S LOSS PAYABLE :unselected:\nLOSS PAYEE :unselected: :unselected:\nMORTGAGEE\nREFERENCE / LOAN #:\nINTEREST IN ITEM NUMBER\nLOCATION:\nBUILDING:\nITEM CLASS:\nITEM:\nITEM DESCRIPTION\nREMARKS (ACORD 101, Additional Remarks Schedule, may be attached if more space is required)\nACORD 140 (2016/03)\nPage 2 of 3\nBUILDING IMPROVEMENTS WIND CLASS :selected: WIRING, YR: 2018 :selected: PLUMBING, YR: 2018 :unselected: HEATING, YR: :unselected: SEMI- RESISTIVE :selected: :selected: :unselected: :selected: :unselected: :unselected: :unselected: :selected: :unselected: :unselected: :unselected: :unselected: :unselected: :unselected: :unselected: :unselected: :unselected:\nSIGNATURE\nAGENCY CUSTOMER ID: 542198\nApplicable in AL, AR, DC, LA, MD, NM, RI and WV Any person who knowingly (or willfully)* presents a false or fraudulent claim for payment of a loss or benefit or knowingly (or willfully)* presents false information in an application for insurance is guilty of a crime and may be subject to fines and confinement in prison. * Applies in MD Only.\nApplicable in CO\nIt is unlawful to knowingly provide false, incomplete, or misleading facts or information to an insurance company for the purpose of defrauding or attempting to defraud the company. Penalties may include imprisonment, fines, denial of insurance and civil damages. Any insurance company or agent of an insurance company who knowingly provides false, incomplete, or misleading facts or information to a policyholder or claimant for the purpose of defrauding or attempting to defraud the policyholder or claimant with regard to a settlement or award payable from insurance proceeds shall be reported to the Colorado Division of Insurance within the Department of Regulatory Agencies.\nApplicable in FL and OK\nAny person who knowingly and with intent to injure, defraud, or deceive any insurer files a statement of claim or an application containing any false, incomplete, or misleading information is guilty of a felony (of the third degree) *. * Applies in FL Only.\nApplicable in KS\nAny person who, knowingly and with intent to defraud, presents, causes to be presented or prepares with knowledge or belief that it will be presented to or by an insurer, purported insurer, broker or any agent thereof, any written statement as part of, or in support of, an application for the issuance of, or the rating of an insurance policy for personal or commercial insurance, or a claim for payment or other benefit pursuant to an insurance policy for commercial or personal insurance which such person knows to contain materially false information concerning any fact material thereto; or conceals, for the purpose of misleading, information concerning any fact material thereto commits a fraudulent insurance act.\nApplicable in KY, NY, OH and PA\nAny person who knowingly and with intent to defraud any insurance company or other person files an application for insurance or statement of claim containing any materially false information or conceals for the purpose of misleading, information concerning any fact material thereto commits a fraudulent insurance act, which is a crime and subjects such person to criminal and civil penalties* (not to exceed five thousand dollars and the stated value of the claim for each such violation) *. * Applies in NY Only.\nApplicable in ME, TN, VA and WA\nIt is a crime to knowingly provide false, incomplete or misleading information to an insurance company for the purpose of defrauding the company. Penalties (may)* include imprisonment, fines and denial of insurance benefits. * Applies in ME Only.\nApplicable in NJ Any person who includes any false or misleading information on an application for an insurance policy is subject to criminal and civil penalties.\nApplicable in OR\nAny person who knowingly and with intent to defraud or solicit another to defraud the insurer by submitting an application containing a false statement as to any material fact may be violating state law.\nApplicable in PR\nAny person who knowingly and with the intention of defrauding presents false information in an insurance application, or presents, helps, or causes the presentation of a fraudulent claim for the payment of a loss or any other benefit, or presents more than one claim for the same damage or loss, shall incur a felony and, upon conviction, shall be sanctioned for each violation by a fine of not less than five thousand dollars ($5,000) and not more than ten thousand dollars ($10,000), or a fixed term of imprisonment for three (3) years, or both penalties. Should aggravating circumstances [be] present, the penalty thus established may be increased to a maximum of five (5) years, if extenuating circumstances are present, it may be reduced to a minimum of two (2) years.\nTHE UNDERSIGNED IS AN AUTHORIZED REPRESENTATIVE OF THE APPLICANT AND REPRESENTS THAT REASONABLE INQUIRY HAS BEEN MADE TO OBTAIN THE ANSWERS TO QUESTIONS ON THIS APPLICATION. HE/SHE REPRESENTS THAT THE ANSWERS ARE TRUE, CORRECT AND COMPLETE TO THE BEST OF HIS/HER KNOWLEDGE.\nPRODUCER'S SIGNATURE William Grey\nPRODUCER'S NAME (Please Print) William Grey\nSTATE PRODUCER LICENSE NO (Required in Florida)\nAPPLICANT'S SIGNATURE DATE Berkshire Hathway 07/15/2025\nNATIONAL PRODUCER NUMBER 100-002541\nACORD 140 (2016/03)\nPage 3 of 3",
+  "pages": [
+    {
+      "pageNumber": 1,
+      "angle": -0.01590000092983246,
+      "width": 8.5,
+      "height": 11,
+      "unit": "inch",
+      "words": [
+        {
+          "content": "ACORD®",
+          "polygon": [
+            0.3111,
+            0.6306,
+            1.2064,
+            0.6273,
+            1.2064,
+            0.7897,
+            0.3105,
+            0.7871
+          ],
+          "confidence": 0.292,
+          "span": {
+            "offset": 0,
+            "length": 6
+          }
+        },
+        {
+          "content": "®",
+          "polygon": [
+            1.1687,
+            0.5925,
+            1.2507,
+            0.591,
+            1.2507,
+            0.6667,
+            1.168,
+            0.6663
+          ],
+          "confidence": 0.757,
+          "span": {
+            "offset": 7,
+            "length": 1
+          }
+        },
+        {
+          "content": "AGENCY",
+          "polygon": [
+            3.8876,
+            0.3727,
+            4.371,
+            0.3681,
+            4.3706,
+            0.4898,
+            3.8875,
+            0.4927
+          ],
+          "confidence": 0.997,
+          "span": {
+            "offset": 9,
+            "length": 6
+          }
+        },
+        {
+          "content": "CUSTOMER",
+          "polygon": [
+            4.4073,
+            0.3679,
+            5.0397,
+            0.3608,
+            5.0394,
+            0.4851,
+            4.4068,
+            0.4896
+          ],
+          "confidence": 0.996,
+          "span": {
+            "offset": 16,
+            "length": 8
+          }
+        },
+        {
+          "content": "ID:",
+          "polygon": [
+            5.0739,
+            0.3602,
+            5.2129,
+            0.3589,
+            5.2126,
+            0.4839,
+            5.0736,
+            0.4851
+          ],
+          "confidence": 0.992,
+          "span": {
+            "offset": 25,
+            "length": 3
+          }
+        },
+        {
+          "content": "542198",
+          "polygon": [
+            5.2632,
+            0.3588,
+            5.6439,
+            0.3535,
+            5.6436,
+            0.4771,
+            5.263,
+            0.4832
+          ],
+          "confidence": 0.996,
+          "span": {
+            "offset": 29,
+            "length": 6
+          }
+        },
+        {
+          "content": "PROPERTY",
+          "polygon": [
+            3.1468,
+            0.6463,
+            4.222,
+            0.6456,
+            4.2215,
+            0.8389,
+            3.1459,
+            0.8408
+          ],
+          "confidence": 0.995,
+          "span": {
+            "offset": 36,
+            "length": 8
+          }
+        },
+        {
+          "content": "SECTION",
+          "polygon": [
+            4.2825,
+            0.6457,
+            5.152,
+            0.6448,
+            5.152,
+            0.8404,
+            4.282,
+            0.8389
+          ],
+          "confidence": 0.995,
+          "span": {
+            "offset": 45,
+            "length": 7
+          }
+        },
+        {
+          "content": "DATE",
+          "polygon": [
+            7.231,
+            0.6133,
+            7.4582,
+            0.6144,
+            7.4579,
+            0.7146,
+            7.2308,
+            0.7136
+          ],
+          "confidence": 0.988,
+          "span": {
+            "offset": 53,
+            "length": 4
+          }
+        },
+        {
+          "content": "(MM/DD/YYYY)",
+          "polygon": [
+            7.4847,
+            0.6146,
+            8.0668,
+            0.6135,
+            8.066,
+            0.7166,
+            7.4845,
+            0.7148
+          ],
+          "confidence": 0.991,
+          "span": {
+            "offset": 58,
+            "length": 12
+          }
