@@ -1,8 +1,199 @@
-I am still getting 
+import os
+import json
+from dotenv import load_dotenv
+from openai import AzureOpenAI
 
-{
-  "Document_Confidence_Score": 0.9327781997721158
-}
+# ------------------ CONFIG ------------------
+load_dotenv()
+
+client = AzureOpenAI(
+    azure_endpoint=os.getenv("AZURE_OPENAI_ENDPOINT"),
+    api_key=os.getenv("AZURE_OPENAI_API_KEY"),
+    api_version="2024-05-01-preview"
+)
+
+MODEL = os.getenv("AZURE_OPENAI_CHAT_DEPLOYMENT")
+
+output_dir = os.path.join(os.getcwd(), "output")
+INPUT_FILE = os.path.join(output_dir, "output.json")
+OUTPUT_FILE = os.path.join(output_dir, "final_output.json")
+
+os.makedirs(output_dir, exist_ok=True)
+
+MAX_CHARS = 12000
+
+# ------------------ HELPERS ------------------
+
+def chunk_text(text, max_chars=MAX_CHARS):
+    chunks, current, length = [], [], 0
+    for line in text.splitlines():
+        if length + len(line) > max_chars:
+            chunks.append("\n".join(current))
+            current, length = [], 0
+        current.append(line)
+        length += len(line)
+    if current:
+        chunks.append("\n".join(current))
+    return chunks
+
+
+def clean_field_name(name: str) -> str:
+    return name.strip().title()
+
+# ------------------ CORE FIX ------------------
+
+def simplify_fields(raw_json):
+    """
+    ✅ CORRECT PATH:
+    analyzeResult -> pages[] -> words[]
+    """
+    simplified = {}
+
+    pages = raw_json.get("analyzeResult", {}).get("pages", [])
+    if not pages:
+        print("❌ No pages found in analyzeResult")
+        return simplified
+
+    index = 1
+    for page in pages:
+        for word in page.get("words", []):
+            text = word.get("content")
+            confidence = word.get("confidence")
+
+            if not text or confidence is None:
+                continue
+
+            simplified[f"Word_{index}"] = {
+                "value": text,
+                "confidence": confidence
+            }
+            index += 1
+
+    print(f"✅ Extracted {len(simplified)} OCR words")
+    return simplified
+
+# ------------------ GPT PROMPT ------------------
+
+def build_prompt(cleaned_data):
+    return f"""
+You are a JSON data formatter.
+
+The following JSON contains OCR words extracted from an ACORD insurance form.
+Each entry has a value and confidence.
+
+Return ONLY valid JSON.
+
+Rules:
+1. Group related words into meaningful sections
+   (Policy, Broker, Insured, Premises, Line of Business, etc.)
+2. Each field must be output as:
+   "Field Name": "Value, confidence - X"
+3. Do NOT change confidence values.
+4. Do NOT compute averages.
+5. Combine logically adjacent words into readable fields when possible.
+
+Input JSON:
+{json.dumps(cleaned_data, indent=2)}
+"""
+
+def process_chunk(chunk):
+    response = client.chat.completions.create(
+        model=MODEL,
+        temperature=0,
+        messages=[
+            {"role": "system", "content": "Return only valid JSON."},
+            {"role": "user", "content": build_prompt(chunk)}
+        ]
+    )
+
+    text = response.choices[0].message.content.strip()
+    try:
+        start = text.find("{")
+        end = text.rfind("}") + 1
+        return json.loads(text[start:end])
+    except Exception:
+        print("⚠️ GPT returned invalid JSON")
+        return {}
+
+# ------------------ CONFIDENCE LOGIC ------------------
+
+def calculate_overall_confidence(original_json):
+    def extract(obj):
+        values = []
+        if isinstance(obj, dict):
+            for k, v in obj.items():
+                if k == "confidence" and isinstance(v, (int, float)):
+                    values.append(v)
+                else:
+                    values.extend(extract(v))
+        elif isinstance(obj, list):
+            for i in obj:
+                values.extend(extract(i))
+        return values
+
+    confidences = extract(original_json)
+    return sum(confidences) / len(confidences) if confidences else None
+
+
+def add_confidence_averages(grouped_data, simplified_data):
+    lookup = {
+        k: v["confidence"]
+        for k, v in simplified_data.items()
+    }
+
+    for group, fields in grouped_data.items():
+        if not isinstance(fields, dict):
+            continue
+
+        confs = []
+        for field_name in fields:
+            for k, v in lookup.items():
+                if v is not None and k.lower() in field_name.lower():
+                    confs.append(v)
+
+        if confs:
+            grouped_data[group]["total_confidence"] = sum(confs) / len(confs)
+
+    return grouped_data
+
+# ------------------ MAIN PIPELINE ------------------
+
+def process_azure_output(json_data):
+    simplified = simplify_fields(json_data)
+
+    if not simplified:
+        print("❌ No OCR data extracted. Stopping.")
+        return
+
+    chunks = chunk_text(json.dumps(simplified, indent=2))
+    final_output = {}
+
+    for chunk in chunks:
+        result = process_chunk(chunk)
+        for k, v in result.items():
+            if k in final_output and isinstance(v, dict):
+                final_output[k].update(v)
+            else:
+                final_output[k] = v
+
+    final_output = add_confidence_averages(final_output, simplified)
+
+    overall_conf = calculate_overall_confidence(json_data)
+    if overall_conf is not None:
+        final_output["Document_Confidence_Score"] = overall_conf
+
+    with open(OUTPUT_FILE, "w", encoding="utf-8") as f:
+        json.dump(final_output, f, indent=2, ensure_ascii=False)
+
+    print(f"✅ Final output written to {OUTPUT_FILE}")
+
+# ------------------ ENTRY POINT ------------------
+
+if __name__ == "__main__":
+    with open(INPUT_FILE, "r", encoding="utf-8") as f:
+        raw_json = json.load(f)
+
+    process_azure_output(raw_json)
 
 
 
