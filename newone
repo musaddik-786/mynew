@@ -1,4 +1,24 @@
-"words": [
+This is my json 
+
+
+
+{
+	"status": "succeeded",
+	"createdDateTime": "2026-01-09T06:59:26Z",
+	"lastUpdatedDateTime": "2026-01-09T06:59:34Z",
+	"analyzeResult": {
+		"apiVersion": "2024-11-30",
+		"modelId": "prebuilt-layout",
+		"stringIndexType": "utf16CodeUnit",
+		"content": "ACORD® ®\nCOMMERCIAL INSURANCE APPLICATION APPLICANT INFORMATION SECTION\nAGENCY\nArmstrong and Company\nCONTACT NAME:\nWilliam Grey\nPHONE (A/C, No, Ext):\n+1 202 406 789\nFAX (A/C, No):\nE-MAIL ADDRESS:\ngreywilliam@armstrongcomp.com\nCODE:\nSUBCODE:\nAGENCY CUSTOMER ID: 542198 :unselected:\nSTATUS OF TRANSACTION :unselected: QUOTE :selected: ISSUE POLICY :unselected: RENEW\nBOUND (Give Date and/or Attach Copy): :unselected:\nCHANGE\nDATE\nTIME :unselected: AM :unselected:\nCANCEL\n07/29/2025 :unselected: PM\nLINES OF BUSINESS\nINDICATE LINES OF BUSINESS\nPREMIUM\nPREMIUM\nPREMIUM :unselected:\nBOILER & MACHINERY\n$ :unselected:\nCYBER AND PRIVACY\n$ :unselected:\nYACHT\n$ :unselected:\nBUSINESS AUTO\n$ :unselected:\nFIDUCIARY LIABILITY\n$\n$ :unselected:\nBUSINESS OWNERS\n$ :unselected:\nGARAGE AND DEALERS\n$\n$ :selected:\nCOMMERCIAL GENERAL LIABILITY\n$ :unselected:\nLIQUOR LIABILITY\n$\n$ :unselected:\nCOMMERCIAL INLAND MARINE\n$ :unselected:\nMOTOR CARRIER\n$\n$ :unselected:\nCOMMERCIAL PROPERTY\n$ :unselected:\nTRUCKERS\n$\n$ :unselected: CRIME\n$ :unselected:\nUMBRELLA\n$\n$\nATTACHMENTS :unselected:\nACCOUNTS RECEIVABLE / VALUABLE PAPERS :unselected:\nGLASS AND SIGN SECTION :unselected:\nSTATEMENT / SCHEDULE OF VALUES :unselected:\nADDITIONAL INTEREST SCHEDULE :unselected:\nHOTEL / MOTEL SUPPLEMENT :unselected:\nSTATE SUPPLEMENT (If applicable) :unselected:\nADDITIONAL PREMISES INFORMATION SCHEDULE :unselected:\nINSTALLATION / BUILDERS RISK SECTION :unselected:\nVACANT BUILDING SUPPLEMENT :unselected:\nAPARTMENT BUILDING SUPPLEMENT :unselected:\nINTERNATIONAL LIABILITY EXPOSURE SUPPLEMENT :unselected:\nVEHICLE SCHEDULE :unselected:\nCONDO ASSN BYLAWS (for D&O Coverage only) :unselected:\nINTERNATIONAL PROPERTY EXPOSURE SUPPLEMENT :unselected:\nCONTRACTORS SUPPLEMENT :unselected:\nLOSS SUMMARY :unselected:\nCOVERAGES SCHEDULE :unselected:\nOPEN CARGO SECTION :unselected:\nDEALERS SECTION :unselected:\nPREMIUM PAYMENT SUPPLEMENT :unselected:\nDRIVER INFORMATION SCHEDULE :unselected:\nPROFESSIONAL LIABILITY SUPPLEMENT :unselected:\nELECTRONIC DATA PROCESSING SECTION :unselected:\nRESTAURANT / TAVERN SUPPLEMENT\nPOLICY INFORMATION\nPROPOSED EFF DATE\nPROPOSED EXP DATE\nBILLING PLAN\nPAYMENT PLAN\nMETHOD OF PAYMENT\nAUDIT\nDEPOSIT\nMINIMUM PREMIUM\nPOLICY PREMIUM\n03/10/2026\n03/10/2029 :selected:\nDIRECT :unselected:\nAGENCY\n$\n$\n$\nAPPLICANT INFORMATION\nNAME (First Named Insured) AND MAILING ADDRESS (including ZIP+4)\nApex Contracting Services Ltd,\n2850 S. Delaware Street,\nSan Mateo, CA 94403\nGL CODE\nSIC\nNAICS\nFEIN OR SOC SEC #\nBUSINESS PHONE #:\n(650) 287-0142\nWEBSITE ADDRESS :selected:\nCORPORATION :unselected: JOINT VENTURE :unselected: NOT FOR PROFIT ORG :unselected:\nSUBCHAPTER \"S\" CORPORATION :unselected: :unselected:\nINDIVIDUAL :unselected: LLC NO. OF MEMBERS AND MANAGERS: 0 :unselected: PARTNERSHIP :unselected: TRUST\nNAME (Other Named Insured) AND MAILING ADDRESS (including ZIP+4)\nGL CODE\nSIC\nNAICS\nFEIN OR SOC SEC #\nBUSINESS PHONE #:\nWEBSITE ADDRESS :unselected: CORPORATION :unselected: JOINT VENTURE :unselected: NOT FOR PROFIT ORG :unselected:\nSUBCHAPTER \"S\" CORPORATION :unselected: :unselected: INDIVIDUAL :unselected:\nLLC NO. OF MEMBERS AND MANAGERS: :unselected: :unselected: PARTNERSHIP :unselected: TRUST\nNAME (Other Named Insured) AND MAILING ADDRESS (including ZIP+4)\nGL CODE\nSIC\nNAICS\nFEIN OR SOC SEC #\nBUSINESS PHONE #:\nWEBSITE ADDRESS :unselected: CORPORATION :unselected: JOINT VENTURE :unselected: NOT FOR PROFIT ORG :unselected:\nSUBCHAPTER \"S\" CORPORATION :unselected: :unselected: INDIVIDUAL :unselected:\nLLC NO. OF MEMBERS AND MANAGERS: :unselected: :unselected: PARTNERSHIP :unselected: TRUST\nACORD 125 (2016/03)\nPage 1 of 4\n@ 1993-2015 ACORD CORPORATION. All rights reserved.\nThe ACORD name and logo are registered marks of ACORD\nDATE (MM/DD/YYYY)\n07/29/2025\nCARRIER\nNAIC CODE\nEnigma Fire & Casualty\nCOMPANY POLICY OR PROGRAM NAME\nPROGRAM CODE\nProgram 1\nP1\nPOLICY NUMBER\nUNDERWRITER\nUNDERWRITER OFFICE :unselected: :unselected: :unselected: :unselected: :unselected: :unselected: :unselected:\nCONTACT INFORMATION\nAGENCY CUSTOMER ID: 542198\nCONTACT TYPE:\nPrimary\nCONTACT TYPE:\nSecondary\nCONTACT NAME:\nMr.Michael Hill (Owner)\nCONTACT NAME: Mr.Bill Deeney (President)\nPRIMARY PHONE # :unselected:\nHOME :unselected:\nBUS :selected:\nCELL +1 987612342\nSECONDARY PHONE # :unselected:\nHOME :unselected:\nBUS :unselected:\nCELL\nPRIMARY PHONE # :unselected:\nHOME :unselected:\nBUS :unselected:\nCELL\nSECONDARY PHONE # :unselected:\nHOME :unselected:\nBUS :unselected:\nCELL\nPRIMARY E-MAIL ADDRESS: hillmichael@apex.com\nPRIMARY E-MAIL ADDRESS: deeneybill@apex.com\nSECONDARY E-MAIL ADDRESS:\nSECONDARY E-MAIL ADDRESS:\nPREMISES INFORMATION (Attach ACORD 823 for Additional Premises)\nLOC #\nSTREET 2850 S. Delaware St.\nCITY LIMITS\nINTEREST\n# FULL TIME EMPL\nANNUAL REVENUES: $ 1,725,000 :selected:\nINSIDE :selected:\nOWNER :unselected:\nTENANT\n15\nOCCUPIED AREA:\nSQ FT\nBLD #\nCITY: San Mateo\nSTATE: CA :unselected:\nOUTSIDE\n# PART TIME EMPL\nOPEN TO PUBLIC AREA:\nSQ FT\nCOUNTY:\nZIP:94403 :unselected: :unselected:\nTOTAL BUILDING AREA:\nSQ FT\nDESCRIPTION OF OPERATIONS: Contractor - Commercial - Masonry and Roofing\nANY AREA LEASED TO OTHERS? Y / N\nLOC #\nSTREET\nCITY LIMITS :unselected:\nINSIDE :unselected:\nOUTSIDE :unselected:\nINTEREST\n# FULL TIME EMPL\nANNUAL REVENUES: $ :unselected:\nOWNER :unselected:\nTENANT\nOCCUPIED AREA:\nSQ FT\nBLD #\nCITY:\nSTATE:\n# PART TIME EMPL\nOPEN TO PUBLIC AREA:\nSQ FT\nCOUNTY:\nZIP: :unselected:\nTOTAL BUILDING AREA:\nSQ FT\nDESCRIPTION OF OPERATIONS:\nANY AREA LEASED TO OTHERS? Y / N\nLOC #\nSTREET\nCITY LIMITS :unselected:\nINSIDE :unselected:\nOUTSIDE\nINTEREST\n# FULL TIME EMPL\nANNUAL REVENUES: $ :unselected:\nOWNER :unselected:\nTENANT\nOCCUPIED AREA:\nSQ FT\nBLD #\nCITY:\nSTATE:\n# PART TIME EMPL\nOPEN TO PUBLIC AREA:\nSQ FT\nCOUNTY:\nZIP: :unselected: :unselected:\nTOTAL BUILDING AREA:\nSQ FT\nDESCRIPTION OF OPERATIONS:\nANY AREA LEASED TO OTHERS? Y / N\nLOC #\nSTREET\nCITY LIMITS :unselected:\nINSIDE :unselected:\nOUTSIDE :unselected:\nINTEREST\n# FULL TIME EMPL\nANNUAL REVENUES: $ :unselected:\nOWNER :unselected:\nTENANT\nOCCUPIED AREA:\nSQ FT\nBLD #\nCITY:\nSTATE:\n# PART TIME EMPL\nOPEN TO PUBLIC AREA:\nSQ FT\nCOUNTY:\nZIP: :unselected:\nTOTAL BUILDING AREA: SQ FT\nDESCRIPTION OF OPERATIONS:\nANY AREA LEASED TO OTHERS? Y / N\nNATURE OF BUSINESS :unselected: APARTMENTS :selected:\nCONTRACTOR :unselected: MANUFACTURING :unselected: RESTAURANT :unselected: :unselected:\nSERVICE :unselected:\nDATE BUSINESS STARTED (MM/DD/YYYY) :unselected: CONDOMINIUMS :unselected:\nINSTITUTIONAL :unselected: OFFICE\nRETAIL :unselected: WHOLESALE\n02/12/1964\nDESCRIPTION OF PRIMARY OPERATIONS Contractor - Commercial - Masonry and Roofing\nINSTALLATION, SERVICE OR REPAIR WORK\nRETAIL STORES OR SERVICE OPERATIONS % OF TOTAL SALES:\n%\nOFF PREMISES INSTALLATION, SERVICE OR REPAIR WORK %\nDESCRIPTION OF OPERATIONS OF OTHER NAMED INSUREDS\nADDITIONAL INTEREST (Not all fields apply to all scenarios - provide only the necessary data) Attach ACORD 45 for more Additional Interests\nINTEREST :unselected: ADDITIONAL :unselected: LIENHOLDER :unselected: BREACH OF WARRANTY\nINSURED :unselected: LOSS PAYEE :unselected: CO-OWNER :unselected: MORTGAGEE :unselected: EMPLOYEE AS LESSOR LEASEBACK :unselected: OWNER :unselected: REGISTRANT :unselected:\nNAME AND ADDRESS RANK: :unselected: EVIDENCE: :unselected: CERTIFICATE :unselected: POLICY SEND BILL\nINTEREST IN ITEM NUMBER\nLOCATION:\nBUILDING:\nVEHICLE:\nBOAT:\nAIRPORT:\nAIRCRAFT:\nITEM CLASS:\nITEM:\nLIEN AMOUNT: :unselected: OWNER LENDER'S LOSS PAYABLE :unselected: TRUSTEE REFERENCE / LOAN #:\nINTEREST END DATE:\nPHONE (A/C, No, Ext):\nFAX (A/C, No):\nREASON FOR INTEREST:\nE-MAIL ADDRESS:\nITEM DESCRIPTION :unselected:\nACORD 125 (2016/03)\nPage 2 of 4 :unselected:\nAGENCY CUSTOMER ID: 542198\nGENERAL INFORMATION\nEXPLAIN ALL \"YES\" RESPONSES\nY/N\nN\nPARENT COMPANY NAME\nRELATIONSHIP DESCRIPTION\n% OWNED\n1b. DOES THE APPLICANT HAVE ANY SUBSIDIARIES?\nN\nSUBSIDIARY COMPANY NAME\nRELATIONSHIP DESCRIPTION\n% OWNED\n2. IS A FORMAL SAFETY PROGRAM IN OPERATION? :selected: SAFETY MANUAL :unselected: SAFETY POSITION :selected: MONTHLY MEETINGS :unselected: OSHA :unselected:\n3. . ANY EXPOSURE TO FLAMMABLES, EXPLOSIVES, CHEMICALS?\nN\n4. ANY OTHER INSURANCE WITH THIS COMPANY? (List policy numbers)\nLINE OF BUSINESS\nPOLICY NUMBER\nLINE OF BUSINESS\nPOLICY NUMBER\n5. ANY POLICY OR COVERAGE DECLINED, CANCELLED OR NON-RENEWED DURING THE PRIOR THREE (3) YEARS FOR ANY PREMISES OR OPERATIONS? (Missouri Applicants - Do not answer this question) :unselected: NON-PAYMENT :unselected: AGENT NO LONGER REPRESENTS CARRIER :unselected: :unselected:\nNON-RENEWAL :unselected:\nUNDERWRITING :unselected:\nCONDITION CORRECTED (Describe):\n6. ANY PAST LOSSES OR CLAIMS RELATING TO SEXUAL ABUSE OR MOLESTATION ALLEGATIONS, DISCRIMINATION OR NEGLIGENT HIRING?\n7. DURING THE LAST FIVE YEARS (TEN IN RI), HAS ANY APPLICANT BEEN INDICTED FOR OR CONVICTED OF ANY DEGREE OF THE CRIME OF FRAUD, BRIBERY, ARSON OR ANY OTHER ARSON-RELATED CRIME IN CONNECTION WITH THIS OR ANY OTHER PROPERTY? (In RI, this question must be answered by any applicant for property insurance. Failure to disclose the existence of an arson conviction is a misdemeanor punishable by a sentence of up to one year of imprisonment).\nN\n8. ANY UNCORRECTED FIRE AND/OR SAFETY CODE VIOLATIONS?\nOCCUR DATE\nEXPLANATION\nRESOLUTION\nRESOLVE DATE\n9. HAS APPLICANT HAD A FORECLOSURE, REPOSSESSION, BANKRUPTCY OR FILED FOR BANKRUPTCY DURING THE LAST FIVE (5) YEARS?\nOCCUR DATE\nEXPLANATION\nRESOLUTION\nRESOLVE DATE\n10. HAS APPLICANT HAD A JUDGEMENT OR LIEN DURING THE LAST FIVE (5) YEARS?\nN\nOCCUR DATE\nEXPLANATION\nRESOLUTION\nRESOLVE DATE\n11. HAS BUSINESS BEEN PLACED IN A TRUST? NAME OF TRUST:\n12. ANY FOREIGN OPERATIONS, FOREIGN PRODUCTS DISTRIBUTED IN USA, OR US PRODUCTS SOLD / DISTRIBUTED IN FOREIGN COUNTRIES? (If \"YES\", attach ACORD 815 for Liability Exposure and/or ACORD 816 for Property Exposure)\nN\n13. DOES APPLICANT HAVE OTHER BUSINESS VENTURES FOR WHICH COVERAGE IS NOT REQUESTED?\nN\n14. DOES APPLICANT OWN / LEASE / OPERATE ANY DRONES? (If \"YES\", describe use)\nN\n15. DOES APPLICANT HIRE OTHERS TO OPERATE DRONES? (If \"YES\", describe use)\nN\nREMARKS / PROCESSING INSTRUCTIONS (ACORD 101, Additional Remarks Schedule, may be attached if more space is required)\nPRIOR CARRIER INFORMATION\nYEAR\nCATEGORY\nGENERAL LIABILITY\nAUTOMOBILE\nPROPERTY\nOTHER:\nCARRIER\nKent Casualty Insurance Co\nPOLICY NUMBER\nKC48934201\n2023 - 2026\nPREMIUM\n$\n$\n$\n$\nEFFECTIVE DATE\n03/14/2023\nEXPIRATION DATE\n03/14/2026\nACORD 125 (2016/03)\nPage 3 of 4\nY\nN\nN\nN\nN\nN\nN\n1a. IS THE APPLICANT A SUBSIDIARY OF ANOTHER ENTITY ? :selected: :selected: :selected: :selected: :selected: :selected: :selected: :selected: :selected: :selected: :selected: :selected: :selected: :selected:\nPRIOR CARRIER INFORMATION (continued)\nAGENCY CUSTOMER ID: 542198\nYEAR\nCATEGORY\nGENERAL LIABILITY\nAUTOMOBILE\nPROPERTY\nOTHER:\nCARRIER\nRover-Groves Insurance Co.\nPOLICY NUMBER\nRG98176201\n2020 - 2023\nPREMIUM\n$\n$\n$\n$\nEFFECTIVE DATE\n04/16/2020\nEXPIRATION DATE\n04/16/2023\nCARRIER\nPOLICY NUMBER\nPREMIUM\n$\n$\n$\n$\nEFFECTIVE DATE\nEXPIRATION DATE\nLOSS HISTORY :selected: Check if none (Attach Loss Summary for Additional Loss Information)\nENTER ALL CLAIMS OR LOSSES (REGARDLESS OF FAULT AND WHETHER OR NOT INSURED) OR OCCURRENCES THAT MAY GIVE RISE TO CLAIMS FOR THE LAST YEARS\nTOTAL LOSSES: $\nDATE OF OCCURRENCE\nLINE\nTYPE / DESCRIPTION OF OCCURRENCE OR CLAIM\nDATE OF CLAIM\nAMOUNT PAID\nAMOUNT RESERVED\nSUBRO- GATION Y/N\nCLAIM OPEN Y/N\nSIGNATURE\nCopy of the Notice of Information Practices (Privacy) has been given to the applicant. (Not required in all states, contact your agent or broker for your state's requirements.)\nPERSONAL INFORMATION ABOUT YOU, INCLUDING INFORMATION FROM A CREDIT OR OTHER INVESTIGATIVE REPORT, MAY BE COLLECTED FROM PERSONS OTHER THAN YOU IN CONNECTION WITH THIS APPLICATION FOR INSURANCE AND SUBSEQUENT AMENDMENTS AND RENEWALS. SUCH INFORMATION AS WELL AS OTHER PERSONAL AND PRIVILEGED INFORMATION COLLECTED BY US OR OUR AGENTS MAY IN CERTAIN CIRCUMSTANCES BE DISCLOSED TO THIRD PARTIES WITHOUT YOUR AUTHORIZATION. CREDIT SCORING INFORMATION MAY BE USED TO HELP DETERMINE EITHER YOUR ELIGIBILITY FOR INSURANCE OR THE PREMIUM YOU WILL BE CHARGED. WE MAY USE A THIRD PARTY IN CONNECTION WITH THE DEVELOPMENT OF YOUR SCORE. YOU MAY HAVE THE RIGHT TO REVIEW YOUR PERSONAL INFORMATION IN OUR FILES AND REQUEST CORRECTION OF ANY INACCURACIES. YOU MAY ALSO HAVE THE RIGHT TO REQUEST IN WRITING THAT WE CONSIDER EXTRAORDINARY LIFE CIRCUMSTANCES IN CONNECTION WITH THE DEVELOPMENT OF YOUR CREDIT SCORE. THESE RIGHTS MAY BE LIMITED IN SOME STATES. PLEASE CONTACT YOUR AGENT OR BROKER TO LEARN HOW THESE RIGHTS MAY APPLY IN YOUR STATE OR FOR INSTRUCTIONS ON HOW TO SUBMIT A REQUEST TO US FOR A MORE DETAILED DESCRIPTION OF YOUR RIGHTS AND OUR PRACTICES REGARDING PERSONAL INFORMATION. (Not applicable in AZ, CA, DE, KS, MA, MN, ND, NY, OR, VA, or WV. Specific ACORD 38s are available for applicants in these states.) (Applicant's Initials): BH\nApplicable in AL, AR, DC, LA, MD, NM, RI and WV: Any person who knowingly (or willfully)* presents a false or fraudulent claim for payment of a loss or benefit or knowingly (or willfully)* presents false information in an application for insurance is guilty of a crime and may be subject to fines and confinement in prison. * Applies in MD Only.\nApplicable in CO: It is unlawful to knowingly provide false, incomplete, or misleading facts or information to an insurance company for the purpose of defrauding or attempting to defraud the company. Penalties may include imprisonment, fines, denial of insurance and civil damages. Any insurance company or agent of an insurance company who knowingly provides false, incomplete, or misleading facts or information to a policyholder or claimant for the purpose of defrauding or attempting to defraud the policyholder or claimant with regard to a settlement or award payable from insurance proceeds shall be reported to the Colorado Division of Insurance within the Department of Regulatory Agencies.\nApplicable in FL and OK: Any person who knowingly and with intent to injure, defraud, or deceive any insurer files a statement of claim or an application containing any false, incomplete, or misleading information is guilty of a felony (of the third degree) *. * Applies in FL Only.\nApplicable in KS: Any person who, knowingly and with intent to defraud, presents, causes to be presented or prepares with knowledge or belief that it will be presented to or by an insurer, purported insurer, broker or any agent thereof, any written statement as part of, or in support of, an application for the issuance of, or the rating of an insurance policy for personal or commercial insurance, or a claim for payment or other benefit pursuant to an insurance policy for commercial or personal insurance which such person knows to contain materially false information concerning any fact material thereto; or conceals, for the purpose of misleading, information concerning any fact material thereto commits a fraudulent insurance act.\nApplicable in KY, NY, OH and PA: Any person who knowingly and with intent to defraud any insurance company or other person files an application for insurance or statement of claim containing any materially false information or conceals for the purpose of misleading, information concerning any fact material thereto commits a fraudulent insurance act, which is a crime and subjects such person to criminal and civil penalties (not to exceed five thousand dollars and the stated value of the claim for each such violation) *. * Applies in NY Only.\nApplicable in ME, TN, VA and WA: It is a crime to knowingly provide false, incomplete or misleading information to an insurance company for the purpose of defrauding the company. Penalties (may)* include imprisonment, fines and denial of insurance benefits. * Applies in ME Only.\nApplicable in NJ: Any person who includes any false or misleading information on an application for an insurance policy is subject to criminal and civil penalties.\nApplicable in OR: Any person who knowingly and with intent to defraud or solicit another to defraud the insurer by submitting an application containing a false statement as to any material fact may be violating state law.\nApplicable in PR: Any person who knowingly and with the intention of defrauding presents false information in an insurance application, or presents, helps, or causes the presentation of a fraudulent claim for the payment of a loss or any other benefit, or presents more than one claim for the same damage or loss, shall incur a felony and, upon conviction, shall be sanctioned for each violation by a fine of not less than five thousand dollars ($5,000) and not more than ten thousand dollars ($10,000), or a fixed term of imprisonment for three (3) years, or both penalties. Should aggravating circumstances [be] present, the penalty thus established may be increased to a maximum of five (5) years, if extenuating circumstances are present, it may be reduced to a minimum of two (2) years.\nTHE UNDERSIGNED IS AN AUTHORIZED REPRESENTATIVE OF THE APPLICANT AND REPRESENTS THAT REASONABLE INQUIRY HAS BEEN MADE TO OBTAIN THE ANSWERS TO QUESTIONS ON THIS APPLICATION. HE/SHE REPRESENTS THAT THE ANSWERS ARE TRUE, CORRECT AND COMPLETE TO THE BEST OF HIS/HER KNOWLEDGE.\nPRODUCER'S SIGNATURE\nPRODUCER'S NAME (Please Print)\nSTATE PRODUCER LICENSE NO (Required in Florida)\nWilliam Grey\nWilliam Grey\nNA\nAPPLICANT'S SIGNATURE\nDATE\nNATIONAL PRODUCER NUMBER\nApex Contracting Services Ltd.\n07/29/2025\n100-002541\nACORD 125 (2016/03)\nPage 4 of 4 :unselected: :unselected: :unselected: :unselected: :unselected: :unselected:",
+		"pages": [
+			{
+				"pageNumber": 1,
+				"angle": -0.00989999994635582,
+				"width": 8.5,
+				"height": 11,
+				"unit": "inch",
+				"words": [
 					{
 						"content": "ACORD®",
 						"polygon": [
@@ -107,130 +127,211 @@
 							"length": 9
 						}
 					},
-					{
-						"content": "INFORMATION",
-						"polygon": [
-							3.7397,
-							0.5633,
-							4.7328,
-							0.5625,
-							4.7323,
-							0.7141,
-							3.7393,
-							0.7141
-						],
-						"confidence": 0.994,
-						"span": {
-							"offset": 52,
-							"length": 11
-						}
-					},
-					{
-						"content": "SECTION",
-						"polygon": [
-							4.7801,
-							0.5628,
-							5.4176,
-							0.5623,
-							5.4176,
-							0.7136,
-							4.7796,
-							0.7141
-						],
-						"confidence": 0.995,
-						"span": {
-							"offset": 64,
-							"length": 7
-						}
-					},
-					{
-						"content": "AGENCY",
-						"polygon": [
-							0.2905,
-							0.8051,
-							0.6585,
-							0.8024,
-							0.6577,
-							0.8936,
-							0.2896,
-							0.8929
-						],
-						"confidence": 0.996,
-						"span": {
-							"offset": 72,
-							"length": 6
-						}
-					},
-					{
-						"content": "Armstrong",
-						"polygon": [
-							0.3091,
-							1.1064,
-							0.8252,
-							1.109,
-							0.8238,
-							1.2405,
-							0.308,
-							1.2349
-						],
-						"confidence": 0.995,
-						"span": {
-							"offset": 79,
-							"length": 9
-						}
-					},
-					{
-						"content": "and",
-						"polygon": [
-							0.8618,
-							1.1092,
-							1.0425,
-							1.1101,
-							1.0404,
-							1.2423,
-							0.8602,
-							1.2409
-						],
-						"confidence": 0.998,
-						"span": {
-							"offset": 89,
-							"length": 3
-						}
-					},
-					{
-						"content": "Company",
-						"polygon": [
-							1.079,
-							1.1106,
-							1.5651,
-							1.1114,
-							1.5635,
-							1.2439,
-							1.077,
-							1.2424
-						],
-						"confidence": 0.998,
-						"span": {
-							"offset": 93,
-							"length": 7
-						}
-					},
-					{
-						"content": "CONTACT",
-						"polygon": [
-							0.296,
-							1.7593,
-							0.7083,
-							1.7588,
-							0.7082,
-							1.8468,
-							0.2954,
-							1.844
-						],
-						"confidence": 0.996,
-						"span": {
-							"offset": 101,
-							"length": 7
-						}
-					},
-					{
+
+
+
+this is my code 
+
+
+
+import os
+import json
+from dotenv import load_dotenv
+from openai import AzureOpenAI
+
+# ------------------ CONFIG ------------------
+load_dotenv()
+
+client = AzureOpenAI(
+    azure_endpoint=os.getenv("AZURE_OPENAI_ENDPOINT"),
+    api_key=os.getenv("AZURE_OPENAI_API_KEY"),
+    api_version="2024-05-01-preview"
+)
+
+MODEL = os.getenv("AZURE_OPENAI_CHAT_DEPLOYMENT")
+CONFIDENCE_THRESHOLD = 0.5
+# OUTPUT_FILE = "final_output.json"
+output_dir = os.path.join(os.getcwd(), "output")
+INPUT_FILE = os.path.join(output_dir, "output.json")
+
+os.makedirs(output_dir, exist_ok=True)
+OUTPUT_FILE = os.path.join(output_dir, "final_output.json")
+MAX_CHARS = 12000
+
+
+def chunk_text(text, max_chars=MAX_CHARS):
+    """Split long text into safe chunks for OpenAI input."""
+    chunks, current, length = [], [], 0
+    for line in text.splitlines():
+        if length + len(line) > max_chars:
+            chunks.append("\n".join(current))
+            current, length = [], 0
+        current.append(line)
+        length += len(line)
+    if current:
+        chunks.append("\n".join(current))
+    return chunks
+
+
+#New Subham's code
+def clean_field_name(name: str) -> str:
+    """Remove prefixes like 'LOB - ' and normalize casing."""
+    name = name.replace("LOB -", "").strip()
+    return name.title()
+
+
+
+#New Subham's code
+def simplify_fields(raw_json):
+    """Simplify Azure Doc Intelligence output with confidence preserved."""
+    simplified = {}
+    docs = raw_json.get("words", [])
+    if not docs:
+        return simplified
+
+    for doc in docs:
+        for key, value in doc.get("fields", {}).items():
+            val = value.get("valueString") or value.get("content") or value.get("valueBoolean")
+            conf = value.get("confidence", None)
+            if val in [None, ""]:
+                continue
+            cleaned_key = clean_field_name(key)
+            simplified[cleaned_key] = {"value": val, "confidence": conf}
+    return simplified
+
+
+
+
+
+
+#New Subham's code
+def build_prompt(cleaned_data):
+    """Structured prompt for GPT (dynamic grouping)."""
+    return f"""
+You are a JSON data formatter. The following JSON is the output from Azure Document Intelligence for an ACORD insurance form.
+
+Return only valid JSON (no commentary, no markdown, no explanations).
+
+Requirements:
+1. Group fields logically (Line of Business, Policy, Broker, Insured, Address, etc.) based on semantic context. 
+   The grouping is flexible — create categories as needed.
+2. Each field must show its value and confidence exactly as in the input JSON, e.g.:
+   "Field Name": "Value, confidence - 0.87"
+   Do not recalculate or lower confidence values.
+3. If a field is repeated, include all instances under the most relevant group.
+4. Combine split tokens like ["6:00", "AM"] → "6:00 AM".
+5. Do not compute averages — Python will handle total_confidence and overall_total_confidence.
+
+Cleaned JSON input:
+{json.dumps(cleaned_data, indent=2)}
+"""
+
+
+#New Subham's code
+
+def process_chunk(chunk):
+    """Send one chunk to GPT and ensure JSON-only output."""
+    response = client.chat.completions.create(
+        model=MODEL,
+        temperature=0,
+        messages=[
+            {"role": "system", "content": "You are a precise document understanding assistant that outputs only JSON."},
+            {"role": "user", "content": build_prompt(chunk)},
+        ]
+    )
+
+    text = response.choices[0].message.content.strip()
+    try:
+        start = text.find("{")
+        end = text.rfind("}") + 1
+        json_text = text[start:end]
+        return json.loads(json_text)
+    except Exception:
+        print("⚠️ Warning: GPT output not clean JSON. Attempting recovery.")
+        return {"error": "Invalid JSON returned", "raw_output": text}
+
+
+
+#New Subham's code
+def calculate_overall_confidence(original_json):
+    """Calculate overall average confidence directly from original JSON."""
+    def extract_confidences(obj):
+        confidences = []
+        if isinstance(obj, dict):
+            for key, value in obj.items():
+                if key == "confidence" and isinstance(value, (int, float)):
+                    confidences.append(value)
+                else:
+                    confidences.extend(extract_confidences(value))
+        elif isinstance(obj, list):
+            for item in obj:
+                confidences.extend(extract_confidences(item))
+        return confidences
+
+    confidences = extract_confidences(original_json)
+    if confidences:
+        return sum(confidences) / len(confidences)
+    return None
+
+def add_confidence_averages(grouped_data, original_data):
+    """Compute total_confidence per group using original JSON confidence values."""
+    confidence_lookup = {clean_field_name(k): v.get("confidence") for k, v in original_data.items()}
+
+    for group, fields in grouped_data.items():
+        if not isinstance(fields, dict):
+            continue
+        confidences = []
+        for field in fields.keys():
+            if field in confidence_lookup and confidence_lookup[field] is not None:
+                confidences.append(confidence_lookup[field])
+        if confidences:
+            avg_conf = sum(confidences) / len(confidences)
+            grouped_data[group]["total_confidence"] = avg_conf
+    return grouped_data
+
+def process_azure_output(json_data):
+    """Process entire Doc Intelligence JSON with GPT grouping + confidence math."""
+    simplified = simplify_fields(json_data)
+    text_data = json.dumps(simplified, indent=2)
+    chunks = chunk_text(text_data)
+    final_combined = {}
+
+    for chunk in chunks:
+        result = process_chunk(chunk)
+        if isinstance(result, dict):
+            for k, v in result.items():
+                if k in final_combined and isinstance(v, dict):
+                    final_combined[k].update(v)
+                else:
+                    final_combined[k] = v
+
+    # Add group averages
+    final_combined = add_confidence_averages(final_combined, simplified)
+
+    # Add overall average from original JSON
+    overall_avg = calculate_overall_confidence(json_data)
+    if overall_avg is not None:
+        final_combined["Document_Confidence_Score"] = overall_avg
+
+    with open(OUTPUT_FILE, "w", encoding="utf-8") as f:
+        json.dump(final_combined, f, indent=2, ensure_ascii=False)
+
+    print(f"✅ Clean JSON written to {OUTPUT_FILE}")
+    return final_combined
+
+# ------------------ MAIN ------------------
+if __name__ == "__main__":
+
+    json_path = os.path.join("output","output.json")
+    with open(INPUT_FILE, "r", encoding="utf-8") as f:
+        raw_json = json.load(f)
+
+    process_azure_output(raw_json)
+
+
+
+
+
+
+
+
