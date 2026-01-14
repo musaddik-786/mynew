@@ -1,4 +1,4 @@
-This is how my output.json look like i want instead of documents it should take whatever is written in the "content" as that consists of all the data 
+This is how my output.json look like i want instead of documents it should take whatever is written in the "content" that is after "stringIndexType" as that consists of all the data 
 
 {
   "apiVersion": "2024-11-30",
