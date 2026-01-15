@@ -1,4 +1,210 @@
-	THIS was in output.json
+
+import os
+import json
+from dotenv import load_dotenv
+from openai import AzureOpenAI
+
+# ------------------ CONFIG ------------------
+load_dotenv()
+
+client = AzureOpenAI(
+    azure_endpoint=os.getenv("AZURE_OPENAI_ENDPOINT"),
+    api_key=os.getenv("AZURE_OPENAI_API_KEY"),
+    api_version="2024-05-01-preview"
+)
+
+MODEL = os.getenv("AZURE_OPENAI_CHAT_DEPLOYMENT")
+CONFIDENCE_THRESHOLD = 0.5
+
+output_dir = os.path.join(os.getcwd(), "output")
+INPUT_FILE = os.path.join(output_dir, "output.json")
+
+os.makedirs(output_dir, exist_ok=True)
+OUTPUT_FILE = os.path.join(output_dir, "final_output.json")
+MAX_CHARS = 12000
+
+
+def chunk_text(text, max_chars=MAX_CHARS):
+    """Split long text into safe chunks for OpenAI input."""
+    chunks, current, length = [], [], 0
+    for line in text.splitlines():
+        if length + len(line) > max_chars:
+            chunks.append("\n".join(current))
+            current, length = [], 0
+        current.append(line)
+        length += len(line)
+    if current:
+        chunks.append("\n".join(current))
+    return chunks
+
+
+#New Subham's code
+def clean_field_name(name: str) -> str:
+    """Remove prefixes like 'LOB - ' and normalize casing."""
+    name = name.replace("LOB -", "").strip()
+    return name.title()
+
+
+# ONLY CHANge
+#New Subham's code
+def simplify_fields(raw_json):
+    """Simplify Azure Doc Intelligence output with confidence preserved."""
+
+    simplified = {}
+
+    analyze_result = raw_json.get("analyzeResult", {})
+    pages = analyze_result.get("pages", [])
+
+    if not pages:
+        return simplified
+
+    for page in pages:
+        words = page.get("words", [])
+        for word in words:
+            val = word.get("content")
+            conf = word.get("confidence")
+
+            if val in [None, ""] or conf is None:
+                continue
+
+            cleaned_key = clean_field_name(val)
+            simplified[cleaned_key] = {
+                "value": val,
+                "confidence": conf
+            }
+
+    return simplified
+# ONLY CHANge
+
+#New Subham's code
+def build_prompt(cleaned_data):
+    """Structured prompt for GPT (dynamic grouping)."""
+    return f"""
+You are a JSON data formatter. The following JSON is the output from Azure Document Intelligence for an ACORD insurance form.
+
+Return only valid JSON (no commentary, no markdown, no explanations).
+
+Requirements:
+1. Group fields logically (Line of Business, Policy, Broker, Insured, Address, etc.) based on semantic context. 
+   The grouping is flexible — create categories as needed.
+2. Each field must show its value and confidence exactly as in the input JSON, e.g.:
+   "Field Name": "Value, confidence - 0.87"
+   Do not recalculate or lower confidence values.
+3. If a field is repeated, include all instances under the most relevant group.
+4. Combine split tokens like ["6:00", "AM"] → "6:00 AM".
+5. Do not compute averages — Python will handle total_confidence and overall_total_confidence.
+
+Cleaned JSON input:
+{json.dumps(cleaned_data, indent=2)}
+"""
+
+
+#New Subham's code
+def process_chunk(chunk):
+    """Send one chunk to GPT and ensure JSON-only output."""
+    response = client.chat.completions.create(
+        model=MODEL,
+        temperature=0,
+        messages=[
+            {"role": "system", "content": "You are a precise document understanding assistant that outputs only JSON."},
+            {"role": "user", "content": build_prompt(chunk)},
+        ]
+    )
+
+    text = response.choices[0].message.content.strip()
+    try:
+        start = text.find("{")
+        end = text.rfind("}") + 1
+        json_text = text[start:end]
+        return json.loads(json_text)
+    except Exception:
+        print("⚠️ Warning: GPT output not clean JSON. Attempting recovery.")
+        return {"error": "Invalid JSON returned", "raw_output": text}
+
+
+#New Subham's code
+def calculate_overall_confidence(original_json):
+    """Calculate overall average confidence directly from original JSON."""
+    def extract_confidences(obj):
+        confidences = []
+        if isinstance(obj, dict):
+            for key, value in obj.items():
+                if key == "confidence" and isinstance(value, (int, float)):
+                    confidences.append(value)
+                else:
+                    confidences.extend(extract_confidences(value))
+        elif isinstance(obj, list):
+            for item in obj:
+                confidences.extend(extract_confidences(item))
+        return confidences
+
+    confidences = extract_confidences(original_json)
+    if confidences:
+        return sum(confidences) / len(confidences)
+    return None
+
+
+def add_confidence_averages(grouped_data, original_data):
+    """Compute total_confidence per group using original JSON confidence values."""
+    confidence_lookup = {clean_field_name(k): v.get("confidence") for k, v in original_data.items()}
+
+    for group, fields in grouped_data.items():
+        if not isinstance(fields, dict):
+            continue
+        confidences = []
+        for field in fields.keys():
+            if field in confidence_lookup and confidence_lookup[field] is not None:
+                confidences.append(confidence_lookup[field])
+        if confidences:
+            avg_conf = sum(confidences) / len(confidences)
+            grouped_data[group]["total_confidence"] = avg_conf
+    return grouped_data
+
+
+def process_azure_output(json_data):
+    """Process entire Doc Intelligence JSON with GPT grouping + confidence math."""
+    simplified = simplify_fields(json_data)
+    text_data = json.dumps(simplified, indent=2)
+    chunks = chunk_text(text_data)
+    final_combined = {}
+
+    for chunk in chunks:
+        result = process_chunk(chunk)
+        if isinstance(result, dict):
+            for k, v in result.items():
+                if k in final_combined and isinstance(v, dict):
+                    final_combined[k].update(v)
+                else:
+                    final_combined[k] = v
+
+    final_combined = add_confidence_averages(final_combined, simplified)
+
+    overall_avg = calculate_overall_confidence(json_data)
+    if overall_avg is not None:
+        final_combined["Document_Confidence_Score"] = overall_avg
+
+    with open(OUTPUT_FILE, "w", encoding="utf-8") as f:
+        json.dump(final_combined, f, indent=2, ensure_ascii=False)
+
+    print(f"✅ Clean JSON written to {OUTPUT_FILE}")
+    return final_combined
+
+
+# ------------------ MAIN ------------------
+if __name__ == "__main__":
+
+    with open(INPUT_FILE, "r", encoding="utf-8") as f:
+        raw_json = json.load(f)
+
+    process_azure_output(raw_json)
+
+
+
+
+
+
+
+THIS was in output.json
 here we can see Issue Policy as selected 
 
 "content": ":selected: ISSUE POLICY"
