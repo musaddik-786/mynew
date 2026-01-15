@@ -1,455 +1,746 @@
-I want you to explain the final_processor.py code each line of code and take a dummy output.json as an example
-dont explain import statements also please explain in a flow ie (i think process azure output is the first function in the flow it seems from image processor.py after that
-simplified and then so on so go with the flow i want in detail explanation of each line i am unable to imagine what is happening where that is the reason told you to have dummy example json so that i understand what is goingin and what is going out
-
-final_processor.py
-
-
-import os
-import json
-from dotenv import load_dotenv
-from openai import AzureOpenAI
-
-# ------------------ CONFIG ------------------
-load_dotenv()
-
-client = AzureOpenAI(
-    azure_endpoint=os.getenv("AZURE_OPENAI_ENDPOINT"),
-    api_key=os.getenv("AZURE_OPENAI_API_KEY"),
-    api_version="2024-05-01-preview"
-)
-
-MODEL = os.getenv("AZURE_OPENAI_CHAT_DEPLOYMENT")
-CONFIDENCE_THRESHOLD = 0.5
-# OUTPUT_FILE = "final_output.json"
-output_dir = os.path.join(os.getcwd(), "output")
-INPUT_FILE = os.path.join(output_dir, "output.json")
-
-os.makedirs(output_dir, exist_ok=True)
-OUTPUT_FILE = os.path.join(output_dir, "final_output.json")
-MAX_CHARS = 12000
-
-
-def chunk_text(text, max_chars=MAX_CHARS):
-    """Split long text into safe chunks for OpenAI input."""
-    chunks, current, length = [], [], 0
-    for line in text.splitlines():
-        if length + len(line) > max_chars:
-            chunks.append("\n".join(current))
-            current, length = [], 0
-        current.append(line)
-        length += len(line)
-    if current:
-        chunks.append("\n".join(current))
-    return chunks
-
-
-#New Subham's code
-def clean_field_name(name: str) -> str:
-    """Remove prefixes like 'LOB - ' and normalize casing."""
-    name = name.replace("LOB -", "").strip()
-    return name.title()
-
-
-
-#New Subham's code
-def simplify_fields(raw_json):
-    """Simplify Azure Doc Intelligence output with confidence preserved."""
-    simplified = {}
-    docs = raw_json.get("documents", [])
-    if not docs:
-        return simplified
-
-    for doc in docs:
-        for key, value in doc.get("fields", {}).items():
-            val = value.get("valueString") or value.get("content") or value.get("valueBoolean")
-            conf = value.get("confidence", None)
-            if val in [None, ""]:
-                continue
-            cleaned_key = clean_field_name(key)
-            simplified[cleaned_key] = {"value": val, "confidence": conf}
-    return simplified
-
-
-
-
-
-
-#New Subham's code
-def build_prompt(cleaned_data):
-    """Structured prompt for GPT (dynamic grouping)."""
-    return f"""
-You are a JSON data formatter. The following JSON is the output from Azure Document Intelligence for an ACORD insurance form.
-
-Return only valid JSON (no commentary, no markdown, no explanations).
-
-Requirements:
-1. Group fields logically (Line of Business, Policy, Broker, Insured, Address, etc.) based on semantic context. 
-   The grouping is flexible — create categories as needed.
-2. Each field must show its value and confidence exactly as in the input JSON, e.g.:
-   "Field Name": "Value, confidence - 0.87"
-   Do not recalculate or lower confidence values.
-3. If a field is repeated, include all instances under the most relevant group.
-4. Combine split tokens like ["6:00", "AM"] → "6:00 AM".
-5. Do not compute averages — Python will handle total_confidence and overall_total_confidence.
-
-Cleaned JSON input:
-{json.dumps(cleaned_data, indent=2)}
-"""
-
-
-#New Subham's code
-
-def process_chunk(chunk):
-    """Send one chunk to GPT and ensure JSON-only output."""
-    response = client.chat.completions.create(
-        model=MODEL,
-        temperature=0,
-        messages=[
-            {"role": "system", "content": "You are a precise document understanding assistant that outputs only JSON."},
-            {"role": "user", "content": build_prompt(chunk)},
-        ]
-    )
-
-    text = response.choices[0].message.content.strip()
-    try:
-        start = text.find("{")
-        end = text.rfind("}") + 1
-        json_text = text[start:end]
-        return json.loads(json_text)
-    except Exception:
-        print("⚠️ Warning: GPT output not clean JSON. Attempting recovery.")
-        return {"error": "Invalid JSON returned", "raw_output": text}
-
-
-
-#New Subham's code
-def calculate_overall_confidence(original_json):
-    """Calculate overall average confidence directly from original JSON."""
-    def extract_confidences(obj):
-        confidences = []
-        if isinstance(obj, dict):
-            for key, value in obj.items():
-                if key == "confidence" and isinstance(value, (int, float)):
-                    confidences.append(value)
-                else:
-                    confidences.extend(extract_confidences(value))
-        elif isinstance(obj, list):
-            for item in obj:
-                confidences.extend(extract_confidences(item))
-        return confidences
-
-    confidences = extract_confidences(original_json)
-    if confidences:
-        return sum(confidences) / len(confidences)
-    return None
-
-def add_confidence_averages(grouped_data, original_data):
-    """Compute total_confidence per group using original JSON confidence values."""
-    confidence_lookup = {clean_field_name(k): v.get("confidence") for k, v in original_data.items()}
-
-    for group, fields in grouped_data.items():
-        if not isinstance(fields, dict):
-            continue
-        confidences = []
-        for field in fields.keys():
-            if field in confidence_lookup and confidence_lookup[field] is not None:
-                confidences.append(confidence_lookup[field])
-        if confidences:
-            avg_conf = sum(confidences) / len(confidences)
-            grouped_data[group]["total_confidence"] = avg_conf
-    return grouped_data
-
-def process_azure_output(json_data):
-    """Process entire Doc Intelligence JSON with GPT grouping + confidence math."""
-    simplified = simplify_fields(json_data)
-    text_data = json.dumps(simplified, indent=2)
-    chunks = chunk_text(text_data)
-    final_combined = {}
-
-    for chunk in chunks:
-        result = process_chunk(chunk)
-        if isinstance(result, dict):
-            for k, v in result.items():
-                if k in final_combined and isinstance(v, dict):
-                    final_combined[k].update(v)
-                else:
-                    final_combined[k] = v
-
-    # Add group averages
-    final_combined = add_confidence_averages(final_combined, simplified)
-
-    # Add overall average from original JSON
-    overall_avg = calculate_overall_confidence(json_data)
-    if overall_avg is not None:
-        final_combined["Document_Confidence_Score"] = overall_avg
-
-    with open(OUTPUT_FILE, "w", encoding="utf-8") as f:
-        json.dump(final_combined, f, indent=2, ensure_ascii=False)
-
-    print(f"✅ Clean JSON written to {OUTPUT_FILE}")
-    return final_combined
-
-# ------------------ MAIN ------------------
-if __name__ == "__main__":
-
-    json_path = os.path.join("output","output.json")
-    with open(INPUT_FILE, "r", encoding="utf-8") as f:
-        raw_json = json.load(f)
-
-    process_azure_output(raw_json)
-
-
-image_processor.py
-
-
-import os
-import json
-import uuid
-import re
-from datetime import datetime
-from dotenv import load_dotenv
-
-from azure.core.credentials import AzureKeyCredential
-from azure.ai.documentintelligence import DocumentIntelligenceClient
-from azure.storage.blob.aio import BlobServiceClient
-from azure.core.exceptions import ResourceNotFoundError
-
-from service import _require_env, get_env_values, AZURE_STORAGE_CONNECTION_STRING, _parse_blob_url
-from final_processor import process_azure_output  # Importing the final processor function
-
-load_dotenv()
-
-
-def collect_total_confidences(obj, out_list):
-    """
-    Recursively search obj (dict/list) and append any numeric values found under
-    keys named 'total_confidence' to out_list.
-    """
-    if isinstance(obj, dict):
-        for k, v in obj.items():
-            if k == "total_confidence":
-                # Accept ints/floats only
-                try:
-                    # If it's already numeric (int/float), use directly; else try to convert
-                    if isinstance(v, (int, float)):
-                        out_list.append(float(v))
-                    else:
-                        out_list.append(float(v))
-                except Exception:
-                    # ignore non-convertible values
-                    pass
-            else:
-                collect_total_confidences(v, out_list)
-    elif isinstance(obj, list):
-        for item in obj:
-            collect_total_confidences(item, out_list)
-    # other types ignored
-
-
-async def analyze_file_async(bloburl: str) -> dict:
-    """
-    Download the PDF from bloburl, analyze it with Azure Document Intelligence,
-    save the JSON locally inside ./output/output.json,
-    read the JSON from the file, process it with final_processor.py,
-    compute Document_Confidence_Score and append it to the final JSON,
-    and upload the final JSON to Azure Blob Storage.
-
-    The uploaded final JSON filename will be in this format:
-      <Reference>_attachment_<OriginalFileNameWithoutExtension>_extraction_<YYYYMMDD_HHMMSS>.json
-    """
-
-    try:
-        _require_env()
-    except Exception as e:
-        return {"status": False, "error": str(e)}
-
-    endpoint, key, model_id = get_env_values()
-
-    try:
-        src_container, src_blob = _parse_blob_url(bloburl)
-    except Exception as e:
-        return {"status": False, "error": f"Invalid BlobUrl: {e}"}
-
-    source_file_name = os.path.basename(src_blob) if src_blob else "unknown.pdf"
-    source_file_name = os.path.basename(source_file_name)
-
-    if not AZURE_STORAGE_CONNECTION_STRING:
-        return {"status": False, "error": "Missing AZURE_STORAGE_CONNECTION_STRING in .env"}
-
-    try:
-        async with BlobServiceClient.from_connection_string(AZURE_STORAGE_CONNECTION_STRING) as blob_service:
-            container_client = blob_service.get_container_client(src_container)
-            blob_client = container_client.get_blob_client(src_blob)
-            try:
-                await blob_client.get_blob_properties()
-            except ResourceNotFoundError:
-                return {"status": False, "error": f"PDF blob not found: container='{src_container}', blob='{src_blob}'"}
-
-            stream = await blob_client.download_blob()
-            pdf_bytes = await stream.readall()
-    except Exception as e:
-        return {"status": False, "error": f"Error downloading PDF from Blob Storage: {e}"}
-
-    input_dir = os.path.join(os.getcwd(), "input")
-    os.makedirs(input_dir, exist_ok=True)
-
-    input_path = os.path.join(input_dir, source_file_name)
-
-    try:
-        with open(input_path, "wb") as wf:
-            wf.write(pdf_bytes)
-    except Exception as e:
-        return {"status": False, "error": f"Failed to write local input file '{input_path}': {e}"}
-
-    print("Connecting to Azure Document Intelligence service...")
-    try:
-        client = DocumentIntelligenceClient(
-            endpoint=endpoint,
-            credential=AzureKeyCredential(key)
-        )
-    except Exception as e:
-        return {"status": False, "error": f"Failed to create DocumentIntelligenceClient: {e}"}
-
-    print(f"Analyzing '{source_file_name}' using model '{model_id}'...")
-    try:
-        with open(input_path, "rb") as f:
-            poller = client.begin_analyze_document(model_id=model_id, body=f)
-            result = poller.result()
-    except Exception as e:
-        return {"status": False, "error": f"Error during document analysis: {e}"}
-
-    output_dir = os.path.join(os.getcwd(), "output")
-    os.makedirs(output_dir, exist_ok=True)
-    output_path = os.path.join(output_dir, "output.json")
-
-    # Save the raw JSON to output.json
-    json_data = result.as_dict()
-    try:
-        with open(output_path, "w", encoding="utf-8") as wf:
-            json.dump(json_data, wf, indent=2, ensure_ascii=False)
-    except Exception as e:
-        return {"status": False, "error": f"Failed to save local output.json: {e}"}
-
-    # Read the JSON from output.json and process it using final_processor.py
-    try:
-        with open(output_path, "r", encoding="utf-8") as rf:
-            raw_json = json.load(rf)  # Load JSON from the file
-        final_output = process_azure_output(raw_json)  # Process the JSON
-
-    #     # -------------------------
-    #     # Compute Document_Confidence_Score (average of all total_confidence)
-    #     # -------------------------
-    #     confidences = []
-    #     collect_total_confidences(final_output, confidences)
-
-    #     if confidences:
-    #         avg = sum(confidences) / len(confidences)
-    #         avg_rounded = round(avg, 3)
-    #     else:
-    #         # If none found, set to 0.0 (you can change to None if you prefer)
-    #         avg_rounded = 0.0
-
-    #     # Add the field at the end of the JSON
-    #     final_output["Document_Confidence_Score"] = avg_rounded
-
-        # Save processed final output locally
-        final_output_path = os.path.join(output_dir, "final_output.json")
-        with open(final_output_path, "w", encoding="utf-8") as wf:
-            json.dump(final_output, wf, indent=2, ensure_ascii=False)
-
-    except Exception as e:
-        return {"status": False, "error": f"Failed to process JSON with final_processor.py: {e}"}
-
-    # ------------------------
-    # Build the target blob name in the desired format:
-    # <Reference>_attachment_<OriginalFileNameNoExt>_extraction_<YYYYMMDD_HHMMSS>.json
-    # ------------------------
-
-    base_name_no_ext = os.path.splitext(source_file_name)[0]  # e.g. "19A81973900C46C9_attachment_Acord_125"
-
-    ref_part = None
-    file_part = None
-
-    # Preferred pattern: "<ref>_attachment_<filename>"
-    if "_attachment_" in base_name_no_ext:
-        try:
-            ref_part, file_part = base_name_no_ext.split("_attachment_", 1)
-            ref_part = (ref_part or "").strip()
-            file_part = (file_part or "").strip()
-        except Exception:
-            ref_part = None
-            file_part = None
-
-    # Fallback: take first token as ref and rest as filename
-    if not ref_part or not file_part:
-        tokens = base_name_no_ext.split("_", 1)
-        if len(tokens) == 2:
-            ref_part, file_part = tokens[0].strip(), tokens[1].strip()
-        else:
-            # last fallback: use a uuid as reference and keep the whole base as filename
-            ref_part = uuid.uuid4().hex[:16]
-            file_part = base_name_no_ext
-
-    # IMPORTANT: Keep underscores in filename exactly as received (Acord_125)
-    # Minimal sanitization: allow only alphanumeric, underscore, and hyphen in both parts
-    ref_part = re.sub(r"[^A-Za-z0-9_-]", "", ref_part)
-    file_part = re.sub(r"[^A-Za-z0-9_-]", "", file_part)
-
-    timestamp = datetime.utcnow().strftime("%Y%m%d_%H%M%S")
-
-    output_container = "output-results"
-    target_blob_name = f"{ref_part}_attachment_{file_part}_extraction_{timestamp}.json"
-
-    # ------------------------
-    # Upload the final_output.json to Azure Blob Storage with the new name
-    # ------------------------
-    try:
-        async with BlobServiceClient.from_connection_string(AZURE_STORAGE_CONNECTION_STRING) as blob_service:
-            out_container_client = blob_service.get_container_client(output_container)
-            try:
-                # create will raise if exists — ignore
-                await out_container_client.create_container()
-            except Exception:
-                pass  # container likely exists; ignore
-
-            out_blob_client = out_container_client.get_blob_client(target_blob_name)
-
-            with open(final_output_path, "rb") as data:
-                await out_blob_client.upload_blob(data, overwrite=True)
-    except Exception as e:
-        return {"status": False, "error": f"Failed to upload final_output.json to output-results: {e}"}
-
-    # Build final URL to return (same style you were using)
-    parsed = bloburl.split("://", 1)[-1]
-    account_and_rest = parsed.split("/", 1)[0]
-    final_output_blob_url = f"https://{account_and_rest}/{output_container}/{target_blob_name}"
-
-    print(f"Final JSON saved locally and uploaded to: {final_output_blob_url}")
-
-    return {
-        "source_file": source_file_name,
-        "final_output_blob_url": final_output_blob_url,
-        "Document_Confidence_Score": final_output.get("Document_Confidence_Score") #added this line 
-    }
-
-
-async def process_input_folder_on_startup() -> None:
-    """Background startup function — checks ./input for any PDFs and logs them."""
-    try:
-        input_dir = os.path.join(os.getcwd(), "input")
-        if not os.path.exists(input_dir):
-            return
-
-        files = [f for f in os.listdir(input_dir) if f.lower().endswith(".pdf")]
-        if not files:
-            return
-
-        for pdf in files:
-            print(f"[startup] Found local PDF in ./input: {pdf} — no automatic processing.")
-    except Exception as e:
-        print(f"[startup] process_input_folder_on_startup error: {e}")
-        return
-
-
-
+	THIS was in output.json
+here we can see Issue Policy as selected 
+
+"content": ":selected: ISSUE POLICY"
+			},
+			{
+				"spans": [
+					{
+						"offset": 394,
+						"length": 5
+					}
+				],
+				"boundingRegions": [
+					{
+						"pageNumber": 1,
+						"polygon": [
+							7.6357,
+							2.1246,
+							7.9652,
+							2.1246,
+							7.9652,
+							2.2105,
+							7.6357,
+							2.2105
+						]
+					}
+				],
+				"content": "RENEW"
+			},
+			{
+
+
+so why not we can see that information in our final_output.json
+
+below is my final_output.json
+{
+  "Form Information": {
+    "Form Name": "ACORD, confidence - 0.995",
+    "Registered Mark": "® , confidence - 0.793",
+    "Section": "SECTION, confidence - 0.993",
+    "Application": "application, confidence - 0.99",
+    "Information": "information, confidence - 0.975",
+    "Date Label": "DATE, confidence - 0.993",
+    "Date Format": "(MM/DD/YYYY), confidence - 0.98",
+    "Date": "07/29/2025, confidence - 0.995",
+    "total_confidence": 0.98775
+  },
+  "Agency/Broker": {
+    "Agency Name": "AGENCY, confidence - 0.982",
+    "Agency Contact Name": "William Grey, confidence - 0.994/0.984",
+    "Contact Label": "CONTACT, confidence - 0.995",
+    "Phone Label": "PHONE, confidence - 0.994",
+    "Phone Number": "+1 202 406 789, confidence - 0.995/0.995/0.993/0.997",
+    "Fax Label": "FAX, confidence - 0.993",
+    "E-Mail Label": "E-MAIL, confidence - 0.994",
+    "E-Mail": "greywilliam@armstrongcomp.com, confidence - 0.945",
+    "Address Label": "ADDRESS:, confidence - 0.995",
+    "Customer ID Label": "ID:, confidence - 0.989",
+    "Customer ID": "542198, confidence - 0.981",
+    "total_confidence": 0.994
+  },
+  "Carrier/Company": {
+    "Carrier Label": "CARRIER, confidence - 0.993",
+    "Carrier Name": "Enigma, confidence - 0.995",
+    "NAIC Label": "NAIC, confidence - 0.99",
+    "Company": "company, confidence - 0.993",
+    "Code Label": "CODE, confidence - 0.992",
+    "total_confidence": 0.993
+  },
+  "Policy/Program": {
+    "Policy Label": "policy, confidence - 0.976",
+    "Program Label": "PROGRAM, confidence - 0.994",
+    "Number Label": "NUMBER, confidence - 0.995",
+    "Quote": "QUOTE, confidence - 0.995",
+    "Issue": "ISSUE, confidence - 0.994",
+    "Renew": "RENEW, confidence - 0.995",
+    "Code:": "CODE:, confidence - 0.995",
+    "Subcode:": "SUBCODE:, confidence - 0.993",
+    "Status": "STATUS, confidence - 0.995",
+    "Transaction": "TRANSACTION, confidence - 0.993",
+    "Bound": "BOUND, confidence - 0.995",
+    "Change": "CHANGE, confidence - 0.995",
+    "Cancel": "CANCEL, confidence - 0.994",
+    "total_confidence": 0.9944000000000001
+  },
+  "Line of Business": {
+    "Lines of Business": "LINES, confidence - 0.994",
+    "Business": "BUSINESS, confidence - 0.995",
+    "General Liability": "GENERAL LIABILITY, confidence - 0.995/0.988",
+    "Property": "PROPERTY, confidence - 0.995",
+    "Auto": "AUTO, confidence - 0.992",
+    "Garage": "GARAGE, confidence - 0.993",
+    "Dealers": "DEALERS, confidence - 0.995",
+    "Umbrella": "UMBRELLA, confidence - 0.994",
+    "Crime": "crime, confidence - 0.993",
+    "Boiler & Machinery": "BOILER MACHINERY, confidence - 0.993/0.991",
+    "Cyber Privacy": "CYBER PRIVACY, confidence - 0.995/0.994",
+    "Yacht": "YACHT, confidence - 0.995",
+    "Fiduciary": "FIDUCIARY, confidence - 0.992",
+    "Liquor": "LIQUOR, confidence - 0.995",
+    "Inland Marine": "INLAND MARINE, confidence - 0.995/0.994",
+    "Motor": "MOTOR, confidence - 0.995",
+    "Truckers": "TRUCKERS, confidence - 0.994",
+    "Professional": "PROFESSIONAL, confidence - 0.993",
+    "Restaurant": "RESTAURANT, confidence - 0.995",
+    "Tavern": "TAVERN, confidence - 0.994",
+    "Hotel": "HOTEL, confidence - 0.995",
+    "Motel": "MOTEL, confidence - 0.994",
+    "Apartment": "APARTMENT, confidence - 0.993",
+    "Building": "BUILDING, confidence - 0.994",
+    "Condo Assn": "CONDO ASSN, confidence - 0.995/0.991",
+    "Contractors": "CONTRACTORS, confidence - 0.993",
+    "Driver": "DRIVER, confidence - 0.993",
+    "Electronic Data Processing": "ELECTRONIC DATA PROCESSING, confidence - 0.992/0.986/0.991",
+    "Glass": "GLASS, confidence - 0.994",
+    "Sign": "SIGN, confidence - 0.993",
+    "Installation": "INSTALLATION, confidence - 0.99",
+    "Builders Risk": "BUILDERS RISK, confidence - 0.991/0.984",
+    "Vacant": "VACANT, confidence - 0.995",
+    "International": "INTERNATIONAL, confidence - 0.991",
+    "Cargo": "CARGO, confidence - 0.994",
+    "D&O": "D&O, confidence - 0.993",
+    "Additional Interest": "Additional INTEREST, confidence - 0.993/0.995",
+    "Schedule": "SCHEDULE, confidence - 0.994",
+    "Supplement": "SUPPLEMENT, confidence - 0.993",
+    "Premises": "PREMISES, confidence - 0.985",
+    "Bylaws": "BYLAWS, confidence - 0.995",
+    "Only": "only), confidence - 0.993",
+    "Coverages": "COVERAGES, confidence - 0.992",
+    "Loss": "loss, confidence - 0.991",
+    "Summary": "Summary, confidence - 0.994",
+    "Open": "OPEN, confidence - 0.993",
+    "Payment": "payment, confidence - 0.993",
+    "Exposure": "Exposure, confidence - 0.972",
+    "Statement": "statement, confidence - 0.993",
+    "Values": "VALUES, confidence - 0.994",
+    "Receivable": "RECEIVABLE, confidence - 0.97",
+    "Accounts": "ACCOUNTS, confidence - 0.983",
+    "Valuable Papers": "VALUABLE PAPERS, confidence - 0.995/0.993",
+    "Line": "LINE, confidence - 0.993",
+    "Category": "CATEGORY, confidence - 0.995",
+    "Automobile": "AUTOMOBILE, confidence - 0.995",
+    "Other": "OTHER:, confidence - 0.994",
+    "total_confidence": 0.9920212765957444
+  },
+  "Policy Dates & Billing": {
+    "Proposed": "PROPOSED, confidence - 0.995",
+    "Eff": "EFF, confidence - 0.994",
+    "Exp": "EXP, confidence - 0.996",
+    "Effective Date": "03/10/2026, confidence - 0.993",
+    "Expiration Date": "03/10/2029, confidence - 0.995",
+    "Time": "TIME, confidence - 0.982",
+    "AM": "AM, confidence - 0.996",
+    "PM": "PM, confidence - 0.995",
+    "Billing": "BILLING, confidence - 0.995",
+    "Plan": "PLAN, confidence - 0.99",
+    "Method": "METHOD, confidence - 0.995",
+    "Audit": "AUDIT, confidence - 0.995",
+    "Deposit": "DEPOSIT, confidence - 0.994",
+    "Minimum": "minimum, confidence - 0.992",
+    "Direct": "DIRECT, confidence - 0.994",
+    "total_confidence": 0.992909090909091
+  },
+  "Insured": {
+    "Applicant Label": "APPLICANT, confidence - 0.993",
+    "Name Label": "NAME, confidence - 0.978",
+    "First Named Insured": "Apex Contracting Services Ltd,, confidence - 0.992/0.991/0.993/0.962",
+    "Mailing Address Label": "MAILING ADDRESS, confidence - 0.994/0.993",
+    "Mailing Address": "2850 S. Delaware Street, San Mateo, CA 94403, confidence - 0.993/0.995/0.986/0.995/0.993/0.997/0.995",
+    "Phone": "(650) 287-0142, confidence - 0.995/0.994",
+    "Website": "WEBSITE, confidence - 0.995",
+    "Corporation": "CORPORATION, confidence - 0.994",
+    "Joint Venture": "JOINT VENTURE, confidence - 0.995/0.994",
+    "Not For Profit": "not for Profit, confidence - 0.995/0.995",
+    "Primary Contact": "Mr.Michael Hill (Owner), confidence - 0.961/0.992/0.992",
+    "Secondary Contact": "Mr.Bill Deeney (President), confidence - 0.988/0.993/0.984",
+    "Home": "HOME, confidence - 0.961",
+    "Bus": "BUS, confidence - 0.995",
+    "Cell": "CELL, confidence - 0.992",
+    "Home Phone": "987612342, confidence - 0.995",
+    "Primary Email": "hillmichael@apex.com, confidence - 0.949",
+    "Secondary Email": "deeneybill@apex.com, confidence - 0.947",
+    "Members": "MEMBERS, confidence - 0.994",
+    "Managers": "MANAGERS:, confidence - 0.993",
+    "Owner": "OWNER, confidence - 0.99",
+    "Kent": "Kent, confidence - 0.991",
+    "Co": "Co, confidence - 0.995",
+    "Rover-Groves": "Rover-Groves, confidence - 0.992",
+    "Co.": "Co., confidence - 0.995",
+    "total_confidence": 0.9906666666666664
+  },
+  "Classification Codes": {
+    "GL": "GL, confidence - 0.995",
+    "SIC": "SIC, confidence - 0.994",
+    "NAICS": "NAICS, confidence - 0.993",
+    "FEIN": "FEIN, confidence - 0.985",
+    "SOC": "SOC, confidence - 0.995",
+    "SEC": "SEC, confidence - 0.993"
+  },
+  "Other": {
+    "And": "AND, confidence - 0.997",
+    "Or": "or, confidence - 0.995",
+    "&": "&, confidence - 0.972",
+    "Of": "of, confidence - 0.995",
+    "Copy": "Copy):, confidence - 0.99",
+    "Attach": "attach, confidence - 0.994",
+    "Indicate": "INDICATE, confidence - 0.992",
+    "Premium": "PREMIUM, confidence - 0.994",
+    "$": "$, confidence - 0.948",
+    "X": "X, confidence - 0.809",
+    "Additional": "Additional, confidence - 0.993",
+    "Schedule": "SCHEDULE, confidence - 0.994",
+    "Supplement": "SUPPLEMENT, confidence - 0.993",
+    "Interest": "INTEREST, confidence - 0.995",
+    "Exposure": "Exposure, confidence - 0.972",
+    "Summary": "Summary, confidence - 0.994",
+    "Open": "OPEN, confidence - 0.993",
+    "Payment": "payment, confidence - 0.993",
+    "Statement": "statement, confidence - 0.993",
+    "Values": "VALUES, confidence - 0.994",
+    "Not": "not, confidence - 0.995",
+    "For": "for, confidence - 0.995",
+    "(List": "(List, confidence - 0.988",
+    "Numbers)": "numbers), confidence - 0.993",
+    "Operations?": "OPERATIONS?, confidence - 0.977",
+    "(Missouri": "(Missouri, confidence - 0.993",
+    "Applicants": "applicants, confidence - 0.983",
+    "Do": "Do, confidence - 0.996",
+    "Answer": "answer, confidence - 0.994",
+    "Question)": "question), confidence - 0.993",
+    "No": "NO, confidence - 0.995",
+    "Longer": "LONGER, confidence - 0.995",
+    "Condition": "CONDITION, confidence - 0.993",
+    "Corrected": "CORRECTED, confidence - 0.991",
+    "(Describe):": "(Describe):, confidence - 0.972",
+    "total_confidence": 0.9844285714285712
+  },
+  "LineOfBusiness": {
+    "Profit": "PROFIT, confidence - 0.993",
+    "Org": "ORG, confidence - 0.992",
+    "Subchapter": "SUBCHAPTER, confidence - 0.991",
+    "\"S\"": "\"S\", confidence - 0.921",
+    "Individual": "INDIVIDUAL, confidence - 0.993",
+    "Llc": "LLC, confidence - 0.995",
+    "Partnership": "PARTNERSHIP, confidence - 0.995",
+    "Trust": "TRUST, confidence - 0.995",
+    "Corporation": "CORPORATION., confidence - 0.99",
+    "Type": "TYPE:, confidence - 0.994",
+    "total_confidence": 0.9861000000000001
+  },
+  "Policy": {
+    "No.": "NO., confidence - 0.995",
+    "Page": "Page, confidence - 0.985",
+    "4": "4, confidence - 0.995",
+    "1993-2015": "1993-2015, confidence - 0.993",
+    "(2016/03)": "(2016/03), confidence - 0.993",
+    "All Rights Reserved": "all RIGHTS reserved., confidence - 0.981/0.994/0.99",
+    "125": "125, confidence - 0.983",
+    "Company?": "COMPANY?, confidence - 0.991",
+    "Kc48934201": "KC48934201, confidence - 0.993",
+    "Effective": "EFFECTIVE, confidence - 0.993",
+    "03/14/2023": "03/14/2023, confidence - 0.992",
+    "Expiration": "EXPIRATION, confidence - 0.992",
+    "03/14/2026": "03/14/2026, confidence - 0.992",
+    "2023": "2023, confidence - 0.993",
+    "2026": "2026, confidence - 0.993",
+    "5.": "5., confidence - 0.995",
+    "Declined,": "DECLINED,, confidence - 0.976",
+    "Cancelled": "CANCELLED, confidence - 0.99",
+    "Non-Renewed": "NON-RENEWED, confidence - 0.976",
+    "During": "DURING, confidence - 0.994",
+    "Prior": "PRIOR, confidence - 0.994",
+    "Three": "three, confidence - 0.994",
+    "(3)": "(3), confidence - 0.988",
+    "Years": "YEARS, confidence - 0.993",
+    "Non-Payment": "NON-PAYMENT, confidence - 0.984",
+    "Non-Renewal": "NON-RENEWAL, confidence - 0.993",
+    "Underwriting": "UNDERWRITING, confidence - 0.993",
+    "6.": "6., confidence - 0.995",
+    "Past": "PAST, confidence - 0.963",
+    "Losses": "LOSSES, confidence - 0.993",
+    "Claims": "CLAIMS, confidence - 0.993",
+    "Relating": "RELATING, confidence - 0.993",
+    "Sexual": "SEXUAL, confidence - 0.994",
+    "Abuse": "ABUSE, confidence - 0.982",
+    "Molestation": "MOLESTATION, confidence - 0.993",
+    "Allegations,": "ALLEGATIONS,, confidence - 0.973",
+    "Discrimination": "DISCRIMINATION, confidence - 0.98",
+    "Negligent": "NEGLIGENT, confidence - 0.995",
+    "Hiring?": "HIRING?, confidence - 0.995",
+    "7.": "7., confidence - 0.995",
+    "Last": "LAST, confidence - 0.993",
+    "Five": "five, confidence - 0.991",
+    "(Ten": "(TEN, confidence - 0.992",
+    "Ri),": "RI),, confidence - 0.987",
+    "Has": "HAS, confidence - 0.995",
+    "Been": "BEEN, confidence - 0.992",
+    "Indicted": "INDICTED, confidence - 0.995",
+    "Convicted": "CONVICTED, confidence - 0.995",
+    "Degree": "DEGREE, confidence - 0.995",
+    "Fraud,": "FRAUD,, confidence - 0.994",
+    "Bribery,": "BRIBERY,, confidence - 0.978",
+    "Arson": "arson, confidence - 0.995",
+    "Arson-Related": "ARSON-RELATED, confidence - 0.98",
+    "Connection": "CONNECTION, confidence - 0.993",
+    "Property?": "PROPERTY?, confidence - 0.961",
+    "(In": "(In, confidence - 0.991",
+    "Ri,": "RI,, confidence - 0.746",
+    "Question": "question, confidence - 0.993",
+    "Must": "must, confidence - 0.991",
+    "Be": "be, confidence - 0.992",
+    "Answered": "answered, confidence - 0.993",
+    "By": "by, confidence - 0.995",
+    "Insurance.": "insurance., confidence - 0.985",
+    "Failure": "Failure, confidence - 0.993",
+    "Disclose": "disclose, confidence - 0.994",
+    "Existence": "existence, confidence - 0.99",
+    "An": "AN, confidence - 0.991",
+    "Conviction": "conviction, confidence - 0.99",
+    "Misdemeanor": "misdemeanor, confidence - 0.99",
+    "Punishable": "punishable, confidence - 0.991",
+    "Sentence": "sentence, confidence - 0.993",
+    "Up": "up, confidence - 0.995",
+    "One": "one, confidence - 0.995",
+    "Year": "YEAR, confidence - 0.992",
+    "Imprisonment).": "imprisonment)., confidence - 0.975",
+    "8.": "8., confidence - 0.995",
+    "Uncorrected": "UNCORRECTED, confidence - 0.993",
+    "Violations?": "VIOLATIONS?, confidence - 0.983",
+    "Occur": "OCCUR, confidence - 0.994",
+    "Explanation": "EXPLANATION, confidence - 0.993",
+    "Resolution": "RESOLUTION, confidence - 0.993",
+    "Resolve": "RESOLVE, confidence - 0.995",
+    "9.": "9., confidence - 0.995",
+    "Had": "HAD, confidence - 0.996",
+    "Foreclosure,": "FORECLOSURE,, confidence - 0.991",
+    "Repossession,": "REPOSSESSION,, confidence - 0.992",
+    "Bankruptcy": "BANKRUPTCY, confidence - 0.99",
+    "Filed": "FILED, confidence - 0.993",
+    "(5)": "(5), confidence - 0.972",
+    "Years?": "YEARS?, confidence - 0.995",
+    "10.": "10., confidence - 0.995",
+    "Judgement": "JUDGEMENT, confidence - 0.99",
+    "11.": "11., confidence - 0.99",
+    "Placed": "PLACED, confidence - 0.993",
+    "Trust?": "TRUST?, confidence - 0.995",
+    "Trust:": "TRUST:, confidence - 0.962",
+    "12.": "12., confidence - 0.995",
+    "Foreign": "FOREIGN, confidence - 0.986",
+    "Operations,": "OPERATIONS,, confidence - 0.97",
+    "Products": "PRODUCTS, confidence - 0.986",
+    "Distributed": "DISTRIBUTED, confidence - 0.993",
+    "Usa,": "USA,, confidence - 0.983",
+    "Us": "US, confidence - 0.996",
+    "Sold": "SOLD, confidence - 0.991",
+    "Countries?": "COUNTRIES?, confidence - 0.993",
+    "\"Yes\",": "\"YES\",, confidence - 0.884",
+    "815": "815, confidence - 0.993",
+    "816": "816, confidence - 0.995",
+    "Exposure)": "Exposure), confidence - 0.992",
+    "13.": "13., confidence - 0.995",
+    "Ventures": "VENTURES, confidence - 0.995",
+    "Which": "which, confidence - 0.995",
+    "Requested?": "REQUESTED?, confidence - 0.992",
+    "14.": "14., confidence - 0.995",
+    "Own": "OWN, confidence - 0.995",
+    "Lease": "LEASE, confidence - 0.993",
+    "Operate": "OPERATE, confidence - 0.993",
+    "Drones?": "DRONES?, confidence - 0.993",
+    "Describe": "describe, confidence - 0.989",
+    "Use)": "use), confidence - 0.99",
+    "15.": "15., confidence - 0.995",
+    "Hire": "HIRE, confidence - 0.99",
+    "Others": "OTHERS, confidence - 0.994",
+    "total_confidence": 0.9874098360655734
+  },
+  "Address": {
+    "Street": "823 STREET St., confidence - 0.995/0.993/0.994",
+    "City": "Mateo, confidence - 0.995",
+    "State": "STATE:, confidence - 0.993",
+    "County": "COUNTY:, confidence - 0.992",
+    "Zip": "ZIP:94403, confidence - 0.99",
+    "total_confidence": 0.9873333333333334
+  },
+  "Premises": {
+    "Loc": "LOC, confidence - 0.995",
+    "Premises": "(Attach Premises), confidence - 0.994/0.99",
+    "Bld": "BLD, confidence - 0.993",
+    "Area": "AREA:, confidence - 0.994",
+    "Sq Ft": "SQ FT, confidence - 0.985/0.995",
+    "Occupied": "OCCUPIED, confidence - 0.993",
+    "Tenant": "TENANT, confidence - 0.994",
+    "Leased": "LEASED, confidence - 0.995",
+    "Others?": "OTHERS?, confidence - 0.995",
+    "Y": "Y, confidence - 0.996",
+    "N": "N, confidence - 0.974",
+    "Part": "part, confidence - 0.989",
+    "To": "TO, confidence - 0.996",
+    "Public": "PUBLIC, confidence - 0.994",
+    "total_confidence": 0.9916153846153848
+  },
+  "BusinessOperations": {
+    "Description": "DESCRIPTION, confidence - 0.981",
+    "Operations": "OPERATIONS, confidence - 0.995",
+    "Operations Detail": "Contractor - Masonry Roofing, confidence - 0.991/0.986/0.991",
+    "Started": "02/12/1964, confidence - 0.993",
+    "Nature": "NATURE, confidence - 0.993",
+    "Apartments": "APARTMENTS, confidence - 0.991",
+    "Manufacturing": "MANUFACTURING, confidence - 0.991",
+    "Service": "SERVICE, confidence - 0.993",
+    "Condominiums": "CONDOMINIUMS, confidence - 0.994",
+    "Institutional": "INSTITUTIONAL, confidence - 0.992",
+    "Retail": "RETAIL, confidence - 0.979",
+    "Wholesale": "WHOLESALE, confidence - 0.994",
+    "Installation": "INSTALLATION,, confidence - 0.987",
+    "Repair": "REPAIR, confidence - 0.994",
+    "Work": "WORK, confidence - 0.993",
+    "Off": "OFF, confidence - 0.993",
+    "Stores": "STORES, confidence - 0.994",
+    "Annual Revenues": "ANNUAL REVENUES: 1,725,000, confidence - 0.993/0.961/0.993",
+    "Empl": "EMPL, confidence - 0.993",
+    "Full": "FULL, confidence - 0.978",
+    "Inside": "INSIDE, confidence - 0.994",
+    "Outside": "OUTSIDE, confidence - 0.994",
+    "Total": "TOTAL, confidence - 0.993",
+    "total_confidence": 0.991047619047619
+  },
+  "Interests": {
+    "Insureds": "INSUREDS, confidence - 0.994",
+    "Lienholder": "LIENHOLDER, confidence - 0.993",
+    "Payee": "PAYEE, confidence - 0.995",
+    "Co-Owner": "CO-OWNER, confidence - 0.994",
+    "Mortgagee": "MORTGAGEE, confidence - 0.994",
+    "Employee": "EMPLOYEE, confidence - 0.995",
+    "Lessor": "LESSOR, confidence - 0.995",
+    "Leaseback": "LEASEBACK, confidence - 0.994",
+    "Registrant": "REGISTRANT, confidence - 0.995",
+    "Lender's": "LENDER'S, confidence - 0.995",
+    "Trustee": "TRUSTEE, confidence - 0.995",
+    "Reference": "REFERENCE, confidence - 0.992",
+    "Loan": "LOAN, confidence - 0.992",
+    "Lien": "LIEN, confidence - 0.993",
+    "Amount": "AMOUNT:, confidence - 0.992",
+    "Interest": "INTEREST:, confidence - 0.995",
+    "Class": "CLASS:, confidence - 0.993",
+    "Item": "ITEM, confidence - 0.99",
+    "Item:": "ITEM:, confidence - 0.994",
+    "Location": "LOCATION:, confidence - 0.994",
+    "Building": "BUILDING:, confidence - 0.991",
+    "Vehicle": "VEHICLE:, confidence - 0.99",
+    "Boat": "BOAT:, confidence - 0.994",
+    "Airport": "AIRPORT:, confidence - 0.993",
+    "Aircraft": "AIRCRAFT:, confidence - 0.993",
+    "Rank": "RANK:, confidence - 0.993",
+    "Evidence": "EVIDENCE:, confidence - 0.991",
+    "Certificate": "CERTIFICATE, confidence - 0.986",
+    "Send": "SEND, confidence - 0.993",
+    "Bill": "BILL, confidence - 0.991",
+    "Breach": "BREACH, confidence - 0.995",
+    "Warranty": "WARRANTY, confidence - 0.994",
+    "Payable": "payable, confidence - 0.995",
+    "As": "as, confidence - 0.996",
+    "End": "END, confidence - 0.996",
+    "Date": "DATE:, confidence - 0.993",
+    "In": "in, confidence - 0.992",
+    "Reason": "REASON, confidence - 0.995",
+    "Explain": "EXPLAIN, confidence - 0.991",
+    "total_confidence": 0.9935483870967741
+  },
+  "Ownership": {
+    "Members": "MEMBERS, confidence - 0.994",
+    "Managers": "MANAGERS:, confidence - 0.993",
+    "Owner": "OWNER, confidence - 0.99",
+    "No.": "NO., confidence - 0.995",
+    "0": "0, confidence - 0.892",
+    "total_confidence": 0.96775
+  },
+  "SurveyQuestions": {
+    "1A": "1a., confidence - 0.993",
+    "Is": "IS, confidence - 0.995",
+    "A": "a, confidence - 0.995",
+    "Subsidiary": "SUBSIDIARY, confidence - 0.993",
+    "Another": "another, confidence - 0.993",
+    "Entity": "ENTITY, confidence - 0.993",
+    "Parent": "PARENT, confidence - 0.995",
+    "Relationship": "RELATIONSHIP, confidence - 0.992",
+    "Owned": "OWNED, confidence - 0.995",
+    "1B": "1b., confidence - 0.991",
+    "Does": "DOES, confidence - 0.993",
+    "Have": "HAVE, confidence - 0.992",
+    "Subsidiaries?": "SUBSIDIARIES?, confidence - 0.982",
+    "2.": "2., confidence - 0.995",
+    "Formal": "FORMAL, confidence - 0.991",
+    "Safety": "SAFETY, confidence - 0.993",
+    "Operation?": "OPERATION?, confidence - 0.994",
+    "Manual": "MANUAL, confidence - 0.995",
+    "Position": "POSITION, confidence - 0.993",
+    "Monthly": "MONTHLY, confidence - 0.995",
+    "Meetings": "MEETINGS, confidence - 0.974",
+    "Osha": "OSHA, confidence - 0.993",
+    "3.": "3., confidence - 0.991",
+    "Flammables": "FLAMMABLES,, confidence - 0.986",
+    "Explosives": "EXPLOSIVES,, confidence - 0.992",
+    "Chemicals?": "CHEMICALS?, confidence - 0.993",
+    "4.": "4., confidence - 0.995",
+    "With": "with, confidence - 0.981",
+    "This": "THIS, confidence - 0.993",
+    "\"Yes\"": "\"YES\", confidence - 0.948",
+    "Responses": "RESPONSES, confidence - 0.993",
+    "/N": "/N, confidence - 0.94",
+    "total_confidence": 0.9883928571428571
+  },
+  "Miscellaneous": {
+    "(Other": "(Other, confidence - 0.994",
+    "@": "@, confidence - 0.505",
+    "Logo": "logo, confidence - 0.993",
+    "Are": "ARE, confidence - 0.995",
+    "Registered": "registered, confidence - 0.993",
+    "Marks": "marks, confidence - 0.995",
+    "The": "THE, confidence - 0.993",
+    "More": "more, confidence - 0.982",
+    "Scenarios": "scenarios, confidence - 0.963",
+    "Fields": "fields, confidence - 0.995",
+    "Apply": "APPLY, confidence - 0.994",
+    "Provide": "provide, confidence - 0.993",
+    "Only": "only, confidence - 0.993",
+    "Necessary": "necessary, confidence - 0.994",
+    "Data": "data), confidence - 0.994",
+    "45": "45, confidence - 0.995",
+    "Sales": "SALES:, confidence - 0.993",
+    "Other": "other, confidence - 0.985",
+    "%": "%, confidence - 0.853",
+    "-": "-, confidence - 0.995",
+    "total_confidence": 0.9576842105263159
+  },
+  "Broker/Agent": {
+    "Agent": "agent, confidence - 0.995",
+    "Broker": "broker, confidence - 0.991",
+    "Represents": "REPRESENTS, confidence - 0.99",
+    "total_confidence": 0.992
+  },
+  "Policy History": {
+    "History": "HISTORY, confidence - 0.994",
+    "Check": "Check, confidence - 0.995",
+    "None": "none, confidence - 0.992",
+    "Information)": "Information), confidence - 0.971",
+    "Enter": "ENTER, confidence - 0.994",
+    "(Regardless": "(REGARDLESS, confidence - 0.984",
+    "Fault": "FAULT, confidence - 0.994",
+    "Whether": "WHETHER, confidence - 0.994",
+    "Occurrences": "OCCURRENCES, confidence - 0.973",
+    "That": "THAT, confidence - 0.985",
+    "Give": "GIVE, confidence - 0.99",
+    "Rise": "RISE, confidence - 0.989",
+    "Losses:": "LOSSES:, confidence - 0.994",
+    "Occurrence": "OCCURRENCE, confidence - 0.985",
+    "Type": "TYPE, confidence - 0.992",
+    "Claim": "claim, confidence - 0.993",
+    "Amount": "AMOUNT, confidence - 0.995",
+    "Paid": "PAID, confidence - 0.99",
+    "Reserved": "RESERVED, confidence - 0.995",
+    "Subro-Gation": "SUBRO-GATION, confidence - 0.993/0.995",
+    "04/16/2020": "04/16/2020, confidence - 0.994",
+    "04/16/2023": "04/16/2023, confidence - 0.995",
+    "2020": "2020, confidence - 0.988",
+    "Rg98176201": "RG98176201, confidence - 0.995",
+    "total_confidence": 0.9900434782608696
+  },
+  "Remarks/Instructions": {
+    "Remarks": "Remarks, confidence - 0.993",
+    "Instructions": "INSTRUCTIONS, confidence - 0.985",
+    "(Acord": "(ACORD, confidence - 0.993",
+    "101,": "101,, confidence - 0.986",
+    "Schedule,": "Schedule,, confidence - 0.993",
+    "May": "may, confidence - 0.995",
+    "Attached": "attached, confidence - 0.994",
+    "If": "if, confidence - 0.992",
+    "Space": "space, confidence - 0.995",
+    "Required)": "required), confidence - 0.982",
+    "total_confidence": 0.9907999999999999
+  },
+  "Legal/Disclosure": {
+    "Signature": "SIGNATURE, confidence - 0.995",
+    "Copy": "Copy, confidence - 0.992",
+    "Notice": "Notice, confidence - 0.99",
+    "Practices": "PRACTICES, confidence - 0.993",
+    "(Privacy)": "(Privacy), confidence - 0.948",
+    "Given": "given, confidence - 0.994",
+    "Applicant.": "applicant., confidence - 0.983",
+    "Required": "required, confidence - 0.993",
+    "States,": "states,, confidence - 0.993",
+    "Your": "YOUR, confidence - 0.987",
+    "State'S": "state's, confidence - 0.961",
+    "Requirements.)": "requirements.), confidence - 0.961",
+    "total_confidence": 0.9825
+  },
+  "Privacy_Notice": {
+    "Personal_Information": "personal, confidence - 0.991",
+    "About": "ABOUT, confidence - 0.995",
+    "You": "YOU, confidence - 0.995",
+    "Including": "INCLUDING, confidence - 0.993",
+    "From": "from, confidence - 0.993",
+    "Credit": "CREDIT, confidence - 0.994",
+    "Investigative_Report": "INVESTIGATIVE REPORT, confidence - 0.964, 0.989",
+    "Collected": "COLLECTED, confidence - 0.993",
+    "Persons_Other_Than_You": "PERSONS other than YOU, confidence - 0.994, 0.993, 0.995",
+    "Subsequent_Amendments_Renewals": "SUBSEQUENT AMENDMENTS RENEWALS., confidence - 0.993, 0.993",
+    "Such_Well_Privileged": "such WELL PRIVILEGED, confidence - 0.999, 0.993, 0.992",
+    "Our_Agents": "OUR AGENTS, confidence - 0.932, 0.981",
+    "Certain_Circumstances": "CERTAIN circumstances, confidence - 0.992, 0.987",
+    "Disclosed_Third_Parties_Without_Authorization": "DISCLOSED third PARTIES WITHOUT AUTHORIZATION., confidence - 0.993, 1, 0.992, 0.994, 0.992",
+    "Scoring_Used_Help_Determine_Either_Eligibility": "SCORING USED HELP DETERMINE EITHER ELIGIBILITY, confidence - 0.995, 0.993, 0.983, 0.991, 0.994, 0.992",
+    "Will_Charged": "will CHARGED., confidence - 0.993, 0.993",
+    "We_Use_Party_Development_Score": "WE USE PARTY DEVELOPMENT SCORE., confidence - 0.995, 0.995, 0.991, 0.994",
+    "Right_Review_Files_Request_Correction_Inaccuracies": "RIGHT REVIEW files REQUEST CORRECTION INACCURACIES., confidence - 0.993, 0.995, 0.974, 0.993, 0.993, 0.982",
+    "Also_Writing_Consider_Extraordinary_Life": "ALSO WRITING CONSIDER EXTRAORDINARY LIFE, confidence - 0.993, 0.994, 0.994, 0.993, 0.993",
+    "These_Limited_Some_States": "these LIMITED SOME STATES., confidence - 0.994, 0.992, 0.993, 0.99",
+    "Please_Learn_How_On_Submit_Detailed_Regarding_Information": "PLEASE LEARN HOW ON SUBMIT DETAILED REGARDING INFORMATION., confidence - 0.995, 0.994, 0.994, 0.996, 0.994, 0.993, 0.991, 0.972",
+    "total_confidence": 0.9938333333333333
+  },
+  "State_Specific_Information": {
+    "Applicable_States": "Applicable AZ, CA, DE, KS, MA, MN, ND, NY, OR, VA, WV., confidence - 0.98, 0.961, 0.993, 0.993, 0.994, 0.975, 0.994, 0.993, 0.995, 0.982, 0.995, 0.995",
+    "Specific_38S_Available_States": "Specific 38s available states.), confidence - 0.982, 0.929, 0.989, 0.983",
+    "Applicant_Initials": "(Applicant's Initials): BH, confidence - 0.97, 0.945, 0.993",
+    "Other_States": "AL, AR, DC, LA, MD, NM, RI, WV:, confidence - 0.995, 0.995, 0.995, 0.995, 0.983, 0.995, 0.992, 0.995"
+  },
+  "Fraud_Warning": {
+    "Person_Who_Knowingly_Willfully_Presents_False_Fraudulent_Benefit": "person who knowingly (or willfully)* presents false fraudulent benefit, confidence - 0.994, 0.996, 0.978, 0.995, 0.962, 0.99, 0.994, 0.981, 0.992",
+    "Guilty_Subject_Fines_Confinement_Prison": "guilty subject fines confinement prison., confidence - 0.999, 0.982, 0.999, 0.985, 0.994",
+    "Asterisk": "*, confidence - 1",
+    "Applies_MD_Only": "Applies MD Only., confidence - 0.997, 0.901, 0.999",
+    "CO_Unlawful_False_Incomplete_Misleading_Facts_Purpose_Defrauding_Attempting_Defraud_Company": "CO: it unlawful false, incomplete, misleading facts purpose defrauding attempting defraud company., confidence - 0.995, 0.995, 0.993, 0.993, 0.821, 0.992, 0.994, 0.993, 0.992, 0.993, 1",
+    "Penalties_Include_Imprisonment_Fines_Denial_Civil_Damages": "Penalties include imprisonment, fines, denial civil damages., confidence - 0.999, 0.999, 1, 0.992, 0.956, 0.99, 0.992",
+    "Provides_Policyholder_Claimant_Regard_Settlement_Award_Proceeds_Shall_Reported_Colorado_Division_Within_Department_Regulatory_Agencies": "provides policyholder claimant regard settlement award proceeds shall reported Colorado Division within Department Regulatory Agencies., confidence - 0.951, 0.985, 0.993, 0.994, 0.99, 0.995, 0.993, 0.994, 0.993, 0.993, 0.992, 0.993, 0.98",
+    "FL_OK_Intent_Injure_Defraud_Deceive_Insurer_Containing_Felony_Degree": "FL OK: intent injure, defraud, deceive insurer containing felony (of degree)*., confidence - 0.999, 0.995, 0.993, 0.99, 0.99, 0.993, 0.992, 0.991, 0.993, 1, 0.999, 1",
+    "KS_Who_Presents_Causes_Presented_Prepares_Knowledge_Belief_Insurer_Purported_Thereof_Written_Of_Support_Issuance_Rating_Insurance_Pursuant_Knows_Contain_Materially_Concerning_Fact_Material_Thereto_Conceals_Misleading_Thereto_Commits_Act": "KS: who, presents, causes presented prepares knowledge belief insurer, purported thereof, written of, support issuance rating insurance, pursuant knows contain materially concerning fact material thereto; conceals, misleading, thereto commits act., confidence - 0.995, 0.991, 0.993, 0.976, 0.983, 0.993, 0.993, 0.979, 0.982, 0.988, 0.987, 0.995, 0.993, 0.952, 0.985, 0.994, 0.994, 0.989, 0.961, 0.993, 0.993, 0.981, 0.99, 0.965, 0.994, 0.993, 0.98",
+    "KY_OH_PA_Conceals_Act_Subjects_Criminal": "KY, OH, PA: conceals act, subjects criminal, confidence - 0.995, 0.995, 0.994, 0.992, 0.983, 0.954"
+  },
+  "Jurisdictions": {
+    "NY": "NY, confidence - 0.997",
+    "ME": "ME, confidence - 0.998",
+    "ME,": "ME,, confidence - 0.995",
+    "TN,": "TN,, confidence - 0.983",
+    "VA": "VA, confidence - 0.995",
+    "WA:": "WA:, confidence - 0.95",
+    "NJ:": "NJ:, confidence - 0.99",
+    "OR:": "OR:, confidence - 0.995",
+    "PR:": "PR:, confidence - 0.995"
+  },
+  "Legal and Compliance": {
+    "Exceed": "exceed, confidence - 0.993",
+    "Thousand": "thousand, confidence - 0.993",
+    "Dollars": "dollars, confidence - 0.992",
+    "Stated": "stated, confidence - 0.931",
+    "Value": "value, confidence - 1",
+    "Each": "each, confidence - 0.992",
+    "Violation": "violation, confidence - 0.986",
+    "Violation)": "violation), confidence - 0.955",
+    "Incomplete": "incomplete, confidence - 0.982",
+    "(May)*": "(may)*, confidence - 0.983",
+    "Benefits.": "benefits., confidence - 0.997",
+    "Includes": "includes, confidence - 0.99",
+    "Penalties.": "penalties., confidence - 0.984",
+    "Solicit": "solicit, confidence - 0.991",
+    "Submitting": "submitting, confidence - 0.983",
+    "Violating": "violating, confidence - 0.993",
+    "Law.": "law., confidence - 0.979",
+    "Intention": "intention, confidence - 0.992",
+    "Application,": "application,, confidence - 0.981",
+    "Helps,": "helps,, confidence - 0.994",
+    "Presentation": "presentation, confidence - 0.98",
+    "Benefit,": "benefit,, confidence - 0.993",
+    "Same": "same, confidence - 0.993",
+    "Damage": "damage, confidence - 0.995",
+    "Loss,": "loss,, confidence - 0.993",
+    "Incur": "incur, confidence - 0.992",
+    "And,": "and,, confidence - 0.987",
+    "Upon": "upon, confidence - 0.991",
+    "Conviction,": "conviction,, confidence - 0.961",
+    "Sanctioned": "sanctioned, confidence - 0.984",
+    "Fine": "fine, confidence - 0.973",
+    "Less": "less, confidence - 0.973",
+    "($5,000)": "($5,000), confidence - 0.982",
+    "Ten": "ten, confidence - 0.995",
+    "($10,000),": "($10,000),, confidence - 0.953",
+    "Fixed": "fixed, confidence - 0.994",
+    "Term": "term, confidence - 0.99",
+    "Imprisonment": "imprisonment, confidence - 0.982",
+    "Years,": "years,, confidence - 0.993",
+    "Both": "both, confidence - 0.992",
+    "Should": "Should, confidence - 0.995",
+    "Aggravating": "aggravating, confidence - 0.988",
+    "[Be]": "[be], confidence - 0.962",
+    "Present,": "present,, confidence - 0.993",
+    "Penalty": "penalty, confidence - 0.993",
+    "Thus": "thus, confidence - 0.973",
+    "Established": "established, confidence - 0.982",
+    "Increased": "increased, confidence - 0.989",
+    "Maximum": "maximum, confidence - 0.993",
+    "Extenuating": "extenuating, confidence - 0.976",
+    "Reduced": "reduced, confidence - 0.994",
+    "Two": "two, confidence - 0.995",
+    "(2)": "(2), confidence - 0.992",
+    "Years.": "years., confidence - 0.995",
+    "total_confidence": 0.9853148148148145
+  },
+  "Signatures and Attestation": {
+    "Undersigned": "UNDERSIGNED, confidence - 0.982",
+    "Authorized": "AUTHORIZED, confidence - 0.995",
+    "Representative": "REPRESENTATIVE, confidence - 0.987",
+    "Reasonable": "REASONABLE, confidence - 0.993",
+    "Inquiry": "INQUIRY, confidence - 0.993",
+    "Made": "MADE, confidence - 0.993",
+    "Obtain": "OBTAIN, confidence - 0.995",
+    "Answers": "ANSWERS, confidence - 0.994",
+    "Questions": "QUESTIONS, confidence - 0.994",
+    "Application.": "APPLICATION., confidence - 0.991",
+    "He/She": "HE/SHE, confidence - 0.994",
+    "True,": "TRUE,, confidence - 0.994",
+    "Correct": "CORRECT, confidence - 0.994",
+    "Complete": "COMPLETE, confidence - 0.994",
+    "Best": "BEST, confidence - 0.993",
+    "His/Her": "HIS/HER, confidence - 0.992",
+    "Knowledge.": "KNOWLEDGE., confidence - 0.989",
+    "total_confidence": 0.9921764705882353
+  },
+  "Producer Information": {
+    "Producer'S": "PRODUCER'S, confidence - 0.993",
+    "(Please": "(Please, confidence - 0.991",
+    "Print)": "Print), confidence - 0.993",
+    "Producer": "PRODUCER, confidence - 0.994",
+    "License": "LICENSE, confidence - 0.994",
+    "(Required": "(Required, confidence - 0.993",
+    "Florida)": "Florida), confidence - 0.993",
+    "Na": "NA, confidence - 0.978",
+    "total_confidence": 0.991125
+  },
+  "Applicant Information": {
+    "Applicant'S": "APPLICANT'S, confidence - 0.993",
+    "National": "NATIONAL, confidence - 0.994",
+    "Ltd.": "Ltd., confidence - 0.984",
+    "100-002541": "100-002541, confidence - 0.993",
+    "total_confidence": 0.991
+  },
+  "Document_Confidence_Score": 0.9207982517482309
+}
