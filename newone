@@ -1,50 +1,129 @@
-from typing_extensions import TypedDict
+from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import StreamingResponse
+import os
+from dotenv import load_dotenv
+from langchain_openai.chat_models import AzureChatOpenAI
+from langgraph.graph.message import add_messages
+from langchain_core.messages import AIMessage, ToolMessage, SystemMessage
 from langgraph.graph import StateGraph, START, END
-class MainState(TypedDict):
-  maintext: str
+from langgraph.prebuilt import ToolNode
+from typing import TypedDict, Annotated
+from langchain_mcp_adapters.client import MultiServerMCPClient
 
-class SubState(TypedDict):
-  subtext: str
+app = FastAPI()
 
+load_dotenv()
 
-def substate_func(state:SubState):
-  state["subtext"] = " |inside subgraph"
-  return state
-sub_graph_builder = StateGraph(SubState)
-sub_graph_builder.add_node("firstinner", substate_func)
-sub_graph_builder.add_edge(START,"firstinner")
-sub_graph_builder.add_edge("firstinner",END)
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
-subcompile = sub_graph_builder.compile()
+config_mcp_server = {
+    "email_reader_mcp": {
+        "url": os.getenv("MCP_URL"),
+        "transport": "streamable_http",
+    }
+}
 
-def node1_mainstate(state:MainState):
-  state["maintext"] = "This is my main first node"
-  
-  return state
-def node2_mainstate_substate(state:MainState):
-  sub_input: SubState = {
-  "subtext" : state["maintext"]    
-  }
+class State(TypedDict):
+    messages: Annotated[list, add_messages]
 
-  sub_result = subcompile.invoke(sub_input)
-  
-  state["maintext"] = sub_result["subtext"]
-  return state
-  def node3_mainstate(state: MainState):
-  state["maintext"] = "This is my node 3"
-  return state
-  main_graph_builder = StateGraph(MainState)
-main_graph_builder.add_node("firstNode", node1_mainstate)
-main_graph_builder.add_node("SecondNode", node2_mainstate_substate)
-main_graph_builder.add_node("ThirdNode", node3_mainstate)
+def router(state: State):
+    last_message = state["messages"][-1]
+    if isinstance(last_message, AIMessage) and getattr(last_message, 'tool_calls', None):
+        return "tools"
+    if isinstance(last_message, AIMessage) and last_message.content:
+        content = last_message.content
+        if 'Continue' in content:
+            return "tools"
+        elif "End" in content:
+            return "End"
+    return "End"
 
-main_graph_builder.add_edge(START,"firstNode")
-main_graph_builder.add_edge("firstNode","SecondNode")
-main_graph_builder.add_edge("ThirdNode",END)
+def load_prompt(path: str) -> str:
+    with open(path, "r", encoding="utf-8") as f:
+        return f.read()
 
-maincompile = main_graph_builder.compile()
+def create_custom_graph(model, tools, prompt, checkpointer=None):
+    graph_builder = StateGraph(State)
+    llm_with_tools = model.bind_tools(tools)
+
+    async def agent_node(state: State):
+        messages = state["messages"]
+        system_prompt = SystemMessage(content=prompt)
+        all_messages = [system_prompt] + messages
+        message = await llm_with_tools.ainvoke(all_messages)
+        return {"messages": [message]}
+
+    graph_builder.add_node("agent", agent_node)
+    graph_builder.add_node("tools", ToolNode(tools=tools))
+    graph_builder.add_edge(START, "agent")
+    graph_builder.add_conditional_edges(
+        "agent",
+        router,
+        {
+            "tools": "tools",
+            "End": END
+        }
+    )
+    graph_builder.add_edge("tools", "agent")
+
+    return graph_builder.compile(checkpointer=checkpointer) if checkpointer else graph_builder.compile()
+
+async def get_tool_list(config_mcp_server):
+    client = MultiServerMCPClient(config_mcp_server)
+    tools_list = await client.get_tools()
+    print("Tools fetched from MCP:", [tool.name for tool in tools_list])
+    return tools_list
+
+@app.post("/chat")
+async def chat_stream():
+    # Load environment variables
+    load_dotenv()
+
+    # Fetch tools
+    tools = await get_tool_list(config_mcp_server=config_mcp_server)
+
+    # Setup Azure OpenAI model
+    endpoint = os.getenv("AZURE_OPENAI_ENDPOINT")
+    credential = os.getenv("AZURE_OPENAI_API_KEY")
+    deployment_name = os.getenv("AZURE_OPENAI_CHAT_DEPLOYMENT")
+    api_version = os.getenv("AZURE_OPENAI_API_VERSION")
+
+    model = AzureChatOpenAI(
+        api_key=credential,
+        api_version=api_version,  # fill if needed
+        azure_deployment=deployment_name,
+        azure_endpoint=endpoint
+    )
+
+    # Load system prompt
+    SYSTEM_INSTRUCTION = load_prompt("./prompt4.txt")
+
+    # Create the graph
+    graph = create_custom_graph(model=model, tools=tools, prompt=SYSTEM_INSTRUCTION)
+
+    async def stream():
+        async for chunk in graph.astream({"messages": ["Start your task"]}, config={"recursion_limit": 100}):
+            if "agent" in chunk:
+                messages = chunk["agent"]["messages"]
+                for msg in messages:
+                    if hasattr(msg, "content") and msg.content:
+                        # Yield SSE formatted string
+                        yield f"data: {msg.content}\n\n"
+            if "tools" in chunk:
+                messages = chunk["tools"]["messages"]
+                for msg in messages:
+                    if hasattr(msg, "content") and msg.content:
+                        yield f"data: [Tool:{msg.name}] {msg.content}\n\n"
+
+    return StreamingResponse(stream(), media_type="text/event-stream")
 
 if __name__ == "__main__":
-    print("\n--- CASE 2: DIFFERENT STATE ---")
-    result_case2 = maincompile.invoke({"maintext": "start"})
-    print(result_case2)
+    import uvicorn
+    uvicorn.run(app, host="0.0.0.0", port=8021)
