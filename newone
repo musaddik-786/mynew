@@ -1,144 +1,50 @@
-# ============================================================
-# LANGGRAPH SUBGRAPH EXAMPLES
-# Case 1: Shared State Schema
-# Case 2: Different State Schemas (Adapter Pattern)
-# ============================================================
-
-from typing import TypedDict
+from typing_extensions import TypedDict
 from langgraph.graph import StateGraph, START, END
-
-
-# ============================================================
-# CASE 1: MAIN GRAPH & SUBGRAPH SHARE SAME STATE
-# ============================================================
-
-# ---------- STATE ----------
-class SharedState(TypedDict):
-    text: str
-
-
-# ---------- MAIN GRAPH NODE 1 ----------
-def case1_first_node(state: SharedState) -> SharedState:
-    state["text"] += " | case1: first node"
-    return state
-
-
-# ---------- SUBGRAPH INNER NODE ----------
-def case1_subgraph_inner(state: SharedState) -> SharedState:
-    state["text"] += " | case1: inside subgraph"
-    return state
-
-
-# ---------- BUILD SUBGRAPH ----------
-case1_sub_builder = StateGraph(SharedState)
-case1_sub_builder.add_node("inner", case1_subgraph_inner)
-case1_sub_builder.add_edge(START, "inner")
-case1_sub_builder.add_edge("inner", END)
-
-case1_subgraph = case1_sub_builder.compile()
-
-
-# ---------- MAIN GRAPH NODE 3 ----------
-def case1_third_node(state: SharedState) -> SharedState:
-    state["text"] += " | case1: third node"
-    return state
-
-
-# ---------- BUILD MAIN GRAPH ----------
-case1_main_builder = StateGraph(SharedState)
-
-case1_main_builder.add_node("first", case1_first_node)
-case1_main_builder.add_node("subgraph", case1_subgraph)
-case1_main_builder.add_node("third", case1_third_node)
-
-case1_main_builder.add_edge(START, "first")
-case1_main_builder.add_edge("first", "subgraph")
-case1_main_builder.add_edge("subgraph", "third")
-case1_main_builder.add_edge("third", END)
-
-case1_main_graph = case1_main_builder.compile()
-
-
-# ============================================================
-# CASE 2: MAIN GRAPH & SUBGRAPH HAVE DIFFERENT STATE SCHEMAS
-# ============================================================
-
-# ---------- MAIN STATE ----------
 class MainState(TypedDict):
-    text: str
+  maintext: str
 
-
-# ---------- SUBGRAPH STATE ----------
 class SubState(TypedDict):
-    message: str
+  subtext: str
 
 
-# ---------- SUBGRAPH INNER NODE ----------
-def case2_subgraph_inner(state: SubState) -> SubState:
-    state["message"] += " | case2: processed in subgraph"
-    return state
+def substate_func(state:SubState):
+  state["subtext"] = " |inside subgraph"
+  return state
+sub_graph_builder = StateGraph(SubState)
+sub_graph_builder.add_node("firstinner", substate_func)
+sub_graph_builder.add_edge(START,"firstinner")
+sub_graph_builder.add_edge("firstinner",END)
 
+subcompile = sub_graph_builder.compile()
 
-# ---------- BUILD SUBGRAPH ----------
-case2_sub_builder = StateGraph(SubState)
-case2_sub_builder.add_node("inner", case2_subgraph_inner)
-case2_sub_builder.add_edge(START, "inner")
-case2_sub_builder.add_edge("inner", END)
+def node1_mainstate(state:MainState):
+  state["maintext"] = "This is my main first node"
+  
+  return state
+def node2_mainstate_substate(state:MainState):
+  sub_input: SubState = {
+  "subtext" : state["maintext"]    
+  }
 
-case2_subgraph = case2_sub_builder.compile()
+  sub_result = subcompile.invoke(sub_input)
+  
+  state["maintext"] = sub_result["subtext"]
+  return state
+  def node3_mainstate(state: MainState):
+  state["maintext"] = "This is my node 3"
+  return state
+  main_graph_builder = StateGraph(MainState)
+main_graph_builder.add_node("firstNode", node1_mainstate)
+main_graph_builder.add_node("SecondNode", node2_mainstate_substate)
+main_graph_builder.add_node("ThirdNode", node3_mainstate)
 
+main_graph_builder.add_edge(START,"firstNode")
+main_graph_builder.add_edge("firstNode","SecondNode")
+main_graph_builder.add_edge("ThirdNode",END)
 
-# ---------- MAIN GRAPH NODE 1 ----------
-def case2_first_node(state: MainState) -> MainState:
-    state["text"] += " | case2: first node"
-    return state
-
-
-# ---------- ADAPTER NODE (MAIN → SUBGRAPH → MAIN) ----------
-def case2_subgraph_adapter(state: MainState) -> MainState:
-    # Convert MainState to SubState
-    sub_input: SubState = {
-        "message": state["text"]
-    }
-
-    # Run subgraph
-    sub_result = case2_subgraph.invoke(sub_input)
-
-    # Merge back to MainState
-    state["text"] = sub_result["message"]
-    return state
-
-
-# ---------- MAIN GRAPH NODE 3 ----------
-def case2_third_node(state: MainState) -> MainState:
-    state["text"] += " | case2: third node"
-    return state
-
-
-# ---------- BUILD MAIN GRAPH ----------
-case2_main_builder = StateGraph(MainState)
-
-case2_main_builder.add_node("first", case2_first_node)
-case2_main_builder.add_node("subgraph_adapter", case2_subgraph_adapter)
-case2_main_builder.add_node("third", case2_third_node)
-
-case2_main_builder.add_edge(START, "first")
-case2_main_builder.add_edge("first", "subgraph_adapter")
-case2_main_builder.add_edge("subgraph_adapter", "third")
-case2_main_builder.add_edge("third", END)
-
-case2_main_graph = case2_main_builder.compile()
-
-
-# ============================================================
-# RUN BOTH EXAMPLES
-# ============================================================
+maincompile = main_graph_builder.compile()
 
 if __name__ == "__main__":
-    print("\n--- CASE 1: SHARED STATE ---")
-    result_case1 = case1_main_graph.invoke({"text": "start"})
-    print(result_case1)
-
     print("\n--- CASE 2: DIFFERENT STATE ---")
-    result_case2 = case2_main_graph.invoke({"text": "start"})
+    result_case2 = maincompile.invoke({"maintext": "start"})
     print(result_case2)
