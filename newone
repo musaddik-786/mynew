@@ -1,105 +1,129 @@
-from langgraph.graph import StateGraph, START, END
-
-from typing_extensions import Annotated
-
+from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import StreamingResponse
+import os
+from dotenv import load_dotenv
+from langchain_openai.chat_models import AzureChatOpenAI
 from langgraph.graph.message import add_messages
+from langchain_core.messages import AIMessage, ToolMessage, SystemMessage
+from langgraph.graph import StateGraph, START, END
+from langgraph.prebuilt import ToolNode
+from typing import TypedDict, Annotated
+from langchain_mcp_adapters.client import MultiServerMCPClient
 
-# -------------------
+app = FastAPI()
 
-# State
+load_dotenv()
 
-# -------------------
-
-class State(dict):
-
-    messages: Annotated[list, add_messages]
-
-# -------------------
-
-# Agent node
-
-# -------------------
-
-def agent(state):
-
-    if len(state["messages"]) == 0:
-
-        return {"messages": ["Agent: I need a tool"]}
-
-    else:
-
-        return {"messages": ["Agent: I got tool result, End"]}
-
-# -------------------
-
-# Tool node (FAKE tool)
-
-# -------------------
-
-def tools(state):
-
-    return {"messages": ["Tool: Here is the data"]}
-
-# -------------------
-
-# Router (decision maker)
-
-# -------------------
-
-def router(state):
-
-    last_message = state["messages"][-1]
-
-    if "need a tool" in last_message:
-
-        return "tools"
-
-    if "End" in last_message:
-
-        return "end"
-
-    return "end"
-
-# -------------------
-
-# Build graph
-
-# -------------------
-
-graph = StateGraph(State)
-
-graph.add_node("agent", agent)
-
-graph.add_node("tools", tools)
-
-graph.add_edge(START, "agent")
-
-graph.add_conditional_edges(
-
-    "agent",
-
-    router,
-
-    {
-
-        "tools": "tools",
-
-        "end": END
-
-    }
-
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
 )
 
-graph.add_edge("tools", "agent")
+config_mcp_server = {
+    "email_reader_mcp": {
+        "url": os.getenv("MCP_URL"),
+        "transport": "streamable_http",
+    }
+}
 
-graph = graph.compile()
+class State(TypedDict):
+    messages: Annotated[list, add_messages]
 
-# -------------------
+def router(state: State):
+    last_message = state["messages"][-1]
+    if isinstance(last_message, AIMessage) and getattr(last_message, 'tool_calls', None):
+        return "tools"
+    if isinstance(last_message, AIMessage) and last_message.content:
+        content = last_message.content
+        if 'Continue' in content:
+            return "tools"
+        elif "End" in content:
+            return "End"
+    return "End"
 
-# Run
+def load_prompt(path: str) -> str:
+    with open(path, "r", encoding="utf-8") as f:
+        return f.read()
 
-# -------------------
+def create_custom_graph(model, tools, prompt, checkpointer=None):
+    graph_builder = StateGraph(State)
+    llm_with_tools = model.bind_tools(tools)
 
-result = graph.invoke({"messages": []})
+    async def agent_node(state: State):
+        messages = state["messages"]
+        system_prompt = SystemMessage(content=prompt)
+        all_messages = [system_prompt] + messages
+        message = await llm_with_tools.ainvoke(all_messages)
+        return {"messages": [message]}
 
-print(result)
+    graph_builder.add_node("agent", agent_node)
+    graph_builder.add_node("tools", ToolNode(tools=tools))
+    graph_builder.add_edge(START, "agent")
+    graph_builder.add_conditional_edges(
+        "agent",
+        router,
+        {
+            "tools": "tools",
+            "End": END
+        }
+    )
+    graph_builder.add_edge("tools", "agent")
+
+    return graph_builder.compile(checkpointer=checkpointer) if checkpointer else graph_builder.compile()
+
+async def get_tool_list(config_mcp_server):
+    client = MultiServerMCPClient(config_mcp_server)
+    tools_list = await client.get_tools()
+    print("Tools fetched from MCP:", [tool.name for tool in tools_list])
+    return tools_list
+
+@app.post("/chat")
+async def chat_stream():
+    # Load environment variables
+    load_dotenv()
+
+    # Fetch tools
+    tools = await get_tool_list(config_mcp_server=config_mcp_server)
+
+    # Setup Azure OpenAI model
+    endpoint = os.getenv("AZURE_OPENAI_ENDPOINT")
+    credential = os.getenv("AZURE_OPENAI_API_KEY")
+    deployment_name = os.getenv("AZURE_OPENAI_CHAT_DEPLOYMENT")
+    api_version = os.getenv("AZURE_OPENAI_API_VERSION")
+
+    model = AzureChatOpenAI(
+        api_key=credential,
+        api_version=api_version,  # fill if needed
+        azure_deployment=deployment_name,
+        azure_endpoint=endpoint
+    )
+
+    # Load system prompt
+    SYSTEM_INSTRUCTION = load_prompt("./prompt4.txt")
+
+    # Create the graph
+    graph = create_custom_graph(model=model, tools=tools, prompt=SYSTEM_INSTRUCTION)
+
+    async def stream():
+        async for chunk in graph.astream({"messages": ["Start your task"]}, config={"recursion_limit": 100}):
+            if "agent" in chunk:
+                messages = chunk["agent"]["messages"]
+                for msg in messages:
+                    if hasattr(msg, "content") and msg.content:
+                        # Yield SSE formatted string
+                        yield f"data: {msg.content}\n\n"
+            if "tools" in chunk:
+                messages = chunk["tools"]["messages"]
+                for msg in messages:
+                    if hasattr(msg, "content") and msg.content:
+                        yield f"data: [Tool:{msg.name}] {msg.content}\n\n"
+
+    return StreamingResponse(stream(), media_type="text/event-stream")
+
+if __name__ == "__main__":
+    import uvicorn
+    uvicorn.run(app, host="0.0.0.0", port=8021)
