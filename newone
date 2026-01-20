@@ -1,37 +1,38 @@
-from fastapi import FastAPI
-from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import StreamingResponse
-import os
-from dotenv import load_dotenv
-from langchain_openai.chat_models import AzureChatOpenAI
+Now i have 3 agents 
+emailintentagent (which has multiple tools)
+eligibilityagent ((which has multiple tools)
+riskagent ((which has multiple tools)
+
+i have a big project and in that there are folders named langgrpah_client.py in each agent 
+
+emaiintent agent
+import asyncio
+from langchain_mcp_adapters.client import MultiServerMCPClient
+from typing import TypedDict, Annotated
 from langgraph.graph.message import add_messages
 from langchain_core.messages import AIMessage, ToolMessage, SystemMessage
 from langgraph.graph import StateGraph, START, END
+from langgraph.checkpoint.memory import MemorySaver
 from langgraph.prebuilt import ToolNode
-from typing import TypedDict, Annotated
-from langchain_mcp_adapters.client import MultiServerMCPClient
+import os
 
-app = FastAPI()
-
-load_dotenv()
-
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
-
-config_mcp_server = {
-    "email_reader_mcp": {
-        "url": os.getenv("MCP_URL"),
-        "transport": "streamable_http",
-    }
-}
 
 class State(TypedDict):
-    messages: Annotated[list, add_messages]
+        messages: Annotated[list, add_messages]
+
+
+async def get_tool_list(config_mcp_server):
+        client = MultiServerMCPClient(config_mcp_server)
+        tools_list = await client.get_tools()
+        print("Tools fetched from MCP:", [tool.name for tool in tools_list])
+        return tools_list
+    
+config_mcp_server = {
+        "email_reader_mcp":{
+            "url":"http://0.0.0.0:8654/api/v1/email_intent_agent/mcp",
+            "transport":"streamable_http",
+        }}
+
 
 def router(state: State):
     last_message = state["messages"][-1]
@@ -39,9 +40,9 @@ def router(state: State):
         return "tools"
     if isinstance(last_message, AIMessage) and last_message.content:
         content = last_message.content
-        if 'Continue' in content:
+        if ('Continue' in content) :
             return "tools"
-        elif "End" in content:
+        elif ("End" in content):
             return "End"
     return "End"
 
@@ -49,8 +50,11 @@ def load_prompt(path: str) -> str:
     with open(path, "r", encoding="utf-8") as f:
         return f.read()
 
+
 def create_custom_graph(model, tools, prompt, checkpointer=None):
+    #format_instruction, response_class = response_format
     graph_builder = StateGraph(State)
+
     llm_with_tools = model.bind_tools(tools)
 
     async def agent_node(state: State):
@@ -60,70 +64,384 @@ def create_custom_graph(model, tools, prompt, checkpointer=None):
         message = await llm_with_tools.ainvoke(all_messages)
         return {"messages": [message]}
 
+
+    
     graph_builder.add_node("agent", agent_node)
     graph_builder.add_node("tools", ToolNode(tools=tools))
+    
+
     graph_builder.add_edge(START, "agent")
     graph_builder.add_conditional_edges(
-        "agent",
-        router,
+        "agent", 
+        router, 
         {
             "tools": "tools",
             "End": END
-        }
-    )
+        })
     graph_builder.add_edge("tools", "agent")
+    
 
     return graph_builder.compile(checkpointer=checkpointer) if checkpointer else graph_builder.compile()
 
-async def get_tool_list(config_mcp_server):
-    client = MultiServerMCPClient(config_mcp_server)
-    tools_list = await client.get_tools()
-    print("Tools fetched from MCP:", [tool.name for tool in tools_list])
-    return tools_list
+async def main():
+#async def email_intent_agent():
+    tools = await get_tool_list(config_mcp_server=config_mcp_server)
+    
 
-@app.post("/chat")
-async def chat_stream():
-    # Load environment variables
+    
+    from dotenv import load_dotenv
     load_dotenv()
 
-    # Fetch tools
-    tools = await get_tool_list(config_mcp_server=config_mcp_server)
+    from langchain_openai.chat_models import AzureChatOpenAI
 
-    # Setup Azure OpenAI model
-    endpoint = os.getenv("AZURE_OPENAI_ENDPOINT")
-    credential = os.getenv("AZURE_OPENAI_API_KEY")
-    deployment_name = os.getenv("AZURE_OPENAI_CHAT_DEPLOYMENT")
-    api_version = os.getenv("AZURE_OPENAI_API_VERSION")
+    endpoint = os.environ["AZURE_INFERENCE_ENDPOINT"] = os.getenv("AZURE_OPENAI_ENDPOINT")
+    credential = os.environ["AZURE_INFERENCE_CREDENTIAL"] = os.getenv("AZURE_OPENAI_API_KEY")
+    model = os.environ["AZURE_OPENAI_CHAT_DEPLOYMENT_NAME"] = os.getenv("AZURE_OPENAI_CHAT_DEPLOYMENT")
 
     model = AzureChatOpenAI(
-        api_key=credential,
-        api_version=api_version,  # fill if needed
-        azure_deployment=deployment_name,
-        azure_endpoint=endpoint
+        api_key="examplekey",
+        api_version="2024-12-01-preview",
+        azure_deployment="gpt-4",
+        azure_endpoint="https://jarvisoai.openai.azure.com"
     )
 
-    # Load system prompt
-    SYSTEM_INSTRUCTION = load_prompt("./prompt4.txt")
+    
 
-    # Create the graph
+    llm_with_tools = model.bind_tools(tools)
+
+    SYSTEM_INSTRUCTION = load_prompt("./prompt2.txt")
+
     graph = create_custom_graph(model=model, tools=tools, prompt=SYSTEM_INSTRUCTION)
 
-    async def stream():
-        async for chunk in graph.astream({"messages": ["Start your task"]}, config={"recursion_limit": 100}):
-            if "agent" in chunk:
-                messages = chunk["agent"]["messages"]
-                for msg in messages:
-                    if hasattr(msg, "content") and msg.content:
-                        # Yield SSE formatted string
-                        yield f"data: {msg.content}\n\n"
-            if "tools" in chunk:
-                messages = chunk["tools"]["messages"]
-                for msg in messages:
-                    if hasattr(msg, "content") and msg.content:
-                        yield f"data: [Tool:{msg.name}] {msg.content}\n\n"
+    
+    last_message = None
+    async for chunk in graph.astream({"messages": ["Start your task"]},
+                                    config={"recursion_limit": 100}):
 
-    return StreamingResponse(stream(), media_type="text/event-stream")
+        # If the agent responded
+        if "agent" in chunk:
+            messages = chunk["agent"]["messages"]
+            for msg in messages:
+                if isinstance(msg, AIMessage):
+                    # Print tool calls if present
+                    if getattr(msg, "tool_calls", None):
+                        print("[Agent] (tool call issued)\n")
+                        for call in msg.tool_calls:
+                            print(f"   → Tool name: {call['name']}")
+                            print(f"   → Arguments: {call['args']}\n***********************************************")
+                    # Otherwise print normal content
+                    elif msg.content:
+                        print(f"[Agent] {msg.content}\n***********************************************")
+                    else:
+                        print("[Agent] (empty)\n***********************************************")
+                else:
+                    print(f"[Agent] {msg}\n***********************************************")
+
+        # If a tool responded
+        if "tools" in chunk:
+            messages = chunk["tools"]["messages"]
+            for msg in messages:
+                if isinstance(msg, ToolMessage):
+                    print(f"[Tool:{msg.name}] {msg.content}\n***********************************************")
+                else:
+                    print(f"[Tool] {msg}\n***********************************************")
+
+
 
 if __name__ == "__main__":
-    import uvicorn
-    uvicorn.run(app, host="0.0.0.0", port=8021)
+    asyncio.run(main())
+
+eligibility agent
+
+import asyncio
+from langchain_mcp_adapters.client import MultiServerMCPClient
+from typing import TypedDict, Annotated
+from langgraph.graph.message import add_messages
+from langchain_core.messages import AIMessage, ToolMessage, SystemMessage
+from langgraph.graph import StateGraph, START, END
+from langgraph.checkpoint.memory import MemorySaver
+from langgraph.prebuilt import ToolNode
+import os
+
+
+class State(TypedDict):
+        messages: Annotated[list, add_messages]
+
+
+async def get_tool_list(config_mcp_server):
+        client = MultiServerMCPClient(config_mcp_server)
+        tools_list = await client.get_tools()
+        print("Tools fetched from MCP:", [tool.name for tool in tools_list])
+        return tools_list
+    
+config_mcp_server = {
+        "email_reader_mcp":{
+            "url":"http://0.0.0.0:8502/api/v1/email_intent_agent/mcp",
+            "transport":"streamable_http",
+        }}
+
+
+def router(state: State):
+    last_message = state["messages"][-1]
+    if isinstance(last_message, AIMessage) and getattr(last_message, 'tool_calls', None):
+        return "tools"
+    if isinstance(last_message, AIMessage) and last_message.content:
+        content = last_message.content
+        if ('Continue' in content) :
+            return "tools"
+        elif ("End" in content):
+            return "End"
+    return "End"
+
+def load_prompt(path: str) -> str:
+    with open(path, "r", encoding="utf-8") as f:
+        return f.read()
+
+
+def create_custom_graph(model, tools, prompt, checkpointer=None):
+    #format_instruction, response_class = response_format
+    graph_builder = StateGraph(State)
+
+    llm_with_tools = model.bind_tools(tools)
+
+    async def agent_node(state: State):
+        messages = state["messages"]
+        system_prompt = SystemMessage(content=prompt)
+        all_messages = [system_prompt] + messages
+       m essage = await llm_with_tools.ainvoke(all_messages)
+        return {"messages": [message]}
+
+
+    
+    graph_builder.add_node("agent", agent_node)
+    graph_builder.add_node("tools", ToolNode(tools=tools))
+    
+
+    graph_builder.add_edge(START, "agent")
+    graph_builder.add_conditional_edges(
+        "agent", 
+        router, 
+        {
+            "tools": "tools",
+            "End": END
+        })
+    graph_builder.add_edge("tools", "agent")
+    
+
+    return graph_builder.compile(checkpointer=checkpointer) if checkpointer else graph_builder.compile()
+
+async def main():
+#async def eligibility_agent():
+    tools = await get_tool_list(config_mcp_server=config_mcp_server)
+    
+
+    
+    from dotenv import load_dotenv
+    load_dotenv()
+
+    from langchain_openai.chat_models import AzureChatOpenAI
+
+    endpoint = os.environ["AZURE_INFERENCE_ENDPOINT"] = os.getenv("AZURE_OPENAI_ENDPOINT")
+    credential = os.environ["AZURE_INFERENCE_CREDENTIAL"] = os.getenv("AZURE_OPENAI_API_KEY")
+    model = os.environ["AZURE_OPENAI_CHAT_DEPLOYMENT_NAME"] = os.getenv("AZURE_OPENAI_CHAT_DEPLOYMENT")
+
+    model = AzureChatOpenAI(
+        api_key="examplekey",
+        api_version="2024-12-01-preview",
+        azure_deployment="gpt-4",
+        azure_endpoint="https://jarvisoai.openai.azure.com"
+    )
+
+    
+
+    llm_with_tools = model.bind_tools(tools)
+
+    SYSTEM_INSTRUCTION = load_prompt("./prompt2.txt")
+
+    graph = create_custom_graph(model=model, tools=tools, prompt=SYSTEM_INSTRUCTION)
+
+    
+    last_message = None
+    async for chunk in graph.astream({"messages": ["Start your task"]},
+                                    config={"recursion_limit": 25}):
+
+        # If the agent responded
+        if "agent" in chunk:
+            messages = chunk["agent"]["messages"]
+            for msg in messages:
+                if isinstance(msg, AIMessage):
+                    # Print tool calls if present
+                    if getattr(msg, "tool_calls", None):
+                        print("[Agent] (tool call issued)\n")
+                        for call in msg.tool_calls:
+                            print(f"   → Tool name: {call['name']}")
+                            print(f"   → Arguments: {call['args']}\n***********************************************")
+                    # Otherwise print normal content
+                    elif msg.content:
+                        print(f"[Agent] {msg.content}\n***********************************************")
+                    else:
+                        print("[Agent] (empty)\n***********************************************")
+                else:
+                    print(f"[Agent] {msg}\n***********************************************")
+
+        # If a tool responded
+        if "tools" in chunk:
+            messages = chunk["tools"]["messages"]
+            for msg in messages:
+                if isinstance(msg, ToolMessage):
+                    print(f"[Tool:{msg.name}] {msg.content}\n***********************************************")
+                else:
+                    print(f"[Tool] {msg}\n***********************************************")
+
+
+
+if __name__ == "__main__":
+    asyncio.run(main())
+
+
+Risk agent
+
+import asyncio
+from langchain_mcp_adapters.client import MultiServerMCPClient
+from typing import TypedDict, Annotated
+from langgraph.graph.message import add_messages
+from langchain_core.messages import AIMessage, ToolMessage, SystemMessage
+from langgraph.graph import StateGraph, START, END
+from langgraph.checkpoint.memory import MemorySaver
+from langgraph.prebuilt import ToolNode
+import os
+
+
+class State(TypedDict):
+        messages: Annotated[list, add_messages]
+
+
+async def get_tool_list(config_mcp_server):
+        client = MultiServerMCPClient(config_mcp_server)
+        tools_list = await client.get_tools()
+        print("Tools fetched from MCP:", [tool.name for tool in tools_list])
+        return tools_list
+    
+config_mcp_server = {
+        "email_reader_mcp":{
+            "url":"http://0.0.0.0:8502/api/v1/email_intent_agent/mcp",
+            "transport":"streamable_http",
+        }}
+
+
+def router(state: State):
+    last_message = state["messages"][-1]
+    if isinstance(last_message, AIMessage) and getattr(last_message, 'tool_calls', None):
+        return "tools"
+    if isinstance(last_message, AIMessage) and last_message.content:
+        content = last_message.content
+        if ('Continue' in content) :
+            return "tools"
+        elif ("End" in content):
+            return "End"
+    return "End"
+
+def load_prompt(path: str) -> str:
+    with open(path, "r", encoding="utf-8") as f:
+        return f.read()
+
+
+def create_custom_graph(model, tools, prompt, checkpointer=None):
+    #format_instruction, response_class = response_format
+    graph_builder = StateGraph(State)
+
+    llm_with_tools = model.bind_tools(tools)
+
+    async def agent_node(state: State):
+        messages = state["messages"]
+        system_prompt = SystemMessage(content=prompt)
+        all_messages = [system_prompt] + messages
+        message = await llm_with_tools.ainvoke(all_messages)
+        return {"messages": [message]}
+
+
+    
+    graph_builder.add_node("agent", agent_node)
+    graph_builder.add_node("tools", ToolNode(tools=tools))
+    
+
+    graph_builder.add_edge(START, "agent")
+    graph_builder.add_conditional_edges(
+        "agent", 
+        router, 
+        {
+            "tools": "tools",
+            "End": END
+        })
+    graph_builder.add_edge("tools", "agent")
+    
+
+    return graph_builder.compile(checkpointer=checkpointer) if checkpointer else graph_builder.compile()
+
+async def main():
+#async def email_intent_agent():
+    tools = await get_tool_list(config_mcp_server=config_mcp_server)
+    
+
+    
+    from dotenv import load_dotenv
+    load_dotenv()
+
+    from langchain_openai.chat_models import AzureChatOpenAI
+
+    endpoint = os.environ["AZURE_INFERENCE_ENDPOINT"] = os.getenv("AZURE_OPENAI_ENDPOINT")
+    credential = os.environ["AZURE_INFERENCE_CREDENTIAL"] = os.getenv("AZURE_OPENAI_API_KEY")
+    model = os.environ["AZURE_OPENAI_CHAT_DEPLOYMENT_NAME"] = os.getenv("AZURE_OPENAI_CHAT_DEPLOYMENT")
+
+    model = AzureChatOpenAI(
+        api_key="examplekey",
+        api_version="2024-12-01-preview",
+        azure_deployment="gpt-4",
+        azure_endpoint="https://jarvisoai.openai.azure.com"
+    )
+
+    
+
+    llm_with_tools = model.bind_tools(tools)
+
+    SYSTEM_INSTRUCTION = load_prompt("./prompt2.txt")
+
+    graph = create_custom_graph(model=model, tools=tools, prompt=SYSTEM_INSTRUCTION)
+
+    
+    last_message = None
+    async for chunk in graph.astream({"messages": ["Start your task"]},
+                                    config={"recursion_limit": 25}):
+
+        # If the agent responded
+        if "agent" in chunk:
+            messages = chunk["agent"]["messages"]
+            for msg in messages:
+                if isinstance(msg, AIMessage):
+                    # Print tool calls if present
+                    if getattr(msg, "tool_calls", None):
+                        print("[Agent] (tool call issued)\n")
+                        for call in msg.tool_calls:
+                            print(f"   → Tool name: {call['name']}")
+                            print(f"   → Arguments: {call['args']}\n***********************************************")
+                    # Otherwise print normal content
+                    elif msg.content:
+                        print(f"[Agent] {msg.content}\n***********************************************")
+                    else:
+                        print("[Agent] (empty)\n***********************************************")
+                else:
+                    print(f"[Agent] {msg}\n***********************************************")
+
+        # If a tool responded
+        if "tools" in chunk:
+            messages = chunk["tools"]["messages"]
+            for msg in messages:
+                if isinstance(msg, ToolMessage):
+                    print(f"[Tool:{msg.name}] {msg.content}\n***********************************************")
+                else:
+                    print(f"[Tool] {msg}\n***********************************************")
+
+
+
+if __name__ == "__main__":
+    asyncio.run(main())
