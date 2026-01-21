@@ -1,4 +1,7 @@
-    prompt = f"""
+Earlier I had to check if the form was acord or not acord and according to that the below prompt was working correct, but this time I also have to check if the form is LossRun
+so below is my current prompt
+
+prompt = f"""
 You are an expert in insurance documentation and intelligent document processing.
 
 Your task is to identify whether a given document is an ACORD insurance form or not.
@@ -24,3 +27,62 @@ Document Content:
 
 Reply with only one word: ACORD or Non-ACORD.
 """
+
+
+below is my content of lossrunform just for your reference
+
+Loss Run Report: Berkshire Hathaway 
+From:  William Grey 
+Valuation Date: 12/01/2025 
+Coverage Period: 01/01/2026 to 12/31/2026 
+ 
+Policy Number EAective Dates Line of Business 
+PCC-193452-A 01/01/2023 - 12/31/2023 Commercial Property 
+PCC-193452-B 01/01/2024 - 12/31/2024 Commercial Property 
+PCC-193452-C 01/01/2025 - 12/31/2025 Commercial Property 
+ 
+ 
+Claims History – Last 3 years 
+ 
+ 
+ 
+Claim 
+# 
+Date of 
+Loss 
+Date 
+Reported 
+Location Description of Loss Status Amount 
+Paid 
+Amount 
+Incurred 
+Total 
+Incurred 
+245091 09/10/2023 09/11/2023 123 Penny Lane, 
+Springfield, IL, 
+62629, USA 
+Water damage in break room 
+due to burst pipe. 
+Closed $12,500.00 $0.00 $12,500.00 
+267822 01/25/2024 01/26/2024 123 Penny Lane, 
+Springfield, IL, 
+62629, USA 
+Minor exterior wind damage to 
+signage. 
+Closed $2,100.00 $0.00 $2,100.00 
+289014 11/05/2025 11/05/2025 123 Penny Lane, 
+Springfield, IL, 
+62629, USA 
+Small oAice fire in suite 400, 
+extinguished by sprinklers. 
+Open $45,000.00 $25,000.00 $70,000.00 
+Grand Totals (All Policies Listed) 
+Total Claims 
+Total Amount Paid 
+Total Reserves 
+Total Incurred Losses 
+3 
+$59,600.00 
+$25,000.00 
+$84,600.00 
+All values and claim information are correct to the best of my knowledge and belief as of the valuation date.
