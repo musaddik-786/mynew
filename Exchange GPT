@@ -1,3 +1,38 @@
+Now I also have to check whehter the form is SOV
+
+
+(just for your reference below is the sample content that SOV has)
+STATEMENT/SCHEDULE OF VALUES ACORD 139 (1/96)
+
+
+
+Applicable causes of loss 
+
+Basic, Earthquake, Flood
+
+(below it is a table just for your understanding gpt)
+
+CLASS CODE LOC # BLDG # DESCRIPTION AND LOCATION OF PROPERTY ACV/ RC 1 SUBJECT 2 100% VALUES RATE OR LOSS COST 3 PREMIUM
+
+
+
+1(value under LOC column)2850 S. Delaware St. San Mateo, CA 94403 (so this is udercolumn " DESCRIPTION AND LOCATION OF PROPERTY ")
+
+35000000 ((so this is udercolumn "100% VALUES RATE" )
+
+
+
+(and so on, like there will be more rows 2nd third along with its data)
+
+
+
+
+
+
+
+
+
+
 Earlier I had to check if the form was acord or not acord and according to that the below prompt was working correct, but this time I also have to check if the form is LossRun
 so below is my current prompt
 
