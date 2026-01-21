@@ -1,4 +1,4 @@
-Now I also have to check whehter the form is SOV
+Now apart from lossrun and Acord, I also have to check whehter the form is SOV, and now the NonAcord definition should be changed as now for the quote document it should be considered NonAcord
 
 
 (just for your reference below is the sample content that SOV has)
@@ -23,6 +23,95 @@ CLASS CODE LOC # BLDG # DESCRIPTION AND LOCATION OF PROPERTY ACV/ RC 1 SUBJECT 2
 
 
 (and so on, like there will be more rows 2nd third along with its data)
+
+
+
+(just for your reference below is the sample content that Quote form has)
+# Property Detail Report — Cruise Resort   
+Sunflower Hotel Group LLC   
+100 Harbor View Drive, Seabreeze, FL 33101 --- 
+## Executive summary 
+This report provides a comprehensive property overview for underwriting Business 
+Interruption and Contingent BI coverage for Cruise Resort. ACORD 125 and supporting 
+documentation are referenced and available for review. The report summarizes property 
+attributes, operations, critical systems, exposures, recent loss history, and recommended 
+underwriting items. --- 
+## Property identification - Named insured: Sunflower Hotel Group LLC (dba Cruise Resort)   - Location: 100 Harbor View Drive, Seabreeze, FL 33101, USA   - Parcel size: 4.2 acres (site area with landscaped grounds, beach access, and private 
+dock)   - Year constructed: 2008   - Major renovation: 2019 (lobby, HVAC replacement, pool decking)   - Number of floors: 8   - Number of guest rooms: 240 keys   - Guest room mix: standard suites, one- and two-bedroom suites, select executive suites --- 
+## Property description & construction - Primary construction: reinforced concrete and structural steel frame with masonry 
+exterior finish.   - Floor construction: concrete slab-on-grade and reinforced concrete decks.   - Roof: built-up membrane roof system (2019 partial overlay) with routine maintenance 
+program.   - Basements / lower levels: mechanical rooms, dry storage, service corridors; no guest 
+lodging in below-grade areas.   - Site improvements: pool decks, two outdoor pools, spa, fitness center, paved driveways 
+and drop-off, landscaped open spaces, walkways, and a private dock with eight guest 
+berths.   - Accessibility: main vehicular access from Harbor View Drive; service drive and separate 
+staff/ deliveries access from Marina Way. --- 
+## Occupancy & operations - Primary use: full-service resort and hospitality operations with accommodation, food & 
+beverage, banquet & meeting facilities, spa, fitness center, retail concessions, and limited 
+marina services.   - Revenue drivers: room revenue, outlets (three restaurants, two bars), banquets/events, 
+spa services, marina guest fees, retail.   - Average annual occupancy: 68% (rolling 12-month average).   - Seasonal variation: higher occupancy in high season (Nov–Apr) with peak banquet 
+bookings Nov–Mar. --- 
+## Schedule of values — insured values (summary) - Buildings & structural improvements: $85,000,000   - Contents / FF&E: $15,000,000   - Total insured value (TIV): $100,000,000 
+High-level itemization (for underwriting reference) - Guest suites & structural improvements: $62,000,000   - Public areas, lobby, F&B & back-of-house structures: $12,500,000   - Building services & mechanical systems: $3,500,000   - Pool, decks, site improvements & landscaping: $2,000,000   - Dock & marina structures: $1,000,000   - FF&E (furniture, fixtures & equipment): $12,000,000   - Misc contents, small tools, operating supplies: $6,000,000 --- 
+## Critical building systems - HVAC: central chilled water plant with packaged rooftop units for public spaces; HVAC 
+major components replaced in 2019. Preventive maintenance through CMMS.   - Electrical: main service rated at 2,500 kVA; distribution includes emergency circuits for 
+life-safety systems. On-site automatic transfer switch for generator tie-in.   - Emergency power: diesel generator sized to support life-safety systems, fire pumps, 
+selected essential loads and partial POS/IT systems; weekly test schedule documented.   - Fire protection: full wet-pipe automatic sprinkler system throughout guest and public 
+areas; addressable fire alarm panel with central station monitoring. On-site fire pump and 
+two hydrants within 100 feet of the building. Quarterly and annual test logs maintained.   - Kitchen fire protection: commercial kitchen hood suppression systems with regular 
+servicing documented.   
+- Plumbing: domestic hot water plant and booster pumps; backflow prevention devices 
+installed where required.   - Elevators: two passenger elevators and one service elevator with annual inspection and 
+maintenance contracts in place.   - Life-safety: emergency lighting, illuminated exit signage, ADA egress provisions, 
+evacuation plans posted. --- 
+## Security & monitoring - Security staff: 24/7 on-site security team covering guest-facing and back-of-house areas.   - Electronic access: key-card access for guest room floors and restricted staff areas.   - CCTV: integrated digital video surveillance across public areas, front-drive, perimeter and 
+service yards; retention policy documented.   - Guest safety measures: pool lifeguard program seasonally staffed; signage and 
+compliance with local health & safety codes for aquatic facilities. --- 
+## Utilities & third-party dependencies (contingent BI relevance) - Power provider: Seabreeze Utilities Authority (primary). On-site generator covers life
+safety and partial operational loads.   - Water & sewer: Seabreeze Water & Waste (municipal).   - Internet / Telecom / POS / Booking connectivity: Maritime Communications Inc. (primary 
+ISP handling online booking, PMS connectivity and POS communications). Redundant ISP 
+vendor contract under review.   - Laundry / linens: Seabreeze Linen Co. (off-site vendor).   - Food/beverage suppliers: regional distributors with standard lead times; multiple vendor 
+relationships for key items.   
+- Excursion vendors / marina operators: licensed third-party operators provide guest 
+excursions; vendor agreements in place. --- 
+## Marina specifics - Dock: fixed dock with eight guest berths for visiting private craft.   - Ownership: dock owned and maintained by the resort.   - Fueling: no on-site fueling; guests refuel at adjacent full-service marina.   - Marine operations: third-party licensed operators run excursions under vendor 
+agreement; hull/boat physical damage not currently insured under property program 
+(vendor responsibility confirmed in contracts). --- 
+## Maintenance, inspections & risk controls - Preventive maintenance: computerized maintenance management system (CMMS) logs 
+routine HVAC, kitchen hood, sprinkler and generator testing.   - Life-safety testing: quarterly sprinkler tests, annual fire pump test, monthly fire alarm 
+tests and annual full alarm inspection with vendor certificates on file.   - Vendor controls: contractor insurance requirements (minimum $2M GL) and certificate 
+management process.   - Business continuity: documented Business Continuity Plan (BCP) and Emergency Action 
+Plan (EAP); off-site backups for reservations and guest records; periodic tabletop exercises 
+with local emergency services.   - Staff training: annual fire/evacuation drills, food safety certification for F&B managers, 
+f
+irst-aid/CPR for supervisory staff. --- 
+## Recent loss history (time-element & property) - 2024: kitchen exhaust grease fire — smoke damage to adjacent areas; property repair and 
+limited closure of kitchens; BI & partial extra expense paid covering 7 days; time-element 
+approx. $250,000.   - 2022: water intrusion from failed domestic line in lower-level storage — contents damage 
+and short supply interruption; BI payment for 3 days approx. $120,000.   - 2025 (YTD): pool area slip & fall remediation and temporary closure; minor BI impact 
+approx. $15,000.   - Loss-run reports and claim detail files available on request (attached in submission 
+packet). --- 
+## Exposures & underwriting considerations - Time-element sensitivity: significant reliance on room revenue and banquet/event 
+income; prolonged outage during peak season would materially impact revenues.   - Third-party dependency: booking engine/CRS and primary ISP represent key contingent BI 
+exposures; vendor outage or cyber incident could materially affect reservations flow.   - Marina & vendor risk: dock exposures and excursion vendors introduce potential liability 
+and service interruption considerations; vendor contract review advised.   - Flood & windstorm considerations: coastal location increases exposure to storm surge 
+and named storm perils; review of flood zone and elevation certificate recommended.   - Utility interruption: municipal power or telecom failures may cause service interruption 
+claims; redundancy and SLAs are relevant for contingent BI wording. --- 
+## Attachments included with this report 
+- ACORD 125 (completed)   - Property Detail Report (this document)   - Site plan and floor plan PDF: CruiseResort_SiteFloorPlans.pdf   - Schedule of values (detailed Excel): CruiseResort_SOV.xlsx   - Recent loss runs (carrier statements): CruiseResort_LossRuns_5yrs.pdf   - Maintenance & test logs (selected): CruiseResort_MaintenanceLogs.pdf   - Vendor list & key contracts (redacted): CruiseResort_VendorList_Contracts.pdf   - Photos (high-level): Exterior_MainFacade.jpg, Lobby_Main.jpg, Pool_Aerial.jpg, 
+Dock_View.jpg, Ballroom_Main.jpg --- 
+## Items requested for underwriting to complete BI / Contingent BI assessment - Monthly revenue by department (rooms, F&B, banquets, spa, marina/other) for last 36 
+months.   - Monthly payroll detail and payroll continuation preferences.   - Profit & Loss statements for last three fiscal years and interim YTD.   - Business Continuity Plan and IT disaster recovery documentation (including off-site 
+backup schedule and tests).   - List of named key suppliers, dependent properties and service providers with SLAs and 
+estimated time-to-repair.   - Copies of marina vendor agreements and excursion operator certificates of insurance.   - Elevation certificate and flood zone confirmation for flood exposure assessment (if 
+requested).   - Recent BI worksheets or underwriting questionnaires completed, if the insurer prefers a 
+specific format. --- 
+## Recommended endorsements / policy considerations (for underwriter review) - Contingent BI wording to include named supplier and dependent property coverage with 
+clearly defined waiting period treatments for utilities, suppliers and telecom outages.   - Extra Expense broadening to ensure reopening costs and partial operations support.   - Civil Authority extension including ingress/egress where applicable.   - Payroll continuation endorsement for agreed period (recommendation: review market 
+options for 90–180 days).   - Water damage sublimits review and potential splash/water backup endorsements based 
+on municipal sewer service and onsite sump protection.   - Ordinance or Law coverage for increased costs related to reconstruction or code 
+upgrades after loss.   - Consider separate review for marina/hull exposures and vendor-required liability 
+placements. --- 
+## Broker & property contacts - Broker: Olivia Park — Senior Hospitality Broker, Meridian Shoreline Insurance Partners   - Email: olivia.park@meridianship.com   - Phone: +1 (555) 214-7802   - Property contact: Marcus Reyes — General Manager, Cruise Resort   - Email: m.reyes@cruiseresort.com   - Phone: +1 (555) 321-4400
 
 
 
