@@ -1,477 +1,68 @@
-now i also want inspection report classification as well 
+prompt = f"""
+You are an expert in insurance documentation and intelligent document processing.
 
-below is the content of it there are 4 sample content of inspection report so only consider the unique once so that if i send any inspection report apart from below once than also it should 
-classify correctly 
+Your task is to classify a given insurance-related document into EXACTLY ONE of the following categories:
 
+1. ACORD
+2. SOV
+3. LOSS_RUN
+4. INSPECTION_REPORT
+5. NON_ACORD
 
-1st content sample
+Definitions:
 
-Commercial Property Inspection Report – Nexora 
-Systems 
-Report ID: CPIR-2026-001 
-Inspection Date: December 12th, 2025 
-Prepared by: William Grey – Prime Brokers Ltd. 
-1. Broker & Insured Details 
-Broker Name 
-Broker Firm 
-Broker Email 
-Broker Phone 
-Applicant (Named Insured) 
-Mailing Address 
-Effective Inception Date Requested 
-Effective Expiry Date Requested 
-Policy Type 
-2. Location & Premises 
-William Grey 
-Grey Risk & Partners, LLC 
-william.grey@prime.com 
-+1 (312) 555-0147 
-Nexora Systems 
-123 Penny Lane, Springfield, IL 62629, USA 
-01/01/2026 
-01/01/2027 
-Commercial Property  
-Property Address: 123 Penny Lane, Springfield, IL 62629, USA 
-Site Description: 
-The subject location is a standalone commercial building situated on Penny Lane in a mixed-use 
-corridor of Springfield, IL. The site has direct street frontage with two curb cuts allowing 
-ingress/egress to a surface parking lot. Adjacent occupancies are a small retail strip to the east 
-and a two-story professional office to the west. Rear exposure is an alley/service lane. No 
-apparent flood-control features observed on-site. 
-3. Building & COPE Summary 
-Construction Class (ISO IBC) 
-Year Built / Year Renovated 
-Number of Stories / Height 
-Total Square Footage (Gross) 
-Primary Occupancy 
-Secondary Occupancy 
-Public Protection Class (PPC) 
-Hydrant Distance 
-Distance to Responding Station 
-Roof System 
-Exterior Walls 
-Floor 
-Windows/Glazing 
-Interior Finish 
-Sprinkler Protection 
-Fire Alarm 
-Utilities 
-TBD – Likely Class 2 (Joisted Masonry) or 
-Class 5 (Modified Fire Resistive) – confirm 
-with as-builts 
-Built: 2004 | Renovations: 2019 HVAC & Roof 
-Overlay  
-1 story / ~18 ft eave  
-± 12,500 SF (estimate – to verify by 
-BOMA/plan) 
-Light retail / professional office (mixed) 
-Storage (incidental) 
-PPC 3–4 (est.) – subject to local fire district 
-confirmation 
-~250–400 ft on Penny Lane (visual estimate; 
-verify) 
-~1.8 miles (drive) – verify district and staffing 
-Single-ply TPO over rigid insulation; partial 
-overlay 2019  
-CMU/block with brick veneer (street 
-elevation)  
-Concrete slab-on-grade 
-Aluminum storefront at front elevation; 
-tempered safety glazing at entries 
-Gypsum on metal studs; acoustic tile ceiling 
-Dry system in utility chase only; main floor 
-currently Non-Sprinklered 
-Addressable, monitored 
-Electric and gas – separate metering 
-4. Life Safety & Fire Protection 
-Summary (paragraph): The premises demonstrates generally adequate life-safety features for a 
-light retail/office occupancy. Means of egress appear compliant with illuminated exit signage 
-and battery-backed emergency lighting; however, documentation of testing and maintenance 
-was not available at the time of inspection. Fire extinguisher coverage appears spaced ~75 ft 
-travel distance, but tags indicate mixed service dates and should be normalized. Recommend 
-confirming alarm monitoring certificate and conducting an annual fire drill as applicable. 
-Automatic Sprinkler 
-Standpipe 
-Fire Alarm System 
-Smoke/Heat Detection 
-Portable Extinguishers 
-Emergency Lighting 
-Exit Signage 
-Egress 
-5. Security & Crime Prevention 
-No full building sprinkler. Consider retrofit for 
-credits if storage/use evolves. 
-N/A. 
-Addressable, reportedly central-station 
-monitored – verify current UL certificate. 
-Ceiling-mounted detectors in 
-corridors/common areas (spot check). 
-ABC 10 lb; mixed service dates; ensure 
-monthly checks & annual maintenance. 
-Present; confirm functional tests and battery 
-replacements. 
-Illuminated; ensure photoluminescent 
-backup or battery as required. 
-Two marked exits; paths generally clear; 
-verify door hardware and panic devices. - Access control: Cylindrical locks with restricted keyway; consider keypad or card access for 
-after-hours control. - Intrusion alarm: Motion and perimeter contacts. Ensure cellular backup. - CCTV: 6 IP cameras covering entries/parking; storage 30 days. - Lighting: LED wall packs and pole lights in lot; recommend photocell + timer audit to reduce 
-dark spots. 
-6. Utilities & Critical Systems 
-Electrical 
-Transformers 
-Natural Gas 
-Water 
-Sewer 
-HVAC 
-IT/Comms 
-7. Roof & Building Envelope 
-200A–400A, 120/208V; panels labeled; no 
-obvious double-lugging. 
-Pad-mount utility transformer at rear 
-easement (utility-owned). 
-Metered service; lockable valve; combustion 
-air provisions appear adequate. 
-Municipal; backflow preventer present. 
-Municipal. 
-Packaged rooftop units (RTUs) ~2019; 
-recommend bi-annual PM and filter changes. 
-CAT6 distribution; ISP fiber handoff. 
-Roof Condition (free-form): The TPO membrane appears in good condition with intact seams; 
-isolated ponding noted near the southwest corner. Roof drains present; recommend cleaning 
-debris and documenting semi-annual maintenance. Parapet coping is secure; no active leaks 
-reported. Consider adding hail guards to RTU coils. 
-Roof Age 
-Roof Deck 
-Insulation 
-Skylights 
-Exterior Walls 
-Openings 
-~7 years (overlay in 2019) 
-Metal deck over steel joists (inferred; verify). 
-Rigid polyiso. 
-None observed. 
-CMU with brick veneer; expansion joints 
-serviceable. 
-Aluminum storefront; door closers functional 
-(spot check). 
-8. Occupancy & Operations 
-Operations Narrative (paragraph): Tenant mix consists of a professional services office and a 
-boutique retail shop. No high-hazard operations were observed. Limited stock in back-room 
-shelving under 8 ft; ordinary combustibles only. No HAZMAT storage beyond consumer-quantity 
-aerosols/cleaners. Deliveries via rear roll-up door; frequency 2–3/week. 
-Hours of Operation 
-Employees on Peak Shift 
-Hot Work 
-Housekeeping 
-Waste Management 
-Mon–Sat 8:00–20:00; Sun 10:00–16:00 
-15–22 (combined tenants) 
-None routine; require permit if contractors 
-engaged. 
-Good; keep 18 in. clearance below sprinklers 
-if installed later. 
-2-yd dumpster, metal lid; located 25 ft from 
-building (recommend 30 ft+).
+ACORD:
+A standardized insurance form published by ACORD (Association for Cooperative Operations Research and Development),
+used for applications, certificates, or evidence of insurance.
+These documents usually:
+- Contain “ACORD” followed by a form number (e.g., ACORD 25, ACORD 27, ACORD 125, ACORD 130)
+- Have structured fields such as Producer, Insured, Certificate Holder, Policy Number
+- Summarize coverage or serve as an application or certificate
 
+SOV (Schedule / Statement of Values):
+A document that lists insured property values, usually in a tabular format.
+These documents usually:
+- Contain titles like “Schedule of Values” or “Statement of Values”
+- Include location-wise or building-wise property descriptions and values
+- Have columns such as Location, Building, Description, ACV, RC, 100% Values, Rates
+- May reference or be labeled as ACORD 139
+- Focus on property valuation, not coverage certification
 
-2nd content sample
-Commercial Property Inspection Report – GreenGen Realty 
-Report ID: CPIR-2026-003 
-Inspection Date: December 12th, 2025 
-Prepared by: William Grey – Prime Brokers Ltd. 
-1. Broker & Insured Details 
-Broker Name 
-Broker Firm 
-Broker Email 
-Broker Phone 
-Applicant (Named Insured) 
-Mailing Address 
-Effective Inception Date Requested 
-Effective Expiry Date Requested 
-Policy Type 
-2. Location & Premises 
-William Grey 
-Prime Brokers Ltd. 
-william.grey@prime.com 
-+1 (312) 555-0147 
-GreenGen Realty 
-100 East Avenue, New York City, New York, 
-USA 
-01/01/2026 
-01/01/2027 
-Commercial Property 
-Property Address: 100 East Avenue, New York City, New York, USA 
-Site Description: 
-The subject property is a mixed-use commercial real estate building located in a dense urban 
-corridor of New York City. The area consists predominantly of mid-rise office structures, retail 
-shops, and municipal buildings. The premises demonstrates strong infrastructure availability, 
-excellent fire response access, and proximity to hydrants typical of NYC’s built environment. No 
-visible flood-control issues were observed, though local flood maps should be consulted for 
-Manhattan zoning compliance. 
-3. Building & COPE Summary 
-Construction Class (ISO IBC) 
-Year Built / Year Renovated 
-Number of Stories / Height 
-Total Square Footage (Gross) 
-Primary Occupancy 
-Secondary Occupancy 
-Public Protection Class (PPC) 
-Hydrant Distance 
-Distance to Responding Station 
-Roof System 
-Exterior Walls 
-Floor 
-Windows/Glazing 
-Interior Finish 
-Sprinkler Protection 
-Fire Alarm 
-Utilities 
-4. Life Safety & Fire Protection 
-Likely Class 1–2 (Fire Resistive / Non
-Combustible) – confirm building records 
-Built: 1998 | Major Renovation: 2018 energy
-efficiency upgrades 
-8 stories / approx. 96 ft 
-± 110,000 SF (building) | Leased units 
-variable 
-Office + partial retail (ground level) 
-Storage and mechanical rooms 
-PPC 1 – New York City 
-~75–100 ft along East Avenue 
-~0.3 miles (FDNY station nearby) 
-Modified bitumen roof with reflective coating 
-Reinforced concrete with insulated façade 
-panels 
-Reinforced concrete slab 
-Commercial curtainwall glazing 
-Gypsum board partitions; suspended acoustic 
-ceiling 
-Fully sprinklered (wet system) 
-Central-station monitored, addressable 
-Municipal electric/water; central boiler & 
-cooling tower 
-Life-safety features at the premises reflect typical NYC commercial building standards. Exit 
-signage is abundant and illuminated. Sprinkler and standpipe systems are properly installed and 
-appear well-maintained. Fire extinguishers were observed on each floor with current inspection 
-tags. Smoke detection coverage aligns with office occupancy needs. Annual inspections should 
-be documented and retained for underwriting. 
-Automatic Sprinkler 
-Standpipe 
-Fire Alarm System 
-Smoke/Heat Detection 
-Portable Extinguishers 
-Emergency Lighting 
-Exit Signage 
-Egress 
-5. Security & Crime Prevention 
-Full-building wet sprinkler system 
-Present, maintained by building management 
-Addressable, central-station monitored 
-Installed throughout corridors and tenant 
-suites 
-ABC type; inspections up to date 
-Operational; tested regularly 
-Clear, illuminated, fully code-compliant 
-Multiple exit routes per floor; unobstructed 
-paths - Electronic access control for main and tenant entrances. - CCTV monitoring in lobby, elevators, and building perimeter. - On-site building security personnel (daytime). - Adequate exterior lighting supporting nighttime visibility. 
-6. Utilities & Critical Systems 
-Electrical 
-Transformers 
-Natural Gas 
-Water 
-Sewer 
-HVAC 
-Commercial service with multiple distribution 
-panels 
-Utility-owned, street-level installation 
-Used for central heating; meters in utility 
-room 
-Municipal supply 
-Municipal 
-Central system with cooling tower and air 
-handlers 
-IT/Comms 
-7. Roof & Building Envelope 
-Fiber-optic infrastructure; CAT6 distribution 
-in suites 
-Roof conditions appear sound with a recently applied reflective top layer. No visible damage or 
-ponding was noted during inspection. Exterior envelope made of insulated concrete panels and 
-curtainwall system provides strong energy efficiency and wind resistance. 
-Roof Age 
-Roof Deck 
-Insulation 
-Skylights 
-Exterior Walls 
-Openings 
-8. Occupancy & Operations 
-8 years (renovated 2018) 
-Concrete deck 
-Rigid insulation, energy-rated 
-None 
-Insulated concrete façade + curtainwall 
-glazing 
-Aluminum-framed commercial-grade glazing 
-GreenGen Realty manages multiple floors of leased office space, serving tenants in professional 
-services, finance, and retail. No hazardous materials or industrial processes occur onsite. 
-Building management conducts regular maintenance, and daily janitorial services maintain 
-strong housekeeping standards. 
-Hours of Operation 
-Employees on Peak Shift 
-Hot Work 
-Housekeeping 
-Waste Management 
-Mon–Fri 7:00–20:00 
-Variable across tenants (approx. 150–200) 
-Not typical; permit required for contractors 
-Very good; daily cleaning schedule 
-Handled by contracted city services; stored 
-internally until pickup 
+LOSS_RUN:
+A document that summarizes historical insurance claims.
+These documents usually:
+- Contain phrases like “Loss Run Report”, “Claims History”, or “Valuation Date”
+- List claim numbers, dates of loss, descriptions, paid amounts, reserves, and total incurred losses
+- Cover a historical time period
+- Focus on past loss experience rather than property condition
 
+INSPECTION_REPORT:
+A document created after a physical or on-site property inspection for underwriting or risk assessment.
+These documents usually:
+- Contain titles such as “Inspection Report” or similar
+- Include inspection dates, report IDs, broker or inspector details
+- Describe property condition, construction, occupancy, protection, and exposure (COPE)
+- Include sections on building systems, life safety, fire protection, security, utilities, roof, and operations
+- Provide observations, compliance notes, and risk improvement recommendations
+- Focus on current physical condition and risk characteristics of the property
 
+NON_ACORD:
+Any insurance-related document that is NOT an ACORD form, SOV, Loss Run, or Inspection Report.
+This includes:
+- Quote documents
+- Property detail reports
+- Underwriting summaries
+- Exposure analyses
+- Proposals, narratives, internal reports, or supporting documentation
+- Documents that reference ACORD forms but are not themselves ACORD forms
 
-3rd cpntent sample
+Document Content:
+{text[:2000]}
 
-Commercial Property Inspection Report – HighTech Solutions 
-Report ID: CPIR-2026-002 
-Inspection Date: December 12th, 2025 
-Prepared by: William Grey – Prime Brokers Ltd. 
-1. Broker & Insured Details 
-Broker Name 
-Broker Firm 
-Broker Email 
-Broker Phone 
-Applicant (Named Insured) 
-Mailing Address 
-Effective Inception Date Requested 
-Effective Expiry Date Requested 
-Policy Type 
-2. Location & Premises 
-William Grey 
-Prime Brokers Ltd. 
-william.grey@prime.com 
-+1 (312) 555-0147 
-HighTech Solutions 
-456 Elm St, Suite 200, Los Angeles, CA 90001 
-01/01/2026 
-01/01/2027 
-Commercial Property 
-Property Address: 456 Elm St, Suite 200, Los Angeles, CA 90001 
-Site Description: 
-The subject premises is an office suite located on the second floor of a mid-rise commercial 
-building in downtown Los Angeles. Surrounding occupancies include technology offices, 
-consulting firms, and light professional service businesses. The property benefits from strong 
-municipal infrastructure, nearby hydrants, and good roadway access. No visible flood-control 
-issues were noted, and the building appears well-maintained with professional management. 
-3. Building & COPE Summary 
-Construction Class (ISO IBC) 
-Year Built / Year Renovated 
-Number of Stories / Height 
-Total Square Footage (Gross) 
-Primary Occupancy 
-Secondary Occupancy 
-Public Protection Class (PPC) 
-Hydrant Distance 
-Distance to Responding Station 
-Roof System 
-Exterior Walls 
-Floor 
-Windows/Glazing 
-Interior Finish 
-Sprinkler Protection 
-Fire Alarm 
-Utilities 
-Class 1–2 (Fire Resistive / Joisted Masonry) – 
-to confirm with building management 
-Built: 2008 | Renovations: 2020 lobby + 
-systems update 
-6 stories / ~72 ft 
-± 85,000 SF (entire building) | Suite ~12,500 
-SF 
-Technology office suites 
-IT equipment room (low hazard) 
-Likely PPC 2 for central Los Angeles 
-~150 ft on Elm St 
-~0.6 miles (Los Angeles Fire Department 
-Station – downtown) 
-Built-up roof system with reflective coating 
-(2020) 
-Reinforced concrete / curtainwall glazing 
-Reinforced concrete 
-Commercial-grade glass curtainwall 
-Gypsum walls; acoustic tile ceiling 
-Fully sprinklered building (wet system) 
-Addressable system; central-station 
-monitored 
-Electric and water provided via municipal 
-services; fiber internet access 
-4. Life Safety & Fire Protection 
-The premises exhibits strong life-safety compliance consistent with modern Los Angeles 
-commercial buildings. All exits are clearly marked, and emergency lighting is installed 
-throughout corridors. Fire extinguishers are current on inspection, and the sprinkler system 
-appears well-maintained. Fire alarm pull stations and smoke detectors are appropriately 
-distributed across the suite. Verification of the alarm monitoring certificate is recommended to 
-support underwriting documentation. 
-Automatic Sprinkler 
-Standpipe 
-Fire Alarm System 
-Smoke/Heat Detection 
-Portable Extinguishers 
-Emergency Lighting 
-Exit Signage 
-Egress 
-5. Security & Crime Prevention 
-Full-coverage wet system throughout the 
-building. 
-Present in stairwells; maintained by building 
-management. 
-Addressable system; central-station 
-monitored. 
-Installed in corridors and suite common 
-areas. 
-ABC extinguishers; service dates current. 
-Operational; maintained by building 
-management. 
-Clearly illuminated; compliant with code. 
-Multiple exits from suite; paths clear. - Electronic card-based access control at main entry doors. - Intrusion alarm system covering suite access points. - CCTV cameras in building lobby, parking, and entry corridors. - Well-lit surroundings; motion-activated lighting in hallways. 
-6. Utilities & Critical Systems 
-Electrical 
-Transformers 
-Natural Gas 
-Water 
-Sewer 
-HVAC 
-IT/Comms 
-7. Roof & Building Envelope 
-Commercial-grade service; panels controlled 
-by building management. 
-Utility-owned; located externally. 
-Not applicable for suite-level use. 
-Municipal water supply. 
-Municipal. 
-Central HVAC system; VAV units for suite. 
-Fiber-optic backbone; CAT6 internal 
-distribution. 
-The building roof is in good condition following a 2020 refurbishment. No known leaks have 
-been reported. Exterior envelope consists of reinforced concrete with a glazed curtainwall 
-system providing strong wind and seismic resistance. 
-Roof Age 
-Roof Deck 
-Insulation 
-Skylights 
-Exterior Walls 
-Openings 
-8. Occupancy & Operations 
-6 years (refurbished 2020) 
-Reinforced concrete deck 
-Rigid commercial insulation 
-None 
-Concrete + curtainwall glazing 
-Commercial aluminum-framed curtainwall 
-windows 
-HighTech Solutions operates as a technology and software development firm. Operations are 
-low hazard, consisting of office work, data processing, and limited IT equipment storage. No 
-hazardous materials or industrial processes occur onsite. 
-Hours of Operation 
-Employees on Peak Shift 
-Mon–Fri 8:00–19:00 
-40–50
+Reply with ONLY ONE word from the following options:
+ACORD
+SOV
+LOSS_RUN
+INSPECTION_REPORT
+NON_ACORD
+"""
