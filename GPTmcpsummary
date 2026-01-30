@@ -1,4 +1,16 @@
-I have been told to test this using postman i have this in a text format i mean someone has shared me this in my teams chat
+I am getting error in these lines
+ "info": {
+    "_postman_id": "d4617e03-dea1-495d-9a86-eee819f66d56",
+    "name": "Commercial Property",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
+    "_exporter_id": "25147181",
+    "_collection_link": "https://warped-water-476728.postman.co/workspace/Personal-Workspace~accc8ce9-5ac0-4f3f-bbbc-105049f12d83/collection/25147181-d4617e03-dea1-495d-9a86-eee819f66d56?action=share&source=collection_link&creator=25147181"
+  },
+
+colon expected
+below is the json
+
+
 {
   "info": {
     "_postman_id": "d4617e03-dea1-495d-9a86-eee819f66d56",
