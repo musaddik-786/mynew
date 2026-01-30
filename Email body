@@ -1,3 +1,102 @@
+prompt = f"""
+You are an expert in insurance documentation and intelligent document processing.
+
+Your task is to classify a given insurance-related document into EXACTLY ONE of the following categories:
+
+1. ACORD
+2. SOV
+3. LOSS_RUN
+4. INSPECTION_REPORT
+5. PROPERTY_DETAILED_REPORT
+6. SUBMISSION_DOCUMENT
+
+Definitions:
+
+ACORD:
+A standardized insurance form published by ACORD (Association for Cooperative Operations Research and Development),
+used for applications, certificates, or evidence of insurance.
+These documents usually:
+- Contain structured ACORD layouts and standardized fields
+- Include sections such as Producer, Insured, Certificate Holder, Policy Number
+- Serve as official insurance applications, certificates, or evidence forms
+
+SOV (Schedule / Statement of Values):
+A document that lists insured property values, primarily for property rating and underwriting.
+These documents usually:
+- Are titled “Schedule of Values” or “Statement of Values”
+- Present location-wise or building-wise values in tabular format
+- Include columns such as Location, Building, Description, ACV, RC, 100% Values, Rates
+- May be labeled as ACORD 139
+- Focus on valuation, not narrative underwriting analysis
+
+LOSS_RUN:
+A document that summarizes historical insurance claims experience.
+These documents usually:
+- Are titled “Loss Run Report” or similar
+- Include claim numbers, dates of loss, paid amounts, reserves, and total incurred
+- Cover prior policy periods
+- Focus on loss history rather than current property condition
+
+INSPECTION_REPORT:
+A document created after a physical or on-site property inspection for underwriting or risk evaluation.
+These documents usually:
+- Are titled “Inspection Report” or similar
+- Include inspection dates, report IDs, and inspector or broker details
+- Describe observed property condition, construction, occupancy, protection, and exposure (COPE)
+- Include sections on life safety, fire protection, security, utilities, roof, and operations
+- Provide observations and risk improvement recommendations
+- Focus on observed conditions at the time of inspection
+
+PROPERTY_DETAILED_REPORT:
+A comprehensive underwriting-focused document that provides an in-depth description of a property and its operations.
+These documents usually:
+- Contain extensive narrative sections describing construction, occupancy, operations, and critical systems
+- Include insured values, TIV breakdowns, and high-level valuation summaries
+- Describe HVAC, electrical, fire protection, security, utilities, third-party dependencies, and risk controls
+- Include underwriting considerations, exposures, and loss history summaries
+- Function as a detailed property profile rather than a formal submission package
+- Do NOT primarily present the document as a “submission” to a carrier
+
+SUBMISSION_DOCUMENT:
+A document assembled to formally present a risk to an insurer for underwriting, quotation, or binding.
+These documents usually:
+- Are explicitly titled or framed as “Underwriting Submission” or similar
+- Include broker details, producer codes, underwriting company information
+- Present requested terms, program structure, limits, valuation, and effective dates
+- Summarize the property, coverage intent, and underwriting rationale
+- May reference or attach other documents such as SOVs, Loss Runs, Inspection Reports, or Property Detailed Reports
+- Function as a submission package rather than a standalone property analysis
+
+Document Content:
+{text[:2000]}
+
+Reply with ONLY ONE word from the following options:
+ACORD
+SOV
+LOSS_RUN
+INSPECTION_REPORT
+PROPERTY_DETAILED_REPORT
+SUBMISSION_DOCUMENT
+"""
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 now we had these many classifictaions
 1. ACORD
 2. SOV
