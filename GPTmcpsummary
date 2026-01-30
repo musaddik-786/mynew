@@ -1,1005 +1,122 @@
-You’re right to pause and reset the mental model — let’s simplify and align everything with your real requirement:
-	•	Use file_name + summary → only for document type classification
-	•	Use first_page_text (full text from Form Recognizer) → for generating the detailed per-document summary for ACORD / Loss Run / SOV
-	•	Store that first_page_text in layout_summaries_result.json along with summary
-
-Below are full updated versions of all the files you showed, with minimal changes but correct logic.
-
-⸻
-
-1️⃣ summary_loader.py
-
-No change in logic here — this already returns full text in first_page_text.
-
-from dotenv import load_dotenv
-import os
-from azure.ai.formrecognizer import DocumentAnalysisClient
-from azure.core.credentials import AzureKeyCredential
-
-# Load environment variables from .env file
-load_dotenv()
-
-# Fetch variables
-endpoint = os.getenv("AZURE_FORMRECOG_ENDPOINT")
-key = os.getenv("AZURE_FORMRECOG_KEY")
-
-# Fail fast if missing
-if not endpoint:
-    raise ValueError("AZURE_FORMRECOG_ENDPOINT is not set. Check your .env file.")
-if not key:
-    raise ValueError("AZURE_FORMRECOG_KEY is not set. Check your .env file.")
-
-# Create the client using the key and endpoint
-client = DocumentAnalysisClient(endpoint=endpoint, credential=AzureKeyCredential(key))
-
-
-def load_summary_document(file_path: str) -> dict:
-    """
-    Extract ALL PAGES using Form Recognizer's prebuilt-read model.
-
-    Even though the return key is 'first_page_text',
-    we now return the FULL DOCUMENT TEXT (all pages) concatenated.
-    """
-    with open(file_path, "rb") as f:
-        poller = client.begin_analyze_document(
-            "prebuilt-read",
-            document=f
-        )
-        result = poller.result()
-
-    if not result.pages:
-        return {"first_page_text": ""}
-
-    all_pages_text_list = []
-    # Collect text for ALL pages
-    for page in result.pages:
-        page_lines = [line.content for line in page.lines]
-        page_text = "\n".join(page_lines)
-        all_pages_text_list.append(page_text)
-
-    # Combine everything into ONE string
-    all_pages_text = "\n\n".join(all_pages_text_list)
-
-    # Optional debug
-    print("ALL pages text (truncated to 500 chars):")
-    print(all_pages_text[:500])
-    print("\n---- END OF PREVIEW ----\n")
-
-    return {
-        "first_page_text": all_pages_text   # full text stored under this key
-    }
-
-
-⸻
-
-2️⃣ summary_storage_utils.py
-
-No change needed.
-
-import os
-import aiofiles
-from azure.storage.blob.aio import BlobServiceClient
-from azure.core.exceptions import ResourceNotFoundError
-
-from summary_service import AZURE_STORAGE_CONNECTION_STRING, _parse_blob_url
-
-
-async def download_blob_to_input_folder(blob_url: str, input_folder: str = "input") -> str:
-    """
-    Downloads the blob at blob_url into input_folder (root-level) preserving filename.
-    Returns the local path to the downloaded file.
-    """
-    if not AZURE_STORAGE_CONNECTION_STRING:
-        raise RuntimeError("AZURE_STORAGE_CONNECTION_STRING not set")
-
-    container, blob_path = _parse_blob_url(blob_url)
-    filename = os.path.basename(blob_path)
-    os.makedirs(input_folder, exist_ok=True)
-    local_path = os.path.join(input_folder, filename)
-
-    async with BlobServiceClient.from_connection_string(AZURE_STORAGE_CONNECTION_STRING) as service:
-        container_client = service.get_container_client(container)
-        blob_client = container_client.get_blob_client(blob_path)
-        try:
-            await blob_client.get_blob_properties()
-        except ResourceNotFoundError:
-            raise FileNotFoundError(f"Blob not found: container={container} blob={blob_path}")
-        stream = await blob_client.download_blob()
-        data = await stream.readall()
-
-    # write file async
-    async with aiofiles.open(local_path, "wb") as f:
-        await f.write(data)
-
-    return local_path
-
-
-⸻
-
-3️⃣ summary_service.py
-
-No change needed.
-
-import os
-from urllib.parse import urlparse, unquote
-from dotenv import load_dotenv
-
-load_dotenv()
-
-AZURE_STORAGE_CONNECTION_STRING = os.environ.get("AZURE_STORAGE_CONNECTION_STRING", "")
-
-
-def summary_require_env() -> None:
-    """Ensure required environment variables exist."""
-    if not AZURE_STORAGE_CONNECTION_STRING:
-        raise RuntimeError("Missing AZURE_STORAGE_CONNECTION_STRING in environment/.env")
-
-
-def _parse_blob_url(url: str) -> tuple[str, str]:
-    """
-    Parse an Azure Blob URL and return (container_name, blob_path).
-    Example URL:
-      https://account.blob.core.windows.net/output-results/folder/name.pdf
-    Returns:
-      ("output-results", "folder/name.pdf")
-    """
-    parsed = urlparse(url)
-    if not parsed.scheme.startswith("http"):
-        raise ValueError("url must be a valid http(s) Azure Blob URL.")
-
-    path = parsed.path.lstrip("/")
-    if "/" not in path:
-        raise ValueError("url must include both container and blob path.")
-    parts = path.split("/", 1)
-    container = parts[0]
-    blob_path = parts[1]
-    return unquote(container), unquote(blob_path)
-
-
-⸻
-
-4️⃣ summary_classifier.py
-
-Still used to create the short first-page summary.
-
-# classifier.py
-# INTEGRATED WITH CHINMAY'S CODE - Final
-from dotenv import load_dotenv
-import os
-from openai import AzureOpenAI  # Correct import for Azure OpenAI
-
-# Load environment variables
-load_dotenv()
-
-AZURE_OPENAI_ENDPOINT = os.getenv("AZURE_OPENAI_ENDPOINT")
-AZURE_OPENAI_API_VERSION = os.getenv("AZURE_OPENAI_API_VERSION")
-AZURE_OPENAI_API_KEY = os.getenv("AZURE_OPENAI_API_KEY")
-AZURE_OPENAI_CHAT_DEPLOYMENT = os.getenv("AZURE_OPENAI_CHAT_DEPLOYMENT")
-
-if not (
-    AZURE_OPENAI_ENDPOINT
-    and AZURE_OPENAI_API_VERSION
-    and AZURE_OPENAI_API_KEY
-    and AZURE_OPENAI_CHAT_DEPLOYMENT
-):
-    raise RuntimeError(
-        "Azure OpenAI env vars missing. Please set "
-        "AZURE_OPENAI_ENDPOINT, AZURE_OPENAI_API_VERSION, "
-        "AZURE_OPENAI_API_KEY and AZURE_OPENAI_CHAT_DEPLOYMENT"
-    )
-
-# Create Azure OpenAI client
-client = AzureOpenAI(
-    api_key=AZURE_OPENAI_API_KEY,
-    api_version=AZURE_OPENAI_API_VERSION,
-    azure_endpoint=AZURE_OPENAI_ENDPOINT,
-)
-
-
-def summarize_first_page(document_content: dict, file_name: str | None = None) -> str:
-    """
-    Use Azure OpenAI to summarize the *first page* of the document.
-
-    document_content is expected to come from load_summary_document() and contain:
-      - "first_page_text": str  # we store full text there now
-    """
-
-    first_page_text = document_content.get("first_page_text")
-    if not first_page_text:
-        first_page_text = document_content.get("text", "")
-
-    # Safety: limit size so we don't overload the prompt
-    first_page_text = first_page_text[:4000]
-
-    prompt = f"""
-You are an experienced Commercial Insurance Underwriter.
-Read the FIRST PAGE of the document and write a short, underwriting-focused
-summary in natural language. The summary should highlight whatever information
-is actually present that would help an underwriter. Do not mention document structure, do not
-reference page numbers, and do not include anything that is not explicitly
-supported by the text.
-Write the summary as a single short paragraph of 4–6 sentences, objective,
-clear, and focused only on the details visible in the text. 
-Always remember, Do not mention document structure, do not mention reference page numbers.
-# First page content:
-# \"\"\"{first_page_text}\"\"\"
-    """
-
-    response = client.chat.completions.create(
-        model=AZURE_OPENAI_CHAT_DEPLOYMENT,
-        messages=[{"role": "user", "content": prompt}],
-        max_tokens=256,
-        temperature=0.2,
-    )
-
-    try:
-        return response.choices[0].message.content.strip()
-    except Exception:
-        return getattr(response.choices[0].message, "content", "").strip()
-
-
-⸻
-
-5️⃣ newsummary.py (combined submission summary)
-
-No structural change needed; it still uses file_name + summary only.
-
-from dotenv import load_dotenv
-import os
-import json
-from Data_Filler import extract_filenames_and_summaries
-from Data_Filler import connect_to_blob, beautify_extracted_data
-from openai import AzureOpenAI  # Correct import for Azure OpenAI
-
-# Load environment variables
-load_dotenv()
-
-AZURE_OPENAI_ENDPOINT = os.getenv("AZURE_OPENAI_ENDPOINT")
-AZURE_OPENAI_API_VERSION = os.getenv("AZURE_OPENAI_API_VERSION")
-AZURE_OPENAI_API_KEY = os.getenv("AZURE_OPENAI_API_KEY")
-AZURE_OPENAI_CHAT_DEPLOYMENT = os.getenv("AZURE_OPENAI_CHAT_DEPLOYMENT")
-
-if not (
-    AZURE_OPENAI_ENDPOINT
-    and AZURE_OPENAI_API_VERSION
-    and AZURE_OPENAI_API_KEY
-    and AZURE_OPENAI_CHAT_DEPLOYMENT
-):
-    raise RuntimeError(
-        "Azure OpenAI env vars missing. Please set "
-        "AZURE_OPENAI_ENDPOINT, AZURE_OPENAI_API_VERSION, "
-        "AZURE_OPENAI_API_KEY and AZURE_OPENAI_CHAT_DEPLOYMENT"
-    )
-
-# Create Azure OpenAI client
-client = AzureOpenAI(
-    api_key=AZURE_OPENAI_API_KEY,
-    api_version=AZURE_OPENAI_API_VERSION,
-    azure_endpoint=AZURE_OPENAI_ENDPOINT,
-)
-
-
-def summarize_attachments(attachments: list[dict]) -> str:
-    """
-    attachments = list of dicts like:
-    [
-      {"file_name": "...pdf", "summary": "text...", "text": "full doc text"},
-      ...
-    ]
-    Only 'summary' is used here.
-    """
-
-    attachment_chunks = []
-    for item in attachments:
-        file_name = item.get("file_name", "unknown_file")
-        summary_text = item.get("summary", "")
-
-        chunk = f"FILENAME: {file_name}\nSUMMARY: {summary_text}"
-        attachment_chunks.append(chunk)
-
-    attachments_text = "\n\n".join(attachment_chunks)
-    attachments_text = attachments_text[:8000]  # simple safety limit
-
-    prompt = f"""
-You are an experienced Commercial Insurance Underwriter.
-
-You are given multiple attachment documents that belong to a SINGLE
-commercial insurance submission. For each document you only see:
-- the file name (which hints at document type, e.g. ACORD app, loss run, SOV)
-- a short summary of the contents.
-
-YOUR TASK:
-Produce ONE combined "Submission Summary" for the account that synthesizes
-all the information across all documents.
-
-VERY IMPORTANT RULES:
-1. Treat the file names and their summaries as the ONLY source of truth.
-   - You may use the file name to infer the general document type
-     (e.g. application, loss runs, SOV, schedule).
-   - Do NOT invent any new facts that are not clearly supported by
-     the summaries.
-2. Do NOT mention which document or file any detail came from.
-   - The final summary must read like a single coherent view of the account,
-     not a list of separate documents.
-3. Focus on underwriting-relevant information, such as:
-   - Named insured / client
-   - Locations and occupancy
-   - Operations / business activities
-   - Coverage dates and basic program structure
-   - Property values / limits / coinsurance (if mentioned)
-   - Key coverage features (causes of loss, notable exclusions)
-   - Loss history and major incidents
-   - Any other material hazards or special notes that appear in the summaries.
-
-STRUCTURE OF YOUR OUTPUT (USE THIS EXACT TEMPLATE):
-
-SUBMISSION SUMMARY  
-Client: [Client Legal Name]  
-Date: [Submission or Document Date]
-
-------------------------------------------------------------  
-1. SUBMISSION COVER LETTER / NARRATIVE  
-------------------------------------------------------------  
-✔ Exposure Description:  
-    - [Describe what the business does]  
-    - [Main operations / physical activities]  
-    - [Property details: construction, age, protection, sprinklers, etc.]  
-
-✔ Placement Strategy:  
-    - [Placement goals or program approach if evident]  
-
-✔ Renewal Highlights:  
-    - [Notable changes or updates if mentioned]  
-
-✔ Changes YOY:  
-    - [Any changes in exposure, values, operations, or loss experience]  
-
-✔ Additional Overview Details:  
-    - Effective Date: [Coverage start date]  
-    - Submission Type: [Renewal / New Business / Other]  
-    - Current Situation: [Reason for submission if stated]  
-
-------------------------------------------------------------  
-2. LOSS HISTORY PACKAGE  
-------------------------------------------------------------  
-✔ 5–10 Year Loss Runs:  
-    - [Summarize multi-year loss experience if available]  
-
-✔ Large Loss Details:  
-    - [Brief details on significant claims]  
-
-✔ Trends Analysis:  
-    - [Patterns in frequency/severity if evident]  
-
-✔ Summary of Loss History:  
-    - Status: [Clean / Losses Reported]  
-    - Summary: [1-sentence overview]  
-    - Major Incidents: [Largest incident if present]  
-
-------------------------------------------------------------  
-3. EXPOSURE DATA  
-------------------------------------------------------------  
-✔ COPE Information (Construction, Occupancy, Protection, Exposure):  
-    - [Building info, occupancy, protection systems]  
-
-✔ Statement of Values (SOV):  
-    - Total Insurable Value (TIV): $[Insert]  
-    - Building Limit: $[Insert]  
-    - Contents/BPP Limit: $[Insert]  
-    - Business Income: $[Insert]  
-
-✔ Financials:  
-    - [Any financial information if mentioned]  
-
-✔ CAT Worksheets:  
-    - [If any catastrophe/hazard info appears]  
-
-✔ Specialty Schedules:  
-    - [Any special schedules referenced]  
-
-✔ Additional Exposure Details:  
-    - Total Locations: [Insert]  
-    - Main Operations: [Insert]  
-    - Property Details: [Insert]  
-    - Deductible Requested: $[Insert]  
-
-------------------------------------------------------------  
-4. RISK REPORTS  
-------------------------------------------------------------  
-✔ Engineering Surveys:  
-    - [If referenced]  
-
-✔ Safety Audits:  
-    - [If referenced]  
-
-------------------------------------------------------------  
-5. COMPLIANCE DOCUMENTS  
-------------------------------------------------------------  
-✔ Signed Application Forms  
-✔ Declarations  
-✔ Warranties & Indemnities  
-
-✔ Attached Files Included in the Submission:  
-    - [List packaged documents, e.g., application, loss runs, SOV]  
-
-------------------------------------------------------------  
-
-ATTACHMENT SUMMARIES (file name followed by its summary):
-
-\"\"\" 
-{attachments_text}
-\"\"\"
-    """
-
-    response = client.chat.completions.create(
-        model=AZURE_OPENAI_CHAT_DEPLOYMENT,
-        messages=[{"role": "user", "content": prompt}],
-        max_tokens=512,
-        temperature=0.2,
-    )
-
-    try:
-        return response.choices[0].message.content.strip()
-    except Exception:
-        return getattr(response.choices[0].message, "content", "").strip()
-
-
-⸻
-
-6️⃣ Data_Filler.py — now also extracts text from JSON
-
-Here is the important change: include "text" from layout_summaries_result.json.
-
-import os
-import json
-import pandas as pd
-from io import BytesIO
-from azure.storage.blob import BlobServiceClient
-from typing import List, Dict, Any
-from summary_service import summary_require_env
-from summary_service import AZURE_STORAGE_CONNECTION_STRING, _parse_blob_url
-
-
-def extract_filenames_and_summaries(output_folder: str) -> List[Dict[str, Any]]:
-    """
-    Extracts file names, summaries, and raw text from the JSON file in the output folder.
-
-    Returns list of:
-      {
-        "file_name": "<file_name>",
-        "summary": "<summary>",
-        "text": "<full_text_or_first_page_text>"
-      }
-    """
-    result_file = os.path.join(output_folder, "layout_summaries_result.json")
-
-    if not os.path.exists(result_file):
-        raise FileNotFoundError(f"No JSON result file found at {result_file}")
-
-    with open(result_file, "r", encoding="utf-8") as f:
-        data = json.load(f)
-
-    summaries = data.get("summaries", [])
-
-    extracted_data = [
-        {
-            "file_name": item["file_name"],
-            "summary": item["summary"],
-            "text": item.get("text", "")  # <-- NEW: raw text stored here
-        }
-        for item in summaries
-        if "file_name" in item and "summary" in item
-    ]
-
-    return extracted_data
-
-
-def beautify_extracted_data(extracted_data: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
-    """
-    Beautifies and prints the extracted data in the desired format.
-    NOTE: we do NOT include 'text' here, only file_name + summary + reference_number.
-    """
-    beautified_data: List[Dict[str, Any]] = []
-
-    for item in extracted_data:
-        file_name = item["file_name"]
-        reference_number = file_name.split("_")[0]
-
-        beautified_item = {
-            "reference_number": reference_number,
-            "file_name": file_name,
-            "summary": item["summary"],
-        }
-        beautified_data.append(beautified_item)
-
-        print(f"file_name: {file_name}")
-        print(f"reference_number: {reference_number}")
-        print(f"summary: {item['summary']}\n")
-
-    return beautified_data
-
-
-def connect_to_blob(blob_url: str, beautified_data: List[Dict[str, Any]]):
-    """
-    Update existing rows in the Excel blob by concatenating file_name + summary
-    into the Summary cell for matching 'Unique refrence Number'.
-    Does NOT create new rows if there is no match.
-    """
-    try:
-        summary_require_env()
-    except Exception as e:
-        return {"status": False, "error": f"Environment misconfigured: {e}"}
-
-    if not AZURE_STORAGE_CONNECTION_STRING:
-        raise RuntimeError("AZURE_STORAGE_CONNECTION_STRING not set")
-
-    try:
-        container, blob_path = _parse_blob_url(blob_url)
-    except Exception as e:
-        return {"status": False, "error": f"Unable to parse blob URL: {e}"}
-
-    try:
-        blob_service_client = BlobServiceClient.from_connection_string(AZURE_STORAGE_CONNECTION_STRING)
-        blob_client = blob_service_client.get_blob_client(container=container, blob=blob_path)
-
-        blob_data = blob_client.download_blob().readall()
-        excel_data = pd.read_excel(BytesIO(blob_data))
-
-        if "Unique refrence Number" not in excel_data.columns:
-            return {"status": False, "error": "'Unique refrence Number' column is missing in the Excel file."}
-
-        if "Summary" not in excel_data.columns:
-            excel_data["Summary"] = None
-
-        for item in beautified_data:
-            reference_number = item.get("reference_number")
-            file_name = item.get("file_name", "")
-            summary_text = item.get("summary", "")
-
-            matches = excel_data[excel_data["Unique refrence Number"] == reference_number].index
-
-            if matches.empty:
-                print(f"Reference number not found in Excel, skipping: {reference_number}")
-                continue
-
-            new_fragment = f"file_name: {file_name}\nsummary: {summary_text}"
-
-            for idx in matches:
-                existing = excel_data.at[idx, "Summary"]
-                if existing is not None and not pd.isna(existing):
-                    updated = f"{existing}\n\n{new_fragment}"
-                else:
-                    updated = new_fragment
-                excel_data.at[idx, "Summary"] = updated
-
-        output_stream = BytesIO()
-        excel_data.to_excel(output_stream, index=False, engine="openpyxl")
-        output_stream.seek(0)
-        blob_client.upload_blob(output_stream, overwrite=True)
-
-        return excel_data
-
-    except Exception as e:
-        return {"status": False, "error": f"Failed to process blob: {e}"}
-
-
-⸻
-
-7️⃣ separate_summary.py — classification uses summary, detailed summary uses text
-
-This is the key file you were worried about.
-We now:
-	•	Use chat API (no more client.completions.create)
-	•	Use file_name + summary in identify_document_type
-	•	Use text (first_page_text) in process_acord, process_loss_run, process_sov
-	•	individual_summary expects each attachment to have file_name, summary, text.
-
-from dotenv import load_dotenv
-import os
-from typing import List, Dict, Any
-from openai import AzureOpenAI  # Correct import for Azure OpenAI
-
-# Load environment variables
-load_dotenv()
-
-AZURE_OPENAI_ENDPOINT = os.getenv("AZURE_OPENAI_ENDPOINT")
-AZURE_OPENAI_API_VERSION = os.getenv("AZURE_OPENAI_API_VERSION")
-AZURE_OPENAI_API_KEY = os.getenv("AZURE_OPENAI_API_KEY")
-AZURE_OPENAI_CHAT_DEPLOYMENT = os.getenv("AZURE_OPENAI_CHAT_DEPLOYMENT")
-
-if not (
-    AZURE_OPENAI_ENDPOINT
-    and AZURE_OPENAI_API_VERSION
-    and AZURE_OPENAI_API_KEY
-    and AZURE_OPENAI_CHAT_DEPLOYMENT
-):
-    raise RuntimeError(
-        "Azure OpenAI env vars missing. Please set "
-        "AZURE_OPENAI_ENDPOINT, AZURE_OPENAI_API_VERSION, "
-        "AZURE_OPENAI_API_KEY and AZURE_OPENAI_CHAT_DEPLOYMENT"
-    )
-
-# Create Azure OpenAI client
-client = AzureOpenAI(
-    api_key=AZURE_OPENAI_API_KEY,
-    api_version=AZURE_OPENAI_API_VERSION,
-    azure_endpoint=AZURE_OPENAI_ENDPOINT,
-)
-
-
-def _call_chat_llm(prompt: str, max_tokens: int = 512, temperature: float = 0.2) -> str:
-    response = client.chat.completions.create(
-        model=AZURE_OPENAI_CHAT_DEPLOYMENT,
-        messages=[{"role": "user", "content": prompt}],
-        max_tokens=max_tokens,
-        temperature=temperature,
-    )
-    return response.choices[0].message.content.strip()
-
-
-def identify_document_type(file_name: str, summary: str) -> str:
-    """
-    Identifies the document type based on the file name and SUMMARY.
-    Returns one of: 'ACORD', 'Loss Run', 'SOV'.
-    """
-    prompt = f"""
-You are classifying a commercial insurance document.
-
-Possible types:
-- ACORD    (application / submission form)
-- Loss Run (loss history / claims listing)
-- SOV      (statement of values / property schedule)
-
-Read the file name and the short underwriting summary and choose EXACTLY ONE type.
-
-IMPORTANT:
-- Your ENTIRE response must be exactly one of:
-  ACORD
-  Loss Run
-  SOV
-- Do NOT add any explanation or extra words.
-
-File Name: {file_name}
-Summary: {summary}
-"""
-    raw = _call_chat_llm(prompt, max_tokens=5, temperature=0.0)
-    doc_type = raw.strip()
-
-    if doc_type.upper() == "ACORD":
-        return "ACORD"
-    if doc_type.lower().startswith("loss"):
-        return "Loss Run"
-    if "SOV" in doc_type.upper():
-        return "SOV"
-
-    # Fallback if the model goes weird
-    return "ACORD"
-
-
-def process_acord(text: str) -> str:
-    """
-    Processes ACORD-type documents using the FIRST PAGE / FULL TEXT.
-    """
-    text = text[:4000]
-
-    prompt = f"""
-You are an experienced commercial insurance underwriter.
-
-You are given the FIRST PAGE TEXT (or full text) of an ACORD-style application
-or submission for a commercial property risk.
-
-Using ONLY this text, write a clear underwriting-friendly narrative.
-
-RULES:
-- Focus on: named insured, address/location, operations, carrier/program,
-  key dates, lines of business, and basic exposure info (revenue, employees)
-  IF they appear in the text.
-- Do NOT invent any data that is not clearly present.
-- Do NOT mention 'first page', 'ACORD', or 'this document'.
-- Write 4–6 concise sentences of natural prose.
-
-DOCUMENT TEXT:
-\"\"\" 
-{text}
-\"\"\"
-"""
-    return _call_chat_llm(prompt)
-
-
-def process_loss_run(text: str) -> str:
-    """
-    Processes Loss Run-type documents using the FIRST PAGE / FULL TEXT.
-    """
-    text = text[:4000]
-
-    prompt = f"""
-You are an experienced commercial insurance underwriter.
-
-You are given the FIRST PAGE TEXT (or full text) of a loss run / loss history document.
-
-Using ONLY this text, write a concise loss history summary.
-
-RULES:
-- Focus on: number of claims, type of losses (water, fire, wind, etc.),
-  total paid / incurred / reserved (if mentioned), coverage period, and
-  whether any large or open claims exist.
-- Comment briefly on frequency and severity based ONLY on the text.
-- Do NOT invent any new numbers or claims.
-- Do NOT mention 'loss run', 'this page', or 'this summary'.
-- Write 3–5 concise sentences.
-
-DOCUMENT TEXT:
-\"\"\" 
-{text}
-\"\"\"
-"""
-    return _call_chat_llm(prompt)
-
-
-def process_sov(text: str) -> str:
-    """
-    Processes SOV-type documents using the FIRST PAGE / FULL TEXT.
-    """
-    text = text[:4000]
-
-    prompt = f"""
-You are an experienced commercial property underwriter.
-
-You are given the FIRST PAGE TEXT (or full text) of a Statement of Values (SOV)
-or similar property schedule.
-
-Using ONLY this text, write a concise property exposure summary.
-
-RULES:
-- Focus on: named insured, main location(s), total property values, valuation basis
-  (e.g. ACV or replacement cost), coinsurance, covered perils, and any major exclusions
-  IF they appear in the text.
-- Do NOT invent any extra locations, values, or terms.
-- Do NOT mention 'SOV', 'schedule', or 'this document'.
-- Write 3–5 concise sentences.
-
-DOCUMENT TEXT:
-\"\"\" 
-{text}
-\"\"\"
-"""
-    return _call_chat_llm(prompt)
-
-
-def individual_summary(attachments: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
-    """
-    attachments = list of dicts like:
-    [
-      {"file_name": "...pdf", "summary": "short summary", "text": "full text"},
-      ...
-    ]
-
-    For each:
-      - detect type using file_name + summary
-      - call corresponding processor using TEXT
-      - add 'document_type' and 'processed_summary'
-    """
-    for attachment in attachments:
-        file_name = attachment.get("file_name", "")
-        summary = attachment.get("summary", "")
-        text = attachment.get("text", "")
-
-        document_type = identify_document_type(file_name, summary)
-        print(f"Document Type Identified for {file_name}: {document_type}")
-
-        if document_type == "ACORD":
-            processed_summary = process_acord(text)
-        elif document_type == "Loss Run":
-            processed_summary = process_loss_run(text)
-        elif document_type == "SOV":
-            processed_summary = process_sov(text)
-        else:
-            processed_summary = "Unknown document type. Unable to process."
-
-        attachment["document_type"] = document_type
-        attachment["processed_summary"] = processed_summary
-
-        print(f"Processed Summary for {file_name}:\n{processed_summary}\n")
-
-    return attachments
-
-
-⸻
-
-8️⃣ summary_handler.py — store text in JSON, then run combined + individual summaries
-
-Key changes:
-	•	When appending to summaries, also store "text": text_content.
-	•	Fix the last try block to not call summarize_first again (and avoid using document_content outside the loop).
-	•	Call individual_summary with filenamesummary_extracted_beautified, which now includes text.
-
-import os
-import json
-from typing import Dict, Any, List
-import pandas as pd
-
-from summary_service import summary_require_env
-from summary_storage_utils import download_blob_to_input_folder
-from summary_loader import load_summary_document
-from summary_classifier import summarize_first_page
-from Data_Filler import extract_filenames_and_summaries
-from Data_Filler import connect_to_blob, beautify_extracted_data
-from newsummary import summarize_attachments
-from separate_summary import individual_summary
-
-INPUT_FOLDER = "input"
-OUTPUT_FOLDER = "output"
-
-
-async def summarize_blob_pdfs_layout(blob_urls: List[str]) -> Dict[str, Any]:
-    """
-    For each Blob URL:
-      - Download PDF into input/
-      - Use Form Recognizer to extract text (all pages)
-      - Use LLM to summarize the FIRST PAGE
-
-    Now also stores raw text in layout_summaries_result.json.
-    """
-    try:
-        summary_require_env()
-    except Exception as e:
-        return {"status": False, "error": f"Environment misconfigured: {e}"}
-
-    summaries: List[Dict[str, Any]] = []
-
-    for blob_url in blob_urls:
-        file_name = None
-
-        # 1) Download PDF
-        try:
-            local_pdf = await download_blob_to_input_folder(
-                blob_url, input_folder=INPUT_FOLDER
-            )
-            file_name = os.path.basename(local_pdf)
-        except Exception as e:
-            summaries.append(
-                {
-                    "blob_url": blob_url,
-                    "file_name": file_name,
-                    "summary": None,
-                    "text": None,
-                    "error": f"Failed to download blob: {e}",
-                }
-            )
-            continue
-
-        # 2) Use Form Recognizer to analyze the document
-        try:
-            document_content = load_summary_document(local_pdf)
-        except Exception as e:
-            summaries.append(
-                {
-                    "blob_url": blob_url,
-                    "file_name": file_name,
-                    "summary": None,
-                    "text": None,
-                    "error": f"Form Recognizer failed: {e}",
-                }
-            )
-            continue
-
-        # Extract raw text (stored in first_page_text key)
-        text_content = document_content.get("first_page_text", "")
-
-        # 3) Summarize FIRST PAGE using LLM (short summary)
-        try:
-            summary_text = summarize_first_page(document_content, file_name=file_name)
-        except Exception as e:
-            summaries.append(
-                {
-                    "blob_url": blob_url,
-                    "file_name": file_name,
-                    "summary": None,
-                    "text": text_content,
-                    "error": f"Summarization failed: {e}",
-                }
-            )
-            continue
-
-        # 4) Success case for this document
-        summaries.append(
-            {
-                "blob_url": blob_url,
-                "file_name": file_name,
-                "summary": summary_text,
-                "text": text_content,   # <-- NEW: store raw text here
-                "error": None,
-            }
-        )
-
-    result: Dict[str, Any] = {"status": True, "summaries": summaries}
-
-    # 5) Save result to ./output
-    try:
-        os.makedirs(OUTPUT_FOLDER, exist_ok=True)
-        out_path = os.path.join(OUTPUT_FOLDER, "layout_summaries_result.json")
-        with open(out_path, "w", encoding="utf-8") as f:
-            json.dump(result, f, indent=2, ensure_ascii=False)
-    except Exception as e:
-        result["save_error"] = str(e)
-
-    # 6) Beautify and send summary into Excel (unchanged: uses only summary)
-    try:
-        extracted_data = extract_filenames_and_summaries(OUTPUT_FOLDER)
-        print("Beautified Extracted Data:\n")
-        beautify_data = beautify_extracted_data(extracted_data)
-        print(beautify_data)
-
-        DATA_URL = os.getenv("Data_URL")
-        if DATA_URL:
-            try:
-                updated_data = connect_to_blob(DATA_URL, beautify_data)
-                print("Blob Data Processed Successfully.")
-                if isinstance(updated_data, pd.DataFrame):
-                    print("Blob Data Processed Successfully and Excel Updated.")
-                else:
-                    print(f"Error: {updated_data['error']}")
-            except Exception as e:
-                print(f"Error processing blob data: {e}")
-        else:
-            print("Data_URL environment variable is not set.")
-
-    except Exception as e:
-        print(f"Error in beautify / blob step: {e}")
-
-    # 7) Combined submission summary (uses file_name + summary only)
-    try:
-        base_dir = os.path.dirname(os.path.abspath(__file__))
-        output_folder = "output"
-
-        json_path = os.path.join(base_dir, output_folder, "layout_summaries_result.json")
-        with open(json_path, "r", encoding="utf-8") as f:
-            layout_json = json.load(f)
-
-        filenamesummary_extracted_beautified = extract_filenames_and_summaries(output_folder)
-        print("Per-document summaries (with text):")
-        print(filenamesummary_extracted_beautified)
-
-        combined_summary = summarize_attachments(filenamesummary_extracted_beautified)
-        print("Combined Submission Summary:")
-        print(combined_summary)
-
-        result["combined_summary"] = combined_summary
-    except Exception as e:
-        print(f"Error generating combined submission summary: {e}")
-        result["combined_summary_error"] = str(e)
-
-    # 8) Individual typed summaries (ACORD / Loss Run / SOV)
-    try:
-        # Reuse filenamesummary_extracted_beautified, which now also has 'text'
-        individualized_summary = individual_summary(filenamesummary_extracted_beautified)
-        print("Individualized Summary Output:")
-        print(individualized_summary)
-        result["individualized_summary"] = individualized_summary
-    except Exception as e:
-        print(f"Error generating Individual summary: {e}")
-        result["individualized_summary_error"] = str(e)
-
-    return result
-
-
-⸻
-
-🔁 Quick recap of the final behaviour
-	•	Form Recognizer → load_summary_document() → gives first_page_text (actually full text).
-	•	summarize_first_page → creates a short underwriter summary of the first page → saved as "summary".
-	•	summary_handler now stores both:
-	•	"summary" → short LLM summary
-	•	"text" → raw document text from Form Recognizer
-	•	Data_Filler.extract_filenames_and_summaries returns {file_name, summary, text}.
-	•	summarize_attachments (combined submission) uses file_name + summary.
-	•	individual_summary:
-	•	Uses file_name + summary to decide type (ACORD / Loss Run / SOV)
-	•	Uses "text" (raw first_page_text) to generate detailed document-type-specific summary.
-
-So now the flow is exactly what you described:
-classification based on summary, typed summary based on original text.
-
-If you want next, I can:
-	•	Show a sample JSON of the new layout_summaries_result.json,
-	•	Or show a sample output of individual_summary for your Berkshire ACORD / Loss Run / SOV trio.
+I have been told to test this using postman i have this in a text format i mean someone has shared me this in my teams chat
+{
+  "info": {
+    "_postman_id": "d4617e03-dea1-495d-9a86-eee819f66d56",
+    "name": "Commercial Property",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
+    "_exporter_id": "25147181",
+    "_collection_link": "https://warped-water-476728.postman.co/workspace/Personal-Workspace~accc8ce9-5ac0-4f3f-bbbc-105049f12d83/collection/25147181-d4617e03-dea1-495d-9a86-eee819f66d56?action=share&source=collection_link&creator=25147181"
+  },
+  "item": [
+    {
+      "name": "Composite-Commercial",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "let response = pm.response.json();\r",
+              "const jobId = response.selections[1].body.data.attributes.id;\r",
+              "const jobNumber = response.selections[1].body.data.attributes.jobNumber;\r",
+              "pm.collectionVariables.set('jobId', jobId);\r",
+              "pm.collectionVariables.set('jobNumber', jobNumber);\r",
+              ""
+            ],
+            "type": "text/javascript",
+            "packages": {},
+            "requests": {}
+          }
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "accept",
+            "value": "application/json"
+          },
+          {
+            "key": "authorization",
+            "value": "Basic c3U6Z3c="
+          },
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\r\n    \"requests\": [\r\n        {\r\n            \"method\": \"post\",\r\n            \"uri\": \"/account/v1/accounts\",\r\n            \"body\": {\r\n                \"data\": {\r\n                    \"attributes\": {\r\n                        \"initialAccountHolder\": {\r\n                            \"contactSubtype\": \"Company\",\r\n                            \"companyName\": \"Hexa Tester\",\r\n                            \"primaryAddress\": {\r\n                                \"addressLine1\": \"2850 S. Delaware St.\",\r\n                                \"city\": \"San Mateo\",\r\n                                \"postalCode\": \"94403\",\r\n                                \"state\": {\r\n                                    \"code\": \"CA\"\r\n                                }\r\n                            }\r\n                        },\r\n                        \"initialPrimaryLocation\": {\r\n                            \"addressLine1\": \"2850 S. Delaware St.\",\r\n                            \"city\": \"San Mateo\",\r\n                            \"postalCode\": \"94403\",\r\n                            \"state\": {\r\n                                \"code\": \"CA\"\r\n                            }\r\n                        },\r\n                        \"producerCodes\": [\r\n                            {\r\n                                \"id\": \"pc:6\"\r\n                            }\r\n                        ],\r\n                        \"organizationType\": {\r\n                            \"code\": \"llc\"\r\n                        }\r\n                    }\r\n                }\r\n            },\r\n            \"includeResponse\": false,\r\n            \"vars\": [\r\n                {\r\n                    \"name\": \"accountId\",\r\n                    \"path\": \"$.data.attributes.id\"\r\n                },\r\n                {\r\n                    \"name\": \"driverId\",\r\n                    \"path\": \"$.data.attributes.accountHolder.id\"\r\n                },\r\n                {\r\n                    \"name\": \"primaryLocationId\",\r\n                    \"path\": \"$.data.attributes.primaryLocation.id\"\r\n                }\r\n            ]\r\n        },\r\n        {\r\n            \"method\": \"POST\",\r\n            \"uri\": \"/job/v1/submissions\",\r\n            \"body\": {\r\n                \"data\": {\r\n                    \"attributes\": {\r\n                        \"account\": {\r\n                            \"id\": \"${accountId}\"\r\n                        },\r\n                        \"baseState\": {\r\n                            \"code\": \"CA\"\r\n                        },\r\n                        \"jobEffectiveDate\": \"2025-07-16\",\r\n                        \"product\": {\r\n                            \"id\": \"GoCommercialProp\"\r\n                        },\r\n                        \"producerCode\": {\r\n                            \"id\": \"pc:6\"\r\n                        }\r\n                    }\r\n                }\r\n            },\r\n            \"includeResponse\": false,\r\n            \"vars\": [\r\n                {\r\n                    \"name\": \"jobId\",\r\n                    \"path\": \"$.data.attributes.id\"\r\n                }\r\n            ]\r\n        },\r\n        {\r\n            \"method\": \"POST\",\r\n            \"uri\": \"/job/v1/jobs/${jobId}/lines/GOCommercialLine/locations\",\r\n            \"body\": {\r\n                \"data\": {\r\n                    \"attributes\": {\r\n                        \"addressLine1\": \"Address Line 1\",\r\n                        \"city\": \"San Mateo\",\r\n                        \"coverableJurisdiction\": {\r\n                            \"code\": \"CA\",\r\n                            \"name\": \"California\"\r\n                        },\r\n                        \"postalCode\": \"94404\",\r\n                        \"state\": {\r\n                            \"code\": \"CA\"\r\n                        }\r\n                    }\r\n                }\r\n            },\r\n            \"includeResponse\": false,\r\n            \"vars\": [\r\n                {\r\n                    \"name\": \"locationId\",\r\n                    \"path\": \"$.data.attributes.id\"\r\n                }\r\n            ]\r\n        },\r\n        {\r\n            \"method\": \"POST\",\r\n            \"uri\": \"/job/v1/jobs/${jobId}/lines/GOCommercialLine/coverages\",\r\n            \"body\": {\r\n                \"data\": {\r\n                    \"attributes\": {\r\n                        \"clauseType\": \"coverage\",\r\n                        \"id\": \"GCPPropertyOffPrem\",\r\n                        \"pattern\": {\r\n                            \"id\": \"GCPPropertyOffPrem\"\r\n                        },\r\n                        \"terms\": {\r\n                            \"GCPPropertyOffPremDeductible\": {\r\n                                \"directValue\": \"50000.00\"\r\n                            },\r\n                            \"GCPPropertyOffPremInterContinent\": {\r\n                                \"directValue\": \"50000.00\"\r\n                            },\r\n                            \"GCPPropertyOffPremLimit\": {\r\n                                \"directValue\": \"400000.00\"\r\n                            },\r\n                            \"GCPPropertyOffPremWithinTerrLimit\": {\r\n                                \"directValue\": \"25000.00\"\r\n                            }\r\n                        }\r\n                    }\r\n                }\r\n            },\r\n            \"includeResponse\": false,\r\n            \"vars\": []\r\n        },\r\n        {\r\n            \"method\": \"POST\",\r\n            \"uri\": \"/job/v1/jobs/${jobId}/lines/GOCommercialLine/coverages\",\r\n            \"body\": {\r\n                \"data\": {\r\n                    \"attributes\": {\r\n                        \"clauseType\": \"coverage\",\r\n                        \"id\": \"GCPNewlyAcquiredBuildProp\",\r\n                        \"pattern\": {\r\n                            \"id\": \"GCPNewlyAcquiredBuildProp\"\r\n                        },\r\n                        \"terms\": {}\r\n                    }\r\n                }\r\n            },\r\n            \"includeResponse\": false,\r\n            \"vars\": []\r\n        },\r\n        {\r\n            \"method\": \"POST\",\r\n            \"uri\": \"/job/v1/jobs/${jobId}/lines/GOCommercialLine/coverages\",\r\n            \"body\": {\r\n                \"data\": {\r\n                    \"attributes\": {\r\n                        \"clauseType\": \"coverage\",\r\n                        \"id\": \"GCPOutsideObjs\",\r\n                        \"pattern\": {\r\n                            \"id\": \"GCPOutsideObjs\"\r\n                        },\r\n                        \"terms\": {\r\n                            \"GCPOutsideObjsDeductible\": {\r\n                                \"directValue\": \"1.00\"\r\n                            },\r\n                            \"GCPOutsideObjsLimit\": {\r\n                                \"directValue\": \"2.00\"\r\n                            }\r\n                        }\r\n                    }\r\n                }\r\n            },\r\n            \"includeResponse\": false,\r\n            \"vars\": []\r\n        },\r\n        {\r\n            \"method\": \"POST\",\r\n            \"uri\": \"/job/v1/jobs/${jobId}/lines/GOCommercialLine/coverages\",\r\n            \"body\": {\r\n                \"data\": {\r\n                    \"attributes\": {\r\n                        \"clauseType\": \"coverage\",\r\n                        \"id\": \"GCPContentsOtherStruct\",\r\n                        \"pattern\": {\r\n                            \"id\": \"GCPContentsOtherStruct\"\r\n                        },\r\n                        \"terms\": {\r\n                            \"GCPContentsOtherStructDeductible\": {},\r\n                            \"GCPContentsOtherStructLimit\": {\r\n                                \"typekeyValue\": {\r\n                                    \"code\": \"TwoPercent\",\r\n                                    \"name\": \"2%\"\r\n                                }\r\n                            }\r\n                        }\r\n                    }\r\n                }\r\n            },\r\n            \"includeResponse\": false,\r\n            \"vars\": []\r\n        },\r\n        {\r\n            \"method\": \"POST\",\r\n            \"uri\": \"/job/v1/jobs/${jobId}/lines/GOCommercialLine/coverages\",\r\n            \"body\": {\r\n                \"data\": {\r\n                    \"attributes\": {\r\n                        \"clauseType\": \"coverage\",\r\n                        \"id\": \"GCPTerrorism\",\r\n                        \"pattern\": {\r\n                            \"id\": \"GCPTerrorism\"\r\n                        },\r\n                        \"terms\": {}\r\n                    }\r\n                }\r\n            },\r\n            \"includeResponse\": false,\r\n            \"vars\": []\r\n        },\r\n        {\r\n            \"method\": \"POST\",\r\n            \"uri\": \"/job/v1/jobs/${jobId}/lines/GOCommercialLine/coverages\",\r\n            \"body\": {\r\n                \"data\": {\r\n                    \"attributes\": {\r\n                        \"clauseType\": \"coverage\",\r\n                        \"id\": \"GCPFungus\",\r\n                        \"pattern\": {\r\n                            \"id\": \"GCPFungus\"\r\n                        },\r\n                        \"terms\": {\r\n                            \"GCPFungusLimit\": {\r\n                                \"directValue\": \"20000.00\"\r\n                            }\r\n                        }\r\n                    }\r\n                }\r\n            },\r\n            \"includeResponse\": false,\r\n            \"vars\": []\r\n        },\r\n        {\r\n            \"method\": \"POST\",\r\n            \"uri\": \"/job/v1/jobs/${jobId}/lines/GOCommercialLine/coverages\",\r\n            \"body\": {\r\n                \"data\": {\r\n                    \"attributes\": {\r\n                        \"clauseType\": \"coverage\",\r\n                        \"id\": \"GCPDebrisRem\",\r\n                        \"pattern\": {\r\n                            \"id\": \"GCPDebrisRem\"\r\n                        },\r\n                        \"terms\": {\r\n                            \"GCPDebrisRemInsuredPropLimit\": {\r\n                                \"choiceValue\": {\r\n                                    \"code\": \"100kusd\"\r\n                                }\r\n                            },\r\n                            \"GCPDebrisRemInsuredPropPercent\": {\r\n                                \"typekeyValue\": {\r\n                                    \"code\": \"25Percent\"\r\n                                }\r\n                            },\r\n                            \"GCPDebrisRemOtherPropertyLimit\": {\r\n                                \"choiceValue\": {\r\n                                    \"code\": \"200kusd\"\r\n                                }\r\n                            }\r\n                        }\r\n                    }\r\n                }\r\n            },\r\n            \"includeResponse\": false,\r\n            \"vars\": []\r\n        },\r\n        {\r\n            \"method\": \"POST\",\r\n            \"uri\": \"/job/v1/jobs/${jobId}/lines/GOCommercialLine/coverages\",\r\n            \"body\": {\r\n                \"data\": {\r\n                    \"attributes\": {\r\n                        \"clauseType\": \"coverage\",\r\n                        \"id\": \"GCPDeferredPay\",\r\n                        \"pattern\": {\r\n                            \"id\": \"GCPDeferredPay\"\r\n                        },\r\n                        \"terms\": {\r\n                            \"GCPDeferredPayLimit\": {\r\n                                \"choiceValue\": {\r\n                                    \"code\": \"100kusd\"\r\n                                }\r\n                            }\r\n                        }\r\n                    }\r\n                }\r\n            },\r\n            \"includeResponse\": false,\r\n            \"vars\": []\r\n        },\r\n        {\r\n            \"method\": \"POST\",\r\n            \"uri\": \"/job/v1/jobs/${jobId}/lines/GOCommercialLine/coverages\",\r\n            \"body\": {\r\n                \"data\": {\r\n                    \"attributes\": {\r\n                        \"clauseType\": \"coverage\",\r\n                        \"id\": \"GCPExtraExp\",\r\n                        \"pattern\": {\r\n                            \"id\": \"GCPExtraExp\"\r\n                        },\r\n                        \"terms\": {\r\n                            \"GCPExtraExpLimit\": {\r\n                                \"choiceValue\": {\r\n                                    \"code\": \"75kusd\"\r\n                                }\r\n                            }\r\n                        }\r\n                    }\r\n                }\r\n            },\r\n            \"includeResponse\": false,\r\n            \"vars\": []\r\n        },\r\n        {\r\n            \"method\": \"POST\",\r\n            \"uri\": \"/job/v1/jobs/${jobId}/lines/GOCommercialLine/coverages\",\r\n            \"body\": {\r\n                \"data\": {\r\n                    \"attributes\": {\r\n                        \"clauseType\": \"coverage\",\r\n                        \"id\": \"GCPFireorPolice\",\r\n                        \"pattern\": {\r\n                            \"id\": \"GCPFireorPolice\"\r\n                        },\r\n                        \"terms\": {\r\n                            \"GCPFireorPoliceLimit\": {\r\n                                \"choiceValue\": {\r\n                                    \"code\": \"75kusd\"\r\n                                }\r\n                            }\r\n                        }\r\n                    }\r\n                }\r\n            },\r\n            \"includeResponse\": false,\r\n            \"vars\": []\r\n        },\r\n        {\r\n            \"method\": \"POST\",\r\n            \"uri\": \"/job/v1/jobs/${jobId}/lines/GOCommercialLine/coverages\",\r\n            \"body\": {\r\n                \"data\": {\r\n                    \"attributes\": {\r\n                        \"clauseType\": \"coverage\",\r\n                        \"id\": \"GCPFireProtEquip\",\r\n                        \"pattern\": {\r\n                            \"id\": \"GCPFireProtEquip\"\r\n                        },\r\n                        \"terms\": {\r\n                            \"GCPFireProtEquipLimit\": {\r\n                                \"choiceValue\": {\r\n                                    \"code\": \"50kusd\"\r\n                                }\r\n                            }\r\n                        }\r\n                    }\r\n                }\r\n            },\r\n            \"includeResponse\": false,\r\n            \"vars\": []\r\n        },\r\n        {\r\n            \"method\": \"POST\",\r\n            \"uri\": \"/job/v1/jobs/${jobId}/lines/GOCommercialLine/coverages\",\r\n            \"body\": {\r\n                \"data\": {\r\n                    \"attributes\": {\r\n                        \"clauseType\": \"coverage\",\r\n                        \"id\": \"GCPFlucRawMat\",\r\n                        \"pattern\": {\r\n                            \"id\": \"GCPFlucRawMat\"\r\n                        },\r\n                        \"terms\": {\r\n                            \"GCPFlucRawMatLimit\": {\r\n                                \"choiceValue\": {\r\n                                    \"code\": \"400kusd\"\r\n                                }\r\n                            }\r\n                        }\r\n                    }\r\n                }\r\n            },\r\n            \"includeResponse\": false,\r\n            \"vars\": []\r\n        },\r\n        {\r\n            \"method\": \"post\",\r\n            \"uri\": \"/job/v1/jobs/${jobId}/quote\"\r\n        }\r\n    ],\r\n    \"selections\": [\r\n        {\r\n            \"uri\": \"/account/v1/accounts/${accountId}\"\r\n        },\r\n        {\r\n            \"uri\": \"/job/v1/jobs/${jobId}\"\r\n        }\r\n    ]\r\n}"
+        },
+        "url": {
+          "raw": "https://pc-sandbox-gwcpdev.hexaware.zeta1-andromeda.guidewire.net/rest/composite/v1/composite",
+          "protocol": "https",
+          "host": [
+            "pc-sandbox-gwcpdev",
+            "hexaware",
+            "zeta1-andromeda",
+            "guidewire",
+            "net"
+          ],
+          "path": [
+            "rest",
+            "composite",
+            "v1",
+            "composite"
+          ]
+        }
+      },
+      "response": []
+    },
+    {
+      "name": "bind and issue",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "accept",
+            "value": "application/json"
+          },
+          {
+            "key": "authorization",
+            "value": "Basic c3U6Z3c="
+          },
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "url": {
+          "raw": "https://pc-sandbox-gwcpdev.hexaware.zeta1-andromeda.guidewire.net/rest/job/v1/jobs/{{jobId}}/bind-and-issue",
+          "protocol": "https",
+          "host": [
+            "pc-sandbox-gwcpdev",
+            "hexaware",
+            "zeta1-andromeda",
+            "guidewire",
+            "net"
+          ],
+          "path": [
+            "rest",
+            "job",
+            "v1",
+            "jobs",
+            "{{jobId}}",
+            "bind-and-issue"
+          ]
+        }
+      },
+      "response": []
+    }
+  ],
+  "variable": [
+    {
+      "key": "jobId",
+      "value": ""
+    },
+    {
+      "key": "jobNumber",
+      "value": ""
+    }
+  ]
+}
