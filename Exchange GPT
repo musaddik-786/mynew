@@ -1,3 +1,139 @@
+So now as i have shared all code tell me what happens here i mean its execution i need to understand what come in as inpur and whatgoes as output in each iteration , state etc also explain each word and reason of code eg what is AI message doing in that particular iteration etc. dont explain import statements
+
+
+
+from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import StreamingResponse
+import os
+from dotenv import load_dotenv
+from langchain_openai.chat_models import AzureChatOpenAI
+from langgraph.graph.message import add_messages
+from langchain_core.messages import AIMessage, ToolMessage, SystemMessage
+from langgraph.graph import StateGraph, START, END
+from langgraph.prebuilt import ToolNode
+from typing import TypedDict, Annotated
+from langchain_mcp_adapters.client import MultiServerMCPClient
+
+app = FastAPI()
+
+load_dotenv()
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+config_mcp_server = {
+    "email_reader_mcp": {
+        "url": os.getenv("MCP_URL"),
+        "transport": "streamable_http",
+    }
+}
+
+class State(TypedDict):
+    messages: Annotated[list, add_messages]
+
+def router(state: State):
+    last_message = state["messages"][-1]
+    if isinstance(last_message, AIMessage) and getattr(last_message, 'tool_calls', None):
+        return "tools"
+    if isinstance(last_message, AIMessage) and last_message.content:
+        content = last_message.content
+        if 'Continue' in content:
+            return "tools"
+        elif "End" in content:
+            return "End"
+    return "End"
+
+def load_prompt(path: str) -> str:
+    with open(path, "r", encoding="utf-8") as f:
+        return f.read()
+
+def create_custom_graph(model, tools, prompt, checkpointer=None):
+    graph_builder = StateGraph(State)
+    llm_with_tools = model.bind_tools(tools)
+
+    async def agent_node(state: State):
+        messages = state["messages"]
+        system_prompt = SystemMessage(content=prompt)
+        all_messages = [system_prompt] + messages
+        message = await llm_with_tools.ainvoke(all_messages)
+        return {"messages": [message]}
+
+    graph_builder.add_node("agent", agent_node)
+    graph_builder.add_node("tools", ToolNode(tools=tools))
+    graph_builder.add_edge(START, "agent")
+    graph_builder.add_conditional_edges(
+        "agent",
+        router,
+        {
+            "tools": "tools",
+            "End": END
+        }
+    )
+    graph_builder.add_edge("tools", "agent")
+
+    return graph_builder.compile(checkpointer=checkpointer) if checkpointer else graph_builder.compile()
+
+async def get_tool_list(config_mcp_server):
+    client = MultiServerMCPClient(config_mcp_server)
+    tools_list = await client.get_tools()
+    print("Tools fetched from MCP:", [tool.name for tool in tools_list])
+    return tools_list
+
+@app.post("/chat")
+async def chat_stream():
+    # Load environment variables
+    load_dotenv()
+
+    # Fetch tools
+    tools = await get_tool_list(config_mcp_server=config_mcp_server)
+
+    # Setup Azure OpenAI model
+    endpoint = os.getenv("AZURE_OPENAI_ENDPOINT")
+    credential = os.getenv("AZURE_OPENAI_API_KEY")
+    deployment_name = os.getenv("AZURE_OPENAI_CHAT_DEPLOYMENT")
+    api_version = os.getenv("AZURE_OPENAI_API_VERSION")
+
+    model = AzureChatOpenAI(
+        api_key=credential,
+        api_version=api_version,  # fill if needed
+        azure_deployment=deployment_name,
+        azure_endpoint=endpoint
+    )
+
+    # Load system prompt
+    SYSTEM_INSTRUCTION = load_prompt("./prompt4.txt")
+
+    # Create the graph
+    graph = create_custom_graph(model=model, tools=tools, prompt=SYSTEM_INSTRUCTION)
+
+    async def stream():
+        async for chunk in graph.astream({"messages": ["Start your task"]}, config={"recursion_limit": 100}):
+            if "agent" in chunk:
+                messages = chunk["agent"]["messages"]
+                for msg in messages:
+                    if hasattr(msg, "content") and msg.content:
+                        # Yield SSE formatted string
+                        yield f"data: {msg.content}\n\n"
+            if "tools" in chunk:
+                messages = chunk["tools"]["messages"]
+                for msg in messages:
+                    if hasattr(msg, "content") and msg.content:
+                        yield f"data: [Tool:{msg.name}] {msg.content}\n\n"
+
+    return StreamingResponse(stream(), media_type="text/event-stream")
+
+if __name__ == "__main__":
+    import uvicorn
+    uvicorn.run(app, host="0.0.0.0", port=8021)
+
+Earlier this was the prompt are you sure i should replace this prompt woth what you gave ? As i dont see any explanations in the prompt as we have earlier
+
 You are an intelligent agent within the Insurance Underwriting Process.
 Your specific role is to handle the underwriting workflow.
  
@@ -109,3 +245,25 @@ Your actions are performed in a defined sequential workflow using multiple tools
 
 Through this structured sequence, you act as the Third layer of automation in the insurance underwriting ecosystem.
  
+
+I forgot to tell you one thing in the state. We can have something like if email intent, Agent is completed. Then the state should be email. Intend Agent phase completed after which router decides that the next subgraph node that has to be executed is eligibility Agent and after eligibility agent execute completely, that is, if the last tool of eligibility Agent is completed, we can have a state saying that eligibility Agent phase completed similarly for risk checking Agent
+
+
+So now I have been told to create 3 subgraphs and each of them have few tools that are different from each other ie EmailIntentAgent subgraph has Email reading phase , data, writing, phase, attachment, downloading face, layout, detection, phase, data extraction phase, attachment, query, phase, attachment, summarisation phase, then there is eligibility Agent subgraph which has risk type, checking, phase insurance, renewal, checking, phase, licensing, and sanction, checking phase and Jason reading phase, then there is risk checking agent, subgraph, which has risk data, capturing phase, risk, score, calculation, phase, accept, reject phase. So now there will be a mega agent which will have these nodes whcih are subgraphs and these nodes will have there tools 
+
+I am told to refer the above code that we saw all the iterations etc i have already given you the current prompt so earlier it was just one agent as you can see and one prompt and tools were getting called now i have been to think on subgraph perspective 
+Here I am totally confused, but I have a layout in my mind. For example, there will be a mega Agent, which will have these sub graphs as Agent notes, and as we had earlier, there will be a router node that decides and picks the correct order of Agent, that is firstly, email intent agent, secondly, eligibility agent, and thirdly, risk shaking agent Which are nothing but subgraph. Then each of these sub graphs will have their own notes. It might be to note that executes the phases or MCP tools in a proper sequence like it are getting executed currently in the same sequence.
+
+As we see that Agent is returning 
+A new tool as per the prompt 
+
+AIMessage(
+  content="",
+  tool_calls=[{
+    "name": "write_email_to_excel",
+    "args": {...},
+    "id": "call_2"
+  }]
+)
+
+Is it picking that tool from the tools list that we have passed in create custom grpaph function 
