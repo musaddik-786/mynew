@@ -1,337 +1,351 @@
-Perfect 👍
-Below is the FULL, CLEAN, FINAL, WORKING VERSION of ALL FILES, aligned with:
-	•	✅ Your actual PostgreSQL table
-	•	✅ Newly added id primary key
-	•	✅ Single MCP
-	•	✅ Extract is_Sanctioned
-	•	✅ If true → pick Not Eligible
-	•	✅ If false → pick Eligible
-	•	✅ Fetch corresponding row from DB
-	•	✅ NO default for is_Sanctioned
-	•	✅ Proper error handling
-	•	✅ ORM-compatible
-	•	✅ Production-safe
 
-I am not changing architecture, only fixing schema alignment.
-
-⸻
-
-0️⃣ DATABASE (ONE-TIME CHANGE – already agreed)
-
-ALTER TABLE ref_eligibility_check
-ADD COLUMN id SERIAL PRIMARY KEY;
-
-
-⸻
-
-1️⃣ models.py
-
-from sqlmodel import SQLModel, Field
-from sqlalchemy import Column, String, Boolean
-from typing import Optional
-
-
-class RefEligibilityCheck(SQLModel, table=True):
-    __tablename__ = "ref_eligibility_check"
-
-    # Primary key (NOW EXISTS IN DB)
-    id: Optional[int] = Field(default=None, primary_key=True)
-
-    reason_summary: Optional[str] = Field(
-        sa_column=Column("reason_summary", String)
-    )
-
-    line_of_business: Optional[str] = Field(
-        sa_column=Column("line_of_business", String)
-    )
-
-    location_risk_zone: Optional[str] = Field(
-        sa_column=Column("location_risk_zone", String)
-    )
-
-    business_type: Optional[str] = Field(
-        sa_column=Column("business_type", String)
-    )
-
-    licensing_and_sanction_check: Optional[str] = Field(
-        sa_column=Column("licensing_sanction_check", String)
-    )
-
-    source_of_check: Optional[str] = Field(
-        sa_column=Column("source_of_check", String)
-    )
-
-    eligibility_status: Optional[str] = Field(
-        sa_column=Column("eligibility_status", String)
-    )
-
-    approval_flag: Optional[bool] = Field(
-        sa_column=Column("approval_flag", Boolean)
-    )
-
-
-⸻
-
-2️⃣ db.py
-
-import os
-from sqlmodel import create_engine
-from sqlalchemy.pool import NullPool
-from dotenv import load_dotenv
-
-load_dotenv()
-
-
-def get_engine():
-    return create_engine(
-        f"postgresql+psycopg://{os.getenv('PGUSER')}:{os.getenv('PGPASSWORD')}"
-        f"@{os.getenv('PGHOST')}:{os.getenv('PGPORT', '5432')}/{os.getenv('PGDATABASE')}",
-        poolclass=NullPool,
-        echo=False
-    )
-
-
-⸻
-
-3️⃣ handler.py (CORE LOGIC)
-
-from sqlmodel import Session, select
-from models import RefEligibilityCheck
-from db import get_engine
-
-
-def process_sanction_and_eligibility(mcp_result: dict) -> dict:
-    """
-    Extract is_Sanctioned → decide eligibility → fetch DB row
-    NO DEFAULTS, STRICT VALIDATION
-    """
-
-    # -------- VALIDATION --------
-    if not isinstance(mcp_result, dict):
-        return {
-            "status": False,
-            "error": "Invalid MCP result format (expected dict)"
-        }
-
-    results = mcp_result.get("results")
-    if not isinstance(results, list) or not results:
-        return {
-            "status": False,
-            "error": "'results' missing or empty in MCP response"
-        }
-
-    record = results[0]
-
-    if "is_Sanctioned" not in record:
-        return {
-            "status": False,
-            "error": "'is_Sanctioned' field missing in MCP response"
-        }
-
-    is_sanctioned = record["is_Sanctioned"]
-
-    if not isinstance(is_sanctioned, bool):
-        return {
-            "status": False,
-            "error": "'is_Sanctioned' must be boolean"
-        }
-
-    # -------- DECISION --------
-    eligibility_status = "Not Eligible" if is_sanctioned else "Eligible"
-
-    # -------- DB FETCH --------
-    engine = get_engine()
-    with Session(engine) as session:
-        stmt = select(RefEligibilityCheck).where(
-            RefEligibilityCheck.eligibility_status == eligibility_status
-        )
-        row = session.exec(stmt).first()
-
-        if not row:
-            return {
-                "status": False,
-                "error": f"No row found for Eligibility Status = '{eligibility_status}'"
-            }
-
-        # -------- RESPONSE --------
-        return {
-            "status": True,
-            "eligibility_status": row.eligibility_status,
-            "reason_summary": row.reason_summary,
-            "line_of_business": row.line_of_business,
-            "location_risk_zone": row.location_risk_zone,
-            "business_type": row.business_type,
-            "licensing_and_sanction_check": row.licensing_and_sanction_check,
-            "source_of_check": row.source_of_check,
-            "approval_flag": row.approval_flag
-        }
-
-
-⸻
-
-4️⃣ file_router.py (SAME MCP, EXTENDED)
-
-from fastapi import APIRouter
-from fastapi.responses import JSONResponse
-from pydantic import BaseModel
-from handler import process_sanction_and_eligibility
-
-router = APIRouter()
-
-
-class LicensingSanctionMCPRequest(BaseModel):
-    jsonrpc: str
-    id: int
-    result: dict
-
-
-@router.post(
-    "/Licensing_&_Sanction_Checker_MCP",
-    operation_id="Licensing_&_Sanction_Checker_MCP"
-)
-async def licensing_sanction_checker_mcp(request: LicensingSanctionMCPRequest):
-
-    decision = process_sanction_and_eligibility(request.result)
-
-    return JSONResponse(
-        content={
-            "jsonrpc": request.jsonrpc,
-            "id": request.id,
-            "result": decision
-        },
-        status_code=200
-    )
-
-
-⸻
-
-5️⃣ main.py
-
-from fastapi import FastAPI
-from fastapi.middleware.cors import CORSMiddleware
-from fastapi_mcp import FastApiMCP
-import uvicorn
-from file_router import router as file_router
-from dotenv import load_dotenv
-import os
-
-load_dotenv()
-
-
-def apply_cors(app: FastAPI):
-    app.add_middleware(
-        CORSMiddleware,
-        allow_origins=["*"],
-        allow_methods=["*"],
-        allow_headers=["*"],
-    )
-
-
-def create_sub_app(title: str, description: str, version: str = "1.0.0") -> FastAPI:
-    sub = FastAPI(title=title, description=description, version=version)
-    apply_cors(sub)
-    return sub
-
-
-app = FastAPI()
-apply_cors(app)
-
-eligibility_app = create_sub_app(
-    title="Licensing & Sanction Checker MCP",
-    description="Determines eligibility using sanction result and DB rules"
-)
-
-eligibility_app.include_router(file_router)
-
-FastApiMCP(
-    eligibility_app,
-    include_operations=["Licensing_&_Sanction_Checker_MCP"]
-).mount_http()
-
-app.mount("/api/v1/eligibility_agent", eligibility_app)
-
-
-if __name__ == "__main__":
-    port = int(os.getenv("PORT", 8601))
-    uvicorn.run(app, host="0.0.0.0", port=port)
-
-
-⸻
-
-6️⃣ test_script.py (CLIENT TEST – YOUR STYLE)
-
-import requests
-import json
-
-BASE_URL = "http://localhost:8601/api/v1/eligibility_agent/Licensing_&_Sanction_Checker_MCP"
-
-
-def run_test():
-    payload = {
-        "jsonrpc": "2.0",
-        "id": 1,
-        "result": {
-            "status": True,
-            "results": [
-                {
-                    "Extracted Name": "Berkshire Hathaway",
-                    "is_Sanctioned": False
-                }
-            ]
-        }
-    }
-
-    try:
-        resp = requests.post(BASE_URL, json=payload, timeout=120)
-        print("HTTP Status:", resp.status_code)
-
-        try:
-            print(json.dumps(resp.json(), indent=4))
-        except Exception:
-            print("Response not JSON:", resp.text)
-
-    except Exception as e:
-        print("Error calling API:", str(e))
-
-
-if __name__ == "__main__":
-    print("Testing Licensing & Sanction Checker MCP...")
-    run_test()
-
-
-⸻
-
-✅ FINAL EXPECTED OUTPUT
-
-is_Sanctioned = false
-
-{
-  "jsonrpc": "2.0",
-  "id": 1,
-  "result": {
-    "status": true,
-    "eligibility_status": "Eligible",
-    "reason_summary": "Within sum insured limits and approved risk zone",
-    "line_of_business": "Commercial Property",
-    "location_risk_zone": "Medium",
-    "business_type": "New Business",
-    "licensing_and_sanction_check": "Cleared",
-    "source_of_check": "OFAC SDN, EU Sanctions, UN Sanctions",
-    "approval_flag": false
-  }
-}
-
-
-⸻
-
-✅ You are now in a stable, production-grade state
-	•	Schema ✔
-	•	ORM ✔
-	•	MCP ✔
-	•	Validation ✔
-	•	Business logic ✔
-
-If you want next, we can:
-	•	add logging
-	•	add approval_date_time logic
-	•	merge multiple eligibility checks into one final decision
+Now i also want to include this in prompt that property detailed report classifcation it should give this as output, Property_Detailed_Report
+below are 2 sample documents so that i can update my prompt with its definition just as we have for other documents
+Sample 1 of property detailed report,
+
+
+Commercial Property – Underwriting 
+Submission Cruise Resort 
+Broker Name: Olivia Park 
+Organization Name: Armstrong and Company 
+Producer Code: 100-002541 
+Underwriting Company: Acme Low Hazard Insurance 
+1. Program Structure & Requested 
+Terms 
+Line of Business: Commercial Property  
+Total Insured Value (TIV):$100,000,000 
+Effective Date: 01/01/2026  
+Name And Mailing Address: Sunflower Hotel Group LLC, 100 Harbor View Drive, 
+Seabreeze, Daytona Beach, Volusia, FL 32118, USA 
+Organization Type: LLC
+Term Type: Annual 
+Limit of Liability: $6,750,000 
+Layer: Primary 
+Valuation: Replacement Cost 
+Coverage Currency: USD 
+Settlement Currency: USD 
+Expiration Date: 01/01/2027 
+2. Executive Summary 
+Property Description: The property is an eight-story, full-service resort constructed in 
+2008 with a reinforced concrete and structural steel frame and a masonry exterior finish. It 
+features concrete slab-on-grade and reinforced concrete floor decks, along with a built-up 
+membrane roofing system that received a partial overlay in 2019. The site spans 4.2 acres 
+and includes landscaped areas, two outdoor pools, spa and fitness facilities, paved 
+driveways, walkways, and a private dock with eight guest berths. Mechanical rooms, 
+storage, and service corridors are located in the lower levels, with no guest rooms below 
+grade. 
+3. Property Identification 
+Named Insured (Company Name): 
+Sunflower Hotel Group LLC (dba Cruise 
+Resort) 
+Address Line 1: 100 Harbor View Drive, 
+Seabreeze 
+City: Daytona Beach 
+State: Florida 
+Zip Code: 32118 
+Country: United States 
+Address Type: Business 
+Property Size: 4.2 acres (site area with 
+landscaped grounds, beach access, and 
+private dock) 
+Building Area (sq ft): 198240 
+Year Constructed: 2008 
+Class Code: 0585 
+4. Property Description & Construction 
+Major Renovation: 2019 (lobby, HVAC 
+replacement, pool decking) 
+Number of Floors: 8 
+Number of Guest Rooms: 240 
+Guest Room Mix: standard suites, one- 
+and two-bedroom suites, select executive 
+suites 
+ Primary construction: reinforced concrete and structural steel frame with masonry 
+exterior finish 
+ Floor construction: concrete slab-on-grade and reinforced concrete decks 
+ Roof: built-up membrane roof system (2019 partial overlay) with routine maintenance 
+program 
+ Basements/lower levels: mechanical rooms, dry storage, service corridors; no guest 
+lodging below grade 
+ Site improvements: pool decks, two outdoor pools, spa, fitness center, paved driveways 
+& drop-off, landscaped areas, walkways, private dock (8 guest berths) 
+ Accessibility: main vehicular access from Harbor View Drive; service drive from Marina 
+Way 
+5. Occupancy & Operations 
+ Primary use: full-service resort: accommodation, F&B, banquet/meeting, spa, fitness, 
+retail, limited marina services 
+ Revenue drivers: rooms; three restaurants; two bars; banquets/events; spa; marina 
+guest fees; retail 
+ Average annual occupancy: 68% (rolling 12-month average) 
+ Seasonal variation: higher occupancy in high season (Nov–Apr) with peak banquets 
+Nov–Mar 
+6. Insured Values (Summary) 
+Buildings & structural improvements: 
+$85,000,000 
+Contents / FF&E: $15,000,000 
+Total Insured Value (TIV): 
+$100,000,000 
+High-level itemization (for underwriting reference): 
+ Guest suites & structural improvements: $62,000,000 
+ Public areas, lobby, F&B & back-of-house structures: $12,500,000 
+ Building services & mechanical systems: $3,500,000 
+ Pool, decks, site improvements & landscaping: $2,000,000 
+ Dock & marina structures: $1,000,000 
+ FF&E (furniture, fixtures & equipment): $12,000,000 
+ Misc contents, small tools, operating supplies: $6,000,000 
+7. Critical Building Systems 
+ HVAC: central chilled water plant; packaged rooftop units for public spaces; major 
+components replaced 2019; PM via CMMS 
+ Electrical: main service 2,500 kVA; emergency circuits for life-safety; ATS for generator 
+tie-in 
+ Emergency power: diesel generator supports life-safety, fire pumps, selected essential 
+loads and partial POS/IT; weekly test schedule 
+ Fire protection: full wet-pipe sprinklers; addressable fire alarm with central station 
+monitoring; on-site fire pump; two hydrants within 100 ft; quarterly & annual test logs 
+ Kitchen fire protection: commercial kitchen hood suppression with regular servicing 
+ Plumbing: domestic hot water plant and booster pumps; backflow prevention devices 
+installed 
+ Elevators: two passenger elevators; one service elevator; annual inspections and 
+maintenance contracts 
+ Life-safety: emergency lighting, illuminated exit signage, ADA egress, posted evacuation 
+plans 
+8. Security & Monitoring 
+ Security staff: 24/7 on-site security team 
+ Electronic access: key-card access for guest room floors and restricted staff areas 
+ CCTV: integrated digital video surveillance across public areas, front-drive, perimeter 
+and service yards; retention policy documented 
+ Guest safety measures: pool lifeguard program (seasonal); signage & compliance with 
+aquatic facility codes 
+9. Utilities & Third-party 
+Dependencies (CBI relevance) 
+Power provider: Seabreeze Utilities 
+Authority 
+Water & sewer: Seabreeze Water & 
+Waste (municipal) 
+Primary ISP / CRS & POS connectivity: 
+Maritime Communications Inc. (primary 
+ISP for booking/PMS/POS) 
+Redundant ISP: Redundant ISP vendor 
+contract under review 
+Laundry/Linens: Seabreeze Linen Co. 
+(off-site) 
+F&B suppliers: regional distributors; 
+multiple vendor relationships for key 
+items 
+Excursion vendors / marina operators: 
+licensed third-party operators; vendor 
+agreements in place 
+10. Marina Specifics 
+ Dock: fixed dock with eight guest berths; owned & maintained by resort; no on-site 
+fueling (adjacent marina for fuel) 
+ Marine operations: third-party licensed operators run excursions; hull/boat PD not 
+under property program (vendor responsibility in contracts) 
+11. Maintenance, Inspections & Risk Controls 
+ Preventive maintenance: CMMS logs for HVAC, kitchen hood, sprinkler, generator 
+testing 
+ Life-safety testing: quarterly sprinklers; annual fire pump; monthly fire alarm tests; 
+annual full alarm inspection; vendor certificates on file 
+ Vendor controls: contractor insurance requirement min $2M GL; certificate 
+management process 
+ Business continuity: documented BCP & EAP; off-site backups for reservations & guest 
+records; periodic tabletop exercises with local emergency services 
+ Staff training: annual fire/evacuation drills; F&B managers with food safety cert; first
+aid/CPR for supervisors 
+12. Recent Loss History (Time-Element & Property) 
+ 2024: kitchen exhaust grease fire — smoke damage; limited kitchen closure; BI & partial 
+EE paid for 7 days; time-element approx. $250,000. 
+ 2022: failed domestic line water intrusion (lower-level storage) — contents damage; BI 
+3 days approx. $120,000. 
+ 2025 (YTD): pool area slip & fall remediation with temporary closure; minor BI approx. 
+$15,000. 
+Loss-run reports and claim detail files available on request (attached in submission packet). 
+13. Exposures & Underwriting Considerations 
+ Time-element sensitivity: reliance on room revenue and banquet/event income; peak
+season outages materially impact revenue. 
+ Third-party dependency: booking engine/CRS and primary ISP are key contingent BI 
+exposures. 
+ Marina & vendor risk: dock and excursion vendors introduce potential liability and 
+service interruption considerations. 
+ Flood & windstorm: coastal location elevates storm surge and named storm exposure; 
+flood zone/elevation certificate review recommended. 
+ Utility interruption: municipal power/telecom failures may trigger service interruption 
+claims; redundancy & SLAs relevant.
+
+Sample 2 of property detailed report,
+Commercial Property – Underwriting Submission 
+Manufacturing Facility 
+Broker Name: James Carter 
+Organization Name: Armstrong and Company 
+Producer Code: 100-002541 
+Underwriting Company: Acme Low Hazard Insurance 
+Name And Mailing Address: 450 Industrial Parkway, Austin, Texas 78744, USA 
+Organization Type: LLC  
+Program Structure & Requested Terms 
+ Line of Business: Commercial 
+Property 
+ Total Insured Value (TIV): 
+$150,000,000 
+ EAective Date: 01/03/2026 
+ Expiration Date: 01/03/2027 
+ Term Type: Annual 
+ Limit of Liability: $10,000,000 
+ Layer: Primary 
+ Valuation: Replacement Cost 
+ Coverage Currency: USD 
+ Settlement Currency: USD 
+Property Description: The property is a 200,000 sq ft advanced electronics manufacturing facility 
+built in 2015, situated on a secure 12-acre industrial campus. It features a steel-frame structure 
+with insulated metal panel exterior walls, reinforced concrete flooring, and an upgraded insulated 
+metal roof system completed in 2021. The site includes loading docks, truck lanes, and controlled
+entry perimeter fencing designed to support continuous high-volume production flows. Interior 
+spaces include precision-controlled assembly areas, testing labs, equipment bays, and 
+administrative oAices. 
+Coverage Summary:  
+The proposed coverage structure is aligned with the facility’s asset distribution and operational 
+dependencies, ensuring that both the building and critical machinery are adequately protected. 
+The majority of the Total Insured Value is concentrated in the buildings and structural 
+improvements at $120,000,000, reflecting the significance of the physical plant to ongoing 
+production. Replacement Cost valuation is appropriate given the modern construction features, 
+including the steel-frame design, reinforced concrete slab, and upgraded insulated metal roof 
+system. These characteristics support a coverage approach that prioritizes rapid rebuilding 
+capability in the event of a major loss, limiting time-element exposure and reducing the likelihood 
+of prolonged operational disruption. Additional coverages should reflect the site’s reliance on 
+specialized machinery and precision-controlled production environments, supported by 
+$30,000,000 in contents, machinery, and equipment values. Critical systems—such as the 
+precision HVAC upgrade from 2021, dual-feed electrical supply with UPS backup, and clean-agent 
+f
+ire suppression systems—further justify equipment breakdown, electrical injury, and service 
+interruption extensions. Given the facility’s continuous production model and sensitivity to 
+time-element losses, business interruption coverage with consideration for extra expense, utility 
+service interruption, and contingent time-element (due to key semiconductor suppliers) is 
+essential to maintain financial resilience after a covered event. 
+Property Identification 
+ Named Insured (Company Name): 
+Orion Electronics Manufacturing Inc. 
+ Address Line 1: 450 Industrial 
+Parkway 
+ City: Austin 
+ Property Size: 12 acres 
+ Building Area (sq ft): 200000 
+ Year Constructed: 2015 
+ Class Code: 0414 
+ State: Texas 
+ Zip Code: 78744 
+ Country: United States 
+ Address Type: Business 
+ Major Renovation: 2021 (assembly 
+line modernization, HVAC upgrades) 
+ Number of Floors: 2 
+ Number of Production Lines: 5 
+Property Description & Construction 
+Primary construction: steel frame with insulated metal panels 
+Floor construction: reinforced concrete slab 
+Roof: insulated metal roof system (2021 upgrades) 
+Basements/lower levels: none; machine pits present 
+Site improvements: loading docks, truck circulation lanes, secured perimeter fencing 
+Accessibility: primary truck ingress/egress via Industrial Parkway 
+Occupancy & Operations 
+ Primary use: high-volume electronics assembly & testing facility 
+ Revenue drivers: contract manufacturing, OEM component fabrication 
+ Average annual operational capacity: 82% 
+ Seasonal variation: minimal, continuous production cycle 
+Insured Values (Summary) 
+ Buildings & structural improvements: $120,000,000 
+ Contents / machinery & equipment: $30,000,000 
+ Total Insured Value (TIV): $150,000,000 
+Critical Building Systems 
+ HVAC: precision climate control system; 2021 upgrade 
+ Electrical: dual-feed power supply; backup UPS systems 
+ Emergency power: diesel generator powering essential production zones 
+ Fire protection: FM-approved suppression system; clean agent systems in sensitive areas 
+ Plumbing: industrial-grade water systems for cooling 
+ Elevators: 1 freight elevator 
+Security & Monitoring 
+ 24/7 on-site security 
+ Access control: badge-based access for all employees 
+ CCTV: full-facility coverage with monitored control room 
+Utilities & Third-party Dependencies 
+ Power provider: Austin Energy 
+ Water & sewer: municipal 
+ Primary ISP: TechFiber Communications 
+ Redundant ISP: LineLayer Networks 
+ Critical suppliers: semiconductor component suppliers, packaging vendors 
+Maintenance, Inspections & Risk Controls 
+ Preventive maintenance: digital CMMS-managed schedule 
+ Life-safety testing: quarterly system tests 
+ Vendor controls: mandatory insurance requirements 
+ Business continuity: full BCP with oA-site data replication 
+ StaA training: machine safety, hazard communication, evacuation drills 
+Recent Loss History (Time-Element & Property) 
+ 2024: minor electrical room short circuit — downtime 2 days; approx. $180,000 
+ 2023: forklift collision damaging shelving; approx. $45,000 
+Exposures & Underwriting Considerations 
+ Time-element sensitivity due to reliance on continuous production 
+ Supply chain dependencies for specialized components 
+ Utility interruption exposure due to high power demand 
+ Fire and equipment breakdown critical exposures 
+Broker & Property Contacts 
+ Broker: James Carter — Senior 
+Commercial Broker, Armstrong and 
+Company 
+ Broker Email: 
+j.carter@armcomp.com 
+
+
+and below is my current prompt
+    prompt = f"""
+You are an expert in insurance documentation and intelligent document processing.
+Your task is to classify a given insurance-related document into EXACTLY ONE of the following categories:
+1. ACORD
+2. SOV
+3. LOSS_RUN
+4. INSPECTION_REPORT
+5. NON_ACORD
+Definitions:
+ACORD:
+A standardized insurance form published by ACORD (Association for Cooperative Operations Research and Development),
+used for applications, certificates, or evidence of insurance.
+These documents usually:
+- Have structured fields such as Producer, Insured, Certificate Holder, Policy Number
+- Summarize coverage or serve as an application or certificate
+SOV (Schedule / Statement of Values):
+A document that lists insured property values, usually in a tabular format.
+These documents usually:
+- Contain titles like “Schedule of Values” or “Statement of Values”
+- Include location-wise or building-wise property descriptions and values
+- Have columns such as Location, Building, Description, ACV, RC, 100% Values, Rates
+- May reference or be labeled as ACORD 139
+- Focus on property valuation, not coverage certification
+LOSS_RUN:
+A document that summarizes historical insurance claims.
+These documents usually:
+- Contain phrases like “Loss Run Report”, “Claims History”, or “Valuation Date”
+- List claim numbers, dates of loss, descriptions, paid amounts, reserves, and total incurred losses
+- Cover a historical time period
+- Do NOT function as applications or certificates
+INSPECTION_REPORT:
+A document created after a physical or on-site property inspection for underwriting or risk assessment.
+These documents usually:
+- Contain titles such as “Inspection Report” or similar
+- Include inspection dates, report IDs, broker or inspector details
+- Describe property condition, construction, occupancy, protection, and exposure (COPE)
+- Include sections on building systems, life safety, fire protection, security, utilities, roof, and operations
+- Provide observations, compliance notes, and risk improvement recommendations
+- Focus on current physical condition and risk characteristics of the property
+NON_ACORD:
+Any insurance-related document that is NOT an ACORD form, SOV, Loss Run, or Inspection Report.
+This includes:
+- Quote documents
+- Property detail reports
+- Underwriting summaries
+- Exposure analyses
+- Proposals, narratives, internal reports, or supporting documentation
+- Documents that reference ACORD forms but are not themselves ACORD forms
+Document Content:
+{text[:2000]}
+Reply with ONLY ONE word from the following options:
+ACORD
+SOV
+LOSS_RUN
+INSPECTION_REPORT
+NON_ACORD
+"""
