@@ -1,5 +1,4 @@
-So now as i have shared all code tell me what happens here i mean its execution i need to understand what come in as inpur and whatgoes as output in each iteration , state etc also explain each word and reason of code eg what is AI message doing in that particular iteration etc. dont explain import statements
-
+current code which has one agent and multiple mcp tools are called as you can see in the prompt
 
 
 from fastapi import FastAPI
@@ -132,7 +131,7 @@ if __name__ == "__main__":
     import uvicorn
     uvicorn.run(app, host="0.0.0.0", port=8021)
 
-Earlier this was the prompt are you sure i should replace this prompt woth what you gave ? As i dont see any explanations in the prompt as we have earlier
+Earlier this was the prompt:-
 
 You are an intelligent agent within the Insurance Underwriting Process.
 Your specific role is to handle the underwriting workflow.
@@ -246,16 +245,29 @@ Your actions are performed in a defined sequential workflow using multiple tools
 Through this structured sequence, you act as the Third layer of automation in the insurance underwriting ecosystem.
  
 
-I forgot to tell you one thing in the state. We can have something like if email intent, Agent is completed. Then the state should be email. Intend Agent phase completed after which router decides that the next subgraph node that has to be executed is eligibility Agent and after eligibility agent execute completely, that is, if the last tool of eligibility Agent is completed, we can have a state saying that eligibility Agent phase completed similarly for risk checking Agent
+So now I have been told to create 3 subgraphs and each of them have 
+few tools that are different from each other ie EmailIntentAgent subgraph has Email reading phase , 
+data, writing, phase, attachment, downloading face, layout, detection, phase, data extraction phase, attachment, query, phase, 
+attachment, summarisation phase, then there is eligibility Agent subgraph which has risk type, checking, phase insurance, renewal, 
+checking, phase, licensing, and sanction, checking phase and Jason reading phase, then there is risk checking agent, subgraph, which has 
+risk data, capturing phase, risk, score, calculation, phase, accept, reject phase. So now there will be a mega agent which will have these
+nodes whcih are subgraphs and these nodes will have there tools 
+
+Now 
+in the state there should be different states for different agents, ie the approach of calling a agent(subgrpah) via node of maingrpah.
+We can have something like if email intent, Agent is completed. Then the state should be email. Intend Agent phase completed,
+I think there should be a shared state as well where the last tool of each agent updates the state such that our prompt should also mention that if for eg (emailIntentAgentphase completed is present in the state then the EligibilityAgentPhase(Subgrpah) should be triggered 
+after which router decides that the next subgraph node that has to be executed is eligibility Agent and after eligibility agent execute completely, that is, if the last tool of eligibility Agent is completed, we can have a state saying that eligibility Agent phase completed similarly for risk checking Agent
+so for the maingrpah as well we need a prompt to guide it, and 1 prompt for each agent (ie 1 for EmailIntentAgent,1 for  EligibilitAgent,1 for  RiskAgent,(subgrpahs))
 
 
-So now I have been told to create 3 subgraphs and each of them have few tools that are different from each other ie EmailIntentAgent subgraph has Email reading phase , data, writing, phase, attachment, downloading face, layout, detection, phase, data extraction phase, attachment, query, phase, attachment, summarisation phase, then there is eligibility Agent subgraph which has risk type, checking, phase insurance, renewal, checking, phase, licensing, and sanction, checking phase and Jason reading phase, then there is risk checking agent, subgraph, which has risk data, capturing phase, risk, score, calculation, phase, accept, reject phase. So now there will be a mega agent which will have these nodes whcih are subgraphs and these nodes will have there tools 
-
-I am told to refer the above code that we saw all the iterations etc i have already given you the current prompt so earlier it was just one agent as you can see and one prompt and tools were getting called now i have been to think on subgraph perspective 
-Here I am totally confused, but I have a layout in my mind. For example, there will be a mega Agent, which will have these sub graphs as Agent notes, and as we had earlier, there will be a router node that decides and picks the correct order of Agent, that is firstly, email intent agent, secondly, eligibility agent, and thirdly, risk shaking agent Which are nothing but subgraph. Then each of these sub graphs will have their own notes. It might be to note that executes the phases or MCP tools in a proper sequence like it are getting executed currently in the same sequence.
+I am told to refer the above code that we saw all the iterations etc i have already given you the current prompt so earlier it was just one agent as you can see and one prompt and 
+tools were getting called now i have been to think on subgraph perspective 
+the correct order of Agent, that is firstly, email intent agent, secondly, eligibility agent, and thirdly, risk shaking agent Which are nothing but subgraph. 
+Then each of these sub graphs will have their own nodes. It might be to node that executes the phases or MCP tools in a proper sequence like it are getting executed currently in the same sequence via prompt decesion.
 
 As we see that Agent is returning 
-A new tool as per the prompt 
+A new tool as per the prompt (in this manner)
 
 AIMessage(
   content="",
@@ -267,3 +279,5 @@ AIMessage(
 )
 
 Is it picking that tool from the tools list that we have passed in create custom grpaph function 
+so now also we do not have actual mcp tools, so firstly we need to create each .py file for ech mcp tools just for testing it to mock (like for eg it is returning something as if it was real)
+then we can start building our project i hope you understood everything 
