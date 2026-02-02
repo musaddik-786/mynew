@@ -1,769 +1,278 @@
-prompt = f"""
-You are an expert in insurance documentation and intelligent document processing.
+import requests
 
-Your task is to classify a given insurance-related document into EXACTLY ONE of the following categories:
+BASE_URL = "https://pc-sandbox-gwcpdev.hexaware.zeta1-andromeda.guidewire.net/rest/"  # Replace with your actual API base URL
 
-1. ACORD
-2. SOV
-3. LOSS_RUN
-4. INSPECTION_REPORT
-5. PROPERTY_DETAILED_REPORT
-6. SUBMISSION_DOCUMENT
+headers = {
+    # 'Content-Type': 'application/json',
+    # # Add authorization headers if needed, e.g.
+    # # 'Authorization': 'Bearer YOUR_ACCESS_TOKEN'
 
-Definitions:
+    'accpet': 'application/json',
+    # Add authorization headers here if needed, e.g.
+    'authorization': 'Basic c3U6Z3c=',
+    'Content-Type' : 'application/json'
+}
 
-ACORD:
-A standardized insurance form published by ACORD (Association for Cooperative Operations Research and Development),
-used for applications, certificates, or evidence of insurance.
-These documents usually:
-- Contain structured ACORD layouts and standardized fields
-- Include sections such as Producer, Insured, Certificate Holder, Policy Number
-- Serve as official insurance applications, certificates, or evidence forms
+# def post_request(uri, body):
+#     url = BASE_URL + uri
+#     response = requests.post(url, json=body, headers=headers)
+#     response.raise_for_status()  # Raises HTTPError if the response was an error
+#     return response.json()
 
-SOV (Schedule / Statement of Values):
-A document that lists insured property values, primarily for property rating and underwriting.
-These documents usually:
-- Are titled “Schedule of Values” or “Statement of Values”
-- Present location-wise or building-wise values in tabular format
-- Include columns such as Location, Building, Description, ACV, RC, 100% Values, Rates
-- May be labeled as ACORD 139
-- Focus on valuation, not narrative underwriting analysis
+def post_request(uri, body=None):
+    url = BASE_URL + uri
+    if body is not None:
+        response = requests.post(url, json=body, headers=headers)
+    else:
+        response = requests.post(url, headers=headers)
+    response.raise_for_status()
+    return response.json()
 
-LOSS_RUN:
-A document that summarizes historical insurance claims experience.
-These documents usually:
-- Are titled “Loss Run Report” or similar
-- Include claim numbers, dates of loss, paid amounts, reserves, and total incurred
-- Cover prior policy periods
-- Focus on loss history rather than current property condition
+# 1. Create Account
+account_body = {
+    "data": {
+        "attributes": {
+            "initialAccountHolder": {
+                "contactSubtype": "Company",
+                "companyName": "Hexa Tester",
+                "primaryAddress": {
+                    "addressLine1": "2850 S. Delaware St.",
+                    "city": "San Mateo",
+                    "postalCode": "94403",
+                    "state": {"code": "CA"}
+                }
+            },
+            "initialPrimaryLocation": {
+                "addressLine1": "2850 S. Delaware St.",
+                "city": "San Mateo",
+                "postalCode": "94403",
+                "state": {"code": "CA"}
+            },
+            "producerCodes": [{"id": "pc:6"}],
+            "organizationType": {"code": "llc"}
+        }
+    }
+}
 
-INSPECTION_REPORT:
-A document created after a physical or on-site property inspection for underwriting or risk evaluation.
-These documents usually:
-- Are titled “Inspection Report” or similar
-- Include inspection dates, report IDs, and inspector or broker details
-- Describe observed property condition, construction, occupancy, protection, and exposure (COPE)
-- Include sections on life safety, fire protection, security, utilities, roof, and operations
-- Provide observations and risk improvement recommendations
-- Focus on observed conditions at the time of inspection
+account_response = post_request("/account/v1/accounts", account_body)
 
-PROPERTY_DETAILED_REPORT:
-A comprehensive underwriting-focused document that provides an in-depth description of a property and its operations.
-These documents usually:
-- Contain extensive narrative sections describing construction, occupancy, operations, and critical systems
-- Include insured values, TIV breakdowns, and high-level valuation summaries
-- Describe HVAC, electrical, fire protection, security, utilities, third-party dependencies, and risk controls
-- Include underwriting considerations, exposures, and loss history summaries
-- Function as a detailed property profile rather than a formal submission package
-- Do NOT primarily present the document as a “submission” to a carrier
+# Extract variables from account response
+account_id = account_response['data']['attributes']['id']
+driver_id = account_response['data']['attributes']['accountHolder']['id']
+primary_location_id = account_response['data']['attributes']['primaryLocation']['id']
 
-SUBMISSION_DOCUMENT:
-A document assembled to formally present a risk to an insurer for underwriting, quotation, or binding.
-These documents usually:
-- Are explicitly titled or framed as “Underwriting Submission” or similar
-- Include broker details, producer codes, underwriting company information
-- Present requested terms, program structure, limits, valuation, and effective dates
-- Summarize the property, coverage intent, and underwriting rationale
-- May reference or attach other documents such as SOVs, Loss Runs, Inspection Reports, or Property Detailed Reports
-- Function as a submission package rather than a standalone property analysis
+print(f"Account ID: {account_id}")
+print(f"Driver ID: {driver_id}")
+print(f"Primary Location ID: {primary_location_id}")
 
-Document Content:
-{text[:2000]}
+# 2. Create Job Submission
+job_submission_body = {
+    "data": {
+        "attributes": {
+            "account": {"id": account_id},
+            "baseState": {"code": "CA"},
+            "jobEffectiveDate": "2025-07-16",
+            "product": {"id": "GoCommercialProp"},
+            "producerCode": {"id": "pc:6"}
+        }
+    }
+}
 
-Reply with ONLY ONE word from the following options:
-ACORD
-SOV
-LOSS_RUN
-INSPECTION_REPORT
-PROPERTY_DETAILED_REPORT
-SUBMISSION_DOCUMENT
-"""
+job_submission_response = post_request("/job/v1/submissions", job_submission_body)
 
+# Extract jobId
+job_id = job_submission_response['data']['attributes']['id']
+print(f"Job ID: {job_id}")
 
+# 3. Create Location for Job
+location_body = {
+    "data": {
+        "attributes": {
+            "addressLine1": "Address Line 1",
+            "city": "San Mateo",
+            "coverableJurisdiction": {
+                "code": "CA",
+                "name": "California"
+            },
+            "postalCode": "94404",
+            "state": {"code": "CA"}
+        }
+    }
+}
 
+location_uri = f"/job/v1/jobs/{job_id}/lines/GOCommercialLine/locations"
+location_response = post_request(location_uri, location_body)
 
+# Extract locationId
+location_id = location_response['data']['attributes']['id']
+print(f"Location ID: {location_id}")
 
+# Continue with further requests similarly:
+# Use job_id and other extracted variables to build URIs and bodies for the next calls.
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-now we had these many classifictaions
-1. ACORD
-2. SOV
-3. LOSS_RUN
-4. INSPECTION_REPORT
-5. NON_ACORD
-I want replace NON_ACORD with the Property_Detailed_Report,
-Now to include this in prompt that property detailed report classifcation it should give this as output, Property_Detailed_Report
-below are 2 sample documents so that i can update my prompt with its definition just as we have for other documents
-
-also I want to add this document classification which is Submission_Document, i will share its sample as well so add that in the prompt as well 
-
-Sample 1 of property detailed report,
-
-
-Commercial Property – Underwriting 
-Submission Cruise Resort 
-Broker Name: Olivia Park 
-Organization Name: Armstrong and Company 
-Producer Code: 100-002541 
-Underwriting Company: Acme Low Hazard Insurance 
-1. Program Structure & Requested 
-Terms 
-Line of Business: Commercial Property  
-Total Insured Value (TIV):$100,000,000 
-Effective Date: 01/01/2026  
-Name And Mailing Address: Sunflower Hotel Group LLC, 100 Harbor View Drive, 
-Seabreeze, Daytona Beach, Volusia, FL 32118, USA 
-Organization Type: LLC
-Term Type: Annual 
-Limit of Liability: $6,750,000 
-Layer: Primary 
-Valuation: Replacement Cost 
-Coverage Currency: USD 
-Settlement Currency: USD 
-Expiration Date: 01/01/2027 
-2. Executive Summary 
-Property Description: The property is an eight-story, full-service resort constructed in 
-2008 with a reinforced concrete and structural steel frame and a masonry exterior finish. It 
-features concrete slab-on-grade and reinforced concrete floor decks, along with a built-up 
-membrane roofing system that received a partial overlay in 2019. The site spans 4.2 acres 
-and includes landscaped areas, two outdoor pools, spa and fitness facilities, paved 
-driveways, walkways, and a private dock with eight guest berths. Mechanical rooms, 
-storage, and service corridors are located in the lower levels, with no guest rooms below 
-grade. 
-3. Property Identification 
-Named Insured (Company Name): 
-Sunflower Hotel Group LLC (dba Cruise 
-Resort) 
-Address Line 1: 100 Harbor View Drive, 
-Seabreeze 
-City: Daytona Beach 
-State: Florida 
-Zip Code: 32118 
-Country: United States 
-Address Type: Business 
-Property Size: 4.2 acres (site area with 
-landscaped grounds, beach access, and 
-private dock) 
-Building Area (sq ft): 198240 
-Year Constructed: 2008 
-Class Code: 0585 
-4. Property Description & Construction 
-Major Renovation: 2019 (lobby, HVAC 
-replacement, pool decking) 
-Number of Floors: 8 
-Number of Guest Rooms: 240 
-Guest Room Mix: standard suites, one- 
-and two-bedroom suites, select executive 
-suites 
- Primary construction: reinforced concrete and structural steel frame with masonry 
-exterior finish 
- Floor construction: concrete slab-on-grade and reinforced concrete decks 
- Roof: built-up membrane roof system (2019 partial overlay) with routine maintenance 
-program 
- Basements/lower levels: mechanical rooms, dry storage, service corridors; no guest 
-lodging below grade 
- Site improvements: pool decks, two outdoor pools, spa, fitness center, paved driveways 
-& drop-off, landscaped areas, walkways, private dock (8 guest berths) 
- Accessibility: main vehicular access from Harbor View Drive; service drive from Marina 
-Way 
-5. Occupancy & Operations 
- Primary use: full-service resort: accommodation, F&B, banquet/meeting, spa, fitness, 
-retail, limited marina services 
- Revenue drivers: rooms; three restaurants; two bars; banquets/events; spa; marina 
-guest fees; retail 
- Average annual occupancy: 68% (rolling 12-month average) 
- Seasonal variation: higher occupancy in high season (Nov–Apr) with peak banquets 
-Nov–Mar 
-6. Insured Values (Summary) 
-Buildings & structural improvements: 
-$85,000,000 
-Contents / FF&E: $15,000,000 
-Total Insured Value (TIV): 
-$100,000,000 
-High-level itemization (for underwriting reference): 
- Guest suites & structural improvements: $62,000,000 
- Public areas, lobby, F&B & back-of-house structures: $12,500,000 
- Building services & mechanical systems: $3,500,000 
- Pool, decks, site improvements & landscaping: $2,000,000 
- Dock & marina structures: $1,000,000 
- FF&E (furniture, fixtures & equipment): $12,000,000 
- Misc contents, small tools, operating supplies: $6,000,000 
-7. Critical Building Systems 
- HVAC: central chilled water plant; packaged rooftop units for public spaces; major 
-components replaced 2019; PM via CMMS 
- Electrical: main service 2,500 kVA; emergency circuits for life-safety; ATS for generator 
-tie-in 
- Emergency power: diesel generator supports life-safety, fire pumps, selected essential 
-loads and partial POS/IT; weekly test schedule 
- Fire protection: full wet-pipe sprinklers; addressable fire alarm with central station 
-monitoring; on-site fire pump; two hydrants within 100 ft; quarterly & annual test logs 
- Kitchen fire protection: commercial kitchen hood suppression with regular servicing 
- Plumbing: domestic hot water plant and booster pumps; backflow prevention devices 
-installed 
- Elevators: two passenger elevators; one service elevator; annual inspections and 
-maintenance contracts 
- Life-safety: emergency lighting, illuminated exit signage, ADA egress, posted evacuation 
-plans 
-8. Security & Monitoring 
- Security staff: 24/7 on-site security team 
- Electronic access: key-card access for guest room floors and restricted staff areas 
- CCTV: integrated digital video surveillance across public areas, front-drive, perimeter 
-and service yards; retention policy documented 
- Guest safety measures: pool lifeguard program (seasonal); signage & compliance with 
-aquatic facility codes 
-9. Utilities & Third-party 
-Dependencies (CBI relevance) 
-Power provider: Seabreeze Utilities 
-Authority 
-Water & sewer: Seabreeze Water & 
-Waste (municipal) 
-Primary ISP / CRS & POS connectivity: 
-Maritime Communications Inc. (primary 
-ISP for booking/PMS/POS) 
-Redundant ISP: Redundant ISP vendor 
-contract under review 
-Laundry/Linens: Seabreeze Linen Co. 
-(off-site) 
-F&B suppliers: regional distributors; 
-multiple vendor relationships for key 
-items 
-Excursion vendors / marina operators: 
-licensed third-party operators; vendor 
-agreements in place 
-10. Marina Specifics 
- Dock: fixed dock with eight guest berths; owned & maintained by resort; no on-site 
-fueling (adjacent marina for fuel) 
- Marine operations: third-party licensed operators run excursions; hull/boat PD not 
-under property program (vendor responsibility in contracts) 
-11. Maintenance, Inspections & Risk Controls 
- Preventive maintenance: CMMS logs for HVAC, kitchen hood, sprinkler, generator 
-testing 
- Life-safety testing: quarterly sprinklers; annual fire pump; monthly fire alarm tests; 
-annual full alarm inspection; vendor certificates on file 
- Vendor controls: contractor insurance requirement min $2M GL; certificate 
-management process 
- Business continuity: documented BCP & EAP; off-site backups for reservations & guest 
-records; periodic tabletop exercises with local emergency services 
- Staff training: annual fire/evacuation drills; F&B managers with food safety cert; first
-aid/CPR for supervisors 
-12. Recent Loss History (Time-Element & Property) 
- 2024: kitchen exhaust grease fire — smoke damage; limited kitchen closure; BI & partial 
-EE paid for 7 days; time-element approx. $250,000. 
- 2022: failed domestic line water intrusion (lower-level storage) — contents damage; BI 
-3 days approx. $120,000. 
- 2025 (YTD): pool area slip & fall remediation with temporary closure; minor BI approx. 
-$15,000. 
-Loss-run reports and claim detail files available on request (attached in submission packet). 
-13. Exposures & Underwriting Considerations 
- Time-element sensitivity: reliance on room revenue and banquet/event income; peak
-season outages materially impact revenue. 
- Third-party dependency: booking engine/CRS and primary ISP are key contingent BI 
-exposures. 
- Marina & vendor risk: dock and excursion vendors introduce potential liability and 
-service interruption considerations. 
- Flood & windstorm: coastal location elevates storm surge and named storm exposure; 
-flood zone/elevation certificate review recommended. 
- Utility interruption: municipal power/telecom failures may trigger service interruption 
-claims; redundancy & SLAs relevant.
-
-Sample 2 of property detailed report,
-Commercial Property – Underwriting Submission 
-Manufacturing Facility 
-Broker Name: James Carter 
-Organization Name: Armstrong and Company 
-Producer Code: 100-002541 
-Underwriting Company: Acme Low Hazard Insurance 
-Name And Mailing Address: 450 Industrial Parkway, Austin, Texas 78744, USA 
-Organization Type: LLC  
-Program Structure & Requested Terms 
- Line of Business: Commercial 
-Property 
- Total Insured Value (TIV): 
-$150,000,000 
- EAective Date: 01/03/2026 
- Expiration Date: 01/03/2027 
- Term Type: Annual 
- Limit of Liability: $10,000,000 
- Layer: Primary 
- Valuation: Replacement Cost 
- Coverage Currency: USD 
- Settlement Currency: USD 
-Property Description: The property is a 200,000 sq ft advanced electronics manufacturing facility 
-built in 2015, situated on a secure 12-acre industrial campus. It features a steel-frame structure 
-with insulated metal panel exterior walls, reinforced concrete flooring, and an upgraded insulated 
-metal roof system completed in 2021. The site includes loading docks, truck lanes, and controlled
-entry perimeter fencing designed to support continuous high-volume production flows. Interior 
-spaces include precision-controlled assembly areas, testing labs, equipment bays, and 
-administrative oAices. 
-Coverage Summary:  
-The proposed coverage structure is aligned with the facility’s asset distribution and operational 
-dependencies, ensuring that both the building and critical machinery are adequately protected. 
-The majority of the Total Insured Value is concentrated in the buildings and structural 
-improvements at $120,000,000, reflecting the significance of the physical plant to ongoing 
-production. Replacement Cost valuation is appropriate given the modern construction features, 
-including the steel-frame design, reinforced concrete slab, and upgraded insulated metal roof 
-system. These characteristics support a coverage approach that prioritizes rapid rebuilding 
-capability in the event of a major loss, limiting time-element exposure and reducing the likelihood 
-of prolonged operational disruption. Additional coverages should reflect the site’s reliance on 
-specialized machinery and precision-controlled production environments, supported by 
-$30,000,000 in contents, machinery, and equipment values. Critical systems—such as the 
-precision HVAC upgrade from 2021, dual-feed electrical supply with UPS backup, and clean-agent 
-f
-ire suppression systems—further justify equipment breakdown, electrical injury, and service 
-interruption extensions. Given the facility’s continuous production model and sensitivity to 
-time-element losses, business interruption coverage with consideration for extra expense, utility 
-service interruption, and contingent time-element (due to key semiconductor suppliers) is 
-essential to maintain financial resilience after a covered event. 
-Property Identification 
- Named Insured (Company Name): 
-Orion Electronics Manufacturing Inc. 
- Address Line 1: 450 Industrial 
-Parkway 
- City: Austin 
- Property Size: 12 acres 
- Building Area (sq ft): 200000 
- Year Constructed: 2015 
- Class Code: 0414 
- State: Texas 
- Zip Code: 78744 
- Country: United States 
- Address Type: Business 
- Major Renovation: 2021 (assembly 
-line modernization, HVAC upgrades) 
- Number of Floors: 2 
- Number of Production Lines: 5 
-Property Description & Construction 
-Primary construction: steel frame with insulated metal panels 
-Floor construction: reinforced concrete slab 
-Roof: insulated metal roof system (2021 upgrades) 
-Basements/lower levels: none; machine pits present 
-Site improvements: loading docks, truck circulation lanes, secured perimeter fencing 
-Accessibility: primary truck ingress/egress via Industrial Parkway 
-Occupancy & Operations 
- Primary use: high-volume electronics assembly & testing facility 
- Revenue drivers: contract manufacturing, OEM component fabrication 
- Average annual operational capacity: 82% 
- Seasonal variation: minimal, continuous production cycle 
-Insured Values (Summary) 
- Buildings & structural improvements: $120,000,000 
- Contents / machinery & equipment: $30,000,000 
- Total Insured Value (TIV): $150,000,000 
-Critical Building Systems 
- HVAC: precision climate control system; 2021 upgrade 
- Electrical: dual-feed power supply; backup UPS systems 
- Emergency power: diesel generator powering essential production zones 
- Fire protection: FM-approved suppression system; clean agent systems in sensitive areas 
- Plumbing: industrial-grade water systems for cooling 
- Elevators: 1 freight elevator 
-Security & Monitoring 
- 24/7 on-site security 
- Access control: badge-based access for all employees 
- CCTV: full-facility coverage with monitored control room 
-Utilities & Third-party Dependencies 
- Power provider: Austin Energy 
- Water & sewer: municipal 
- Primary ISP: TechFiber Communications 
- Redundant ISP: LineLayer Networks 
- Critical suppliers: semiconductor component suppliers, packaging vendors 
-Maintenance, Inspections & Risk Controls 
- Preventive maintenance: digital CMMS-managed schedule 
- Life-safety testing: quarterly system tests 
- Vendor controls: mandatory insurance requirements 
- Business continuity: full BCP with oA-site data replication 
- StaA training: machine safety, hazard communication, evacuation drills 
-Recent Loss History (Time-Element & Property) 
- 2024: minor electrical room short circuit — downtime 2 days; approx. $180,000 
- 2023: forklift collision damaging shelving; approx. $45,000 
-Exposures & Underwriting Considerations 
- Time-element sensitivity due to reliance on continuous production 
- Supply chain dependencies for specialized components 
- Utility interruption exposure due to high power demand 
- Fire and equipment breakdown critical exposures 
-Broker & Property Contacts 
- Broker: James Carter — Senior 
-Commercial Broker, Armstrong and 
-Company 
- Broker Email: 
-j.carter@armcomp.com 
+# Example for the next coverage post (you can loop or write individually)
+# coverage_body_example = {
+#     "data": {
+#         "attributes": {
+#             "clauseType": "coverage",
+#             "id": "GCPPropertyOffPrem",
+#             "pattern": {"id": "GCPPropertyOffPrem"},
+#             "terms": {
+#                 "GCPPropertyOffPremDeductible": {"directValue": "50000.00"},
+#                 "GCPPropertyOffPremInterContinent": {"directValue": "50000.00"},
+#                 "GCPPropertyOffPremLimit": {"directValue": "400000.00"},
+#                 "GCPPropertyOffPremWithinTerrLimit": {"directValue": "25000.00"}
+#             }
+#         }
+#     }
+# }
 
 
 
+coverages = [
+    {
+        "clauseType": "coverage",
+        "id": "GCPPropertyOffPrem",
+        "pattern": {"id": "GCPPropertyOffPrem"},
+        "terms": {
+            "GCPPropertyOffPremDeductible": {"directValue": "50000.00"},
+            "GCPPropertyOffPremInterContinent": {"directValue": "50000.00"},
+            "GCPPropertyOffPremLimit": {"directValue": "400000.00"},
+            "GCPPropertyOffPremWithinTerrLimit": {"directValue": "25000.00"}
+        }
+    },
+    {
+        "clauseType": "coverage",
+        "id": "GCPNewlyAcquiredBuildProp",
+        "pattern": {"id": "GCPNewlyAcquiredBuildProp"},
+        "terms": {}
+    },
+    {
+        "clauseType": "coverage",
+        "id": "GCPOutsideObjs",
+        "pattern": {"id": "GCPOutsideObjs"},
+        "terms": {
+            "GCPOutsideObjsDeductible": {"directValue": "1.00"},
+            "GCPOutsideObjsLimit": {"directValue": "2.00"}
+        }
+    },
+    {
+        "clauseType": "coverage",
+        "id": "GCPContentsOtherStruct",
+        "pattern": {"id": "GCPContentsOtherStruct"},
+        "terms": {
+            "GCPContentsOtherStructDeductible": {},
+            "GCPContentsOtherStructLimit": {
+                "typekeyValue": {
+                    "code": "TwoPercent",
+                    "name": "2%"
+                }
+            }
+        }
+    },
+    {
+        "clauseType": "coverage",
+        "id": "GCPTerrorism",
+        "pattern": {"id": "GCPTerrorism"},
+        "terms": {}
+    },
+    {
+        "clauseType": "coverage",
+        "id": "GCPFungus",
+        "pattern": {"id": "GCPFungus"},
+        "terms": {
+            "GCPFungusLimit": {"directValue": "20000.00"}
+        }
+    },
+    {
+        "clauseType": "coverage",
+        "id": "GCPDebrisRem",
+        "pattern": {"id": "GCPDebrisRem"},
+        "terms": {
+            "GCPDebrisRemInsuredPropLimit": {"choiceValue": {"code": "100kusd"}},
+            "GCPDebrisRemInsuredPropPercent": {"typekeyValue": {"code": "25Percent"}},
+            "GCPDebrisRemOtherPropertyLimit": {"choiceValue": {"code": "200kusd"}}
+        }
+    },
+# ]
+
+# coverage_uri = f"/job/v1/jobs/{job_id}/lines/GOCommercialLine/coverages"
+
+# for coverage in coverages:
+#     coverage_body = {"data": {"attributes": coverage}}
+#     coverage_response = post_request(coverage_uri, coverage_body)
+#     print(f"Added coverage {coverage['id']}: {coverage_response}")
+
+# print("All coverages added successfully.")
+
+# # Repeat for other coverage entries similarly.
 
 
+        # Newly added coverages
+        {
+            "clauseType": "coverage",
+            "id": "GCPDeferredPay",
+            "pattern": {"id": "GCPDeferredPay"},
+            "terms": {
+                "GCPDeferredPayLimit": {"choiceValue": {"code": "100kusd"}}
+            }
+        },
+        {
+            "clauseType": "coverage",
+            "id": "GCPExtraExp",
+            "pattern": {"id": "GCPExtraExp"},
+            "terms": {
+                "GCPExtraExpLimit": {"choiceValue": {"code": "75kusd"}}
+            }
+        },
+        {
+            "clauseType": "coverage",
+            "id": "GCPFireorPolice",
+            "pattern": {"id": "GCPFireorPolice"},
+            "terms": {
+                "GCPFireorPoliceLimit": {"choiceValue": {"code": "75kusd"}}
+            }
+        },
+        {
+            "clauseType": "coverage",
+            "id": "GCPFireProtEquip",
+            "pattern": {"id": "GCPFireProtEquip"},
+            "terms": {
+                "GCPFireProtEquipLimit": {"choiceValue": {"code": "50kusd"}}
+            }
+        },
+        {
+            "clauseType": "coverage",
+            "id": "GCPFlucRawMat",
+            "pattern": {"id": "GCPFlucRawMat"},
+            "terms": {
+                "GCPFlucRawMatLimit": {"choiceValue": {"code": "400kusd"}}
+            }
+        }
+    ]
 
+coverage_uri = f"/job/v1/jobs/{job_id}/lines/GOCommercialLine/coverages"
+for coverage in coverages:
+    coverage_body = {"data": {"attributes": coverage}}
+    coverage_response = post_request(coverage_uri, coverage_body)
+    print(f"Added coverage {coverage['id']}")
 
+    # 5. Quote the job
+quote_uri = f"/job/v1/jobs/{job_id}/quote"
+quote_response = post_request(quote_uri)
+print("Quote response:")
+print(quote_response)
 
-Sample 1 for Submission Document
-Commercial Property – Underwriting Submission 
-Manufacturing Facility 
-Broker Name: James Carter 
-Organization Name: Armstrong and Company 
-Producer Code: 100-002541 
-Underwriting Company: Acme Low Hazard Insurance 
-Name And Mailing Address: 450 Industrial Parkway, Austin, Texas 78744, USA 
-Organization Type: LLC  
-Program Structure & Requested Terms 
- Line of Business: Commercial 
-Property 
- Total Insured Value (TIV): 
-$150,000,000 
- EAective Date: 01/03/2026 
- Expiration Date: 01/03/2027 
- Term Type: Annual 
- Limit of Liability: $10,000,000 
- Layer: Primary 
- Valuation: Replacement Cost 
- Coverage Currency: USD 
- Settlement Currency: USD 
-Property Description: The property is a 200,000 sq ft advanced electronics manufacturing facility 
-built in 2015, situated on a secure 12-acre industrial campus. It features a steel-frame structure 
-with insulated metal panel exterior walls, reinforced concrete flooring, and an upgraded insulated 
-metal roof system completed in 2021. The site includes loading docks, truck lanes, and controlled
-entry perimeter fencing designed to support continuous high-volume production flows. Interior 
-spaces include precision-controlled assembly areas, testing labs, equipment bays, and 
-administrative oAices. 
-Coverage Summary:  
-The proposed coverage structure is aligned with the facility’s asset distribution and operational 
-dependencies, ensuring that both the building and critical machinery are adequately protected. 
-The majority of the Total Insured Value is concentrated in the buildings and structural 
-improvements at $120,000,000, reflecting the significance of the physical plant to ongoing 
-production. Replacement Cost valuation is appropriate given the modern construction features, 
-including the steel-frame design, reinforced concrete slab, and upgraded insulated metal roof 
-system. These characteristics support a coverage approach that prioritizes rapid rebuilding 
-capability in the event of a major loss, limiting time-element exposure and reducing the likelihood 
-of prolonged operational disruption. Additional coverages should reflect the site’s reliance on 
-specialized machinery and precision-controlled production environments, supported by 
-$30,000,000 in contents, machinery, and equipment values. Critical systems—such as the 
-precision HVAC upgrade from 2021, dual-feed electrical supply with UPS backup, and clean-agent 
-f
-ire suppression systems—further justify equipment breakdown, electrical injury, and service 
-interruption extensions. Given the facility’s continuous production model and sensitivity to 
-time-element losses, business interruption coverage with consideration for extra expense, utility 
-service interruption, and contingent time-element (due to key semiconductor suppliers) is 
-essential to maintain financial resilience after a covered event. 
-Property Identification 
- Named Insured (Company Name): 
-Orion Electronics Manufacturing Inc. 
- Address Line 1: 450 Industrial 
-Parkway 
- City: Austin 
- Property Size: 12 acres 
- Building Area (sq ft): 200000 
- Year Constructed: 2015 
- Class Code: 0414 
- State: Texas 
- Zip Code: 78744 
- Country: United States 
- Address Type: Business 
- Major Renovation: 2021 (assembly 
-line modernization, HVAC upgrades) 
- Number of Floors: 2 
- Number of Production Lines: 5 
-Property Description & Construction 
-Primary construction: steel frame with insulated metal panels 
-Floor construction: reinforced concrete slab 
-Roof: insulated metal roof system (2021 upgrades) 
-Basements/lower levels: none; machine pits present 
-Site improvements: loading docks, truck circulation lanes, secured perimeter fencing 
-Accessibility: primary truck ingress/egress via Industrial Parkway 
-Occupancy & Operations 
- Primary use: high-volume electronics assembly & testing facility 
- Revenue drivers: contract manufacturing, OEM component fabrication 
- Average annual operational capacity: 82% 
- Seasonal variation: minimal, continuous production cycle 
-Insured Values (Summary) 
- Buildings & structural improvements: $120,000,000 
- Contents / machinery & equipment: $30,000,000 
- Total Insured Value (TIV): $150,000,000 
-Critical Building Systems 
- HVAC: precision climate control system; 2021 upgrade 
- Electrical: dual-feed power supply; backup UPS systems 
- Emergency power: diesel generator powering essential production zones 
- Fire protection: FM-approved suppression system; clean agent systems in sensitive areas 
- Plumbing: industrial-grade water systems for cooling 
- Elevators: 1 freight elevator 
-Security & Monitoring 
- 24/7 on-site security 
- Access control: badge-based access for all employees 
- CCTV: full-facility coverage with monitored control room 
-Utilities & Third-party Dependencies 
- Power provider: Austin Energy 
- Water & sewer: municipal 
- Primary ISP: TechFiber Communications 
- Redundant ISP: LineLayer Networks 
- Critical suppliers: semiconductor component suppliers, packaging vendors 
-Maintenance, Inspections & Risk Controls 
- Preventive maintenance: digital CMMS-managed schedule 
- Life-safety testing: quarterly system tests 
- Vendor controls: mandatory insurance requirements 
- Business continuity: full BCP with oA-site data replication 
- StaA training: machine safety, hazard communication, evacuation drills 
-Recent Loss History (Time-Element & Property) 
- 2024: minor electrical room short circuit — downtime 2 days; approx. $180,000 
- 2023: forklift collision damaging shelving; approx. $45,000 
-Exposures & Underwriting Considerations 
- Time-element sensitivity due to reliance on continuous production 
- Supply chain dependencies for specialized components 
- Utility interruption exposure due to high power demand 
- Fire and equipment breakdown critical exposures 
-Broker & Property Contacts 
- Broker: James Carter — Senior 
-Commercial Broker, Armstrong and 
-Company 
- Broker Email: 
-j.carter@armcomp.co
+    # 6. (Optional) Retrieve selections if needed
+    # Example: Get account info
+account_selection_uri = f"/account/v1/accounts/{account_id}"
+account_info = requests.get(BASE_URL + account_selection_uri, headers=headers)
+print("Account info retrieved:", account_info.json())
 
-Sample 2 for Submission Document
-Commercial Property – Underwriting 
-Submission Cruise Resort 
-Broker Name: Olivia Park 
-Organization Name: Armstrong and Company 
-Producer Code: 100-002541 
-Underwriting Company: Acme Low Hazard Insurance 
-1. Program Structure & Requested 
-Terms 
-Line of Business: Commercial Property  
-Total Insured Value (TIV):$100,000,000 
-Effective Date: 01/01/2026  
-Name And Mailing Address: Sunflower Hotel Group LLC, 100 Harbor View Drive, 
-Seabreeze, Daytona Beach, Volusia, FL 32118, USA 
-Organization Type: LLC
-Term Type: Annual 
-Limit of Liability: $6,750,000 
-Layer: Primary 
-Valuation: Replacement Cost 
-Coverage Currency: USD 
-Settlement Currency: USD 
-Expiration Date: 01/01/2027 
-2. Executive Summary 
-Property Description: The property is an eight-story, full-service resort constructed in 
-2008 with a reinforced concrete and structural steel frame and a masonry exterior finish. It 
-features concrete slab-on-grade and reinforced concrete floor decks, along with a built-up 
-membrane roofing system that received a partial overlay in 2019. The site spans 4.2 acres 
-and includes landscaped areas, two outdoor pools, spa and fitness facilities, paved 
-driveways, walkways, and a private dock with eight guest berths. Mechanical rooms, 
-storage, and service corridors are located in the lower levels, with no guest rooms below 
-grade. 
-3. Property Identification 
-Named Insured (Company Name): 
-Sunflower Hotel Group LLC (dba Cruise 
-Resort) 
-Address Line 1: 100 Harbor View Drive, 
-Seabreeze 
-City: Daytona Beach 
-State: Florida 
-Zip Code: 32118 
-Country: United States 
-Address Type: Business 
-Property Size: 4.2 acres (site area with 
-landscaped grounds, beach access, and 
-private dock) 
-Building Area (sq ft): 198240 
-Year Constructed: 2008 
-Class Code: 0585 
-4. Property Description & Construction 
-Major Renovation: 2019 (lobby, HVAC 
-replacement, pool decking) 
-Number of Floors: 8 
-Number of Guest Rooms: 240 
-Guest Room Mix: standard suites, one- 
-and two-bedroom suites, select executive 
-suites 
- Primary construction: reinforced concrete and structural steel frame with masonry 
-exterior finish 
- Floor construction: concrete slab-on-grade and reinforced concrete decks 
- Roof: built-up membrane roof system (2019 partial overlay) with routine maintenance 
-program 
- Basements/lower levels: mechanical rooms, dry storage, service corridors; no guest 
-lodging below grade 
- Site improvements: pool decks, two outdoor pools, spa, fitness center, paved driveways 
-& drop-off, landscaped areas, walkways, private dock (8 guest berths) 
- Accessibility: main vehicular access from Harbor View Drive; service drive from Marina 
-Way 
-5. Occupancy & Operations 
- Primary use: full-service resort: accommodation, F&B, banquet/meeting, spa, fitness, 
-retail, limited marina services 
- Revenue drivers: rooms; three restaurants; two bars; banquets/events; spa; marina 
-guest fees; retail 
- Average annual occupancy: 68% (rolling 12-month average) 
- Seasonal variation: higher occupancy in high season (Nov–Apr) with peak banquets 
-Nov–Mar 
-6. Insured Values (Summary) 
-Buildings & structural improvements: 
-$85,000,000 
-Contents / FF&E: $15,000,000 
-Total Insured Value (TIV): 
-$100,000,000 
-High-level itemization (for underwriting reference): 
- Guest suites & structural improvements: $62,000,000 
- Public areas, lobby, F&B & back-of-house structures: $12,500,000 
- Building services & mechanical systems: $3,500,000 
- Pool, decks, site improvements & landscaping: $2,000,000 
- Dock & marina structures: $1,000,000 
- FF&E (furniture, fixtures & equipment): $12,000,000 
- Misc contents, small tools, operating supplies: $6,000,000 
-7. Critical Building Systems 
- HVAC: central chilled water plant; packaged rooftop units for public spaces; major 
-components replaced 2019; PM via CMMS 
- Electrical: main service 2,500 kVA; emergency circuits for life-safety; ATS for generator 
-tie-in 
- Emergency power: diesel generator supports life-safety, fire pumps, selected essential 
-loads and partial POS/IT; weekly test schedule 
- Fire protection: full wet-pipe sprinklers; addressable fire alarm with central station 
-monitoring; on-site fire pump; two hydrants within 100 ft; quarterly & annual test logs 
- Kitchen fire protection: commercial kitchen hood suppression with regular servicing 
- Plumbing: domestic hot water plant and booster pumps; backflow prevention devices 
-installed 
- Elevators: two passenger elevators; one service elevator; annual inspections and 
-maintenance contracts 
- Life-safety: emergency lighting, illuminated exit signage, ADA egress, posted evacuation 
-plans 
-8. Security & Monitoring 
- Security staff: 24/7 on-site security team 
- Electronic access: key-card access for guest room floors and restricted staff areas 
- CCTV: integrated digital video surveillance across public areas, front-drive, perimeter 
-and service yards; retention policy documented 
- Guest safety measures: pool lifeguard program (seasonal); signage & compliance with 
-aquatic facility codes 
-9. Utilities & Third-party 
-Dependencies (CBI relevance) 
-Power provider: Seabreeze Utilities 
-Authority 
-Water & sewer: Seabreeze Water & 
-Waste (municipal) 
-Primary ISP / CRS & POS connectivity: 
-Maritime Communications Inc. (primary 
-ISP for booking/PMS/POS) 
-Redundant ISP: Redundant ISP vendor 
-contract under review 
-Laundry/Linens: Seabreeze Linen Co. 
-(off-site) 
-F&B suppliers: regional distributors; 
-multiple vendor relationships for key 
-items 
-Excursion vendors / marina operators: 
-licensed third-party operators; vendor 
-agreements in place 
-10. Marina Specifics 
- Dock: fixed dock with eight guest berths; owned & maintained by resort; no on-site 
-fueling (adjacent marina for fuel) 
- Marine operations: third-party licensed operators run excursions; hull/boat PD not 
-under property program (vendor responsibility in contracts) 
-11. Maintenance, Inspections & Risk Controls 
- Preventive maintenance: CMMS logs for HVAC, kitchen hood, sprinkler, generator 
-testing 
- Life-safety testing: quarterly sprinklers; annual fire pump; monthly fire alarm tests; 
-annual full alarm inspection; vendor certificates on file 
- Vendor controls: contractor insurance requirement min $2M GL; certificate 
-management process 
- Business continuity: documented BCP & EAP; off-site backups for reservations & guest 
-records; periodic tabletop exercises with local emergency services 
- Staff training: annual fire/evacuation drills; F&B managers with food safety cert; first
-aid/CPR for supervisors 
-12. Recent Loss History (Time-Element & Property) 
- 2024: kitchen exhaust grease fire — smoke damage; limited kitchen closure; BI & partial 
-EE paid for 7 days; time-element approx. $250,000. 
- 2022: failed domestic line water intrusion (lower-level storage) — contents damage; BI 
-3 days approx. $120,000. 
- 2025 (YTD): pool area slip & fall remediation with temporary closure; minor BI approx. 
-$15,000. 
-Loss-run reports and claim detail files available on request (attached in submission packet). 
-13. Exposures & Underwriting Considerations 
- Time-element sensitivity: reliance on room revenue and banquet/event income; peak
-season outages materially impact revenue. 
- Third-party dependency: booking engine/CRS and primary ISP are key contingent BI 
-exposures. 
- Marina & vendor risk: dock and excursion vendors introduce potential liability and 
-service interruption considerations. 
- Flood & windstorm: coastal location elevates storm surge and named storm exposure; 
-flood zone/elevation certificate review recommended. 
- Utility interruption: municipal power/telecom failures may trigger service interruption 
-claims; redundancy & SLAs relevant. 
-17. Broker & Property Contacts 
-Broker Phone: +1 (555) 214-7802 
-Broker: Olivia Park — Senior Hospitality 
-Broker, Meridian Shoreline Insurance 
-Partners 
-Broker Email: 
-olivia.park@meridianship.com 
-18. Underwriter Notes 
-Notes: ________________________________________________ 
-Follow-ups: ___________________________________________ 
-Prepared for submission — Cruise Resort 
-Property Contact: Marcus Reyes — 
-General Manager, Cruise Resort 
-Property Email: 
-m.reyes@cruiseresort.com 
-Property Phone: +1 (555) 321-4400
+    # Example: Get job info
+job_selection_uri = f"/job/v1/jobs/{job_id}"
+job_info = requests.get(BASE_URL + job_selection_uri, headers=headers)
+print("Job info retrieved:", job_info.json())
 
-
-and below is my current prompt
-    prompt = f"""
-You are an expert in insurance documentation and intelligent document processing.
-Your task is to classify a given insurance-related document into EXACTLY ONE of the following categories:
-1. ACORD
-2. SOV
-3. LOSS_RUN
-4. INSPECTION_REPORT
-5. NON_ACORD
-Definitions:
-ACORD:
-A standardized insurance form published by ACORD (Association for Cooperative Operations Research and Development),
-used for applications, certificates, or evidence of insurance.
-These documents usually:
-- Have structured fields such as Producer, Insured, Certificate Holder, Policy Number
-- Summarize coverage or serve as an application or certificate
-SOV (Schedule / Statement of Values):
-A document that lists insured property values, usually in a tabular format.
-These documents usually:
-- Contain titles like “Schedule of Values” or “Statement of Values”
-- Include location-wise or building-wise property descriptions and values
-- Have columns such as Location, Building, Description, ACV, RC, 100% Values, Rates
-- May reference or be labeled as ACORD 139
-- Focus on property valuation, not coverage certification
-LOSS_RUN:
-A document that summarizes historical insurance claims.
-These documents usually:
-- Contain phrases like “Loss Run Report”, “Claims History”, or “Valuation Date”
-- List claim numbers, dates of loss, descriptions, paid amounts, reserves, and total incurred losses
-- Cover a historical time period
-- Do NOT function as applications or certificates
-INSPECTION_REPORT:
-A document created after a physical or on-site property inspection for underwriting or risk assessment.
-These documents usually:
-- Contain titles such as “Inspection Report” or similar
-- Include inspection dates, report IDs, broker or inspector details
-- Describe property condition, construction, occupancy, protection, and exposure (COPE)
-- Include sections on building systems, life safety, fire protection, security, utilities, roof, and operations
-- Provide observations, compliance notes, and risk improvement recommendations
-- Focus on current physical condition and risk characteristics of the property
-NON_ACORD:
-Any insurance-related document that is NOT an ACORD form, SOV, Loss Run, or Inspection Report.
-This includes:
-- Quote documents
-- Property detail reports
-- Underwriting summaries
-- Exposure analyses
-- Proposals, narratives, internal reports, or supporting documentation
-- Documents that reference ACORD forms but are not themselves ACORD forms
-Document Content:
-{text[:2000]}
-Reply with ONLY ONE word from the following options:
-ACORD
-SOV
-LOSS_RUN
-INSPECTION_REPORT
-NON_ACORD
-"""
+if __name__ == "__main__":
+    main()
