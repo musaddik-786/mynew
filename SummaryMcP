@@ -1,68 +1,420 @@
-prompt = f"""
-You are an expert in insurance documentation and intelligent document processing.
-
-Your task is to classify a given insurance-related document into EXACTLY ONE of the following categories:
-
-1. ACORD
-2. SOV
-3. LOSS_RUN
-4. INSPECTION_REPORT
-5. NON_ACORD
-
-Definitions:
-
-ACORD:
-A standardized insurance form published by ACORD (Association for Cooperative Operations Research and Development),
-used for applications, certificates, or evidence of insurance.
-These documents usually:
-- Contain “ACORD” followed by a form number (e.g., ACORD 25, ACORD 27, ACORD 125, ACORD 130)
-- Have structured fields such as Producer, Insured, Certificate Holder, Policy Number
-- Summarize coverage or serve as an application or certificate
-
-SOV (Schedule / Statement of Values):
-A document that lists insured property values, usually in a tabular format.
-These documents usually:
-- Contain titles like “Schedule of Values” or “Statement of Values”
-- Include location-wise or building-wise property descriptions and values
-- Have columns such as Location, Building, Description, ACV, RC, 100% Values, Rates
-- May reference or be labeled as ACORD 139
-- Focus on property valuation, not coverage certification
-
-LOSS_RUN:
-A document that summarizes historical insurance claims.
-These documents usually:
-- Contain phrases like “Loss Run Report”, “Claims History”, or “Valuation Date”
-- List claim numbers, dates of loss, descriptions, paid amounts, reserves, and total incurred losses
-- Cover a historical time period
-- Focus on past loss experience rather than property condition
-
-INSPECTION_REPORT:
-A document created after a physical or on-site property inspection for underwriting or risk assessment.
-These documents usually:
-- Contain titles such as “Inspection Report” or similar
-- Include inspection dates, report IDs, broker or inspector details
-- Describe property condition, construction, occupancy, protection, and exposure (COPE)
-- Include sections on building systems, life safety, fire protection, security, utilities, roof, and operations
-- Provide observations, compliance notes, and risk improvement recommendations
-- Focus on current physical condition and risk characteristics of the property
-
-NON_ACORD:
-Any insurance-related document that is NOT an ACORD form, SOV, Loss Run, or Inspection Report.
-This includes:
-- Quote documents
-- Property detail reports
-- Underwriting summaries
-- Exposure analyses
-- Proposals, narratives, internal reports, or supporting documentation
-- Documents that reference ACORD forms but are not themselves ACORD forms
-
-Document Content:
-{text[:2000]}
-
-Reply with ONLY ONE word from the following options:
-ACORD
-SOV
-LOSS_RUN
-INSPECTION_REPORT
-NON_ACORD
-"""
+{
+    "requests": [
+        {
+            "method": "post",
+            "uri": "/account/v1/accounts",
+            "body": {
+                "data": {
+                    "attributes": {
+                        "initialAccountHolder": {
+                            "contactSubtype": "Company",
+                            "companyName": "Hexa Tester",
+                            "primaryAddress": {
+                                "addressLine1": "2850 S. Delaware St.",
+                                "city": "San Mateo",
+                                "postalCode": "94403",
+                                "state": {
+                                    "code": "CA"
+                                }
+                            }
+                        },
+                        "initialPrimaryLocation": {
+                            "addressLine1": "2850 S. Delaware St.",
+                            "city": "San Mateo",
+                            "postalCode": "94403",
+                            "state": {
+                                "code": "CA"
+                            }
+                        },
+                        "producerCodes": [
+                            {
+                                "id": "pc:6"
+                            }
+                        ],
+                        "organizationType": {
+                            "code": "llc"
+                        }
+                    }
+                }
+            },
+            "includeResponse": false,
+            "vars": [
+                {
+                    "name": "accountId",
+                    "path": "$.data.attributes.id"
+                },
+                {
+                    "name": "driverId",
+                    "path": "$.data.attributes.accountHolder.id"
+                },
+                {
+                    "name": "primaryLocationId",
+                    "path": "$.data.attributes.primaryLocation.id"
+                }
+            ]
+        },
+        {
+            "method": "POST",
+            "uri": "/job/v1/submissions",
+            "body": {
+                "data": {
+                    "attributes": {
+                        "account": {
+                            "id": "${accountId}"
+                        },
+                        "baseState": {
+                            "code": "CA"
+                        },
+                        "jobEffectiveDate": "2025-07-16",
+                        "product": {
+                            "id": "GoCommercialProp"
+                        },
+                        "producerCode": {
+                            "id": "pc:6"
+                        }
+                    }
+                }
+            },
+            "includeResponse": false,
+            "vars": [
+                {
+                    "name": "jobId",
+                    "path": "$.data.attributes.id"
+                }
+            ]
+        },
+        {
+            "method": "POST",
+            "uri": "/job/v1/jobs/${jobId}/lines/GOCommercialLine/locations",
+            "body": {
+                "data": {
+                    "attributes": {
+                        "addressLine1": "Address Line 1",
+                        "city": "San Mateo",
+                        "coverableJurisdiction": {
+                            "code": "CA",
+                            "name": "California"
+                        },
+                        "postalCode": "94404",
+                        "state": {
+                            "code": "CA"
+                        }
+                    }
+                }
+            },
+            "includeResponse": false,
+            "vars": [
+                {
+                    "name": "locationId",
+                    "path": "$.data.attributes.id"
+                }
+            ]
+        },
+        {
+            "method": "POST",
+            "uri": "/job/v1/jobs/${jobId}/lines/GOCommercialLine/coverages",
+            "body": {
+                "data": {
+                    "attributes": {
+                        "clauseType": "coverage",
+                        "id": "GCPPropertyOffPrem",
+                        "pattern": {
+                            "id": "GCPPropertyOffPrem"
+                        },
+                        "terms": {
+                            "GCPPropertyOffPremDeductible": {
+                                "directValue": "50000.00"
+                            },
+                            "GCPPropertyOffPremInterContinent": {
+                                "directValue": "50000.00"
+                            },
+                            "GCPPropertyOffPremLimit": {
+                                "directValue": "400000.00"
+                            },
+                            "GCPPropertyOffPremWithinTerrLimit": {
+                                "directValue": "25000.00"
+                            }
+                        }
+                    }
+                }
+            },
+            "includeResponse": false,
+            "vars": []
+        },
+        {
+            "method": "POST",
+            "uri": "/job/v1/jobs/${jobId}/lines/GOCommercialLine/coverages",
+            "body": {
+                "data": {
+                    "attributes": {
+                        "clauseType": "coverage",
+                        "id": "GCPNewlyAcquiredBuildProp",
+                        "pattern": {
+                            "id": "GCPNewlyAcquiredBuildProp"
+                        },
+                        "terms": {}
+                    }
+                }
+            },
+            "includeResponse": false,
+            "vars": []
+        },
+        {
+            "method": "POST",
+            "uri": "/job/v1/jobs/${jobId}/lines/GOCommercialLine/coverages",
+            "body": {
+                "data": {
+                    "attributes": {
+                        "clauseType": "coverage",
+                        "id": "GCPOutsideObjs",
+                        "pattern": {
+                            "id": "GCPOutsideObjs"
+                        },
+                        "terms": {
+                            "GCPOutsideObjsDeductible": {
+                                "directValue": "1.00"
+                            },
+                            "GCPOutsideObjsLimit": {
+                                "directValue": "2.00"
+                            }
+                        }
+                    }
+                }
+            },
+            "includeResponse": false,
+            "vars": []
+        },
+        {
+            "method": "POST",
+            "uri": "/job/v1/jobs/${jobId}/lines/GOCommercialLine/coverages",
+            "body": {
+                "data": {
+                    "attributes": {
+                        "clauseType": "coverage",
+                        "id": "GCPContentsOtherStruct",
+                        "pattern": {
+                            "id": "GCPContentsOtherStruct"
+                        },
+                        "terms": {
+                            "GCPContentsOtherStructDeductible": {},
+                            "GCPContentsOtherStructLimit": {
+                                "typekeyValue": {
+                                    "code": "TwoPercent",
+                                    "name": "2%"
+                                }
+                            }
+                        }
+                    }
+                }
+            },
+            "includeResponse": false,
+            "vars": []
+        },
+        {
+            "method": "POST",
+            "uri": "/job/v1/jobs/${jobId}/lines/GOCommercialLine/coverages",
+            "body": {
+                "data": {
+                    "attributes": {
+                        "clauseType": "coverage",
+                        "id": "GCPTerrorism",
+                        "pattern": {
+                            "id": "GCPTerrorism"
+                        },
+                        "terms": {}
+                    }
+                }
+            },
+            "includeResponse": false,
+            "vars": []
+        },
+        {
+            "method": "POST",
+            "uri": "/job/v1/jobs/${jobId}/lines/GOCommercialLine/coverages",
+            "body": {
+                "data": {
+                    "attributes": {
+                        "clauseType": "coverage",
+                        "id": "GCPFungus",
+                        "pattern": {
+                            "id": "GCPFungus"
+                        },
+                        "terms": {
+                            "GCPFungusLimit": {
+                                "directValue": "20000.00"
+                            }
+                        }
+                    }
+                }
+            },
+            "includeResponse": false,
+            "vars": []
+        },
+        {
+            "method": "POST",
+            "uri": "/job/v1/jobs/${jobId}/lines/GOCommercialLine/coverages",
+            "body": {
+                "data": {
+                    "attributes": {
+                        "clauseType": "coverage",
+                        "id": "GCPDebrisRem",
+                        "pattern": {
+                            "id": "GCPDebrisRem"
+                        },
+                        "terms": {
+                            "GCPDebrisRemInsuredPropLimit": {
+                                "choiceValue": {
+                                    "code": "100kusd"
+                                }
+                            },
+                            "GCPDebrisRemInsuredPropPercent": {
+                                "typekeyValue": {
+                                    "code": "25Percent"
+                                }
+                            },
+                            "GCPDebrisRemOtherPropertyLimit": {
+                                "choiceValue": {
+                                    "code": "200kusd"
+                                }
+                            }
+                        }
+                    }
+                }
+            },
+            "includeResponse": false,
+            "vars": []
+        },
+        {
+            "method": "POST",
+            "uri": "/job/v1/jobs/${jobId}/lines/GOCommercialLine/coverages",
+            "body": {
+                "data": {
+                    "attributes": {
+                        "clauseType": "coverage",
+                        "id": "GCPDeferredPay",
+                        "pattern": {
+                            "id": "GCPDeferredPay"
+                        },
+                        "terms": {
+                            "GCPDeferredPayLimit": {
+                                "choiceValue": {
+                                    "code": "100kusd"
+                                }
+                            }
+                        }
+                    }
+                }
+            },
+            "includeResponse": false,
+            "vars": []
+        },
+        {
+            "method": "POST",
+            "uri": "/job/v1/jobs/${jobId}/lines/GOCommercialLine/coverages",
+            "body": {
+                "data": {
+                    "attributes": {
+                        "clauseType": "coverage",
+                        "id": "GCPExtraExp",
+                        "pattern": {
+                            "id": "GCPExtraExp"
+                        },
+                        "terms": {
+                            "GCPExtraExpLimit": {
+                                "choiceValue": {
+                                    "code": "75kusd"
+                                }
+                            }
+                        }
+                    }
+                }
+            },
+            "includeResponse": false,
+            "vars": []
+        },
+        {
+            "method": "POST",
+            "uri": "/job/v1/jobs/${jobId}/lines/GOCommercialLine/coverages",
+            "body": {
+                "data": {
+                    "attributes": {
+                        "clauseType": "coverage",
+                        "id": "GCPFireorPolice",
+                        "pattern": {
+                            "id": "GCPFireorPolice"
+                        },
+                        "terms": {
+                            "GCPFireorPoliceLimit": {
+                                "choiceValue": {
+                                    "code": "75kusd"
+                                }
+                            }
+                        }
+                    }
+                }
+            },
+            "includeResponse": false,
+            "vars": []
+        },
+        {
+            "method": "POST",
+            "uri": "/job/v1/jobs/${jobId}/lines/GOCommercialLine/coverages",
+            "body": {
+                "data": {
+                    "attributes": {
+                        "clauseType": "coverage",
+                        "id": "GCPFireProtEquip",
+                        "pattern": {
+                            "id": "GCPFireProtEquip"
+                        },
+                        "terms": {
+                            "GCPFireProtEquipLimit": {
+                                "choiceValue": {
+                                    "code": "50kusd"
+                                }
+                            }
+                        }
+                    }
+                }
+            },
+            "includeResponse": false,
+            "vars": []
+        },
+        {
+            "method": "POST",
+            "uri": "/job/v1/jobs/${jobId}/lines/GOCommercialLine/coverages",
+            "body": {
+                "data": {
+                    "attributes": {
+                        "clauseType": "coverage",
+                        "id": "GCPFlucRawMat",
+                        "pattern": {
+                            "id": "GCPFlucRawMat"
+                        },
+                        "terms": {
+                            "GCPFlucRawMatLimit": {
+                                "choiceValue": {
+                                    "code": "400kusd"
+                                }
+                            }
+                        }
+                    }
+                }
+            },
+            "includeResponse": false,
+            "vars": []
+        },
+        {
+            "method": "post",
+            "uri": "/job/v1/jobs/${jobId}/quote"
+        }
+    ],
+    "selections": [
+        {
+            "uri": "/account/v1/accounts/${accountId}"
+        },
+        {
+            "uri": "/job/v1/jobs/${jobId}"
+        }
+    ]
+}
