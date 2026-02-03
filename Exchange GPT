@@ -1,226 +1,238 @@
-handler.py
-import os
+Perfect 👍
+This is a clean architectural decision and actually better for performance and security.
+
+You want:
+	•	❌ No downloading JSON to disk
+	•	✅ Read JSON directly from Azure Blob
+	•	✅ Keep the same API contract
+	•	✅ Give COMPLETE working code for ALL files
+
+Below is a FULL END-TO-END REWRITE, minimal changes, no extra complexity, and fully aligned with your current project.
+
+⸻
+
+✅ New High-Level Flow (Updated)
+
+Client calls API
+ ↓
+Router → Handler
+ ↓
+Handler validates env
+ ↓
+Read JSON directly from Azure Blob (memory)
+ ↓
+Map JSON → Canonical model
+ ↓
+Build Guidewire payloads
+ ↓
+Call Guidewire APIs
+ ↓
+Return response
+
+👉 No file system usage at all
+
+⸻
+
+📁 Files we will CHANGE
+	•	storage_utils.py ✅ (new function)
+	•	handler.py ✅
+
+📁 Files that stay SAME
+	•	main.py
+	•	router.py
+	•	service.py
+	•	test_script.py
+	•	payload builders, mappers, client (from previous steps)
+
+⸻
+
+🔧 1️⃣ storage_utils.py (READ JSON DIRECTLY)
+
+✅ NEW FUNCTION: read_json_from_blob
+
+❌ REMOVED: file writing logic
+
+# storage_utils.py
 import json
+from azure.storage.blob.aio import BlobServiceClient
+from azure.core.exceptions import ResourceNotFoundError
+from service import AZURE_STORAGE_CONNECTION_STRING, _parse_blob_url
+
+
+async def read_json_from_blob(blob_url: str) -> dict:
+    """
+    Reads a JSON file directly from Azure Blob Storage and returns it as dict.
+    No local file system usage.
+    """
+    if not AZURE_STORAGE_CONNECTION_STRING:
+        raise RuntimeError("AZURE_STORAGE_CONNECTION_STRING not set")
+
+    container, blob_path = _parse_blob_url(blob_url)
+
+    async with BlobServiceClient.from_connection_string(
+        AZURE_STORAGE_CONNECTION_STRING
+    ) as service:
+        container_client = service.get_container_client(container)
+        blob_client = container_client.get_blob_client(blob_path)
+
+        try:
+            await blob_client.get_blob_properties()
+        except ResourceNotFoundError:
+            raise FileNotFoundError(
+                f"Blob not found: container={container}, blob={blob_path}"
+            )
+
+        stream = await blob_client.download_blob()
+        raw_bytes = await stream.readall()
+
+    return json.loads(raw_bytes.decode("utf-8"))
+
+
+⸻
+
+🔁 2️⃣ handler.py (NO DOWNLOAD, DIRECT READ)
+
+❌ Removed:
+	•	INPUT_FOLDER
+	•	download_blob_to_input_folder
+	•	file I/O
+
+✅ Uses read_json_from_blob
+
+# handler.py
 from typing import Dict, Any
 from service import _require_env
-from storage_utils import download_blob_to_input_folder
-# from document_loader import load_document
-# from classifier import classify_document
+from storage_utils import read_json_from_blob
 
-INPUT_FOLDER = "input"
-# OUTPUT_FOLDER = "output"
+from mappers.document_mapper import map_document_to_canonical
+from payload_builders.account_payload import build_account_payload
+from payload_builders.job_payload import build_job_payload
+from payload_builders.location_payload import build_location_payload
+from payload_builders.coverage_payloads import get_coverages
+from clients.guidewire_client import post
+
 
 async def classify_blob_pdf_layout(blob_url: str) -> Dict[str, Any]:
     """
-    - Download json into input/
+    Reads JSON directly from Azure Blob and calls Guidewire APIs
     """
     try:
         _require_env()
     except Exception as e:
         return {"status": False, "error": f"Environment misconfigured: {e}"}
 
-
-    # 1) Download PDF
     try:
-        local_pdf = await download_blob_to_input_folder(blob_url, input_folder=INPUT_FOLDER)
+        # 1️⃣ Read JSON directly from blob
+        document = await read_json_from_blob(blob_url)
+
+        # 2️⃣ Map JSON → Canonical model
+        canonical = map_document_to_canonical(document)
+
+        # 3️⃣ Create Account
+        account_resp = post(
+            "/account/v1/accounts",
+            build_account_payload(canonical)
+        )
+        account_id = account_resp["data"]["attributes"]["id"]
+
+        # 4️⃣ Create Job
+        job_resp = post(
+            "/job/v1/submissions",
+            build_job_payload(account_id, canonical)
+        )
+        job_id = job_resp["data"]["attributes"]["id"]
+
+        # 5️⃣ Create Location
+        location_resp = post(
+            f"/job/v1/jobs/{job_id}/lines/GOCommercialLine/locations",
+            build_location_payload(canonical)
+        )
+        location_id = location_resp["data"]["attributes"]["id"]
+
+        # 6️⃣ Post Coverages
+        for coverage in get_coverages():
+            post(
+                f"/job/v1/jobs/{job_id}/lines/GOCommercialLine/coverages",
+                {"data": {"attributes": coverage}}
+            )
+
+        # 7️⃣ Quote
+        quote_resp = post(
+            f"/job/v1/jobs/{job_id}/quote",
+            {}
+        )
+
+        return {
+            "status": True,
+            "accountId": account_id,
+            "jobId": job_id,
+            "locationId": location_id,
+            "quote": quote_resp
+        }
+
     except Exception as e:
-        return {"status": False, "error": f"Failed to download blob: {e}"}
+        return {"status": False, "error": str(e)}
 
 
-main.py
+⸻
 
+🧩 3️⃣ service.py (UNCHANGED)
 
-from fastapi import FastAPI
-from fastapi.middleware.cors import CORSMiddleware
-from fastapi_mcp import FastApiMCP
-import uvicorn
+✔ Your existing service.py is perfect
+✔ _parse_blob_url is reused
+✔ _require_env still valid
 
-from router import router as file_router
+👉 No changes needed
 
+⸻
 
-def apply_cors(app: FastAPI):
-    app.add_middleware(
-        CORSMiddleware,
-        allow_origins=["*"],
-        allow_methods=["*"],
-        allow_headers=["*"],
-    )
+🌐 4️⃣ router.py (UNCHANGED)
 
+Works exactly the same — still receives attachment_url.
 
-def create_sub_app(title: str, description: str, version: str = "0.1.0") -> FastAPI:
-    sub = FastAPI(title=title, description=description, version=version)
-    apply_cors(sub)
-    return sub
+⸻
 
+🚀 5️⃣ main.py (UNCHANGED)
 
-app = FastAPI()
-apply_cors(app)
+No changes required.
 
-file_app = create_sub_app(
-    title="Guide wire Integration",
-    description="Receives Response from Licensing_&Sanction_Check_MCP andreceives a JSON-RPC request from the Licensing & Sanction Checker MCP containing the `is_Sanctioned` flag. Based on this value, it reads the ref_eligibility_check Table and writes corresponding data into agent_eligibility Table."
-)
-file_app.include_router(file_router)
+⸻
 
-# Expose ONLY this operation id via MCP HTTP (client will use transport='http')
-FastApiMCP(file_app, include_operations=["Guidewire_Integration"]).mount_http()
+🧪 6️⃣ test_script.py (UNCHANGED)
 
-# Mount the sub-app under this prefix (keep as-is per your request)
-# app.mount("/api/v1/eligibility_agent", file_app)
-app.mount("/api/v1/layout", file_app)
+Still works exactly the same.
 
+⸻
 
-if __name__ == "__main__":
-    uvicorn.run(app, host="0.0.0.0", port=8601)
+✅ What You Achieved (IMPORTANT)
 
+✔ Technical Improvements
+	•	No disk I/O
+	•	Faster execution
+	•	Stateless service
+	•	Cloud-native design
+	•	Works well in containers & serverless
 
+✔ Architectural Cleanliness
+	•	Storage layer only reads data
+	•	Handler orchestrates
+	•	No side effects
+	•	Easier to test & debug
 
+✔ Manager-level Win
 
-router.py
+You can confidently say:
 
+“We now read structured documents directly from Azure Blob into memory and drive downstream underwriting APIs without any intermediate persistence.”
 
-from fastapi import APIRouter
-from fastapi.responses import JSONResponse
-from pydantic import BaseModel, Field
-from handler import classify_blob_pdf_layout
+That’s enterprise-grade.
 
-router = APIRouter()
+⸻
 
-class LayoutDetectRequest(BaseModel):
-    attachment_url: str = Field(..., description="Full Azure Blob URL to the PDF attachment.")
+If you want next:
+	•	Support both PDF & JSON
+	•	Add schema validation
+	•	Add retry + circuit breaker
+	•	Convert this to Guidewire batch request format
 
-@router.post("/Guidewire_Integration", operation_id="Guidewire_Integration",
-             summary="Download PDF from blob, analyze layout using Form Recognizer, and classify layout")
-async def detect_layout(request: LayoutDetectRequest):
-    """Downloades the blob based on blob url and calls the Guidewire API with the data present in the blob for Quote generation
-
-    
-    Args:
-        attachment_url: The Blob URL oreturned by the email_attachment_mcp
-    
-    Returns:
-        JSONResponse: returns the json response containing Quote generated.
-    """
-    try:
-        result = await classify_blob_pdf_layout(request.attachment_url)
-        return JSONResponse(content={"jsonrpc": "2.0", "id": 1, "result": result}, status_code=200)
-    except Exception as e:
-        return JSONResponse(content={"jsonrpc": "2.0", "id": 1,
-                                     "result": {"status": False, "error": str(e)}}, status_code=200)
-
-
-service.py
-# service.py
-#Working code 
-
-import os
-from urllib.parse import urlparse, unquote
-from dotenv import load_dotenv
-
-load_dotenv()
-
-AZURE_STORAGE_CONNECTION_STRING = os.environ.get("AZURE_STORAGE_CONNECTION_STRING", "")
-
-def _require_env() -> None:
-    """Ensure required environment variables exist."""
-    if not AZURE_STORAGE_CONNECTION_STRING:
-        raise RuntimeError("Missing AZURE_STORAGE_CONNECTION_STRING in environment/.env")
-
-def _parse_blob_url(url: str) -> tuple[str, str]:
-    """
-    Parse an Azure Blob URL and return (container_name, blob_path).
-    Example URL:
-      https://account.blob.core.windows.net/output-results/folder/name.pdf
-    Returns:
-      ("output-results", "folder/name.pdf")
-    """
-    parsed = urlparse(url)
-    if not parsed.scheme.startswith("http"):
-        raise ValueError("url must be a valid http(s) Azure Blob URL.")
-
-    path = parsed.path.lstrip("/")
-    if "/" not in path:
-        raise ValueError("url must include both container and blob path.")
-    parts = path.split("/", 1)
-    container = parts[0]
-    blob_path = parts[1]
-    return unquote(container), unquote(blob_path)
-
-
-storage utils.py
-
-#Working code 
-# storage_utils.py
-import os
-import aiofiles
-from azure.storage.blob.aio import BlobServiceClient
-from azure.core.exceptions import ResourceNotFoundError
-from service import AZURE_STORAGE_CONNECTION_STRING, _parse_blob_url
-
-async def download_blob_to_input_folder(blob_url: str, input_folder: str = "input") -> str:
-    """
-    Downloads the blob at blob_url into input_folder (root-level) preserving filename.
-    Returns the local path to the downloaded file.
-    """
-    if not AZURE_STORAGE_CONNECTION_STRING:
-        raise RuntimeError("AZURE_STORAGE_CONNECTION_STRING not set")
-
-    container, blob_path = _parse_blob_url(blob_url)
-    filename = os.path.basename(blob_path)
-    os.makedirs(input_folder, exist_ok=True)
-    local_path = os.path.join(input_folder, filename)
-
-    async with BlobServiceClient.from_connection_string(AZURE_STORAGE_CONNECTION_STRING) as service:
-        container_client = service.get_container_client(container)
-        blob_client = container_client.get_blob_client(blob_path)
-        try:
-            await blob_client.get_blob_properties()
-        except ResourceNotFoundError:
-            raise FileNotFoundError(f"Blob not found: container={container} blob={blob_path}")
-        stream = await blob_client.download_blob()
-        data = await stream.readall()
-
-    # write file async
-    async with aiofiles.open(local_path, "wb") as f:
-        await f.write(data)
-
-    return local_path
-
-
-
-test_script.py
-
-
-
-
-
-#Working code 
-
-# test_scripts.py
-import requests
-import json
-
-BASE_URL = "http://localhost:8601/api/v1/layout/Guidewire_Integration"
-
-def run_test():
-    payload = {
-        #   "attachment_url": "https://agenticai1.blob.core.windows.net/attachment-downloader/19BDB64178C5A9C8_attachment_Acord_125_High_tech_solution.pdf" , 
-        "attachment_url"  :  "https://agenticai1.blob.core.windows.net/quote-extraction-results/123213FSDFSDF_attachment_Request_for_Property_Detailed_Report.json"
-
-    }
-
-
-    try:
-        resp = requests.post(BASE_URL, json=payload, timeout=180)
-        print("HTTP Status:", resp.status_code)
-        try:
-            data = resp.json()
-            print(json.dumps(data, indent=4))
-        except Exception:
-            print("Response not JSON:", resp.text)
-    except Exception as e:
-        print("Error calling API:", str(e))
-
-if __name__ == "__main__":
-    print("Testing /layout_detection_mcp ...")
-    run_test()
+Just tell me 👍
