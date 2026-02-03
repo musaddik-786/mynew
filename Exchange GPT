@@ -1,283 +1,226 @@
-current code which has one agent and multiple mcp tools are called as you can see in the prompt
+handler.py
+import os
+import json
+from typing import Dict, Any
+from service import _require_env
+from storage_utils import download_blob_to_input_folder
+# from document_loader import load_document
+# from classifier import classify_document
+
+INPUT_FOLDER = "input"
+# OUTPUT_FOLDER = "output"
+
+async def classify_blob_pdf_layout(blob_url: str) -> Dict[str, Any]:
+    """
+    - Download json into input/
+    """
+    try:
+        _require_env()
+    except Exception as e:
+        return {"status": False, "error": f"Environment misconfigured: {e}"}
+
+
+    # 1) Download PDF
+    try:
+        local_pdf = await download_blob_to_input_folder(blob_url, input_folder=INPUT_FOLDER)
+    except Exception as e:
+        return {"status": False, "error": f"Failed to download blob: {e}"}
+
+
+main.py
 
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import StreamingResponse
-import os
-from dotenv import load_dotenv
-from langchain_openai.chat_models import AzureChatOpenAI
-from langgraph.graph.message import add_messages
-from langchain_core.messages import AIMessage, ToolMessage, SystemMessage
-from langgraph.graph import StateGraph, START, END
-from langgraph.prebuilt import ToolNode
-from typing import TypedDict, Annotated
-from langchain_mcp_adapters.client import MultiServerMCPClient
+from fastapi_mcp import FastApiMCP
+import uvicorn
+
+from router import router as file_router
+
+
+def apply_cors(app: FastAPI):
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=["*"],
+        allow_methods=["*"],
+        allow_headers=["*"],
+    )
+
+
+def create_sub_app(title: str, description: str, version: str = "0.1.0") -> FastAPI:
+    sub = FastAPI(title=title, description=description, version=version)
+    apply_cors(sub)
+    return sub
+
 
 app = FastAPI()
+apply_cors(app)
+
+file_app = create_sub_app(
+    title="Guide wire Integration",
+    description="Receives Response from Licensing_&Sanction_Check_MCP andreceives a JSON-RPC request from the Licensing & Sanction Checker MCP containing the `is_Sanctioned` flag. Based on this value, it reads the ref_eligibility_check Table and writes corresponding data into agent_eligibility Table."
+)
+file_app.include_router(file_router)
+
+# Expose ONLY this operation id via MCP HTTP (client will use transport='http')
+FastApiMCP(file_app, include_operations=["Guidewire_Integration"]).mount_http()
+
+# Mount the sub-app under this prefix (keep as-is per your request)
+# app.mount("/api/v1/eligibility_agent", file_app)
+app.mount("/api/v1/layout", file_app)
+
+
+if __name__ == "__main__":
+    uvicorn.run(app, host="0.0.0.0", port=8601)
+
+
+
+
+router.py
+
+
+from fastapi import APIRouter
+from fastapi.responses import JSONResponse
+from pydantic import BaseModel, Field
+from handler import classify_blob_pdf_layout
+
+router = APIRouter()
+
+class LayoutDetectRequest(BaseModel):
+    attachment_url: str = Field(..., description="Full Azure Blob URL to the PDF attachment.")
+
+@router.post("/Guidewire_Integration", operation_id="Guidewire_Integration",
+             summary="Download PDF from blob, analyze layout using Form Recognizer, and classify layout")
+async def detect_layout(request: LayoutDetectRequest):
+    """Downloades the blob based on blob url and calls the Guidewire API with the data present in the blob for Quote generation
+
+    
+    Args:
+        attachment_url: The Blob URL oreturned by the email_attachment_mcp
+    
+    Returns:
+        JSONResponse: returns the json response containing Quote generated.
+    """
+    try:
+        result = await classify_blob_pdf_layout(request.attachment_url)
+        return JSONResponse(content={"jsonrpc": "2.0", "id": 1, "result": result}, status_code=200)
+    except Exception as e:
+        return JSONResponse(content={"jsonrpc": "2.0", "id": 1,
+                                     "result": {"status": False, "error": str(e)}}, status_code=200)
+
+
+service.py
+# service.py
+#Working code 
+
+import os
+from urllib.parse import urlparse, unquote
+from dotenv import load_dotenv
 
 load_dotenv()
 
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
+AZURE_STORAGE_CONNECTION_STRING = os.environ.get("AZURE_STORAGE_CONNECTION_STRING", "")
 
-config_mcp_server = {
-    "email_reader_mcp": {
-        "url": os.getenv("MCP_URL"),
-        "transport": "streamable_http",
+def _require_env() -> None:
+    """Ensure required environment variables exist."""
+    if not AZURE_STORAGE_CONNECTION_STRING:
+        raise RuntimeError("Missing AZURE_STORAGE_CONNECTION_STRING in environment/.env")
+
+def _parse_blob_url(url: str) -> tuple[str, str]:
+    """
+    Parse an Azure Blob URL and return (container_name, blob_path).
+    Example URL:
+      https://account.blob.core.windows.net/output-results/folder/name.pdf
+    Returns:
+      ("output-results", "folder/name.pdf")
+    """
+    parsed = urlparse(url)
+    if not parsed.scheme.startswith("http"):
+        raise ValueError("url must be a valid http(s) Azure Blob URL.")
+
+    path = parsed.path.lstrip("/")
+    if "/" not in path:
+        raise ValueError("url must include both container and blob path.")
+    parts = path.split("/", 1)
+    container = parts[0]
+    blob_path = parts[1]
+    return unquote(container), unquote(blob_path)
+
+
+storage utils.py
+
+#Working code 
+# storage_utils.py
+import os
+import aiofiles
+from azure.storage.blob.aio import BlobServiceClient
+from azure.core.exceptions import ResourceNotFoundError
+from service import AZURE_STORAGE_CONNECTION_STRING, _parse_blob_url
+
+async def download_blob_to_input_folder(blob_url: str, input_folder: str = "input") -> str:
+    """
+    Downloads the blob at blob_url into input_folder (root-level) preserving filename.
+    Returns the local path to the downloaded file.
+    """
+    if not AZURE_STORAGE_CONNECTION_STRING:
+        raise RuntimeError("AZURE_STORAGE_CONNECTION_STRING not set")
+
+    container, blob_path = _parse_blob_url(blob_url)
+    filename = os.path.basename(blob_path)
+    os.makedirs(input_folder, exist_ok=True)
+    local_path = os.path.join(input_folder, filename)
+
+    async with BlobServiceClient.from_connection_string(AZURE_STORAGE_CONNECTION_STRING) as service:
+        container_client = service.get_container_client(container)
+        blob_client = container_client.get_blob_client(blob_path)
+        try:
+            await blob_client.get_blob_properties()
+        except ResourceNotFoundError:
+            raise FileNotFoundError(f"Blob not found: container={container} blob={blob_path}")
+        stream = await blob_client.download_blob()
+        data = await stream.readall()
+
+    # write file async
+    async with aiofiles.open(local_path, "wb") as f:
+        await f.write(data)
+
+    return local_path
+
+
+
+test_script.py
+
+
+
+
+
+#Working code 
+
+# test_scripts.py
+import requests
+import json
+
+BASE_URL = "http://localhost:8601/api/v1/layout/Guidewire_Integration"
+
+def run_test():
+    payload = {
+        #   "attachment_url": "https://agenticai1.blob.core.windows.net/attachment-downloader/19BDB64178C5A9C8_attachment_Acord_125_High_tech_solution.pdf" , 
+        "attachment_url"  :  "https://agenticai1.blob.core.windows.net/quote-extraction-results/123213FSDFSDF_attachment_Request_for_Property_Detailed_Report.json"
+
     }
-}
 
-class State(TypedDict):
-    messages: Annotated[list, add_messages]
 
-def router(state: State):
-    last_message = state["messages"][-1]
-    if isinstance(last_message, AIMessage) and getattr(last_message, 'tool_calls', None):
-        return "tools"
-    if isinstance(last_message, AIMessage) and last_message.content:
-        content = last_message.content
-        if 'Continue' in content:
-            return "tools"
-        elif "End" in content:
-            return "End"
-    return "End"
-
-def load_prompt(path: str) -> str:
-    with open(path, "r", encoding="utf-8") as f:
-        return f.read()
-
-def create_custom_graph(model, tools, prompt, checkpointer=None):
-    graph_builder = StateGraph(State)
-    llm_with_tools = model.bind_tools(tools)
-
-    async def agent_node(state: State):
-        messages = state["messages"]
-        system_prompt = SystemMessage(content=prompt)
-        all_messages = [system_prompt] + messages
-        message = await llm_with_tools.ainvoke(all_messages)
-        return {"messages": [message]}
-
-    graph_builder.add_node("agent", agent_node)
-    graph_builder.add_node("tools", ToolNode(tools=tools))
-    graph_builder.add_edge(START, "agent")
-    graph_builder.add_conditional_edges(
-        "agent",
-        router,
-        {
-            "tools": "tools",
-            "End": END
-        }
-    )
-    graph_builder.add_edge("tools", "agent")
-
-    return graph_builder.compile(checkpointer=checkpointer) if checkpointer else graph_builder.compile()
-
-async def get_tool_list(config_mcp_server):
-    client = MultiServerMCPClient(config_mcp_server)
-    tools_list = await client.get_tools()
-    print("Tools fetched from MCP:", [tool.name for tool in tools_list])
-    return tools_list
-
-@app.post("/chat")
-async def chat_stream():
-    # Load environment variables
-    load_dotenv()
-
-    # Fetch tools
-    tools = await get_tool_list(config_mcp_server=config_mcp_server)
-
-    # Setup Azure OpenAI model
-    endpoint = os.getenv("AZURE_OPENAI_ENDPOINT")
-    credential = os.getenv("AZURE_OPENAI_API_KEY")
-    deployment_name = os.getenv("AZURE_OPENAI_CHAT_DEPLOYMENT")
-    api_version = os.getenv("AZURE_OPENAI_API_VERSION")
-
-    model = AzureChatOpenAI(
-        api_key=credential,
-        api_version=api_version,  # fill if needed
-        azure_deployment=deployment_name,
-        azure_endpoint=endpoint
-    )
-
-    # Load system prompt
-    SYSTEM_INSTRUCTION = load_prompt("./prompt4.txt")
-
-    # Create the graph
-    graph = create_custom_graph(model=model, tools=tools, prompt=SYSTEM_INSTRUCTION)
-
-    async def stream():
-        async for chunk in graph.astream({"messages": ["Start your task"]}, config={"recursion_limit": 100}):
-            if "agent" in chunk:
-                messages = chunk["agent"]["messages"]
-                for msg in messages:
-                    if hasattr(msg, "content") and msg.content:
-                        # Yield SSE formatted string
-                        yield f"data: {msg.content}\n\n"
-            if "tools" in chunk:
-                messages = chunk["tools"]["messages"]
-                for msg in messages:
-                    if hasattr(msg, "content") and msg.content:
-                        yield f"data: [Tool:{msg.name}] {msg.content}\n\n"
-
-    return StreamingResponse(stream(), media_type="text/event-stream")
+    try:
+        resp = requests.post(BASE_URL, json=payload, timeout=180)
+        print("HTTP Status:", resp.status_code)
+        try:
+            data = resp.json()
+            print(json.dumps(data, indent=4))
+        except Exception:
+            print("Response not JSON:", resp.text)
+    except Exception as e:
+        print("Error calling API:", str(e))
 
 if __name__ == "__main__":
-    import uvicorn
-    uvicorn.run(app, host="0.0.0.0", port=8021)
-
-Earlier this was the prompt:-
-
-You are an intelligent agent within the Insurance Underwriting Process.
-Your specific role is to handle the underwriting workflow.
- 
-
- 
-Your actions are performed in a defined sequential workflow using multiple tools which are as follows:
- 
-1️. Email Reading Phase
- 
-    Call the email_reader_mcp to read and extract the email body.
-    Analyze the output returned by this tool to understand whether the content is related to insurance.
-    If not related to insurance, respond with "End".
-    If related to insurance, respond with "Continue".
-    Respond with exactly one of these two strings: Continue or End. Do not add punctuation, explanations, or any other text. If you output anything else, the system will fail.
-
-2. Data Writing Phase
-    Call the 'write_email_to_excel' to write the data processed by the previous mcp into the excel.
- 
-
-3. Attachment Downloading Phase  
- 
-    Call the 'email_attachment_mcp' to download and save the attachments to Azure Blob Storage. Once the tool does its task, only respond with "Continue".
- 
-4. Layout Detection Phase
-    As per the number of 'blob_url' returned by email_attachment_mcp, you have to call the 'layout_detection_mcp' iteratively, wherein you will pass STRICTLY and MANDATORILY, ONLY 
-    the particular 'BlobUrl' which has the word EITHER 'accord' OR 'quote' in the respective iteration while calling layout_detection_mcp. 
-        DO NOT call layout_detection_mcp for any other attachments.  
-       
-            Call the layout_detection_mcp to analyze the layout of the attachments saved by the previous mcp
-                Once the tool does its task, only respond with "Continue".
-
-5. Data Extraction Phase
-    YOU HAVE TO PERFORM DATA EXTRACTION FOR ALL THE DOWNLOADED ATTACHMENTS AS PER THE FOLLOWING INSTRUCTIONS 
-
-    For the document having document layout as 'ACORD' as returned by layout_detection_mcp, follow the below instructions
-
-        As per the number of 'blob_url' returned by email_attachment_mcp, you have to call the 'document_extract_mcp' iteratively wherein you will pass only the the particular 'BlobUrl' which has the word 'accord' in the respective iteration while calling layout_detection_mcp.
-            In the tool's response, if the value of the key 'Document_Confidence_Score' is less than 0.90, respond "End", else respond "Continue".
-    
-    For the document having document layout as 'Non-ACORD'  as returned by layout_detection_mcp, follow the below instructions
-     
-        Strictly follow the MCP calling sequence as per below:
-        Call the 'excel_loader_mcp' to read the excel file and return the list of attributes and instructions if available.
-            Once the tool execution is completed, only respond with "Continue".
-        As per the number of 'blob_url' returned by email_attachment_mcp, you have to call the below two MCP's iteratively wherein you will pass the particular 'BlobUrl' which has the word 'quote' in the respective iteration while calling 'pdf_vectorizer_mcp'.
-            Once the layout_detection_mcp call is successful, call the pdf_vectorizer_mcp ONLY AFTER WHEN 'excel_loader_mcp' responds with "Continue", which will take blob url provided in the output of email_attachment_mcp and it will return whether the embedding was successful or not.
-                Once the tool execution is completed and 'is_embedded' is returned as true, only respond with "Continue".
-            Once the layout_detection_mcp call is successful, call the 'retriever_mcp' ONLY AFTER WHEN 'pdf_vectorizer_mcp' responds with "Continue", which will take vector db path provided by output of pdf_vectorizer_mcp and the attributes list and instructions list, provided by the output of excel_loader_mcp.
-                Once the tool execution is completed, only respond with "Continue".
-
-6. Attachments Query Phase
-
-    MANDATORILY call 'query_pdf_vectorizer_mcp' to vectorize the multiple attachments downloaded by 'email_attachment_mcp' IMMEDIATELY AFTER the Data Extraction Phase responds with "Continue"
-        DO NOT SKIP this phase under any circumstances.
-
-7. Attachments Summarization Phase
-
-    For multiple attachment dowloaded and returned by 'email_attachment_mcp', Call 'attachment_summary_mcp' to summarize the attachments downloaded by 'email_attachment_mcp' IMMEDIATELY AFTER the Attachments Query Phase responds with "Continue"
-        DO NOT SKIP this phase under any circumstances.
-
- 
-8. Risk Type Checking Phase
- 
-    Call the risk_type_checker_MCP to detect the most relevant Line of Business from the extracted data json file and it will return the classified Line Of Business. So Risk Type is the type of line of business associated with the insurance proposal.
-    
-	Respond with exactly one of these two strings: "Continue" or "End". If the Line of Bussiness is related to Commercial Property, then reply "Continue", else "End"
-
- 
-9.  Insurance Renewal Checking Phase
- 
-    Call the renewal_checker_mcp to verify if the insurance proposal is new client or an existing client.
-    
-    Once the tool call is successfull, just reply "Continue".
- 
-10. Licensing and Sanction Checking Phase
- 
-    Call the Licensing_&_Sanction_Checker_MCP to verify if the client who submitted the proposal is sanctioned by the previous insurer.
-	
-    if the tool's output has is_Sanctioned key to 'False', then you should only respond "Continue" else if it is 'True', then you should respond "End".
- 
- 
- 
-11. JSON Reading Phase
- 
-    Call the 'Json_Reader_Read' mcp to read the extracted data.
-    It will read the json file of the extracted data from the insurance purchase proposal document and will return the extracted data.
-    Once the tool does its task, only respond with "Continue".
-    Do not add punctuation, explanations, or any other text. If you output anything else, the system will fail.
-
- 
-12.  Risk Data Capturing Phase
- 
-    Call the 'risk_data_capture_mcp' ONLY RESPOND WITH "Continue" and then call 'risk_score_calculator_mcp'.
-    Do not add punctuation, explanations, or any other text. If you output anything else, the system will fail.
-    
- 
-13. Risk Score Calculation Phase
- 
-    Call the 'risk_score_calculator_mcp' get the risk score based upon the extracted data. Once the tool does its task, only respond with "Continue".
-	Do not add punctuation, explanations, or any other text. If you output anything else, the system will fail.
- 
- 
-14. Accept - Reject Phase
- 
-    Call the 'accept_reject_risk_functionality_mcp' to determine whether to accept or reject the proposal based on the 'decision' key's value returned
-	by this tool's output, just print the value of the mentioned key.
- 
-
-
-Through this structured sequence, you act as the Third layer of automation in the insurance underwriting ecosystem.
- 
-
-So now I have been told to create 3 subgraphs and each of them have 
-few tools that are different from each other ie EmailIntentAgent subgraph has Email reading phase , 
-data, writing, phase, attachment, downloading face, layout, detection, phase, data extraction phase, attachment, query, phase, 
-attachment, summarisation phase, then there is eligibility Agent subgraph which has risk type, checking, phase insurance, renewal, 
-checking, phase, licensing, and sanction, checking phase and Jason reading phase, then there is risk checking agent, subgraph, which has 
-risk data, capturing phase, risk, score, calculation, phase, accept, reject phase. So now there will be a mega agent which will have these
-nodes whcih are subgraphs and these nodes will have there tools 
-
-Now 
-in the state there should be different states for different agents, ie the approach of calling a agent(subgrpah) via node of maingrpah.
-We can have something like if email intent, Agent is completed. Then the state should be email. Intend Agent phase completed,
-I think there should be a shared state as well where the last tool of each agent updates the state such that our prompt should also mention that if for eg (emailIntentAgentphase completed is present in the state then the EligibilityAgentPhase(Subgrpah) should be triggered 
-after which router decides that the next subgraph node that has to be executed is eligibility Agent and after eligibility agent execute completely, that is, if the last tool of eligibility Agent is completed, we can have a state saying that eligibility Agent phase completed similarly for risk checking Agent
-so for the maingrpah as well we need a prompt to guide it, and 1 prompt for each agent (ie 1 for EmailIntentAgent,1 for  EligibilitAgent,1 for  RiskAgent,(subgrpahs))
-
-
-I am told to refer the above code that we saw all the iterations etc i have already given you the current prompt so earlier it was just one agent as you can see and one prompt and 
-tools were getting called now i have been to think on subgraph perspective 
-the correct order of Agent, that is firstly, email intent agent, secondly, eligibility agent, and thirdly, risk shaking agent Which are nothing but subgraph. 
-Then each of these sub graphs will have their own nodes. It might be to node that executes the phases or MCP tools in a proper sequence like it are getting executed currently in the same sequence via prompt decesion.
-
-As we see that Agent is returning 
-A new tool as per the prompt (in this manner)
-
-AIMessage(
-  content="",
-  tool_calls=[{
-    "name": "write_email_to_excel",
-    "args": {...},
-    "id": "call_2"
-  }]
-)
-
-Is it picking that tool from the tools list that we have passed in create custom grpaph function 
-so now also we do not have actual mcp tools, so firstly we need to create each .py file for ech mcp tools just for testing it to mock (like for eg it is returning something as if it was real)
-then we can start building our project i hope you understood everything 
+    print("Testing /layout_detection_mcp ...")
+    run_test()
