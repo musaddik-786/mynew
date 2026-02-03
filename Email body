@@ -57,8 +57,429 @@ this is my json that gets donwloaded in input folder
   }
 }
 
+below is my apis that i tested in postman
+{
+    "requests": [
+        {
+            "method": "post",
+            "uri": "/account/v1/accounts",
+            "body": {
+                "data": {
+                    "attributes": {
+                        "initialAccountHolder": {
+                            "contactSubtype": "Company",
+                            "companyName": "Hexa Tester",
+                            "primaryAddress": {
+                                "addressLine1": "2850 S. Delaware St.",
+                                "city": "San Mateo",
+                                "postalCode": "94403",
+                                "state": {
+                                    "code": "CA"
+                                }
+                            }
+                        },
+                        "initialPrimaryLocation": {
+                            "addressLine1": "2850 S. Delaware St.",
+                            "city": "San Mateo",
+                            "postalCode": "94403",
+                            "state": {
+                                "code": "CA"
+                            }
+                        },
+                        "producerCodes": [
+                            {
+                                "id": "pc:6"
+                            }
+                        ],
+                        "organizationType": {
+                            "code": "llc"
+                        }
+                    }
+                }
+            },
+            "includeResponse": false,
+            "vars": [
+                {
+                    "name": "accountId",
+                    "path": "$.data.attributes.id"
+                },
+                {
+                    "name": "driverId",
+                    "path": "$.data.attributes.accountHolder.id"
+                },
+                {
+                    "name": "primaryLocationId",
+                    "path": "$.data.attributes.primaryLocation.id"
+                }
+            ]
+        },
+        {
+            "method": "POST",
+            "uri": "/job/v1/submissions",
+            "body": {
+                "data": {
+                    "attributes": {
+                        "account": {
+                            "id": "${accountId}"
+                        },
+                        "baseState": {
+                            "code": "CA"
+                        },
+                        "jobEffectiveDate": "2025-07-16",
+                        "product": {
+                            "id": "GoCommercialProp"
+                        },
+                        "producerCode": {
+                            "id": "pc:6"
+                        }
+                    }
+                }
+            },
+            "includeResponse": false,
+            "vars": [
+                {
+                    "name": "jobId",
+                    "path": "$.data.attributes.id"
+                }
+            ]
+        },
+        {
+            "method": "POST",
+            "uri": "/job/v1/jobs/${jobId}/lines/GOCommercialLine/locations",
+            "body": {
+                "data": {
+                    "attributes": {
+                        "addressLine1": "Address Line 1",
+                        "city": "San Mateo",
+                        "coverableJurisdiction": {
+                            "code": "CA",
+                            "name": "California"
+                        },
+                        "postalCode": "94404",
+                        "state": {
+                            "code": "CA"
+                        }
+                    }
+                }
+            },
+            "includeResponse": false,
+            "vars": [
+                {
+                    "name": "locationId",
+                    "path": "$.data.attributes.id"
+                }
+            ]
+        },
+        {
+            "method": "POST",
+            "uri": "/job/v1/jobs/${jobId}/lines/GOCommercialLine/coverages",
+            "body": {
+                "data": {
+                    "attributes": {
+                        "clauseType": "coverage",
+                        "id": "GCPPropertyOffPrem",
+                        "pattern": {
+                            "id": "GCPPropertyOffPrem"
+                        },
+                        "terms": {
+                            "GCPPropertyOffPremDeductible": {
+                                "directValue": "50000.00"
+                            },
+                            "GCPPropertyOffPremInterContinent": {
+                                "directValue": "50000.00"
+                            },
+                            "GCPPropertyOffPremLimit": {
+                                "directValue": "400000.00"
+                            },
+                            "GCPPropertyOffPremWithinTerrLimit": {
+                                "directValue": "25000.00"
+                            }
+                        }
+                    }
+                }
+            },
+            "includeResponse": false,
+            "vars": []
+        },
+        {
+            "method": "POST",
+            "uri": "/job/v1/jobs/${jobId}/lines/GOCommercialLine/coverages",
+            "body": {
+                "data": {
+                    "attributes": {
+                        "clauseType": "coverage",
+                        "id": "GCPNewlyAcquiredBuildProp",
+                        "pattern": {
+                            "id": "GCPNewlyAcquiredBuildProp"
+                        },
+                        "terms": {}
+                    }
+                }
+            },
+            "includeResponse": false,
+            "vars": []
+        },
+        {
+            "method": "POST",
+            "uri": "/job/v1/jobs/${jobId}/lines/GOCommercialLine/coverages",
+            "body": {
+                "data": {
+                    "attributes": {
+                        "clauseType": "coverage",
+                        "id": "GCPOutsideObjs",
+                        "pattern": {
+                            "id": "GCPOutsideObjs"
+                        },
+                        "terms": {
+                            "GCPOutsideObjsDeductible": {
+                                "directValue": "1.00"
+                            },
+                            "GCPOutsideObjsLimit": {
+                                "directValue": "2.00"
+                            }
+                        }
+                    }
+                }
+            },
+            "includeResponse": false,
+            "vars": []
+        },
+        {
+            "method": "POST",
+            "uri": "/job/v1/jobs/${jobId}/lines/GOCommercialLine/coverages",
+            "body": {
+                "data": {
+                    "attributes": {
+                        "clauseType": "coverage",
+                        "id": "GCPContentsOtherStruct",
+                        "pattern": {
+                            "id": "GCPContentsOtherStruct"
+                        },
+                        "terms": {
+                            "GCPContentsOtherStructDeductible": {},
+                            "GCPContentsOtherStructLimit": {
+                                "typekeyValue": {
+                                    "code": "TwoPercent",
+                                    "name": "2%"
+                                }
+                            }
+                        }
+                    }
+                }
+            },
+            "includeResponse": false,
+            "vars": []
+        },
+        {
+            "method": "POST",
+            "uri": "/job/v1/jobs/${jobId}/lines/GOCommercialLine/coverages",
+            "body": {
+                "data": {
+                    "attributes": {
+                        "clauseType": "coverage",
+                        "id": "GCPTerrorism",
+                        "pattern": {
+                            "id": "GCPTerrorism"
+                        },
+                        "terms": {}
+                    }
+                }
+            },
+            "includeResponse": false,
+            "vars": []
+        },
+        {
+            "method": "POST",
+            "uri": "/job/v1/jobs/${jobId}/lines/GOCommercialLine/coverages",
+            "body": {
+                "data": {
+                    "attributes": {
+                        "clauseType": "coverage",
+                        "id": "GCPFungus",
+                        "pattern": {
+                            "id": "GCPFungus"
+                        },
+                        "terms": {
+                            "GCPFungusLimit": {
+                                "directValue": "20000.00"
+                            }
+                        }
+                    }
+                }
+            },
+            "includeResponse": false,
+            "vars": []
+        },
+        {
+            "method": "POST",
+            "uri": "/job/v1/jobs/${jobId}/lines/GOCommercialLine/coverages",
+            "body": {
+                "data": {
+                    "attributes": {
+                        "clauseType": "coverage",
+                        "id": "GCPDebrisRem",
+                        "pattern": {
+                            "id": "GCPDebrisRem"
+                        },
+                        "terms": {
+                            "GCPDebrisRemInsuredPropLimit": {
+                                "choiceValue": {
+                                    "code": "100kusd"
+                                }
+                            },
+                            "GCPDebrisRemInsuredPropPercent": {
+                                "typekeyValue": {
+                                    "code": "25Percent"
+                                }
+                            },
+                            "GCPDebrisRemOtherPropertyLimit": {
+                                "choiceValue": {
+                                    "code": "200kusd"
+                                }
+                            }
+                        }
+                    }
+                }
+            },
+            "includeResponse": false,
+            "vars": []
+        },
+        {
+            "method": "POST",
+            "uri": "/job/v1/jobs/${jobId}/lines/GOCommercialLine/coverages",
+            "body": {
+                "data": {
+                    "attributes": {
+                        "clauseType": "coverage",
+                        "id": "GCPDeferredPay",
+                        "pattern": {
+                            "id": "GCPDeferredPay"
+                        },
+                        "terms": {
+                            "GCPDeferredPayLimit": {
+                                "choiceValue": {
+                                    "code": "100kusd"
+                                }
+                            }
+                        }
+                    }
+                }
+            },
+            "includeResponse": false,
+            "vars": []
+        },
+        {
+            "method": "POST",
+            "uri": "/job/v1/jobs/${jobId}/lines/GOCommercialLine/coverages",
+            "body": {
+                "data": {
+                    "attributes": {
+                        "clauseType": "coverage",
+                        "id": "GCPExtraExp",
+                        "pattern": {
+                            "id": "GCPExtraExp"
+                        },
+                        "terms": {
+                            "GCPExtraExpLimit": {
+                                "choiceValue": {
+                                    "code": "75kusd"
+                                }
+                            }
+                        }
+                    }
+                }
+            },
+            "includeResponse": false,
+            "vars": []
+        },
+        {
+            "method": "POST",
+            "uri": "/job/v1/jobs/${jobId}/lines/GOCommercialLine/coverages",
+            "body": {
+                "data": {
+                    "attributes": {
+                        "clauseType": "coverage",
+                        "id": "GCPFireorPolice",
+                        "pattern": {
+                            "id": "GCPFireorPolice"
+                        },
+                        "terms": {
+                            "GCPFireorPoliceLimit": {
+                                "choiceValue": {
+                                    "code": "75kusd"
+                                }
+                            }
+                        }
+                    }
+                }
+            },
+            "includeResponse": false,
+            "vars": []
+        },
+        {
+            "method": "POST",
+            "uri": "/job/v1/jobs/${jobId}/lines/GOCommercialLine/coverages",
+            "body": {
+                "data": {
+                    "attributes": {
+                        "clauseType": "coverage",
+                        "id": "GCPFireProtEquip",
+                        "pattern": {
+                            "id": "GCPFireProtEquip"
+                        },
+                        "terms": {
+                            "GCPFireProtEquipLimit": {
+                                "choiceValue": {
+                                    "code": "50kusd"
+                                }
+                            }
+                        }
+                    }
+                }
+            },
+            "includeResponse": false,
+            "vars": []
+        },
+        {
+            "method": "POST",
+            "uri": "/job/v1/jobs/${jobId}/lines/GOCommercialLine/coverages",
+            "body": {
+                "data": {
+                    "attributes": {
+                        "clauseType": "coverage",
+                        "id": "GCPFlucRawMat",
+                        "pattern": {
+                            "id": "GCPFlucRawMat"
+                        },
+                        "terms": {
+                            "GCPFlucRawMatLimit": {
+                                "choiceValue": {
+                                    "code": "400kusd"
+                                }
+                            }
+                        }
+                    }
+                }
+            },
+            "includeResponse": false,
+            "vars": []
+        },
+        {
+            "method": "post",
+            "uri": "/job/v1/jobs/${jobId}/quote"
+        }
+    ],
+    "selections": [
+        {
+            "uri": "/account/v1/accounts/${accountId}"
+        },
+        {
+            "uri": "/job/v1/jobs/${jobId}"
+        }
+    ]
+}
 
-this is my code 
+this is my code where i am htting the same apis using code, so firstly check the code whether it is coorect for hitting those postman apis completely
 
 import requests
 
@@ -284,7 +705,7 @@ now i just want to take the fields from the json instead of manually written val
                     "primaryAddress": {
                         "addressLine1": "2850 S. Delaware St.",
 
-so instead of these values the field present in json those corresponding values this code should take
+so now instead of these values the field present in json those corresponding values this code should take
 I am currently having the code of downloading the json and the above calling api as different projects also need to merge them 
 below is my current code 
 handler.py
