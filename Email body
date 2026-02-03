@@ -1,220 +1,225 @@
-import requests
+this is my json 
 
-BASE_URL = "https://pc-sandbox-gwcpdev.hexaware.zeta1-andromeda.guidewire.net/rest/"  # Replace with your actual API base URL
-
-headers = {
-    # 'Content-Type': 'application/json',
-    # # Add authorization headers if needed, e.g.
-    # # 'Authorization': 'Bearer YOUR_ACCESS_TOKEN'
-
-    'accpet': 'application/json',
-    # Add authorization headers here if needed, e.g.
-    'authorization': 'Basic c3U6Z3c=',
-    'Content-Type' : 'application/json'
+{
+  "Insured Information": {
+    "Named Insured (Company Name)": "Sunflower Hotel Group LLC",
+    "Organization Name": "Armstrong and Company",
+    "Organization Type": "LLC",
+    "Name and Mailing Address": "Sunflower Hotel Group LLC, 100 Harbor View Drive, Seabreeze, Daytona Beach, Volusia, FL 32118, USA"
+  },
+  "Broker and Producer Information": {
+    "Broker Name": "Olivia Park",
+    "Broker Email": "olivia.park@meridianship.com",
+    "Broker Phone": "+1 (555) 214-7802",
+    "Producer Code": "100-002541"
+  },
+  "Property Location": {
+    "Address Line 1": "100 Harbor View Drive",
+    "City": "Daytona Beach",
+    "State": "Florida",
+    "Zip Code": "32118",
+    "Country": "United States",
+    "Address Type": "Business"
+  },
+  "Property Contact Information": {
+    "Property Contact": "Marcus Reyes",
+    "Property Email": "m.reyes@cruiseresort.com",
+    "Property Phone": "+1 (555) 321-4400"
+  },
+  "Property Details": {
+    "Property Description": "The property is an eight-story, full-service resort constructed in 2008 with a reinforced concrete and structural steel frame and masonry exterior finish. It features concrete slab-on-grade and reinforced concrete floor decks, and a built-up membrane roofing system (partial overlay in 2019). The site spans 4.2 acres with landscaped areas, two outdoor pools, spa and fitness facilities, paved driveways, walkways, and a private dock with eight guest berths. Mechanical rooms, storage, and service corridors are located in the lower levels, with no guest rooms below grade. The resort includes 240 guest rooms (standard, one- and two-bedroom, and executive suites), three restaurants, two bars, banquet/meeting spaces, spa, fitness center, retail, and limited marina services. Amenities include central HVAC, emergency power, full wet-pipe sprinklers, commercial kitchen hood suppression, elevators, 24/7 security staff, electronic access, CCTV, and seasonal pool lifeguard program.",
+    "Primary Use": "full-service resort: accommodation, F&B, banquet/meeting, spa, fitness, retail, limited marina services",
+    "Year Constructed": "2008",
+    "Number of Floors": "8",
+    "Number of Guest Rooms": "240",
+    "Site Area (acres)": "4.2",
+    "Building Area (sq ft)": "198240",
+    "Primary Construction Type": "reinforced concrete and structural steel frame with masonry exterior finish",
+    "Roof Type": "Built-up membrane roof system (2019 partial overlay)"
+  },
+  "Protection and Safety Features": {
+    "Fire Protection": "Full wet-pipe sprinklers; addressable fire alarm with central station monitoring; on-site fire pump; two hydrants within 100 ft; quarterly & annual test logs; commercial kitchen hood suppression with regular servicing",
+    "Plumbing": "Domestic hot water plant and booster pumps; backflow prevention devices installed"
+  },
+  "Coverage and Policy Details": {
+    "Line of Business": "Commercial Property",
+    "Term Type": "Annual",
+    "Effective Date": "01/01/2026",
+    "Expiration Date": "01/01/2027",
+    "Valuation": "Replacement Cost",
+    "Limit of Liability": "$6,750,000",
+    "Total Insured Value (TIV)": "$100,000,000",
+    "Contents/FF&E Value": "$15,000,000",
+    "Coverage Currency": "USD",
+    "Settlement Currency": "USD",
+    "Class Code": "0585",
+    "Underwriting Company": "Acme Low Hazard Insurance"
+  }
 }
 
-# def post_request(uri, body):
-#     url = BASE_URL + uri
-#     response = requests.post(url, json=body, headers=headers)
-#     response.raise_for_status()  # Raises HTTPError if the response was an error
-#     return response.json()
+
+this is my code 
+
+import requests
+
+BASE_URL = "https://pc-sandbox-g"  # Replace with actual API base URL
+HEADERS = {
+    # "Content-Type": "application/json",
+    # "Authorization": "Bearer YOUR_ACCESS_TOKEN"  # Replace with your auth token
+    "accept":  "ap",
+    "authorization": "Ba",
+    "Content-Type"  :"ap"
+
+}
 
 def post_request(uri, body=None):
     url = BASE_URL + uri
-    if body is not None:
-        response = requests.post(url, json=body, headers=headers)
-    else:
-        response = requests.post(url, headers=headers)
+    response = requests.post(url, json=body, headers=HEADERS)
     response.raise_for_status()
-    return response.json()
+    if response.content:
+        json_resp = response.json()
+        print(f"Response from {uri}:\n{json_resp}\n")
+        return json_resp
+    else:
+        print(f"Response from {uri}: No Content\n")
+        return None
 
-# 1. Create Account
-account_body = {
-    "data": {
-        "attributes": {
-            "initialAccountHolder": {
-                "contactSubtype": "Company",
-                "companyName": "Hexa Tester",
-                "primaryAddress": {
+def main():
+    # 1. Create account
+    account_body = {
+        "data": {
+            "attributes": {
+                "initialAccountHolder": {
+                    "contactSubtype": "Company",
+                    "companyName": "Hexa Tester",
+                    "primaryAddress": {
+                        "addressLine1": "2850 S. Delaware St.",
+                        "city": "San Mateo",
+                        "postalCode": "94403",
+                        "state": {"code": "CA"}
+                    }
+                },
+                "initialPrimaryLocation": {
                     "addressLine1": "2850 S. Delaware St.",
                     "city": "San Mateo",
                     "postalCode": "94403",
                     "state": {"code": "CA"}
-                }
-            },
-            "initialPrimaryLocation": {
-                "addressLine1": "2850 S. Delaware St.",
-                "city": "San Mateo",
-                "postalCode": "94403",
-                "state": {"code": "CA"}
-            },
-            "producerCodes": [{"id": "pc:6"}],
-            "organizationType": {"code": "llc"}
-        }
-    }
-}
-
-account_response = post_request("/account/v1/accounts", account_body)
-
-# Extract variables from account response
-account_id = account_response['data']['attributes']['id']
-driver_id = account_response['data']['attributes']['accountHolder']['id']
-primary_location_id = account_response['data']['attributes']['primaryLocation']['id']
-
-print(f"Account ID: {account_id}")
-print(f"Driver ID: {driver_id}")
-print(f"Primary Location ID: {primary_location_id}")
-
-# 2. Create Job Submission
-job_submission_body = {
-    "data": {
-        "attributes": {
-            "account": {"id": account_id},
-            "baseState": {"code": "CA"},
-            "jobEffectiveDate": "2025-07-16",
-            "product": {"id": "GoCommercialProp"},
-            "producerCode": {"id": "pc:6"}
-        }
-    }
-}
-
-job_submission_response = post_request("/job/v1/submissions", job_submission_body)
-
-# Extract jobId
-job_id = job_submission_response['data']['attributes']['id']
-print(f"Job ID: {job_id}")
-
-# 3. Create Location for Job
-location_body = {
-    "data": {
-        "attributes": {
-            "addressLine1": "Address Line 1",
-            "city": "San Mateo",
-            "coverableJurisdiction": {
-                "code": "CA",
-                "name": "California"
-            },
-            "postalCode": "94404",
-            "state": {"code": "CA"}
-        }
-    }
-}
-
-location_uri = f"/job/v1/jobs/{job_id}/lines/GOCommercialLine/locations"
-location_response = post_request(location_uri, location_body)
-
-# Extract locationId
-location_id = location_response['data']['attributes']['id']
-print(f"Location ID: {location_id}")
-
-# Continue with further requests similarly:
-# Use job_id and other extracted variables to build URIs and bodies for the next calls.
-
-# Example for the next coverage post (you can loop or write individually)
-# coverage_body_example = {
-#     "data": {
-#         "attributes": {
-#             "clauseType": "coverage",
-#             "id": "GCPPropertyOffPrem",
-#             "pattern": {"id": "GCPPropertyOffPrem"},
-#             "terms": {
-#                 "GCPPropertyOffPremDeductible": {"directValue": "50000.00"},
-#                 "GCPPropertyOffPremInterContinent": {"directValue": "50000.00"},
-#                 "GCPPropertyOffPremLimit": {"directValue": "400000.00"},
-#                 "GCPPropertyOffPremWithinTerrLimit": {"directValue": "25000.00"}
-#             }
-#         }
-#     }
-# }
-
-
-
-coverages = [
-    {
-        "clauseType": "coverage",
-        "id": "GCPPropertyOffPrem",
-        "pattern": {"id": "GCPPropertyOffPrem"},
-        "terms": {
-            "GCPPropertyOffPremDeductible": {"directValue": "50000.00"},
-            "GCPPropertyOffPremInterContinent": {"directValue": "50000.00"},
-            "GCPPropertyOffPremLimit": {"directValue": "400000.00"},
-            "GCPPropertyOffPremWithinTerrLimit": {"directValue": "25000.00"}
-        }
-    },
-    {
-        "clauseType": "coverage",
-        "id": "GCPNewlyAcquiredBuildProp",
-        "pattern": {"id": "GCPNewlyAcquiredBuildProp"},
-        "terms": {}
-    },
-    {
-        "clauseType": "coverage",
-        "id": "GCPOutsideObjs",
-        "pattern": {"id": "GCPOutsideObjs"},
-        "terms": {
-            "GCPOutsideObjsDeductible": {"directValue": "1.00"},
-            "GCPOutsideObjsLimit": {"directValue": "2.00"}
-        }
-    },
-    {
-        "clauseType": "coverage",
-        "id": "GCPContentsOtherStruct",
-        "pattern": {"id": "GCPContentsOtherStruct"},
-        "terms": {
-            "GCPContentsOtherStructDeductible": {},
-            "GCPContentsOtherStructLimit": {
-                "typekeyValue": {
-                    "code": "TwoPercent",
-                    "name": "2%"
-                }
+                },
+                "producerCodes": [{"id": "pc:6"}],
+                "organizationType": {"code": "llc"}
             }
         }
-    },
-    {
-        "clauseType": "coverage",
-        "id": "GCPTerrorism",
-        "pattern": {"id": "GCPTerrorism"},
-        "terms": {}
-    },
-    {
-        "clauseType": "coverage",
-        "id": "GCPFungus",
-        "pattern": {"id": "GCPFungus"},
-        "terms": {
-            "GCPFungusLimit": {"directValue": "20000.00"}
+    }
+    account_resp = post_request("/account/v1/accounts", account_body)
+    account_id = account_resp["data"]["attributes"]["id"]
+
+    # 2. Create job submission
+    job_body = {
+        "data": {
+            "attributes": {
+                "account": {"id": account_id},
+                "baseState": {"code": "CA"},
+                "jobEffectiveDate": "2025-07-16",
+                "product": {"id": "GoCommercialProp"},
+                "producerCode": {"id": "pc:6"}
+            }
         }
-    },
-    {
-        "clauseType": "coverage",
-        "id": "GCPDebrisRem",
-        "pattern": {"id": "GCPDebrisRem"},
-        "terms": {
-            "GCPDebrisRemInsuredPropLimit": {"choiceValue": {"code": "100kusd"}},
-            "GCPDebrisRemInsuredPropPercent": {"typekeyValue": {"code": "25Percent"}},
-            "GCPDebrisRemOtherPropertyLimit": {"choiceValue": {"code": "200kusd"}}
+    }
+    job_resp = post_request("/job/v1/submissions", job_body)
+    job_id = job_resp["data"]["attributes"]["id"]
+
+    # 3. Add location to job
+    location_body = {
+        "data": {
+            "attributes": {
+                "addressLine1": "Address Line 1",
+                "city": "San Mateo",
+                "coverableJurisdiction": {"code": "CA", "name": "California"},
+                "postalCode": "94404",
+                "state": {"code": "CA"}
+            }
         }
-    },
-# ]
+    }
+    location_resp = post_request(f"/job/v1/jobs/{job_id}/lines/GOCommercialLine/locations", location_body)
+    location_id = location_resp["data"]["attributes"]["id"]
 
-# coverage_uri = f"/job/v1/jobs/{job_id}/lines/GOCommercialLine/coverages"
-
-# for coverage in coverages:
-#     coverage_body = {"data": {"attributes": coverage}}
-#     coverage_response = post_request(coverage_uri, coverage_body)
-#     print(f"Added coverage {coverage['id']}: {coverage_response}")
-
-# print("All coverages added successfully.")
-
-# # Repeat for other coverage entries similarly.
-
-
-        # Newly added coverages
+    # 4. Define all coverages
+    coverages = [
+        {
+            "clauseType": "coverage",
+            "id": "GCPPropertyOffPrem",
+            "pattern": {"id": "GCPPropertyOffPrem"},
+            "terms": {
+                "GCPPropertyOffPremDeductible": {"directValue": "50000.00"},
+                "GCPPropertyOffPremInterContinent": {"directValue": "50000.00"},
+                "GCPPropertyOffPremLimit": {"directValue": "400000.00"},
+                "GCPPropertyOffPremWithinTerrLimit": {"directValue": "25000.00"}
+            }
+        },
+        {
+            "clauseType": "coverage",
+            "id": "GCPNewlyAcquiredBuildProp",
+            "pattern": {"id": "GCPNewlyAcquiredBuildProp"},
+            "terms": {}
+        },
+        {
+            "clauseType": "coverage",
+            "id": "GCPOutsideObjs",
+            "pattern": {"id": "GCPOutsideObjs"},
+            "terms": {
+                "GCPOutsideObjsDeductible": {"directValue": "1.00"},
+                "GCPOutsideObjsLimit": {"directValue": "2.00"}
+            }
+        },
+        {
+            "clauseType": "coverage",
+            "id": "GCPContentsOtherStruct",
+            "pattern": {"id": "GCPContentsOtherStruct"},
+            "terms": {
+                "GCPContentsOtherStructDeductible": {},
+                "GCPContentsOtherStructLimit": {
+                    "typekeyValue": {"code": "TwoPercent", "name": "2%"}
+                }
+            }
+        },
+        {
+            "clauseType": "coverage",
+            "id": "GCPTerrorism",
+            "pattern": {"id": "GCPTerrorism"},
+            "terms": {}
+        },
+        {
+            "clauseType": "coverage",
+            "id": "GCPFungus",
+            "pattern": {"id": "GCPFungus"},
+            "terms": {
+                "GCPFungusLimit": {"directValue": "20000.00"}
+            }
+        },
+        {
+            "clauseType": "coverage",
+            "id": "GCPDebrisRem",
+            "pattern": {"id": "GCPDebrisRem"},
+            "terms": {
+                "GCPDebrisRemInsuredPropLimit": {
+                    "choiceValue": {"code": "100kusd"}
+                },
+                "GCPDebrisRemInsuredPropPercent": {
+                    "typekeyValue": {"code": "25Percent"}
+                },
+                "GCPDebrisRemOtherPropertyLimit": {
+                    "choiceValue": {"code": "200kusd"}
+                }
+            }
+        },
         {
             "clauseType": "coverage",
             "id": "GCPDeferredPay",
             "pattern": {"id": "GCPDeferredPay"},
             "terms": {
-                "GCPDeferredPayLimit": {"choiceValue": {"code": "100kusd"}}
+                "GCPDeferredPayLimit": {
+                    "choiceValue": {"code": "100kusd"}
+                }
             }
         },
         {
@@ -222,7 +227,9 @@ coverages = [
             "id": "GCPExtraExp",
             "pattern": {"id": "GCPExtraExp"},
             "terms": {
-                "GCPExtraExpLimit": {"choiceValue": {"code": "75kusd"}}
+                "GCPExtraExpLimit": {
+                    "choiceValue": {"code": "75kusd"}
+                }
             }
         },
         {
@@ -230,7 +237,9 @@ coverages = [
             "id": "GCPFireorPolice",
             "pattern": {"id": "GCPFireorPolice"},
             "terms": {
-                "GCPFireorPoliceLimit": {"choiceValue": {"code": "75kusd"}}
+                "GCPFireorPoliceLimit": {
+                    "choiceValue": {"code": "75kusd"}
+                }
             }
         },
         {
@@ -238,7 +247,9 @@ coverages = [
             "id": "GCPFireProtEquip",
             "pattern": {"id": "GCPFireProtEquip"},
             "terms": {
-                "GCPFireProtEquipLimit": {"choiceValue": {"code": "50kusd"}}
+                "GCPFireProtEquipLimit": {
+                    "choiceValue": {"code": "50kusd"}
+                }
             }
         },
         {
@@ -246,33 +257,264 @@ coverages = [
             "id": "GCPFlucRawMat",
             "pattern": {"id": "GCPFlucRawMat"},
             "terms": {
-                "GCPFlucRawMatLimit": {"choiceValue": {"code": "400kusd"}}
+                "GCPFlucRawMatLimit": {
+                    "choiceValue": {"code": "400kusd"}
+                }
             }
         }
     ]
 
-coverage_uri = f"/job/v1/jobs/{job_id}/lines/GOCommercialLine/coverages"
-for coverage in coverages:
-    coverage_body = {"data": {"attributes": coverage}}
-    coverage_response = post_request(coverage_uri, coverage_body)
-    print(f"Added coverage {coverage['id']}")
+    # 5. Post all coverages and print responses
+    for coverage in coverages:
+        coverage_body = {"data": {"attributes": coverage}}
+        post_request(f"/job/v1/jobs/{job_id}/lines/GOCommercialLine/coverages", coverage_body)
 
-    # 5. Quote the job
-quote_uri = f"/job/v1/jobs/{job_id}/quote"
-quote_response = post_request(quote_uri)
-print("Quote response:")
-print(quote_response)
+    # 6. Post quote request and print response
+    post_request(f"/job/v1/jobs/{job_id}/quote")
 
-    # 6. (Optional) Retrieve selections if needed
-    # Example: Get account info
-account_selection_uri = f"/account/v1/accounts/{account_id}"
-account_info = requests.get(BASE_URL + account_selection_uri, headers=headers)
-print("Account info retrieved:", account_info.json())
-
-    # Example: Get job info
-job_selection_uri = f"/job/v1/jobs/{job_id}"
-job_info = requests.get(BASE_URL + job_selection_uri, headers=headers)
-print("Job info retrieved:", job_info.json())
+    print("All API calls completed successfully.")
 
 if __name__ == "__main__":
     main()
+
+
+I am having that json stored in the folder input
+now i just want to take the fields from the json instead of manually written values in the code for eg :
+ "companyName": "Hexa Tester",
+                    "primaryAddress": {
+                        "addressLine1": "2850 S. Delaware St.",
+
+so instead of these values the field present in json those corresponding values this code should take
+I am currently having the code of downloading the json and the above calling api as different projects also need to merge them 
+below is my current code 
+handler.py
+import os
+import json
+from typing import Dict, Any
+from service import _require_env
+from storage_utils import download_blob_to_input_folder
+# from document_loader import load_document
+# from classifier import classify_document
+
+INPUT_FOLDER = "input"
+# OUTPUT_FOLDER = "output"
+
+async def classify_blob_pdf_layout(blob_url: str) -> Dict[str, Any]:
+    """
+    - Download json into input/
+    """
+    try:
+        _require_env()
+    except Exception as e:
+        return {"status": False, "error": f"Environment misconfigured: {e}"}
+
+
+    # 1) Download PDF
+    try:
+        local_pdf = await download_blob_to_input_folder(blob_url, input_folder=INPUT_FOLDER)
+    except Exception as e:
+        return {"status": False, "error": f"Failed to download blob: {e}"}
+
+
+main.py
+
+
+from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi_mcp import FastApiMCP
+import uvicorn
+
+from router import router as file_router
+
+
+def apply_cors(app: FastAPI):
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=["*"],
+        allow_methods=["*"],
+        allow_headers=["*"],
+    )
+
+
+def create_sub_app(title: str, description: str, version: str = "0.1.0") -> FastAPI:
+    sub = FastAPI(title=title, description=description, version=version)
+    apply_cors(sub)
+    return sub
+
+
+app = FastAPI()
+apply_cors(app)
+
+file_app = create_sub_app(
+    title="Guide wire Integration",
+    description="Receives Response from Licensing_&Sanction_Check_MCP andreceives a JSON-RPC request from the Licensing & Sanction Checker MCP containing the `is_Sanctioned` flag. Based on this value, it reads the ref_eligibility_check Table and writes corresponding data into agent_eligibility Table."
+)
+file_app.include_router(file_router)
+
+# Expose ONLY this operation id via MCP HTTP (client will use transport='http')
+FastApiMCP(file_app, include_operations=["Guidewire_Integration"]).mount_http()
+
+# Mount the sub-app under this prefix (keep as-is per your request)
+# app.mount("/api/v1/eligibility_agent", file_app)
+app.mount("/api/v1/layout", file_app)
+
+
+if __name__ == "__main__":
+    uvicorn.run(app, host="0.0.0.0", port=8601)
+
+
+
+
+router.py
+
+
+from fastapi import APIRouter
+from fastapi.responses import JSONResponse
+from pydantic import BaseModel, Field
+from handler import classify_blob_pdf_layout
+
+router = APIRouter()
+
+class LayoutDetectRequest(BaseModel):
+    attachment_url: str = Field(..., description="Full Azure Blob URL to the PDF attachment.")
+
+@router.post("/Guidewire_Integration", operation_id="Guidewire_Integration",
+             summary="Download PDF from blob, analyze layout using Form Recognizer, and classify layout")
+async def detect_layout(request: LayoutDetectRequest):
+    """Downloades the blob based on blob url and calls the Guidewire API with the data present in the blob for Quote generation
+
+    
+    Args:
+        attachment_url: The Blob URL oreturned by the email_attachment_mcp
+    
+    Returns:
+        JSONResponse: returns the json response containing Quote generated.
+    """
+    try:
+        result = await classify_blob_pdf_layout(request.attachment_url)
+        return JSONResponse(content={"jsonrpc": "2.0", "id": 1, "result": result}, status_code=200)
+    except Exception as e:
+        return JSONResponse(content={"jsonrpc": "2.0", "id": 1,
+                                     "result": {"status": False, "error": str(e)}}, status_code=200)
+
+
+service.py
+# service.py
+#Working code 
+
+import os
+from urllib.parse import urlparse, unquote
+from dotenv import load_dotenv
+
+load_dotenv()
+
+AZURE_STORAGE_CONNECTION_STRING = os.environ.get("AZURE_STORAGE_CONNECTION_STRING", "")
+
+def _require_env() -> None:
+    """Ensure required environment variables exist."""
+    if not AZURE_STORAGE_CONNECTION_STRING:
+        raise RuntimeError("Missing AZURE_STORAGE_CONNECTION_STRING in environment/.env")
+
+def _parse_blob_url(url: str) -> tuple[str, str]:
+    """
+    Parse an Azure Blob URL and return (container_name, blob_path).
+    Example URL:
+      https://account.blob.core.windows.net/output-results/folder/name.pdf
+    Returns:
+      ("output-results", "folder/name.pdf")
+    """
+    parsed = urlparse(url)
+    if not parsed.scheme.startswith("http"):
+        raise ValueError("url must be a valid http(s) Azure Blob URL.")
+
+    path = parsed.path.lstrip("/")
+    if "/" not in path:
+        raise ValueError("url must include both container and blob path.")
+    parts = path.split("/", 1)
+    container = parts[0]
+    blob_path = parts[1]
+    return unquote(container), unquote(blob_path)
+
+
+storage utils.py
+
+#Working code 
+# storage_utils.py
+import os
+import aiofiles
+from azure.storage.blob.aio import BlobServiceClient
+from azure.core.exceptions import ResourceNotFoundError
+from service import AZURE_STORAGE_CONNECTION_STRING, _parse_blob_url
+
+async def download_blob_to_input_folder(blob_url: str, input_folder: str = "input") -> str:
+    """
+    Downloads the blob at blob_url into input_folder (root-level) preserving filename.
+    Returns the local path to the downloaded file.
+    """
+    if not AZURE_STORAGE_CONNECTION_STRING:
+        raise RuntimeError("AZURE_STORAGE_CONNECTION_STRING not set")
+
+    container, blob_path = _parse_blob_url(blob_url)
+    filename = os.path.basename(blob_path)
+    os.makedirs(input_folder, exist_ok=True)
+    local_path = os.path.join(input_folder, filename)
+
+    async with BlobServiceClient.from_connection_string(AZURE_STORAGE_CONNECTION_STRING) as service:
+        container_client = service.get_container_client(container)
+        blob_client = container_client.get_blob_client(blob_path)
+        try:
+            await blob_client.get_blob_properties()
+        except ResourceNotFoundError:
+            raise FileNotFoundError(f"Blob not found: container={container} blob={blob_path}")
+        stream = await blob_client.download_blob()
+        data = await stream.readall()
+
+    # write file async
+    async with aiofiles.open(local_path, "wb") as f:
+        await f.write(data)
+
+    return local_path
+
+
+
+test_script.py
+
+
+
+
+
+#Working code 
+
+# test_scripts.py
+import requests
+import json
+
+BASE_URL = "http://localhost:8601/api/v1/layout/Guidewire_Integration"
+
+def run_test():
+    payload = {
+        #   "attachment_url": "https://agenticai1.blob.core.windows.net/attachment-downloader/19BDB64178C5A9C8_attachment_Acord_125_High_tech_solution.pdf" , 
+        "attachment_url"  :  "https://agenticai1.blob.core.windows.net/quote-extraction-results/123213FSDFSDF_attachment_Request_for_Property_Detailed_Report.json"
+
+    }
+
+
+    try:
+        resp = requests.post(BASE_URL, json=payload, timeout=180)
+        print("HTTP Status:", resp.status_code)
+        try:
+            data = resp.json()
+            print(json.dumps(data, indent=4))
+        except Exception:
+            print("Response not JSON:", resp.text)
+    except Exception as e:
+        print("Error calling API:", str(e))
+
+if __name__ == "__main__":
+    print("Testing /layout_detection_mcp ...")
+    run_test()
+
+
+
+
+
