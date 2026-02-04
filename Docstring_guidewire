@@ -1,0 +1,82 @@
+so here are 2 files i have been told to improve the docstring as per our scenario also some where there are mentions of Layout word so also we need to remove it for eg the summary part , Download PDF from blob, analyze layout using Form Recognizer, and classify layout
+this was actually not for our use case at all, as we know 
+
+from fastapi import APIRouter
+from fastapi.responses import JSONResponse
+from pydantic import BaseModel, Field
+from handler import guidewire_api_call
+
+router = APIRouter()
+
+class QuoteRequest(BaseModel):
+    attachment_url: str = Field(..., description="Full Azure Blob URL to the PDF attachment.")
+
+@router.post("/Guidewire_Quote", operation_id="Guidewire_Quote",
+             summary="Download PDF from blob, analyze layout using Form Recognizer, and classify layout")
+async def generate_quote(request: QuoteRequest):
+    """Downloades the blob based on blob url and calls the Guidewire API with the data present in the blob for Quote generation
+
+    
+    Args:
+        attachment_url: The Blob URL oreturned by the email_attachment_mcp
+    
+    Returns:
+        JSONResponse: returns the json response containing Quote generated.
+    """
+    try:
+        result = await guidewire_api_call(request.attachment_url)
+        return JSONResponse(content={"jsonrpc": "2.0", "id": 1, "result": result}, status_code=200)
+    except Exception as e:
+        return JSONResponse(content={"jsonrpc": "2.0", "id": 1,
+                                     "result": {"status": False, "error": str(e)}}, status_code=200)
+
+
+
+
+from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi_mcp import FastApiMCP
+import uvicorn
+
+from router import router as file_router
+
+
+def apply_cors(app: FastAPI):
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=["*"],
+        allow_methods=["*"],
+        allow_headers=["*"],
+    )
+
+
+def create_sub_app(title: str, description: str, version: str = "0.1.0") -> FastAPI:
+    sub = FastAPI(title=title, description=description, version=version)
+    apply_cors(sub)
+    return sub
+
+
+app = FastAPI()
+apply_cors(app)
+
+file_app = create_sub_app(
+    title="Guide wire Integration",
+    description="Receives Response from Licensing_&Sanction_Check_MCP andreceives a JSON-RPC request from the Licensing & Sanction Checker MCP containing the `is_Sanctioned` flag. Based on this value, it reads the ref_eligibility_check Table and writes corresponding data into agent_eligibility Table."
+)
+file_app.include_router(file_router)
+
+# Expose ONLY this operation id via MCP HTTP (client will use transport='http')
+FastApiMCP(file_app, include_operations=["Guidewire_Quote"]).mount_http()
+
+# Mount the sub-app under this prefix (keep as-is per your request)
+# app.mount("/api/v1/eligibility_agent", file_app)
+app.mount("/api/v1/quote", file_app)
+
+
+if __name__ == "__main__":
+    uvicorn.run(app, host="0.0.0.0", port=8601)
+
+
+
+
+
