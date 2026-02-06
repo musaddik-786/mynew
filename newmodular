@@ -1,3 +1,79 @@
+from datetime import datetime
+from models.model_data import QuoteData
+from State_Abbrevation.us_state_abbrevation import us_states_abbreviations
+
+
+def get_value_anywhere(data, target_key):
+    """
+    Find a key anywhere in nested dict/list JSON.
+    Returns first match or None.
+    """
+    if isinstance(data, dict):
+        for key, value in data.items():
+            if key == target_key:
+                return value
+            found = get_value_anywhere(value, target_key)
+            if found is not None:
+                return found
+
+    elif isinstance(data, list):
+        for item in data:
+            found = get_value_anywhere(item, target_key)
+            if found is not None:
+                return found
+
+    return None
+
+
+def map_document_to_model_data(doc: dict) -> QuoteData:
+    # Get values from anywhere in JSON
+    company_name = get_value_anywhere(doc, "Named Insured (Company Name)")
+    organization_type = get_value_anywhere(doc, "Organization Type")
+
+    address_line1 = get_value_anywhere(doc, "Address Line 1")
+    city = get_value_anywhere(doc, "City")
+    full_state_name = get_value_anywhere(doc, "State")
+    postal_code = get_value_anywhere(doc, "Zip Code")
+
+    date_str = get_value_anywhere(doc, "Effective Date")
+
+    # Convert the date string to desired format, with error handling
+    if date_str:
+        try:
+            date_obj = datetime.strptime(date_str, "%d/%m/%Y")
+            job_effective_date = date_obj.strftime("%Y-%m-%d")
+        except ValueError:
+            job_effective_date = None
+    else:
+        job_effective_date = None
+
+    # Lookup state abbreviation
+    state_abbreviation = us_states_abbreviations.get(
+        full_state_name, full_state_name
+    )
+
+    return QuoteData(
+        company_name=company_name,
+        organization_type=organization_type or "",
+
+        address_line1=address_line1,
+        city=city,
+        state=state_abbreviation,
+        postal_code=postal_code,
+
+        # Fixed producer code as per business rule
+        producer_code="pc:6",
+
+        job_effective_date=job_effective_date
+    )
+
+
+
+
+
+
+
+
 This is my current code 
 
 
