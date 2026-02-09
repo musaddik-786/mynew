@@ -1,11 +1,141 @@
-Hi Viral,
+router.py
 
-With the month of Ramadan approaching, I wanted to request approval for a temporary work‑from‑home arrangement from February 17th to March 19th, 2026.
+from fastapi import APIRouter
+from fastapi.responses import JSONResponse
+from pydantic import BaseModel, Field
+from handler import compare_name_with_sanctions
 
-During Ramadan, the daily routine shifts significantly, beginning the day around 3:30–4:00 AM for pre‑dawn meals and prayers. Given this altered schedule, with fasting and a one‑way commute of approximately 2 hours becomes particularly challenging and impacts overall productivity.
+router = APIRouter()
 
-As discussed, working from home during this period would allow me to manage the early‑morning routine while ensuring that my performance, availability, and deliverables remain unaffected. I will remain fully accessible during regular working hours and continue to collaborate seamlessly with the team.
 
-Thank you for your understanding and consideration.
+class CompareRequest(BaseModel):
+    """
+    This endpoint is invoked by the Data Extraction Agent.
+    It passes the FULL Azure Blob URL of the extracted JSON in 'jsonfilepath'.
 
-Warm regards,
+    Example payload:
+    {
+      "jsonfilepath": "https://<account>.blob.core.windows.net/<container>/<path>/file.json"
+    }
+
+    The service will:
+    - Download that JSON from Azure Blob using AZURE_STORAGE_CONNECTION_STRING,
+    - Extract the name from Owner/Insured/Contact/NAMED INSURED(S),
+    - Compare it against local 'input/sanctions.csv',
+    - Return the comparison result in a JSON-RPC envelope (consistent with your duplicate attachment checker).
+    """
+    jsonfilepath: str = Field(..., description="Full Azure Blob URL to the extracted JSON.")
+
+
+@router.post(
+    "/Licensing_&_Sanction_Checker_MCP",
+    operation_id="Licensing_&_Sanction_Checker_MCP",
+    summary="Compare JSON (Owner/Insured/Contact/NAMED INSURED(S)) from blob URL with local sanctions CSV."
+)
+async def compare_files(request: CompareRequest):
+    """
+    Receives the JSON blob URL from the Data Extraction Agent and performs the comparison.
+    Returns a JSON-RPC envelope for consistency with the duplicate attachment checker.
+    """
+    try:
+        result = await read(json_file_url=request.jsonfilepath)
+        return JSONResponse(
+            content={
+                "jsonrpc": "2.0",
+                "id": 1,
+                "result": result
+            },
+            status_code=200
+        )
+    except Exception as e:
+        return JSONResponse(
+            content={
+                "jsonrpc": "2.0",
+                "id": 1,
+                "result": {"status": False, "error": f"Unexpected server error: {str(e)}"}
+            },
+            status_code=200
+        )
+
+
+
+
+handler.py
+from ..common.azure_blob_reader.client import read_json_from_blob
+
+def read(blob_url: str):
+    read = read_json_from_blob(blob_url)
+    print(read)
+
+main.py
+from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi_mcp import FastApiMCP
+import uvicorn
+
+from router import router as file_router
+
+
+def apply_cors(app: FastAPI):
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=["*"],
+        allow_methods=["*"],
+        allow_headers=["*"],
+    )
+
+
+def create_sub_app(title: str, description: str, version: str = "0.1.0") -> FastAPI:
+    sub = FastAPI(title=title, description=description, version=version)
+    apply_cors(sub)
+    return sub
+
+
+app = FastAPI()
+apply_cors(app)
+
+file_app = create_sub_app(
+    title="Licensing_and_Sanction_Checker_MCP",
+    description="Receives JSON blob URL from Data Extraction Agent and compares extracted name with local sanctions CSV."
+)
+file_app.include_router(file_router)
+
+# Expose ONLY this operation id via MCP HTTP (client will use transport='http')
+FastApiMCP(file_app, include_operations=["Licensing_&_Sanction_Checker_MCP"]).mount_http()
+
+# Mount the sub-app under this prefix (keep as-is per your request)
+app.mount("/api/v1/eligibility_agent", file_app)
+
+
+if __name__ == "__main__":
+    uvicorn.run(app, host="0.0.0.0", port=8651)
+
+test_script.py
+import requests
+import json
+
+BASE_URL = "http://localhost:8651/api/v1/eligibility_agent/Licensing_&_Sanction_Checker_MCP"
+
+def run_test():
+    payload = {
+        "jsonfilepath": "https://agenticai1.blob.core.windows.net/output-results/19B2C543CDB30415_attachment_Acord_125_Berkshire_Hathway_extraction_20251217_142512.json"
+    }
+    try:
+        resp = requests.post(BASE_URL, json=payload, timeout=60)
+        print("HTTP Status:", resp.status_code)
+        try:
+            data = resp.json()
+            print(json.dumps(data, indent=4))
+        except json.JSONDecodeError:
+            print("Response not JSON:", resp.text)
+    except Exception as e:
+        print("Error calling API:", str(e))
+
+if __name__ == "__main__":
+    print("Testing /Licensing_&_Sanction_Checker_MCP ...")
+    run_test()
+
+.env
+
+AZURE_STORAGE_CONNECTION_STRING = ""
+AZURE_STORAGE_ACCOUNT_NAME = ""
