@@ -1,203 +1,410 @@
+guidewireclient.py
+
+import requests
+
+BASE_URL = "https://pc-sandbox-gwcpdev.hexaware.zeta1-andromeda.guidewire.net/rest"
+
+HEADERS = {
+    "Content-Type": "application/json",
+    "accept": "application/json",
+    "authorization": "Basic c3U6Z3c="
+}
+
+def post(uri: str, body: dict):
+    response = requests.post(BASE_URL + uri, json=body, headers=HEADERS)
+    response.raise_for_status()
+    return response.json()
+
+
+document_mapper.py
 
 
 
+from datetime import datetime
+from models.model_data import QuoteData
+from State_Abbrevation.us_state_abbrevation import us_states_abbreviations
 
 
+def get_value_anywhere(data, target_key):
+    """
+    Find a key anywhere in nested dict/list JSON.
+    Returns first match or None.
+    """
+    if isinstance(data, dict):
+        for key, value in data.items():
+            if key == target_key:
+                return value
+            found = get_value_anywhere(value, target_key)
+            if found is not None:
+                return found
+
+    elif isinstance(data, list):
+        for item in data:
+            found = get_value_anywhere(item, target_key)
+            if found is not None:
+                return found
+
+    return None
 
 
-classifier.py
+def map_document_to_model_data(doc: dict) -> QuoteData:
+    # Get values from anywhere in JSON
+    company_name = get_value_anywhere(doc, "Named Insured (Company Name)")
+    organization_type = get_value_anywhere(doc, "Organization Type")
 
+    address_line1 = get_value_anywhere(doc, "Address Line 1")
+    city = get_value_anywhere(doc, "City")
+    full_state_name = get_value_anywhere(doc, "State")
+    postal_code = get_value_anywhere(doc, "Zip Code")
 
+    date_str = get_value_anywhere(doc, "Effective Date")
 
-from dotenv import load_dotenv
-import os
-from openai import AzureOpenAI  # ✅ Correct import for Azure OpenAI
+    # Convert the date string to desired format, with error handling
+    if date_str:
+        try:
+            date_obj = datetime.strptime(date_str, "%d/%m/%Y")
+            job_effective_date = date_obj.strftime("%Y-%m-%d")
+        except ValueError:
+            job_effective_date = None
+    else:
+        job_effective_date = None
 
-# Load environment variables
-load_dotenv()
-
-AZURE_OPENAI_ENDPOINT = os.getenv("AZURE_OPENAI_ENDPOINT")
-AZURE_OPENAI_API_VERSION = os.getenv("AZURE_OPENAI_API_VERSION")
-AZURE_OPENAI_API_KEY = os.getenv("AZURE_OPENAI_API_KEY")
-AZURE_OPENAI_CHAT_DEPLOYMENT = os.getenv("AZURE_OPENAI_CHAT_DEPLOYMENT")
-
-if not (AZURE_OPENAI_ENDPOINT and AZURE_OPENAI_API_VERSION and AZURE_OPENAI_API_KEY and AZURE_OPENAI_CHAT_DEPLOYMENT):
-    raise RuntimeError("Azure OpenAI env vars missing. Please set AZURE_OPENAI_ENDPOINT, AZURE_OPENAI_API_VERSION, AZURE_OPENAI_API_KEY and AZURE_OPENAI_CHAT_DEPLOYMENT")
-
-# ✅ Create Azure OpenAI client
-client = AzureOpenAI(
-    api_key=AZURE_OPENAI_API_KEY,
-    api_version=AZURE_OPENAI_API_VERSION,
-    azure_endpoint=AZURE_OPENAI_ENDPOINT,
-)
-
-def classify_document(document_content):
-    text = document_content.get("text", "")
-
-    prompt = f"""
-You are an expert in insurance documentation and intelligent document processing.
-
-Your task is to identify whether a given document is an ACORD insurance form or not.
-
-ACORD forms are standardized insurance documents published by the Association for Cooperative Operations Research and Development (ACORD).
-They include forms such as ACORD 25 (Certificate of Liability Insurance), ACORD 27 (Evidence of Property Insurance), ACORD 130 (Workers Compensation Application), etc.
-
-Classify the following document based on its content.
-Decide whether it is an ACORD Form or Non-ACORD Document.
-
-Definitions:
-
-ACORD Form:
-A standardized insurance form that typically includes the word “ACORD” followed by a form number (e.g., “ACORD 25 (2016/03)”),
-fields such as “Producer,” “Insured,” “Certificate Holder,” “Policy Number,” “Authorized Representative,” and often displays the ACORD logo or header.
-These documents summarize insurance coverage, liability, or property details.
-
-Non-ACORD Document:
-Any document that does not follow the ACORD format — e.g., invoices, contracts, letters, claims, proposals, or policy text.
-
-Document Content:
-{text[:2000]}
-
-Reply with only one word: ACORD or Non-ACORD.
-"""
-
-    response = client.chat.completions.create(
-        model=AZURE_OPENAI_CHAT_DEPLOYMENT,
-        messages=[{"role": "user", "content": prompt}],
-        max_tokens=4,
-        temperature=0.0
+    # Lookup state abbreviation
+    state_abbreviation = us_states_abbreviations.get(
+        full_state_name, full_state_name
     )
 
-    try:
-        return response.choices[0].message.content.strip()
-    except Exception:
-        return getattr(response.choices[0].message, "content", "").strip()
+    return QuoteData(
+        company_name=company_name,
+        organization_type=organization_type,
+
+        address_line1=address_line1,
+        city=city,
+        state=state_abbreviation,
+        postal_code=postal_code,
+
+        # Fixed producer code as per business rule
+        producer_code="pc:6",
+
+        job_effective_date=job_effective_date
+    )
 
 
+model_data.py
+
+from dataclasses import dataclass
+@dataclass
+class QuoteData:
+    company_name:str
+    organization_type:str
+
+    address_line1:str
+    city: str
+    state: str
+    postal_code: str
+
+    producer_code : str
+    job_effective_date: str
 
 
-document_loader.py
+account_payload.py
+from models.model_data import QuoteData
+from State_Abbrevation import us_state_abbrevation
 
-
-
-
-from dotenv import load_dotenv
-import os
-from azure.ai.formrecognizer import DocumentAnalysisClient
-from azure.core.credentials import AzureKeyCredential
-
-# Load environment variables from .env file
-load_dotenv()
-
-# Fetch variables
-endpoint = os.getenv("AZURE_FORMRECOG_ENDPOINT")
-key = os.getenv("AZURE_FORMRECOG_KEY")
-# Fail fast if missing
-if not endpoint:
-    raise ValueError(" AZURE_FORMRECOG_ENDPOINT is not set. Check your .env file.")
-if not key:
-    raise ValueError(" AZURE_FORMRECOG_KEY is not set. Check your .env file.")
-
-# Create the client using the key and endpoint
-client = DocumentAnalysisClient(endpoint=endpoint, credential=AzureKeyCredential(key))
-
-def load_document(file_path):
-    """
-    Extracts text and layout information using Form Recognizer's prebuilt-layout model.
-    """
-    with open(file_path, "rb") as f:
-        poller = client.begin_analyze_document("prebuilt-layout", document=f)
-        result = poller.result()
-
-    # Debugging: Print available attributes in DocumentPage
-    print("Available attributes in DocumentPage:")
-    print(dir(result.pages[0]))
-    print("/n")
-    print("/n")
-
-    # Extract lines of text
-    lines = [line.content for page in result.pages for line in page.lines]
-
-    # Extract table information if available
-    tables = []
-    for page in result.pages:
-        if hasattr(page, "tables"):  # Check if 'tables' attribute exists
-            for table in page.tables:
-                table_data = []
-                for row in table.cells:
-                    table_data.append(row.content)
-                tables.append(table_data)
-
-    # Combine text and table information
-    document_content = {
-        "text": "n".join(lines),
-        "tables": tables if tables else "No tables detected"
+def build_account_payload(data: QuoteData) -> dict:
+    return {
+        "data": {
+            "attributes": {
+                "initialAccountHolder": {
+                    "contactSubtype": "Company",
+                    "companyName": data.company_name,
+                    "primaryAddress": {
+                        "addressLine1": data.address_line1,
+                        "city": data.city,
+                        "postalCode": data.postal_code,
+                        "state": {
+                            "code": data.state[:2].upper()
+                        }
+                    }
+                },
+                "initialPrimaryLocation": {
+                    "addressLine1": data.address_line1,
+                    "city": data.city,
+                    "postalCode": data.postal_code,
+                    "state": {
+                        "code": data.state[:2].upper()
+                        }
+                },
+                "producerCodes": [
+                    {"id": "pc:6"}
+                ],
+                "organizationType": {
+                    "code": data.organization_type
+                }
+            }
+        }
     }
-    return document_content
 
+
+coverage_payload.py
+def get_coverages():
+    return [
+        {
+            "clauseType": "coverage",
+            "id": "GCPPropertyOffPrem",
+            "pattern": {"id": "GCPPropertyOffPrem"},
+            "terms": {
+                "GCPPropertyOffPremDeductible": {"directValue": "50000.00"},
+                "GCPPropertyOffPremInterContinent": {"directValue": "50000.00"},
+                "GCPPropertyOffPremLimit": {"directValue": "400000.00"},
+                "GCPPropertyOffPremWithinTerrLimit": {"directValue": "25000.00"}
+            }
+        }
+]
+
+job_payload.py
+from models.model_data import QuoteData
+from payload_builders import job_payload
+
+def build_job_payload(account_id: str, data: QuoteData) -> dict:
+
+    
+    return {
+        "data": {
+            "attributes": {
+                "account": {
+                    "id": account_id
+                },
+                "baseState": {
+                    "code": data.state[:2].upper()
+                },
+                "jobEffectiveDate": data.job_effective_date,
+                "product": {
+                    "id": "GoCommercialProp"
+                },
+                "producerCode": {
+                    "id": "pc:6"
+                }
+            }
+        }
+    }
+
+
+location_payload.py
+from models.model_data import QuoteData
+
+def build_location_payload(data: QuoteData) -> dict:
+    return {
+        "data": {
+            "attributes": {
+                "addressLine1": data.address_line1,
+                "city": data.city,
+                "postalCode": data.postal_code,
+                "state": {
+                    "code": data.state[:2].upper()
+                },
+                "coverableJurisdiction": {
+                    "code": data.state[:2].upper(),
+                    # "name": data.state
+                }
+            }
+        }
+    }
 
 
 handler.py
 
 
-import os
-import json
+
+
+
+
+
+# handler.py
 from typing import Dict, Any
-from .service import _require_env
-from .storage_utils import download_blob_to_input_folder
-from .document_loader import load_document
-from .classifier import classify_document
+from service import _require_env
+from storage_utils import read_json_from_blob
+from mappers.document_mapper import map_document_to_model_data
+from payload_builders.account_payload import build_account_payload
+from payload_builders.job_payload import build_job_payload
+from payload_builders.location_payload import build_location_payload
+from payload_builders.coverage_payloads import get_coverages
+from clients.guidewire_client import post
+from service import _ref_parse_blob_url
+from storage_utils import save_json_output_to_blob
 
-INPUT_FOLDER = "input"
-OUTPUT_FOLDER = "output"
-
-async def classify_blob_pdf_layout(blob_url: str) -> Dict[str, Any]:
+async def guidewire_api_call(blob_url: str) -> Dict[str, Any]:
     """
-    - Download PDF into input/
-    - Use Form Recognizer to analyze layout
-    - Classify layout using extracted content
-    - Return minimal verdict
+    Reads JSON directly from Azure Blob and calls Guidewire APIs to get the Quote.
     """
     try:
         _require_env()
     except Exception as e:
         return {"status": False, "error": f"Environment misconfigured: {e}"}
 
-    # 1) Download PDF
     try:
-        local_pdf = await download_blob_to_input_folder(blob_url, input_folder=INPUT_FOLDER)
+        document = await read_json_from_blob(blob_url)
+        print(document)
     except Exception as e:
-        return {"status": False, "error": f"Failed to download blob: {e}"}
-
-    # 2) Use Form Recognizer to analyze the document
+        return {"status": False, "error": f"Failed to read blob: {e}"}
+    
     try:
-        document_content = load_document(local_pdf)
+        canonical = map_document_to_model_data(document)
+        print("Canonical",canonical)
     except Exception as e:
-        return {"status": False, "error": f"Form Recognizer failed: {e}"}
+        return {"status": False, "error": f"Failed to map data : {e}"}
 
-    # 3) Classify layout using extracted content
+        # canonical = map_document_to_canonical(document)
+    account_resp = post("/account/v1/accounts", build_account_payload(canonical))
+    account_id = account_resp["data"]["attributes"]["id"]
+    
+    print("account_id",account_id)
+
+    job_resp = post("/job/v1/submissions", build_job_payload(account_id, canonical))
+    job_id = job_resp["data"]["attributes"]["id"]
+
+    print("JOB ID :",job_id)
+    location_resp = post(
+        f"/job/v1/jobs/{job_id}/lines/GOCommercialLine/locations",
+        build_location_payload(canonical)
+    )
+    location_id = location_resp["data"]["attributes"]["id"]
+
+    for coverage in get_coverages():
+        post(
+            f"/job/v1/jobs/{job_id}/lines/GOCommercialLine/coverages",
+            {"data": {"attributes": coverage}}
+        )
+
+    quote_resp = post(f"/job/v1/jobs/{job_id}/quote", {})
+
     try:
-        layout_type = classify_document(document_content)
+        container, blob_path, ref_id, name = _ref_parse_blob_url(blob_url)
+        print("Container:", container)
+        print("Blob_path:", blob_path)
+        print("Ref_id:", ref_id)
+        print("Name:", name)
     except Exception as e:
-        return {"status": False, "error": f"Classification failed: {e}"}
-
-    result = {"status": True, "layout_type": layout_type, "details": document_content}
-
-    # 4) Save minimal output to ./output
+        return {"status": False, "error": f"Failed to extract name from blob url : {e}"}
+    
     try:
-        os.makedirs(OUTPUT_FOLDER, exist_ok=True)
-        out_path = os.path.join(OUTPUT_FOLDER, "layout_classification_result.json")
-        with open(out_path, "w", encoding="utf-8") as f:
-            json.dump(result, f, indent=2, ensure_ascii=False)
+        await save_json_output_to_blob(ref_id,name,quote_resp)
     except Exception as e:
-        result["save_error"] = str(e)
+        return {"status": False, "error": f"Failed to extract name from blob url : {e}"} 
 
-    return result
 
+    return {
+        "status": True,
+        # "accountId": account_id,
+        # "jobId": job_id,
+        # "locationId": location_id,
+        "quote": quote_resp
+    }
+
+
+main.py
+
+
+from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi_mcp import FastApiMCP
+import uvicorn
+
+from router import router as file_router
+
+
+def apply_cors(app: FastAPI):
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=["*"],
+        allow_methods=["*"],
+        allow_headers=["*"],
+    )
+
+
+def create_sub_app(title: str, description: str, version: str = "0.1.0") -> FastAPI:
+    sub = FastAPI(title=title, description=description, version=version)
+    apply_cors(sub)
+    return sub
+
+
+app = FastAPI()
+apply_cors(app)
+
+file_app = create_sub_app(
+    title="Guidewire Quote Integration",
+    description="Exposes an API to generate commercial property insurance quotes in "
+       "Guidewire PolicyCenter using structured submission data stored in "
+       "Azure Blob Storage. The service reads JSON submission documents, "
+       "maps them to Guidewire domain models, and orchestrates account, job, "
+       "location, coverage creation, and quote generation."
+)
+file_app.include_router(file_router)
+
+# Expose ONLY this operation id via MCP HTTP (client will use transport='http')
+FastApiMCP(file_app, include_operations=["Guidewire_Quote"]).mount_http()
+
+# Mount the sub-app under this prefix (keep as-is per your request)
+# app.mount("/api/v1/eligibility_agent", file_app)
+app.mount("/api/v1/quote", file_app)
+
+
+if __name__ == "__main__":
+    uvicorn.run(app, host="0.0.0.0", port=8601)
+
+
+router.py
+
+from fastapi import APIRouter
+from fastapi.responses import JSONResponse
+from pydantic import BaseModel, Field
+from handler import guidewire_api_call
+
+router = APIRouter()
+
+class QuoteRequest(BaseModel):
+    attachment_url: str = Field(..., description="Full Azure Blob URL pointing to a JSON document that contains "
+           "extracted insurance submission data required for quote generation.")
+
+@router.post("/Guidewire_Quote", operation_id="Guidewire_Quote",
+             summary="Generate a commercial property quote in Guidewire using submission data from Azure Blob")
+async def generate_quote(request: QuoteRequest):
+    """
+    Reads a structured JSON submission document directly from Azure Blob Storage.
+
+    Only Azure Blob URLs containing "_Submission_Document_" in the blob name
+    (e.g., "..._Submission_Document_...json") will be considered valid for processing.
+
+    This service invokes Guidewire PolicyCenter APIs to generate a commercial property quote.
+    The JSON document is expected to already contain extracted and structured data
+    (for example, insured details, property location, producer information, and
+    policy effective dates). This service does NOT perform document parsing,
+    OCR, or layout analysis.
+
+    Flow:
+    1. Read JSON content directly from Azure Blob (in-memory).
+    2. Map submission data to an internal data model.
+    3. Create Account, Job, Location, and Coverages in Guidewire.
+    4. Trigger quote generation and return the result.
+
+    Args:
+        request (QuoteRequest):
+            - attachment_url: Azure Blob URL of the JSON submission document.
+
+    Returns:
+        JSONResponse:
+            JSON-RPC style response containing the generated quote details,
+            or an error message if the process fails.
+    """
+    try:
+        result = await guidewire_api_call(request.attachment_url)
+        return JSONResponse(content={"jsonrpc": "2.0", "id": 1, "result": result}, status_code=200)
+    except Exception as e:
+        return JSONResponse(content={"jsonrpc": "2.0", "id": 1,
+                                     "result": {"status": False, "error": str(e)}}, status_code=200)
 
 
 service.py
-
 
 
 import os
@@ -212,6 +419,45 @@ def _require_env() -> None:
     """Ensure required environment variables exist."""
     if not AZURE_STORAGE_CONNECTION_STRING:
         raise RuntimeError("Missing AZURE_STORAGE_CONNECTION_STRING in environment/.env")
+
+def _extract_ref_id_and_name(blob_path: str) -> tuple[str, str]:
+    """
+    Extract ref_id and name from blob_path.
+    Example blob_path:
+      19C1DD3DD82FAE03_attachment_SunflowerHotels_Submission_Document_extraction_20260202_101302.json
+    Returns:
+      ref_id = "19C1DD3DD82FAE03"
+      name = "SunflowerHotels_Submission_Document_extraction_20260202_101302.json"
+    """
+    parts = blob_path.split('_attachment_', 1)
+    if len(parts) != 2:
+        raise ValueError("blob_path format unexpected, missing '_attachment_' separator")
+    ref_id = parts[0]
+    name = parts[1]
+    return ref_id, name
+
+def _ref_parse_blob_url(url: str) -> tuple[str, str, str, str]:
+    """
+    Parse an Azure Blob URL and return (container_name, blob_path, ref_id, name).
+    Example URL:
+      https://account.blob.core.windows.net/output-results/19C1DD3DD82FAE03_attachment_SunflowerHotels_Submission_Document_extraction_20260202_101302.json
+    Returns:
+      ("output-results", "19C1DD3DD82FAE03_attachment_SunflowerHotels_Submission_Document_extraction_20260202_101302.json",
+       "19C1DD3DD82FAE03", "SunflowerHotels_Submission_Document_extraction_20260202_101302.json")
+    """
+    parsed = urlparse(url)
+    if not parsed.scheme.startswith("http"):
+        raise ValueError("url must be a valid http(s) Azure Blob URL.")
+
+    path = parsed.path.lstrip("/")
+    if "/" not in path:
+        raise ValueError("url must include both container and blob path.")
+    parts = path.split("/", 1)
+    container = parts[0]
+    blob_path = parts[1]
+    ref_id, name = _extract_ref_id_and_name(unquote(blob_path))
+    return unquote(container), blob_path, ref_id, name
+
 
 def _parse_blob_url(url: str) -> tuple[str, str]:
     """
@@ -233,84 +479,90 @@ def _parse_blob_url(url: str) -> tuple[str, str]:
     blob_path = parts[1]
     return unquote(container), unquote(blob_path)
 
-
-
-
 storage_utils.py
 
+
+# storage_utils.py
+import json
 import os
-import aiofiles
 from azure.storage.blob.aio import BlobServiceClient
 from azure.core.exceptions import ResourceNotFoundError
-from .service import AZURE_STORAGE_CONNECTION_STRING, _parse_blob_url
+from service import AZURE_STORAGE_CONNECTION_STRING, _parse_blob_url
 
-async def download_blob_to_input_folder(blob_url: str, input_folder: str = "input") -> str:
+
+async def read_json_from_blob(blob_url: str) -> dict:
     """
-    Downloads the blob at blob_url into input_folder (root-level) preserving filename.
-    Returns the local path to the downloaded file.
+    Reads a JSON file directly from Azure Blob Storage and returns it as dict.
+    No local file system usage.
     """
     if not AZURE_STORAGE_CONNECTION_STRING:
         raise RuntimeError("AZURE_STORAGE_CONNECTION_STRING not set")
 
+#working code
     container, blob_path = _parse_blob_url(blob_url)
-    filename = os.path.basename(blob_path)
-    os.makedirs(input_folder, exist_ok=True)
-    local_path = os.path.join(input_folder, filename)
+    print("Container", container)
+    print("Blob_path", blob_path)
 
-    async with BlobServiceClient.from_connection_string(AZURE_STORAGE_CONNECTION_STRING) as service:
+    # container, blob_path, ref_id, name = _parse_blob_url(blob_url)
+    # print("Container:", container)
+    # print("Blob_path:", blob_path)
+    # print("Ref_id:", ref_id)
+    # print("Name:", name)
+
+    async with BlobServiceClient.from_connection_string(
+        AZURE_STORAGE_CONNECTION_STRING
+    ) as service:
         container_client = service.get_container_client(container)
         blob_client = container_client.get_blob_client(blob_path)
+
         try:
             await blob_client.get_blob_properties()
         except ResourceNotFoundError:
-            raise FileNotFoundError(f"Blob not found: container={container} blob={blob_path}")
+            raise FileNotFoundError(
+                f"Blob not found: container={container}, blob={blob_path}"
+            )
+
         stream = await blob_client.download_blob()
-        data = await stream.readall()
+        raw_bytes = await stream.readall()
 
-    # write file async
-    async with aiofiles.open(local_path, "wb") as f:
-        await f.write(data)
-
-    return local_path
+    return json.loads(raw_bytes.decode("utf-8"))
 
 
 
 
+GUIDEWIRE_QUOTE_CONTAINER = os.environ.get("GUIDEWIRE_QUOTE_CONTAINER")
 
-
-
-
-
-
-
-file_router.py
-
-
-
-class LayoutDetectRequest(BaseModel):
+async def save_json_output_to_blob(ref_id: str, name: str, quote_resp: dict):
     """
-    Payload:
-    {
-      "attachment_url": "https://<account>.blob.core.windows.net/<container>/<path>/file.pdf"
-    }
+    Save quote_resp JSON to Azure Blob Storage in the container specified by GUIDEWIRE_QUOTE_CONTAINER,
+    with blob name formatted as "{ref_id}_Quote_{name}".
     """
-    attachment_url: str = Field(..., description="Full Azure Blob URL to the PDF attachment.")
+    if not AZURE_STORAGE_CONNECTION_STRING:
+        raise RuntimeError("AZURE_STORAGE_CONNECTION_STRING not set")
 
-@router.post("/layout_detection_mcp", operation_id="layout_detection_mcp",
-             summary="Download PDF from blob, analyze layout using Form Recognizer, and classify layout")
-async def detect_layout(request: LayoutDetectRequest):
-    """Analyze the document to classify if the document is ACCORD or Non-ACORD
-    
-    Args:
-        attachment_url: The Blob URL oreturned by the email_attachment_mcp
-    
-    Returns:
-        JSONResponse: returns the json response containing the classification of the layout.
-    """
-    try:
-        result = await classify_blob_pdf_layout(request.attachment_url)
-        return JSONResponse(content={"jsonrpc": "2.0", "id": 1, "result": result}, status_code=200)
-    except Exception as e:
-        return JSONResponse(content={"jsonrpc": "2.0", "id": 1,
-                                     "result": {"status": False, "error": str(e)}}, status_code=200)
+    blob_name = f"{ref_id}_Quote_{name}"
+
+    # Serialize quote_resp dict to JSON string
+    json_data = json.dumps(quote_resp, indent=2)
+
+    async with BlobServiceClient.from_connection_string(
+        AZURE_STORAGE_CONNECTION_STRING
+    ) as service:
+        container_client = service.get_container_client(GUIDEWIRE_QUOTE_CONTAINER)
+
+        # Create container if not exists (optional)
+        try:
+            await container_client.get_container_properties()
+        except Exception:
+            await container_client.create_container()
+
+        blob_client = container_client.get_blob_client(blob_name)
+
+        # Upload JSON string as bytes
+        await blob_client.upload_blob(json_data.encode("utf-8"), overwrite=True)
+
+
+
+
+
 
