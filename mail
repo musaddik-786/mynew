@@ -1,15 +1,95 @@
-first of all the handler.py is in some other folder and not in common folder so the import is correct
-from ..common.azure_blob_reader.client import read_json_from_blob
+this is my test_script.py
+import requests
+import json
+from dotenv import load_dotenv
 
-also i am getting this error
+load_dotenv()
 
-(venv) Jarvis@JarvisPhase2:~/Musaddique/prac$ python3 main.py
-Traceback (most recent call last):
-  File "/home/Jarvis/Musaddique/prac/main.py", line 6, in <module>
-    from router import router as file_router
-  File "/home/Jarvis/Musaddique/prac/router.py", line 5, in <module>
-    from handler import compare_name_with_sanctions
-  File "/home/Jarvis/Musaddique/prac/handler.py", line 1, in <module>
-    from ..common.azure_blob_reader.client import read_json_from_blob
-ImportError: attempted relative import with no known parent package
-(venv) Jarvis@JarvisPhase2:~/Musaddique/prac$ 
+BASE_URL = "http://localhost:8651/api/v1/eligibility_agent/Licensing_&_Sanction_Checker_MCP"
+
+def run_test():
+    payload = {
+        "jsonfilepath": "https://agenticai1.blob.core.windows.net/output-results/19B2C543CDB30415_attachment_Acord_125_Berkshire_Hathway_extraction_20251217_142512.json"
+    }
+    try:
+        resp = requests.post(BASE_URL, json=payload, timeout=60)
+        print("HTTP Status:", resp.status_code)
+        try:
+            data = resp.json()
+            print(json.dumps(data, indent=4))
+        except json.JSONDecodeError:
+            print("Response not JSON:", resp.text)
+    except Exception as e:
+        print("Error calling API:", str(e))
+
+if __name__ == "__main__":
+    print("Testing /Licensing_&_Sanction_Checker_MCP ...")
+    run_test()
+
+
+this is my client.py
+import json
+import os
+from urllib.parse import urlparse, unquote
+from azure.storage.blob.aio import BlobServiceClient
+from azure.core.exceptions import ResourceNotFoundError
+from .errors import BlobReadError
+from dotenv import load_dotenv
+
+load_dotenv()
+
+def _parse_blob_url(blob_url: str) -> tuple[str, str]:
+   parsed = urlparse(blob_url)
+   if not parsed.scheme.startswith("http"):
+       raise BlobReadError("Invalid Azure Blob URL")
+   path = parsed.path.lstrip("/")
+   if "/" not in path:
+       raise BlobReadError("Blob URL must contain container and blob name")
+   container, blob_path = path.split("/", 1)
+   return unquote(container), unquote(blob_path)
+
+async def read_json_from_blob(blob_url: str) -> dict:
+   connection_string = os.environ.get("AZURE_STORAGE_CONNECTION_STRING")
+   if not connection_string:
+       raise BlobReadError("AZURE_STORAGE_CONNECTION_STRING not set")
+   container, blob_path = _parse_blob_url(blob_url)
+   try:
+       async with BlobServiceClient.from_connection_string(
+           connection_string
+       ) as service:
+           blob_client = (
+               service
+               .get_container_client(container)
+               .get_blob_client(blob_path)
+           )
+           await blob_client.get_blob_properties()
+           stream = await blob_client.download_blob()
+           raw_bytes = await stream.readall()
+       return json.loads(raw_bytes.decode("utf-8"))
+   except ResourceNotFoundError:
+       raise BlobReadError(
+           f"Blob not found: container={container}, blob={blob_path}"
+       )
+   except json.JSONDecodeError:
+       raise BlobReadError("Blob content is not valid JSON")
+   except Exception as e:
+       raise BlobReadError(str(e))
+
+(venv) Jarvis@JarvisPhase2:~/Musaddique/prac$ python main.py
+INFO:     Started server process [42503]
+INFO:     Waiting for application startup.
+INFO:     Application startup complete.
+INFO:     Uvicorn running on http://0.0.0.0:8651 (Press CTRL+C to quit)
+INFO:     127.0.0.1:39828 - "POST /api/v1/eligibility_agent/Licensing_%26_Sanction_Checker_MCP HTTP/1.1" 200 OK
+
+(venv) Jarvis@JarvisPhase2:~/Musaddique/prac$ python3 test_script.py 
+Testing /Licensing_&_Sanction_Checker_MCP ...
+HTTP Status: 200
+{
+    "jsonrpc": "2.0",
+    "id": 1,
+    "result": {
+        "status": false,
+        "error": "Unexpected server error: AZURE_STORAGE_CONNECTION_STRING not set"
+    }
+}
