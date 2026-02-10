@@ -1,0 +1,388 @@
+Got it.
+Below is a clean, end-to-end snapshot of EVERYTHING we have built and agreed on so far, without jumping ahead, without subgraph orchestration yet, and without missing any file.
+
+This is a stable checkpoint.
+You can freeze this in Git and come back anytime.
+
+⸻
+
+✅ WHAT WE HAVE BUILT SO FAR (BIG PICTURE)
+
+Architecture (so your brain can relax)
+
+┌──────────────────────────┐
+│ Dummy MCP Server (HTTP)  │  ← exposes fake tools
+│  FastAPI + FastApiMCP    │
+└───────────▲──────────────┘
+            │ MCP (HTTP)
+┌───────────┴──────────────┐
+│ EmailIntentAgent         │  ← LangGraph SUBGRAPH
+│  - own prompt            │
+│  - own router            │
+│  - ToolNode              │
+│  - Agent → Tool → Agent  │
+└──────────────────────────┘
+
+⚠️ Only EmailIntentAgent exists right now
+Eligibility & Risk will come later.
+
+⸻
+
+📁 FOLDER STRUCTURE (EXACT)
+
+project_root/
+│
+├── dummy_mcp_server/
+│   ├── main.py
+│   └── router.py
+│
+└── email_intent_agent/
+    ├── langgraph_client.py
+    └── prompt.txt
+
+
+⸻
+
+1️⃣ DUMMY MCP SERVER (HTTP TOOLS)
+
+This replaces your massive real MCP stack temporarily.
+
+📄 dummy_mcp_server/main.py
+
+from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi_mcp import FastApiMCP
+
+from router import router
+
+app = FastAPI(title="Dummy MCP Server")
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+app.include_router(router)
+
+# Expose all routes as MCP tools
+FastApiMCP(
+    app,
+    include_operations=[
+        "email_reader_mcp",
+        "write_email_to_excel",
+        "email_attachment_mcp",
+        "layout_detection_mcp",
+        "document_extract_mcp",
+        "query_pdf_vectorizer_mcp",
+        "attachment_summary_mcp",
+    ]
+).mount_http()
+
+if __name__ == "__main__":
+    import uvicorn
+    uvicorn.run(app, host="0.0.0.0", port=9000)
+
+
+⸻
+
+📄 dummy_mcp_server/router.py
+
+Each endpoint is a fake MCP tool but follows real MCP rules.
+
+from fastapi import APIRouter
+from fastapi.responses import JSONResponse
+
+router = APIRouter()
+
+
+@router.post("/email_reader_mcp", operation_id="email_reader_mcp")
+async def email_reader_mcp():
+    return JSONResponse({
+        "jsonrpc": "2.0",
+        "id": 1,
+        "result": {
+            "subject": "Insurance Quote Request",
+            "body": "This email is related to insurance"
+        }
+    })
+
+
+@router.post("/write_email_to_excel", operation_id="write_email_to_excel")
+async def write_email_to_excel():
+    return JSONResponse({
+        "jsonrpc": "2.0",
+        "id": 1,
+        "result": {"status": "written"}
+    })
+
+
+@router.post("/email_attachment_mcp", operation_id="email_attachment_mcp")
+async def email_attachment_mcp():
+    return JSONResponse({
+        "jsonrpc": "2.0",
+        "id": 1,
+        "result": {
+            "attachments": [
+                {"blob_url": "accord_policy_1.pdf"},
+                {"blob_url": "quote_details_1.pdf"}
+            ]
+        }
+    })
+
+
+@router.post("/layout_detection_mcp", operation_id="layout_detection_mcp")
+async def layout_detection_mcp():
+    return JSONResponse({
+        "jsonrpc": "2.0",
+        "id": 1,
+        "result": {"layout": "ACORD"}
+    })
+
+
+@router.post("/document_extract_mcp", operation_id="document_extract_mcp")
+async def document_extract_mcp():
+    return JSONResponse({
+        "jsonrpc": "2.0",
+        "id": 1,
+        "result": {
+            "Document_Confidence_Score": 0.95
+        }
+    })
+
+
+@router.post("/query_pdf_vectorizer_mcp", operation_id="query_pdf_vectorizer_mcp")
+async def query_pdf_vectorizer_mcp():
+    return JSONResponse({
+        "jsonrpc": "2.0",
+        "id": 1,
+        "result": {"embedded": True}
+    })
+
+
+@router.post("/attachment_summary_mcp", operation_id="attachment_summary_mcp")
+async def attachment_summary_mcp():
+    return JSONResponse({
+        "jsonrpc": "2.0",
+        "id": 1,
+        "result": {
+            "summary": "All attachments summarized"
+        }
+    })
+
+
+⸻
+
+2️⃣ EMAIL INTENT AGENT (LANGGRAPH SUBGRAPH)
+
+This is not a server.
+This is a LangGraph client that talks to MCP over HTTP.
+
+⸻
+
+📄 email_intent_agent/prompt.txt
+
+⚠️ This is your original logic, just scoped to EmailIntentAgent.
+
+You are EmailIntentAgent in an insurance underwriting system.
+
+You MUST strictly follow this workflow:
+
+1. Call email_reader_mcp
+   - If email is NOT related to insurance → respond exactly: End
+   - If related → respond exactly: Continue
+
+2. Call write_email_to_excel
+   - After tool finishes → respond exactly: Continue
+
+3. Call email_attachment_mcp
+   - After tool finishes → respond exactly: Continue
+
+4. Call layout_detection_mcp ONLY for attachments containing
+   'accord' OR 'quote'
+   - After finishing → respond exactly: Continue
+
+5. Call document_extract_mcp ONLY for ACORD documents
+   - If confidence < 0.90 → End
+   - Else → Continue
+
+6. Call query_pdf_vectorizer_mcp
+   - Respond Continue
+
+7. Call attachment_summary_mcp
+   - Respond Continue
+
+IMPORTANT:
+- Respond ONLY with Continue or End
+- Do NOT add explanations
+- Do NOT add punctuation
+
+
+⸻
+
+📄 email_intent_agent/langgraph_client.py
+
+This is a SUBGRAPH, not a full app.
+
+import asyncio
+from typing import TypedDict, Annotated
+
+from langgraph.graph import StateGraph, START, END
+from langgraph.graph.message import add_messages
+from langgraph.prebuilt import ToolNode
+from langchain_core.messages import AIMessage, SystemMessage
+
+from langchain_mcp_adapters.client import MultiServerMCPClient
+from langchain_openai.chat_models import AzureChatOpenAI
+
+
+# -------------------------
+# STATE
+# -------------------------
+class State(TypedDict):
+    messages: Annotated[list, add_messages]
+
+
+# -------------------------
+# ROUTER
+# -------------------------
+def router(state: State):
+    last = state["messages"][-1]
+
+    if isinstance(last, AIMessage) and last.tool_calls:
+        return "tools"
+
+    if isinstance(last, AIMessage) and last.content:
+        if "Continue" in last.content:
+            return "agent"
+        if "End" in last.content:
+            return "end"
+
+    return "end"
+
+
+# -------------------------
+# PROMPT LOADER
+# -------------------------
+def load_prompt():
+    with open("prompt.txt", "r", encoding="utf-8") as f:
+        return f.read()
+
+
+# -------------------------
+# BUILD EMAIL INTENT GRAPH
+# -------------------------
+async def build_email_intent_graph():
+
+    # Discover MCP tools dynamically
+    mcp_client = MultiServerMCPClient({
+        "dummy_mcp": {
+            "url": "http://localhost:9000/mcp",
+            "transport": "streamable_http",
+        }
+    })
+
+    all_tools = await mcp_client.get_tools()
+
+    # NOTE:
+    # Boundary filtering exists,
+    # but behavior is controlled by PROMPT
+    email_tools = all_tools
+
+    model = AzureChatOpenAI(
+        api_key="dummy",
+        api_version="2024-12-01-preview",
+        azure_deployment="gpt-4",
+        azure_endpoint="https://example.openai.azure.com"
+    )
+
+    llm = model.bind_tools(email_tools)
+    prompt = load_prompt()
+
+    async def agent_node(state: State):
+        system = SystemMessage(content=prompt)
+        response = await llm.ainvoke([system] + state["messages"])
+        return {"messages": [response]}
+
+    graph = StateGraph(State)
+
+    graph.add_node("agent", agent_node)
+    graph.add_node("tools", ToolNode(email_tools))
+
+    graph.add_edge(START, "agent")
+
+    graph.add_conditional_edges(
+        "agent",
+        router,
+        {
+            "tools": "tools",
+            "agent": "agent",
+            "end": END,
+        },
+    )
+
+    graph.add_edge("tools", "agent")
+
+    return graph.compile()
+
+
+# -------------------------
+# LOCAL TEST RUN
+# -------------------------
+async def main():
+    graph = await build_email_intent_graph()
+
+    async for step in graph.astream(
+        {"messages": ["Start your task"]},
+        config={"recursion_limit": 50},
+    ):
+        print(step)
+
+
+if __name__ == "__main__":
+    asyncio.run(main())
+
+
+⸻
+
+✅ WHAT IS TRUE AT THIS POINT (VERY IMPORTANT)
+
+✔ MCP tools are real HTTP tools
+✔ Agent does NOT manually call tools
+✔ ToolNode handles tool execution
+✔ Prompt controls sequencing
+✔ Router controls graph flow
+✔ This graph can be embedded as a subgraph later
+
+⸻
+
+❌ WHAT WE HAVE NOT DONE YET (ON PURPOSE)
+
+❌ EligibilityAgent
+❌ RiskAgent
+❌ Mega Orchestrator Graph
+❌ State flags like email_done
+
+⸻
+
+🧭 WHERE WE PAUSED
+
+We paused right before building:
+
+EligibilityAgent subgraph
+
+which will follow the exact same pattern:
+	•	new prompt
+	•	new tool scope
+	•	same graph logic
+
+⸻
+
+👉 NEXT STEP (when YOU say)
+
+Reply only with:
+
+Next: EligibilityAgent
+
+and we continue cleanly, without breaking anything you already understand.
