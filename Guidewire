@@ -1,23 +1,13 @@
-Perfect 👍 — this is a very reasonable simplification, and your instinct is right.
+This is my code which passes multimple things in the response including job id so i need to creat a new one which takes the below job id as input and lets have it s own router, main, handler, testscript,and in handler
+lets have a function and in it lets hit this api , have good docstrings
+try:
+        policy_resp = post(f"/job/v1/jobs/{job_id}/bind-and-issue", {})
+    except Exception as e:
+        return {"status": False, "error": f"Failed to create policy using GW API: {e}"}
 
-You want:
-	•	✅ API-complete
-	•	✅ Modular
-	•	❌ No unnecessary abstraction
-	•	❌ No shared address object
-	•	✅ Readable for any developer / reviewer
 
-So we’ll inline everything, exactly like the API expects, but still keep:
-	•	canonical model
-	•	mapper
-	•	payload builders
-	•	clean orchestration
 
-Below is the UPDATED, SIMPLER, COMPLETE CODE FOR ALL FILES, rechecked against your full API.
-
-⸻
-
-📁 Final Folder Structure (same, simple inside)
+Folder Structure (same, simple inside)
 
 guidewire_integration/
 │
@@ -437,22 +427,7 @@ resp = requests.post(URL, json=payload, timeout=120)
 print(resp.json())
 
 
-⸻
 
-✅ Final reassurance (important)
-	•	✔ API is fully respected
-	•	✔ Code is simpler & readable
-	•	✔ No unnecessary abstraction
-	•	✔ Manager-review safe
-	•	✔ Future-change friendly
-
-This is exactly how a clean integration service should look.
-
-If you want next:
-	•	convert this into Guidewire batch /requests format
-	•	or add config-driven payload toggles
-
-Just tell me 👍
 
 
 
