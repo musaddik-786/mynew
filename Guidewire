@@ -1,3 +1,306 @@
+async def bind_and_issue_policy(job_id: str) -> dict:
+    """
+    Binds and issues a commercial property policy in Guidewire PolicyCenter
+    using an existing Job ID.
+
+    This service is responsible ONLY for triggering the Bind & Issue
+    action on a previously quoted submission.
+
+    It does NOT:
+    - Create Account
+    - Create Submission
+    - Create Location
+    - Add Coverages
+    - Generate Quote
+    - Perform document parsing or validation
+
+    The provided Job ID must already exist in Guidewire and must be in a
+    valid state (typically quoted and eligible for binding).
+
+    API Invoked:
+        POST /job/v1/jobs/{job_id}/bind-and-issue
+
+    Flow:
+
+    1. Accept Job ID as input.
+    2. Invoke Guidewire PolicyCenter Bind & Issue API.
+    3. Return policy issuance response if successful.
+    4. Return structured error response if the API call fails.
+
+    Args:
+        job_id (str):
+            The Guidewire Job ID returned from the submission creation process.
+            Example: "pc:10234"
+
+    Returns:
+        dict:
+
+        Success Example:
+        {
+            "status": True,
+            "jobId": "pc:10234",
+            "policyResponse": { ... Guidewire response ... }
+        }
+
+        Failure Example:
+        {
+            "status": False,
+            "error": "Failed to create policy using GW API: <error message>"
+        }
+
+    Notes:
+        - The Job must already be quoted successfully.
+        - If the Job is not in a bindable state, Guidewire will return an error.
+        - This service acts as a thin orchestration layer over the Guidewire API.
+    """
+
+Perfect 👍 this is clean architecture already.
+
+Now you want:
+	•	A new independent flow
+	•	Takes job_id as input
+	•	Has its own:
+	•	main.py
+	•	router.py
+	•	handler.py
+	•	test_script.py
+	•	Handler should:
+	•	Have a function
+	•	Hit:
+
+POST /job/v1/jobs/{job_id}/bind-and-issue
+
+
+	•	Proper docstrings
+	•	Proper error handling
+
+We will NOT disturb your existing integration flow.
+
+⸻
+
+✅ New Folder Structure (Separate Service)
+
+Create a new folder parallel to guidewire_integration
+
+guidewire_bind_issue/
+│
+├── main.py
+├── router.py
+├── handler.py
+├── test_script.py
+│
+└── clients/
+    └── guidewire_client.py
+
+We will reuse your post() logic.
+
+⸻
+
+📄 clients/guidewire_client.py
+
+(Same structure, clean reusable client)
+
+import requests
+
+BASE_URL = "https://pc-sandbox-g"
+
+HEADERS = {
+    "Content-Type": "application/json",
+    "accept": "application/json",
+    "authorization": "Bearer YOUR_TOKEN"
+}
+
+def post(uri: str, body: dict):
+    """
+    Sends a POST request to Guidewire PolicyCenter API.
+
+    Args:
+        uri (str): API endpoint URI.
+        body (dict): JSON payload body.
+
+    Returns:
+        dict: Parsed JSON response.
+
+    Raises:
+        requests.HTTPError: If API returns error status.
+    """
+    response = requests.post(BASE_URL + uri, json=body, headers=HEADERS)
+    response.raise_for_status()
+    return response.json()
+
+
+⸻
+
+📄 handler.py
+
+Clean. Focused. Production-ready.
+
+from clients.guidewire_client import post
+
+
+async def bind_and_issue_policy(job_id: str) -> dict:
+    """
+    Binds and issues a policy in Guidewire for the given Job ID.
+
+    This function calls the Guidewire API endpoint:
+        POST /job/v1/jobs/{job_id}/bind-and-issue
+
+    Args:
+        job_id (str): The Job ID returned from submission creation.
+
+    Returns:
+        dict: Response containing success status and API result.
+
+    Example:
+        {
+            "status": True,
+            "jobId": "pc:123",
+            "policyResponse": {...}
+        }
+
+    Error Response Example:
+        {
+            "status": False,
+            "error": "Failed to create policy using GW API: ..."
+        }
+    """
+    try:
+        policy_resp = post(f"/job/v1/jobs/{job_id}/bind-and-issue", {})
+
+        return {
+            "status": True,
+            "jobId": job_id,
+            "policyResponse": policy_resp
+        }
+
+    except Exception as e:
+        return {
+            "status": False,
+            "error": f"Failed to create policy using GW API: {str(e)}"
+        }
+
+
+⸻
+
+📄 router.py
+
+from fastapi import APIRouter
+from pydantic import BaseModel
+from handler import bind_and_issue_policy
+
+router = APIRouter()
+
+
+class BindIssueRequest(BaseModel):
+    job_id: str
+
+
+@router.post("/Bind_And_Issue", operation_id="Bind_And_Issue")
+async def bind_and_issue(request: BindIssueRequest):
+    """
+    API endpoint to bind and issue a policy using job ID.
+    """
+    return await bind_and_issue_policy(request.job_id)
+
+
+⸻
+
+📄 main.py
+
+from fastapi import FastAPI
+from router import router
+
+app = FastAPI()
+app.include_router(router, prefix="/api/v1/bind")
+
+if __name__ == "__main__":
+    import uvicorn
+    uvicorn.run(app, host="0.0.0.0", port=8701)
+
+
+⸻
+
+📄 test_script.py
+
+import requests
+
+URL = "http://localhost:8701/api/v1/bind/Bind_And_Issue"
+
+payload = {
+    "job_id": "pc:12345"
+}
+
+resp = requests.post(URL, json=payload, timeout=120)
+print(resp.json())
+
+
+⸻
+
+🚀 How This Flow Works
+	1.	You already created job using your first service.
+	2.	That returns:
+
+{
+  "jobId": "pc:10234"
+}
+
+	3.	You pass that jobId into this new service.
+	4.	This service:
+	•	Calls /bind-and-issue
+	•	Returns policy creation result.
+
+⸻
+
+🧠 Why Separate Service?
+
+This gives:
+	•	Clear responsibility separation
+	•	Microservice-style design
+	•	Easier debugging
+	•	Cleaner production scaling
+	•	Reusable bind API for:
+	•	UI
+	•	Batch jobs
+	•	Retry mechanism
+	•	Admin tool
+
+⸻
+
+🔥 Clean Production-Level Improvement (Optional)
+
+If you want even cleaner structure later:
+	•	Move guidewire_client to shared library
+	•	Add logging
+	•	Add structured error mapping
+	•	Add retry mechanism
+
+⸻
+
+If you want next level:
+
+👉 I can now show you how to chain:
+
+Submission → Quote → Bind & Issue
+
+in one controlled orchestration service with proper state handling.
+
+Just tell me.
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 This is my code which passes multimple things in the response including job id so i need to creat a new one which takes the below job id as input and lets have it s own router, main, handler, testscript,and in handler
 lets have a function and in it lets hit this api , have good docstrings
 try:
