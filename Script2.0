@@ -1,3 +1,17 @@
-The quote document is automatically generated and made available for review.
-An underwriter logs in to Guidewire policy center, and he sees the Overview and My activities section which gives it the insights such as submissions, renewals, transactions and more.
-The same submission now reflects inside Guidewire under policy section, along with policy premium and quote details— enriched with structured, validated, intelligence-prepared data.
+Imagine an agentic Under Writer Assist built and integrated with Guidewire. 
+ 
+Where every submission could be reviewed in minutes, every document understood instantly, every risk evaluated intelligently, and every quote delivered faster with confidence — all seamlessly connected to the Guidewire ecosystem. 
+
+Now let’s look at the agentic underwriting process integrated with Guidewire. 
+
+The journey begins when a broker sends a submission email with attachments to the insurer’s mailbox. The AI-powered Email Intent Agent identifies the intent, performs a duplicate check, and if no duplicate is found, downloads the attachments. 
+
+Data is extracted and structured into JSON format. This flows through Eligibility and Risk Assessment AI Agents, where the risk is evaluated, classified, and scored. A Risk Summarization AI Agent, capability generates insights and enables chat-based Q&A for the underwriter. 
+
+now here is where Guidewire’s rating engine for pricing comes in and it generates the quote, a quote document is created. The quote document, along with a pre-filled email body, is saved in the insurer’s draft folder for review. 
+
+The underwriter now mails the quote to the broker. Once the broker confirms acceptance via email, Guidewire’s Policy Administration system generates the policy document and it is send to the Broker for approval. After approval, and successful payment, the policy is activated. 
+Now lets begin the Demo, Welcome to Agent-verse Underwriting Assist, an intelligent layer built to enhance and amplify the Guidewire ecosystem with Agentic capabilities.(this can be before slide as well) 
+
+here, the connection between these lines looks broken 
+Now lets begin the Demo, Welcome to Agent-
