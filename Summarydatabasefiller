@@ -1,0 +1,126 @@
+This is my current code where i am writing it into excel 
+
+def connect_to_blob(blob_url: str, beautified_payload: Dict[str, Any]):
+    """
+    Update Excel blob using the NEW beautified payload format (dict).
+
+    Expected beautified_payload shape:
+    {
+      "combined_summary": "<string or None>",
+      "individualized_summary": [
+         {
+           "file_name": "...",
+           "summary": "...",                # (not used here)
+           "document_type": "...",          # (optional)
+           "processed_summary": "..."       # used for Document summary
+         }, ...
+      ]
+    }
+
+    Behavior:
+      - For each reference (derived from file_name: <REF>_...), find rows where
+        excel["Unique refrence Number"] == ref.
+      - Overwrite "Submission Summary" on those rows with combined_summary (if provided).
+      - Overwrite "Document summary" on those rows with a single cell value that is the
+        concatenation (joined by two newlines) of:
+           "file_name: <file_name>\nprocessed_summary:\n<processed_summary>"
+        for all files belonging to that reference.
+      - Does NOT create new rows. If no match is found for a reference, we skip it.
+      - Returns updated pandas.DataFrame on success, or {"status": False, "error": "..."}.
+    """
+    try:
+        summary_require_env()
+    except Exception as e:
+        return {"status": False, "error": f"Environment misconfigured: {e}"}
+
+    if not AZURE_STORAGE_CONNECTION_STRING:
+        return {"status": False, "error": "AZURE_STORAGE_CONNECTION_STRING not set"}
+
+    # parse blob URL into container + path
+    try:
+        container, blob_path = _parse_blob_url(blob_url)
+    except Exception as e:
+        return {"status": False, "error": f"Unable to parse blob URL: {e}"}
+
+    try:
+        svc = BlobServiceClient.from_connection_string(AZURE_STORAGE_CONNECTION_STRING)
+        blob_client = svc.get_blob_client(container=container, blob=blob_path)
+
+        # download excel into memory
+        blob_bytes = blob_client.download_blob().readall()
+        excel_df = pd.read_excel(BytesIO(blob_bytes))
+
+        # required reference column
+        if "Unique refrence Number" not in excel_df.columns:
+            return {"status": False, "error": "'Unique refrence Number' column is missing in the Excel file."}
+
+        # ensure target columns exist (create if missing)
+        if "Submission Summary" not in excel_df.columns:
+            excel_df["Submission Summary"] = None
+        if "Document summary" not in excel_df.columns:
+            excel_df["Document Summary"] = None
+
+        combined_summary = beautified_payload.get("combined_summary")
+        individualized = beautified_payload.get("individualized_summary", [])
+
+        # Build mapping ref -> list of aggregated doc strings
+        ref_to_entries = {}
+        for item in individualized:
+            fname = item.get("file_name") or ""
+            processed = item.get("processed_summary") or ""
+
+            if not fname:
+                # skip entries without filename
+                continue
+
+            # Expect filename format "<REF>_..."; if missing underscore, skip (defensive)
+            if "_" not in fname:
+                print(f"[connect_to_blob] skipping filename with unexpected format: {fname}")
+                continue
+
+            ref = fname.split("_", 1)[0]
+            entry_text = f"file_name: {fname}\nprocessed_summary:\n{processed}".strip()
+            ref_to_entries.setdefault(ref, []).append(entry_text)
+
+        # For each reference, write aggregated values into matching rows
+        for ref, entries in ref_to_entries.items():
+            matches = excel_df[excel_df["Unique refrence Number"] == ref].index
+            if matches.empty:
+                # no matching reference in sheet — skip without creating rows
+                print(f"[connect_to_blob] reference not found in Excel, skipping: {ref}")
+                continue
+
+            # Join all entries for this reference into one cell value
+            document_summary_cell = "\n\n".join(entries).strip()
+
+            for idx in matches:
+                # Overwrite Submission summary if combined_summary provided; else leave as None
+                if combined_summary:
+                    excel_df.at[idx, "Submission Summary"] = combined_summary
+                else:
+                    excel_df.at[idx, "Submission Summary"] = None
+
+                # Overwrite Document summary with aggregated cell
+                excel_df.at[idx, "Document Summary"] = document_summary_cell
+
+        # save updated excel back to blob (overwrite)
+        out_stream = BytesIO()
+        excel_df.to_excel(out_stream, index=False, engine="openpyxl")
+        out_stream.seek(0)
+        blob_client.upload_blob(out_stream, overwrite=True)
+
+        return excel_df
+
+    except Exception as e:
+        return {"status": False, "error": f"Failed to process blob: {e}"}
+
+
+
+
+
+now i have been told to write it into database table whcih already hase the columns and table in place same as what i had for columns 
+
+the names of column here are submission_summary, document_summary, reference_number(from here we need to comapre that reference number)
+
+this is the table name 
+agent_submission_intake
