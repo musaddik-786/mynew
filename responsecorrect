@@ -1,0 +1,541 @@
+this is quote response
+venv) Jarvis@JarvisPhase2:~/Musaddique/Guidewire_Integration$ python3 test_script.py 
+Testing /
+HTTP Status: 200
+{
+    "jsonrpc": "2.0",
+    "id": 1,
+    "result": {
+        "status": true,
+        "jobId": "pc:SLl2lMLjrV5o-wdyEBLkW",
+        "quote": {
+            "data": {
+                "attributes": {
+                    "account": {
+                        "displayName": "0052803127",
+                        "id": "pc:Ss1Fg_k4MmCCJzFwRJ9Os",
+                        "type": "Account",
+                        "uri": "/account/v1/accounts/pc:Ss1Fg_k4MmCCJzFwRJ9Os"
+                    },
+                    "baseState": {
+                        "code": "FL",
+                        "name": "Florida"
+                    },
+                    "createdDate": "2026-02-19T10:33:40.069Z",
+                    "editLocked": true,
+                    "id": "pc:SLl2lMLjrV5o-wdyEBLkW",
+                    "jobEffectiveDate": "2026-01-01T05:01:00.000Z",
+                    "jobNumber": "0039618624",
+                    "jobStatus": {
+                        "code": "Quoted",
+                        "name": "Quoted"
+                    },
+                    "jobType": {
+                        "code": "Submission",
+                        "name": "Submission"
+                    },
+                    "organization": {
+                        "displayName": "Armstrong and Company",
+                        "id": "pc:1",
+                        "type": "Organization",
+                        "uri": "/admin/v1/organizations/pc:1"
+                    },
+                    "organizationOfService": {
+                        "displayName": "Armstrong and Company",
+                        "id": "pc:1",
+                        "type": "Organization",
+                        "uri": "/admin/v1/organizations/pc:1"
+                    },
+                    "periodEnd": "2027-01-01T05:01:00.000Z",
+                    "periodStart": "2026-01-01T05:01:00.000Z",
+                    "policyAddress": {
+                        "addressLine1": "100 Harbor View Drive",
+                        "addressType": {
+                            "code": "business",
+                            "name": "Business"
+                        },
+                        "city": "Daytona Beach",
+                        "country": "US",
+                        "displayName": "100 Harbor View Drive, Daytona Beach, FL 32118",
+                        "id": "401",
+                        "postalCode": "32118",
+                        "primaryNamedInsuredAddress": {
+                            "displayName": "100 Harbor View Drive, Daytona Beach, FL 32118",
+                            "id": "pc:SRVvwaNlQNdKglaVu9hKv"
+                        },
+                        "state": {
+                            "code": "FL",
+                            "name": "Florida"
+                        }
+                    },
+                    "preferredCoverageCurrency": {
+                        "code": "usd",
+                        "name": "USD"
+                    },
+                    "preferredSettlementCurrency": {
+                        "code": "usd",
+                        "name": "USD"
+                    },
+                    "primaryInsured": {
+                        "displayName": "Sunflower Hotel Group LLC",
+                        "id": "pc:ShO0_EK3xaIDj21TNqHRo",
+                        "type": "PolicyContact",
+                        "uri": "/job/v1/jobs/pc:SLl2lMLjrV5o-wdyEBLkW/contacts/pc:ShO0_EK3xaIDj21TNqHRo"
+                    },
+                    "primaryLocation": {
+                        "displayName": "1: 100 Harbor View Drive, Daytona Beach, FL",
+                        "id": "735",
+                        "type": "PolicyLocation",
+                        "uri": "/job/v1/jobs/pc:SLl2lMLjrV5o-wdyEBLkW/locations/735"
+                    },
+                    "producerCode": {
+                        "code": "100-002541",
+                        "displayName": "100-002541",
+                        "id": "pc:6",
+                        "type": "ProducerCode",
+                        "uri": "/admin/v1/producer-codes/pc:6"
+                    },
+                    "producerCodeOfService": {
+                        "code": "100-002541",
+                        "displayName": "100-002541",
+                        "id": "pc:6",
+                        "type": "ProducerCode",
+                        "uri": "/admin/v1/producer-codes/pc:6"
+                    },
+                    "product": {
+                        "displayName": "GoCommercialProp",
+                        "id": "GoCommercialProp"
+                    },
+                    "quoteType": {
+                        "code": "Full",
+                        "name": "Full Application"
+                    },
+                    "rateAsOfDate": "2026-02-19T10:33:40.796Z",
+                    "taxesAndSurcharges": {
+                        "amount": "0.00",
+                        "currency": "usd"
+                    },
+                    "termType": {
+                        "code": "Annual",
+                        "name": "Annual"
+                    },
+                    "totalCost": {
+                        "amount": "1696.13",
+                        "currency": "usd"
+                    },
+                    "totalPremium": {
+                        "amount": "1696.13",
+                        "currency": "usd"
+                    },
+                    "uwCompany": {
+                        "code": {
+                            "code": "default",
+                            "name": "Default"
+                        },
+                        "displayName": "Default",
+                        "id": "apd:1"
+                    }
+                },
+                "checksum": "a6544d212d3e002d94c9de1c4e8b3360",
+                "links": {
+                    "activities": {
+                        "href": "/job/v1/jobs/pc:SLl2lMLjrV5o-wdyEBLkW/activities",
+                        "methods": [
+                            "get",
+                            "post"
+                        ]
+                    },
+                    "activity-assignees": {
+                        "href": "/job/v1/jobs/pc:SLl2lMLjrV5o-wdyEBLkW/activity-assignees",
+                        "methods": [
+                            "get"
+                        ]
+                    },
+                    "activity-patterns": {
+                        "href": "/job/v1/jobs/pc:SLl2lMLjrV5o-wdyEBLkW/activity-patterns",
+                        "methods": [
+                            "get"
+                        ]
+                    },
+                    "additional-named-insureds": {
+                        "href": "/job/v1/jobs/pc:SLl2lMLjrV5o-wdyEBLkW/additional-named-insureds",
+                        "methods": [
+                            "get"
+                        ]
+                    },
+                    "assessment-summaries": {
+                        "href": "/job/v1/jobs/pc:SLl2lMLjrV5o-wdyEBLkW/assessment-summaries",
+                        "methods": [
+                            "get"
+                        ]
+                    },
+                    "async-quote-issues": {
+                        "href": "/job/v1/jobs/pc:SLl2lMLjrV5o-wdyEBLkW/async-quote-issues",
+                        "methods": [
+                            "get"
+                        ]
+                    },
+                    "bind-and-issue": {
+                        "href": "/job/v1/jobs/pc:SLl2lMLjrV5o-wdyEBLkW/bind-and-issue",
+                        "methods": [
+                            "post"
+                        ]
+                    },
+                    "bind-only": {
+                        "href": "/job/v1/jobs/pc:SLl2lMLjrV5o-wdyEBLkW/bind-only",
+                        "methods": [
+                            "post"
+                        ]
+                    },
+                    "change-version": {
+                        "href": "/job/v1/jobs/pc:SLl2lMLjrV5o-wdyEBLkW/change-version",
+                        "methods": [
+                            "post"
+                        ]
+                    },
+                    "coinsurance-agreements": {
+                        "href": "/job/v1/jobs/pc:SLl2lMLjrV5o-wdyEBLkW/coinsurance-agreements",
+                        "methods": [
+                            "get"
+                        ]
+                    },
+                    "contacts": {
+                        "href": "/job/v1/jobs/pc:SLl2lMLjrV5o-wdyEBLkW/contacts",
+                        "methods": [
+                            "get"
+                        ]
+                    },
+                    "contingencies": {
+                        "href": "/job/v1/jobs/pc:SLl2lMLjrV5o-wdyEBLkW/contingencies",
+                        "methods": [
+                            "get",
+                            "post"
+                        ]
+                    },
+                    "copy-submission": {
+                        "href": "/job/v1/jobs/pc:SLl2lMLjrV5o-wdyEBLkW/copy-submission",
+                        "methods": [
+                            "post"
+                        ]
+                    },
+                    "costs": {
+                        "href": "/job/v1/jobs/pc:SLl2lMLjrV5o-wdyEBLkW/costs",
+                        "methods": [
+                            "get"
+                        ]
+                    },
+                    "decline": {
+                        "href": "/job/v1/jobs/pc:SLl2lMLjrV5o-wdyEBLkW/decline",
+                        "methods": [
+                            "post"
+                        ]
+                    },
+                    "documents": {
+                        "href": "/job/v1/jobs/pc:SLl2lMLjrV5o-wdyEBLkW/documents",
+                        "methods": [
+                            "get",
+                            "post"
+                        ]
+                    },
+                    "foreign-exchange-rates": {
+                        "href": "/job/v1/jobs/pc:SLl2lMLjrV5o-wdyEBLkW/foreign-exchange-rates",
+                        "methods": [
+                            "get"
+                        ]
+                    },
+                    "forms": {
+                        "href": "/job/v1/jobs/pc:SLl2lMLjrV5o-wdyEBLkW/forms",
+                        "methods": [
+                            "get"
+                        ]
+                    },
+                    "history-events": {
+                        "href": "/job/v1/jobs/pc:SLl2lMLjrV5o-wdyEBLkW/history-events",
+                        "methods": [
+                            "get"
+                        ]
+                    },
+                    "lines": {
+                        "href": "/job/v1/job
+
+This is the code snippet for quote
+handler.py
+
+
+# handler.py
+from typing import Dict, Any
+from service import _require_env
+from storage_utils import read_json_from_blob
+from mappers.document_mapper import map_document_to_model_data
+from payload_builders.account_payload import build_account_payload
+from payload_builders.job_payload import build_job_payload
+from payload_builders.location_payload import build_location_payload
+from payload_builders.coverage_payloads import get_coverages
+from clients.guidewire_client import post
+from service import _ref_parse_blob_url
+from storage_utils import save_json_output_to_blob
+# from storage_utils import output_blob_url
+
+async def guidewire_api_call(blob_url: str) -> Dict[str, Any]:
+    """
+    Reads JSON directly from Azure Blob and calls Guidewire APIs to get the Quote.
+    """
+    try:
+        _require_env()
+    except Exception as e:
+        return {"status": False, "error": f"Environment misconfigured: {e}"}
+
+    try:
+        document = await read_json_from_blob(blob_url)
+        print(document)
+    except Exception as e:
+        return {"status": False, "error": f"Failed to read blob: {e}"}
+    
+    try:
+        canonical = map_document_to_model_data(document)
+        print("Canonical",canonical)
+    except Exception as e:
+        return {"status": False, "error": f"Failed to map data : {e}"}
+
+        # canonical = map_document_to_canonical(document)
+    account_resp = post("/acounts", build_account_payload(canonical))
+    account_id = account_resp["data"]["attributes"]["id"]
+    
+    print("account_id",account_id)
+
+    job_resp = post("/job/ions", build_job_payload(account_id, canonical))
+    job_id = job_resp["data"]["attributes"]["id"]
+
+    print("JOB ID :",job_id)
+    location_resp = post(
+        f"/job/v1/jorcialLine/locations",
+        build_location_payload(canonical)
+    )
+    location_id = location_resp["data"]["attributes"]["id"]
+
+    for coverage in get_coverages():
+        post(
+            f"/job/v/j/{job_id}/lines/GOCommercialLine/coverages",
+            {"data": {"attributes": coverage}}
+        )
+
+    quote_resp = post(f"/job/v/jobs/{job_id}/", {})
+
+    try:
+        container, blob_path, ref_id, name = _ref_parse_blob_url(blob_url)
+        print("Container:", container)
+        print("Blob_path:", blob_path)
+        print("Ref_id:", ref_id)
+        print("Name:", name)
+    except Exception as e:
+        return {"status": False, "error": f"Failed to extract name from blob url : {e}"}
+    
+    try:
+        output_blob_url = await save_json_output_to_blob(ref_id,name,quote_resp)
+    except Exception as e:
+        return {"status": False, "error": f"Failed to save blob url in container: {e}"} 
+
+
+    return {
+        "status": True,
+        # "accountId": account_id,
+        "jobId": job_id,
+        # "locationId": location_id,
+        "quote": quote_resp,
+        "output_bolb_url": output_blob_url,
+        # "policy_info":policy_resp
+    }
+
+
+main.py
+
+
+from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi_mcp import FastApiMCP
+import uvicorn
+
+from router import router as file_router
+
+
+def apply_cors(app: FastAPI):
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=["*"],
+        allow_methods=["*"],
+        allow_headers=["*"],
+    )
+
+
+def create_sub_app(title: str, description: str, version: str = "0.1.0") -> FastAPI:
+    sub = FastAPI(title=title, description=description, version=version)
+    apply_cors(sub)
+    return sub
+
+
+app = FastAPI()
+apply_cors(app)
+
+file_app = create_sub_app(
+    title="Guidewire Quote Integration",
+    description="Exposes an API to generate commercial property insurance quotes in "
+       "Guidewire PolicyCenter using structured submission data stored in "
+       "Azure Blob Storage. The service reads JSON submission documents, "
+       "maps them to Guidewire domain models, and orchestrates account, job, "
+       "location, coverage creation, and quote generation."
+)
+file_app.include_router(file_router)
+
+# Expose ONLY this operation id via MCP HTTP (client will use transport='http')
+FastApiMCP(file_app, include_operations=["Guidewire_Quote"]).mount_http()
+
+# Mount the sub-app under this prefix (keep as-is per your request)
+# app.mount("/api/v1/eligibility_agent", file_app)
+app.mount("/api/v1/quote", file_app)
+
+
+if __name__ == "__main__":
+    uvicorn.run(app, host="0.0.0.0", port=8601)
+
+
+
+testscript.py
+
+
+
+
+#Working code 
+
+# test_scripts.py
+import requests
+import json
+
+BASE_URL = "http://localhost:8601/api/v1/quote/Guidewire_Quote"
+
+def run_test():
+    payload = {
+        #   "attachment_url": "https://agenticai1.blob.core.windows.net/attachment-downloader/19BDB64178C5A9C8_attachment_Acord_125_High_tech_solution.pdf" , 
+        # "attachment_url"  :  "https://agenticai1.blob.core.windows.net/output-results/DUMMY123_attachment_ManufacturingFacility_SubmissionDocument_For_Quote_extraction_20260130_081421.json"
+        # "attachment_url" : "https://agenticai1.blob.core.windows.net/output-results/19C1DD3DD82FAE03_attachment_SunflowerHotels_Submission_Document_extraction_20260202_101302.json"
+        "attachment_url" : "https://agenticai1.blob.core.windows.net/output-results/19C45F7701C23CE4_attachment_SunflowerHotels_Submission_Document_extraction_20260210_051634.json"
+
+    }
+
+
+    try:
+        resp = requests.post(BASE_URL, json=payload, timeout=180)
+        print("HTTP Status:", resp.status_code)
+        try:
+            data = resp.json()
+            print(json.dumps(data, indent=4))
+        except Exception:
+            print("Response not JSON:", resp.text)
+    except Exception as e:
+        print("Error calling API:", str(e))
+
+if __name__ == "__main__":
+    print("Testing /")
+    run_test()
+this is bind and issue reponse why so messed up response 
+(venv) Jarvis@JarvisPhase2:~/Musaddique/Guidewire_Integration_bind_and_Issue$ python3 test_script.py 
+HTTP Status: 200
+{'status': True, 'jobId': 'pc:SLl2lMLjrV5o-wdyEBLkW', 'policyResponse': {'data': {'attributes': {'account': {'displayName': '0052803127', 'id': 'pc:Ss1Fg_k4MmCCJzFwRJ9Os', 'type': 'Account', 'uri': '/account/v1/accounts/pc:Ss1Fg_k4MmCCJzFwRJ9Os'}, 'baseState': {'code': 'FL', 'name': 'Florida'}, 'closeDate': '2026-02-19T10:34:51.528Z', 'createdDate': '2026-02-19T10:33:40.069Z', 'id': 'pc:SLl2lMLjrV5o-wdyEBLkW', 'jobEffectiveDate': '2026-01-01T05:01:00.000Z', 'jobNumber': '0039618624', 'jobStatus': {'code': 'Bound', 'name': 'Bound'}, 'jobType': {'code': 'Submission', 'name': 'Submission'}, 'organization': {'displayName': 'Armstrong and Company', 'id': 'pc:1', 'type': 'Organization', 'uri': '/admin/v1/organizations/pc:1'}, 'organizationOfService': {'displayName': 'Armstrong and Company', 'id': 'pc:1', 'type': 'Organization', 'uri': '/admin/v1/organizations/pc:1'}, 'periodEnd': '2027-01-01T05:01:00.000Z', 'periodStart': '2026-01-01T05:01:00.000Z', 'policy': {'displayName': '9140209992', 'id': 'pc:SsBfiyOeAIHs5Scu2BT3i', 'type': 'Policy', 'uri': '/policy/v1/policies/pc:SsBfiyOeAIHs5Scu2BT3i'}, 'policyAddress': {'addressLine1': '100 Harbor View Drive', 'addressType': {'code': 'business', 'name': 'Business'}, 'city': 'Daytona Beach', 'country': 'US', 'displayName': '100 Harbor View Drive, Daytona Beach, FL 32118', 'id': '401', 'postalCode': '32118', 'primaryNamedInsuredAddress': {'displayName': '100 Harbor View Drive, Daytona Beach, FL 32118', 'id': 'pc:SRVvwaNlQNdKglaVu9hKv'}, 'state': {'code': 'FL', 'name': 'Florida'}}, 'policyNumber': '9140209992', 'preferredCoverageCurrency': {'code': 'usd', 'name': 'USD'}, 'preferredSettlementCurrency': {'code': 'usd', 'name': 'USD'}, 'primaryInsured': {'displayName': 'Sunflower Hotel Group LLC', 'id': 'pc:ShO0_EK3xaIDj21TNqHRo', 'type': 'PolicyContact', 'uri': '/job/v1/jobs/pc:SLl2lMLjrV5o-wdyEBLkW/contacts/pc:ShO0_EK3xaIDj21TNqHRo'}, 'primaryLocation': {'displayName': '1: 100 Harbor View Drive, Daytona Beach, FL', 'id': '735', 'type': 'PolicyLocation', 'uri': '/job/v1/jobs/pc:SLl2lMLjrV5o-wdyEBLkW/locations/735'}, 'producerCode': {'code': '100-002541', 'displayName': '100-002541', 'id': 'pc:6', 'type': 'ProducerCode', 'uri': '/admin/v1/producer-codes/pc:6'}, 'producerCodeOfService': {'code': '100-002541', 'displayName': '100-002541', 'id': 'pc:6', 'type': 'ProducerCode', 'uri': '/admin/v1/producer-codes/pc:6'}, 'product': {'displayName': 'GoCommercialProp', 'id': 'GoCommercialProp'}, 'quoteType': {'code': 'Full', 'name': 'Full Application'}, 'rateAsOfDate': '2026-02-19T10:33:40.796Z', 'taxesAndSurcharges': {'amount': '0.00', 'currency': 'usd'}, 'termNumber': 1, 'termType': {'code': 'Annual', 'name': 'Annual'}, 'totalCost': {'amount': '1696.13', 'currency': 'usd'}, 'totalPremium': {'amount': '1696.13', 'currency': 'usd'}, 'uwCompany': {'code': {'code': 'default', 'name': 'Default'}, 'displayName': 'Default', 'id': 'apd:1'}}, 'checksum': 'b29a9f505e3aa62d9f86d2d4689b8ac9', 'links': {'activities': {'href': '/job/v1/jobs/pc:SLl2lMLjrV5o-wdyEBLkW/activities', 'methods': ['get', 'post']}, 'activity-assignees': {'href': '/job/v1/jobs/pc:SLl2lMLjrV5o-wdyEBLkW/activity-assignees', 'methods': ['get']}, 'activity-patterns': {'href': '/job/v1/jobs/pc:SLl2lMLjrV5o-wdyEBLkW/activity-patterns', 'methods': ['get']}, 'additional-named-insureds': {'href': '/job/v1/jobs/pc:SLl2lMLjrV5o-wdyEBLkW/additional-named-insureds', 'methods': ['get']}, 'assessment-summaries': {'href': '/job/v1/jobs/pc:SLl2lMLjrV5o-wdyEBLkW/assessment-summaries', 'methods': ['get']}, 'async-quote-issues': {'href': '/job/v1/jobs/pc:SLl2lMLjrV5o-wdyEBLkW/async-quote-issues', 'methods': ['get']}, 'coinsurance-agreements': {'href': '/job/v1/jobs/pc:SLl2lMLjrV5o-wdyEBLkW/coinsurance-agreements', 'methods': ['get']}, 'contacts': {'href': '/job/v1/jobs/pc:SLl2lMLjrV5o-wdyEBLkW/contacts', 'methods': ['get']}, 'contingencies': {'href': '/job/v1/jobs/pc:SLl2lMLjrV5o-wdyEBLkW/contingencies', 'methods': ['get']}, 'copy-submission': {'href': '/job/v1/jobs/pc:SLl2lMLjrV5o-wdyEBLkW/copy-submission', 'methods': ['post']}, 'costs': {'href': '/job/v1/jobs/pc:SLl2lMLjrV5o-wdyEBLkW/costs', 'methods': ['get']}, 'documents': {'href': '/job/v1/jobs/pc:SLl2lMLjrV5o-wdyEBLkW/documents', 'methods': ['get', 'post']}, 'foreign-exchange-rates': {'href': '/job/v1/jobs/pc:SLl2lMLjrV5o-wdyEBLkW/foreign-exchange-rates', 'methods': ['get']}, 'forms': {'href': '/job/v1/jobs/pc:SLl2lMLjrV5o-wdyEBLkW/forms', 'methods': ['get']}, 'history-events': {'href': '/job/v1/jobs/pc:SLl2lMLjrV5o-wdyEBLkW/history-events', 'methods': ['get']}, 'lines': {'href': '/job/v1/jobs/pc:SLl2lMLjrV5o-wdyEBLkW/lines', 'methods': ['get']}, 'locations': {'href': '/job/v1/jobs/pc:SLl2lMLjrV5o-wdyEBLkW/locations', 'methods': ['get']}, 'loss-history': {'href': '/job/v1/jobs/pc:SLl2lMLjrV5o-wdyEBLkW/loss-history', 'methods': ['get']}, 'modifiers': {'href': '/job/v1/jobs/pc:SLl2lMLjrV5o-wdyEBLkW/modifiers', 'methods': ['get']}, 'notes': {'href': '/job/v1/jobs/pc:SLl2lMLjrV5o-wdyEBLkW/notes', 'methods': ['get', 'post']}, 'oos-conflicts': {'href': '/job/v1/jobs/pc:SLl2lMLjrV5o-wdyEBLkW/oos-conflicts', 'methods': ['get']}, 'payment-info': {'href': '/job/v1/jobs/pc:SLl2lMLjrV5o-wdyEBLkW/payment-info', 'methods': ['get']}, 'payment-plans': {'href': '/job/v1/jobs/pc:SLl2lMLjrV5o-wdyEBLkW/payment-plans', 'methods': ['get']}, 'policy-sections': {'href': '/job/v1/jobs/pc:SLl2lMLjrV5o-wdyEBLkW/policy-sections', 'methods': ['get']}, 'prior-policies': {'href': '/job/v1/jobs/pc:SLl2lMLjrV5o-wdyEBLkW/prior-policies', 'methods': ['get']}, 'questions': {'href': '/job/v1/jobs/pc:SLl2lMLjrV5o-wdyEBLkW/questions', 'methods': ['get']}, 'rate-capping-groups': {'href': '/job/v1/jobs/pc:SLl2lMLjrV5o-wdyEBLkW/rate-capping-groups', 'methods': ['get']}, 'reinsurables': {'href': '/job/v1/jobs/pc:SLl2lMLjrV5o-wdyEBLkW/reinsurables', 'methods': ['get']}, 'self': {'href': '/job/v1/jobs/pc:SLl2lMLjrV5o-wdyEBLkW', 'methods': ['get']}, 'towers': {'href': '/job/v1/jobs/pc:SLl2lMLjrV5o-wdyEBLkW/towers', 'methods': ['get']}, 'transactions': {'href': '/job/v1/jobs/pc:SLl2lMLjrV5o-wdyEBLkW/transactions', 'methods': ['get']}, 'user-roles': {'href': '/job/v1/jobs/pc:SLl2lMLjrV5o-wdyEBLkW/user-roles', 'methods': ['get']}, 'uw-issues': {'href': '/job/v1/jobs/pc:SLl2lMLjrV5o-wdyEBLkW/uw-issues', 'methods': ['get']}, 'versions': {'href': '/job/v1/jobs/pc:SLl2lMLjrV5o-wdyEBLkW/versions', 'methods': ['get']}}}}}
+
+
+this is the code
+from clients.guidewire_clients import post
+ 
+ 
+async def bind_and_issue_policy(job_id: str) -> dict:
+    """
+    Binds and issues a policy in Guidewire for the given Job ID.
+ 
+    This function calls the Guidewire API endpoint:
+        POST /job/v1/jobs/{job_id}/bind-and-issue
+ 
+    Args:
+        job_id (str): The Job ID returned from submission creation.
+ 
+    Returns:
+        dict: Response containing success status and API result.
+ 
+    Example:
+        {
+            "status": True,
+            "jobId": "pc:123",
+            "policyResponse": {...}
+        }
+ 
+    Error Response Example:
+        {
+            "status": False,
+            "error": "Failed to create policy using GW API: ..."
+        }
+    """
+    try:
+        policy_resp = post(f"/job/v1/jobs/{job_id}/bind-and-issue", {})
+ 
+        return {
+            "status": True,
+            "jobId": job_id,
+            "policyResponse": policy_resp
+        }
+ 
+    except Exception as e:
+        return {
+            "status": False,
+            "error": f"Failed to create policy using GW API: {str(e)}"
+        }
+ 
+ main.py
+import requests
+ 
+URL = "http://localhost:8801/api/v1/bind/Bind_And_Issue"
+ 
+payload = {
+    "job_id": "pc:SLl2lMLjrV5o-wdyEBLkW"
+}
+ 
+# resp = requests.post(URL, json=payload, timeout=120)
+# print(resp.json())
+
+
+
+try:
+    resp = requests.post(URL, json=payload, timeout=180)
+    print("HTTP Status:", resp.status_code)
+    # try:
+    data = resp.json()
+    #     print(json.dumps(data, indent=4))
+    # except Exception:
+    #     print("Response not JSON:", resp.text)
+    print(data)
+except Exception as e:
+    print("Error calling API:", str(e))
+
+
+testscript.py
+import requests
+ 
+URL = "http://localhost:8801/api/v1/bind/Bind_And_Issue"
+ 
+payload = {
+    "job_id": "pc:SLl2lMLjrV5o-wdyEBLkW"
+}
+ 
+# resp = requests.post(URL, json=payload, timeout=120)
+# print(resp.json())
+
+
+
+try:
+    resp = requests.post(URL, json=payload, timeout=180)
+    print("HTTP Status:", resp.status_code)
+    # try:
+    data = resp.json()
+    #     print(json.dumps(data, indent=4))
+    # except Exception:
+    #     print("Response not JSON:", resp.text)
+    print(data)
+except Exception as e:
+    print("Error calling API:", str(e))
