@@ -1,0 +1,198 @@
+from clients.guidewire_clients import post
+ 
+ 
+async def bind_and_issue_policy(job_id: str) -> dict:
+    """
+    Binds and issues a policy in Guidewire for the given Job ID.
+ 
+    This function calls the Guidewire API endpoint:
+        POST /job/v1/jobs/{job_id}/bind-and-issue
+ 
+    Args:
+        job_id (str): The Job ID returned from submission creation.
+ 
+    Returns:
+        dict: Response containing success status and API result.
+ 
+    Example:
+        {
+            "status": True,
+            "jobId": "pc:123",
+            "policyResponse": {...}
+        }
+ 
+    Error Response Example:
+        {
+            "status": False,
+            "error": "Failed to create policy using GW API: ..."
+        }
+    """
+    try:
+        policy_resp = post(f"/job/v1/jobs/{job_id}/bind-and-issue", {})
+ 
+        # return {
+        #     "status": True,
+        #     "jobId": job_id,
+        #     "policyResponse": policy_resp
+        # }
+ 
+    except Exception as e:
+        return {
+            "status": False,
+            "error": f"Failed to create policy using GW API: {str(e)}"
+        }
+ 
+    return {
+            "status": True,
+            "jobId": job_id,
+            "policyResponse": policy_resp
+        }
+
+
+main.py
+
+from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi_mcp import FastApiMCP
+import uvicorn
+
+from router import router as file_router
+
+
+def apply_cors(app: FastAPI):
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=["*"],
+        allow_methods=["*"],
+        allow_headers=["*"],
+    )
+
+
+def create_sub_app(title: str, description: str, version: str = "0.1.0") -> FastAPI:
+    sub = FastAPI(title=title, description=description, version=version)
+    apply_cors(sub)
+    return sub
+
+
+app = FastAPI()
+apply_cors(app)
+
+file_app = create_sub_app(
+    title="Guidewire Policy Integration",
+    description="Exposes an API to generate commercial property insurance bind and issue the policy in "
+       "Guidewire PolicyCenter using structured submission data stored in "
+       "Azure Blob Storage. The service reads JSON submission documents, "
+       "maps them to Guidewire domain models, and orchestrates account, job, "
+       "location, coverage creation, and quote generation."
+)
+file_app.include_router(file_router)
+
+# Expose ONLY this operation id via MCP HTTP (client will use transport='http')
+FastApiMCP(file_app, include_operations=["bind_and_issue_mcp"]).mount_http()
+
+# Mount the sub-app under this prefix (keep as-is per your request)
+# app.mount("/api/v1/eligibility_agent", file_app)
+app.mount("/api/v1/bind", file_app)
+
+
+if __name__ == "__main__":
+    uvicorn.run(app, host="0.0.0.0", port=8801)
+
+
+router.py
+from fastapi import APIRouter
+from pydantic import BaseModel
+from handler import bind_and_issue_policy
+ 
+router = APIRouter()
+ 
+ 
+class BindIssueRequest(BaseModel):
+    job_id: str
+ 
+ 
+@router.post("/bind_and_issue_mcp", operation_id="bind_and_issue_mcp")
+async def bind_and_issue(request: BindIssueRequest):
+    """
+    Binds and issues a commercial property policy in Guidewire PolicyCenter
+    using an existing Job ID.
+ 
+    This service is responsible ONLY for triggering the Bind & Issue
+    action on a previously quoted submission.
+ 
+    The provided Job ID must already exist in Guidewire and must be in a
+    valid state (typically quoted and eligible for binding).
+ 
+    API Invoked:
+        POST /job/v1/jobs/{job_id}/bind-and-issue
+ 
+    Flow:
+ 
+    1. Accept Job ID as input.
+    2. Invoke Guidewire PolicyCenter Bind & Issue API.
+    3. Return policy issuance response if successful.
+    4. Return structured error response if the API call fails.
+ 
+    Args:
+        job_id (str):
+            The Guidewire Job ID returned from the submission creation process.
+            Example: "pc:10234"
+ 
+    Returns:
+        dict:
+ 
+        Success Example:
+        {
+            "status": True,
+            "jobId": "pc:10234",
+            "policyResponse": { ... Guidewire response ... }
+        }
+ 
+        Failure Example:
+        {
+            "status": False,
+            "error": "Failed to create policy using GW API: <error message>"
+        }
+ 
+    Notes:
+        - The Job must already be quoted successfully.
+        - If the Job is not in a bindable state, Guidewire will return an error.
+        - This service acts as a thin orchestration layer over the Guidewire API.
+    """
+
+    try:
+        result = await bind_and_issue_policy(request.job_id)
+        return JSONResponse(content={"jsonrpc": "2.0", "id": 1, "result": result}, status_code=200)
+    except Exception as e:
+        return JSONResponse(content={"jsonrpc": "2.0", "id": 1,
+                                     "result": {"status": False, "error": str(e)}}, status_code=200)
+    # return await bind_and_issue_policy(request.job_id)
+
+test_script.py
+
+import requests
+ 
+URL = "http://localhost:8801/api/v1/bind/bind_and_issue_mcp"
+ 
+payload = {
+    "job_id": "pc:SrjI5NpYnYRZ-aUTjDnWY"
+}
+ 
+# resp = requests.post(URL, json=payload, timeout=120)
+# print(resp.json())
+
+
+
+try:
+    resp = requests.post(URL, json=payload, timeout=180)
+    print("HTTP Status:", resp.status_code)
+    try:
+        data = resp.json()
+        print(json.dumps(data, indent=4))
+    except Exception:
+        print("Response not JSON:", resp.text)
+    # print(data)
+except Exception as e:
+    print("Error calling API:", str(e))
+
+
