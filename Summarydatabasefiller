@@ -124,3 +124,359 @@ the names of column here are submission_summary, document_summary, reference_num
 
 this is the table name 
 agent_submission_intake
+
+
+below is a code for your reference this below code is of another project this is just for your understanding
+db.py
+import os
+from sqlmodel import create_engine
+from sqlalchemy.pool import NullPool
+from dotenv import load_dotenv
+
+load_dotenv()
+
+
+def get_engine():
+    return create_engine(
+        f"postgresql+psycopg://{os.getenv('PGUSER')}:{os.getenv('PGPASSWORD')}"
+        f"@{os.getenv('PGHOST')}:{os.getenv('PGPORT', '5432')}/{os.getenv('PGDATABASE')}",
+        poolclass=NullPool,
+        echo=False
+    )
+
+
+file_router.py
+
+
+from fastapi import APIRouter
+from fastapi.responses import JSONResponse
+from pydantic import BaseModel
+# from handler import extract_sanction_status
+import traceback
+import sys
+
+
+from fastapi import APIRouter
+from fastapi.responses import JSONResponse
+from pydantic import BaseModel
+from handler import process_sanction_and_eligibility
+
+router = APIRouter()
+
+
+class LicensingSanctionMCPRequest(BaseModel):
+    """
+    JSON-RPC request schema for the Licensing & Sanction Checker MCP.
+
+    represents the JSON-RPC 2.0 request received by
+    the Licensing_&_Sanction_Checker_MCP endpoint.
+
+    Attributes:
+        jsonrpc (str): JSON-RPC protocol version (expected value: "2.0").
+        id (int): Client-provided request identifier used for correlation.
+        result (dict): Payload produced by the upstream Sanction Checker MCP.
+            This payload must contain the `is_Sanctioned` field used to
+            determine eligibility.
+    """
+
+    jsonrpc: str
+    id: int
+    result: dict
+
+
+@router.post(
+    "/Eligibility_Agent_Sanction_DataFiller_MCP",
+    operation_id="Eligibility_Agent_Sanction_DataFiller_MCP"
+)
+async def licensing_sanction_checker_mcp(request: LicensingSanctionMCPRequest):
+
+    """
+    Process sanction results and persist eligibility data using PostgreSQL.
+
+    This endpoint receives a JSON-RPC request from the
+    Licensing & Sanction Checker MCP containing the `is_Sanctioned` flag.
+    Based on this value, it performs the following steps:
+
+    1. Determines eligibility status:
+       - `Eligible` if `is_Sanctioned` is False
+       - `Not Eligible` if `is_Sanctioned` is True
+
+    2. Reads the corresponding eligibility rule from the
+       `ref_eligibility_check` reference table.
+
+    3. Retrieves the most recent `reference_number` from the
+       `agent_submission_intake` table.
+
+    4. Writes a new eligibility record into the
+       `agent_eligibility` PostgreSQL table.
+
+    5. Returns the persisted eligibility data as a JSON-RPC response.
+
+    The following fields are written to the `agent_eligibility` table:
+        - reference_number
+        - eligibility_status
+        - reason_summary
+        - line_of_business
+        - location_risk_zone
+        - business_type
+        - licensing_and_sanction_check
+        - source_of_check
+        - approval_flag
+        - eligibility_check_date_time
+
+    Args:
+        request (LicensingSanctionMCPRequest):
+            JSON-RPC request envelope containing the sanction result payload.
+
+    Returns:
+        JSONResponse:
+            A JSON-RPC 2.0–compliant response containing the evaluated
+            eligibility decision and related metadata.
+    """
+
+    decision = process_sanction_and_eligibility(request.result)
+
+    return JSONResponse(
+        content={
+            "jsonrpc": request.jsonrpc,
+            "id": request.id,
+            "result": decision
+        },
+        status_code=200
+    )
+
+handler.py
+
+def process_sanction_and_eligibility(mcp_result: dict) -> dict:
+    """
+    1. Extract is_Sanctioned (NO DEFAULTS)
+    2. Decide Eligible / Not Eligible
+    3. Fetch rule from ref_eligibility_check
+    4. Fetch latest reference_number from agent_submission_intake
+    5. Insert into agent_eligibility
+    6. Return combined response
+    """
+
+    # ---------- VALIDATION ----------
+    if not isinstance(mcp_result, dict):
+        return {
+            "status": False,
+            "error": "Invalid MCP result format (expected dict)"
+        }
+
+    results = mcp_result.get("results")
+    if not isinstance(results, list) or not results:
+        return {
+            "status": False,
+            "error": "'results' missing or empty in MCP response"
+        }
+
+    record = results[0]
+
+    if "is_Sanctioned" not in record:
+        return {
+            "status": False,
+            "error": "'is_Sanctioned' field missing in MCP response"
+        }
+
+    is_sanctioned = record["is_Sanctioned"]
+
+    if not isinstance(is_sanctioned, bool):
+        return {
+            "status": False,
+            "error": "'is_Sanctioned' must be boolean"
+        }
+
+    # ---------- DECISION ----------
+    eligibility_status = "Not Eligible" if is_sanctioned else "Eligible"
+
+    # ---------- DB FETCH ----------
+    engine = get_engine()
+    with Session(engine) as session:
+
+
+        # ---------- FETCH LATEST reference_number ----------
+        latest_ref_stmt = (
+            select(AgentSubmissionIntake)
+            .order_by(AgentSubmissionIntake.id.desc())
+        )
+        latest_submission = session.exec(latest_ref_stmt).first()
+
+        if not latest_submission or not latest_submission.reference_number:
+            return {
+                "status": False,
+                "error": "No reference_number found in agent_submission_intake"
+            }
+
+        reference_number = latest_submission.reference_number
+
+
+
+        stmt = select(RefEligibilityCheck).where(
+            RefEligibilityCheck.eligibility_status == eligibility_status
+        )
+        row = session.exec(stmt).first()
+
+        if not row:
+            return {
+                "status": False,
+                "error": f"No row found for Eligibility Status = '{eligibility_status}'"
+            }
+
+        try: 
+            # now = datetime.now()
+
+            # formatted_datetime = now.strftime("%d%m%Y %I:%M:%S %p")
+            # now_ist = datetime.now(ZoneInfo("Asia/Kolkata"))
+            india_tz = ZoneInfo("Asia/Kolkata")
+            current_time_ist = datetime.now(india_tz)
+            formatted_time = current_time_ist.strftime('%Y-%m-%d %H:%M:%S')
+            # formatted_datetime = now_ist.strftime("%d%m%Y %I:%M:%S %p")
+        
+        except Exception as e:
+            return{
+            "status" : False,
+            "error": f"Error generating date and time: {e}"
+            }
+
+
+        agent_row = AgentEligibility(
+           reference_number=reference_number,
+           eligibility_status=row.eligibility_status,
+           reason_summary=row.reason_summary,
+           line_of_business=row.line_of_business,
+           location_risk_zone=row.location_risk_zone,
+           business_type=row.business_type,
+           licensing_and_sanction_check=row.licensing_and_sanction_check,
+           source_of_check=row.source_of_check,
+           approval_flag = row.approval_flag,
+           eligibility_check_date_time= formatted_time
+        )
+
+        session.add(agent_row)
+        session.commit()
+        session.refresh(agent_row)
+
+
+
+        # ---------- RESPONSE ----------
+        return {
+            "status": True,
+            "reference_number" : reference_number,
+            "eligibility_status": row.eligibility_status,
+            "reason_summary": row.reason_summary,
+            "line_of_business": row.line_of_business,
+            "location_risk_zone": row.location_risk_zone,
+            "business_type": row.business_type,
+            "licensing_and_sanction_check": row.licensing_and_sanction_check,
+            "source_of_check": row.source_of_check,
+            "approval_flag": row.approval_flag,
+            "eligibility_check_date_time": formatted_time
+        }
+
+
+models.py
+from sqlmodel import SQLModel, Field
+from sqlalchemy import Column, String, Boolean
+from typing import Optional
+
+
+
+# from typing import Optional
+from datetime import datetime
+from sqlalchemy import Column, TIMESTAMP
+# from sqlmodel import SQLModel, Field
+
+
+
+class RefEligibilityCheck(SQLModel, table=True):
+    __tablename__ = "ref_eligibility_check"
+
+
+    id: Optional[int] = Field(default=None, primary_key = True)
+    
+    reason_summary: Optional[str] = Field(
+        sa_column=Column("reason_summary", String)
+    )
+
+    line_of_business: Optional[str] = Field(
+        sa_column=Column("line_of_business", String)
+    )
+
+    location_risk_zone: Optional[str] = Field(
+        sa_column=Column("location_risk_zone", String)
+    )
+
+    business_type: Optional[str] = Field(
+        sa_column=Column("business_type", String)
+    )
+
+    licensing_and_sanction_check: Optional[str] = Field(
+        sa_column=Column("licensing_sanction_check", String)
+    )
+
+    source_of_check: Optional[str] = Field(
+        sa_column=Column("source_of_check", String)
+    )
+
+    eligibility_status: Optional[str] = Field(
+        sa_column=Column("eligibility_status", String)
+    )
+
+    approval_flag: Optional[bool] = Field(
+        sa_column=Column("approval_flag", Boolean)
+    )
+
+class AgentSubmissionIntake(SQLModel, table=True):
+    __tablename__ = "agent_submission_intake"
+
+    id:Optional[int] = Field(default=None, primary_key=True)
+
+    reference_number: Optional[str] = Field(default=None)
+
+
+class AgentEligibility(SQLModel, table=True):
+    __tablename__="agent_eligibility"
+
+    id: Optional [int] = Field(default = None, primary_key = True)
+
+    reference_number: Optional[str] = Field(
+    sa_column=Column("reference_number", String)
+    )
+
+    eligibility_status: Optional[str] = Field(
+        sa_column=Column("eligibility_status", String)
+    )  
+
+    reason_summary: Optional[str] = Field(
+        sa_column=Column("reason_summary", String)
+    )
+
+    line_of_business: Optional[str] = Field(
+       sa_column=Column("line_of_business", String)
+   )
+
+    location_risk_zone: Optional[str] = Field(
+       sa_column=Column("location_risk_zone", String)
+   )
+
+    business_type: Optional[str] = Field(
+       sa_column=Column("business_type", String)
+   )   
+ 
+    licensing_and_sanction_check: Optional[str] = Field(
+       sa_column=Column("licensing_sanction_check", String)
+   )
+
+    source_of_check: Optional[str] = Field(
+       sa_column=Column("source_of_check", String)
+   )
+
+    approval_flag: Optional[bool] = Field(
+       sa_column=Column("approval_flag", Boolean)
+   )
+
+    eligibility_check_date_time : Optional[datetime] = Field(
+    default=None,
+    sa_column=Column("eligibility_check_date_time", TIMESTAMP)
+   )
