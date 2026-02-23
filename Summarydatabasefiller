@@ -648,14 +648,13 @@ async def summarize_blob_pdfs_layout(blob_urls: List[str]) -> Dict[str, Any]:
         DATA_URL = os.getenv("Data_URL")
         if DATA_URL:
             try:
-                # updated_data = connect_to_blob(DATA_URL, beautified)
-                # new = update_submission_summary_in_db(beautified)
+                new = update_submission_summary_in_db(beautified)
                 print("Blob Data Processed Successfully.")
-                # if isinstance(new, pd.DataFrame):
-                    # print("Blob Data Processed Successfully and Excel Updated.")
-                # else:
-                    # updated_data may be an error dict
-                    # print(f"Error: {new.get('error')}")
+                if isinstance(new, pd.DataFrame):
+                    print("Blob Data Processed Successfully and Excel Updated.")
+                else:
+                    updated_data may be an error dict
+                    print(f"Error: {new.get('error')}")
                 print("This is my beautified Summary ##### ",beautified)
             except Exception as e:
                 print(f"Error processing blob data: {e}")
@@ -663,30 +662,6 @@ async def summarize_blob_pdfs_layout(blob_urls: List[str]) -> Dict[str, Any]:
             print("Data_URL environment variable is not set.")
     except Exception as e:
         print(f"Error in beautify / blob step: {e}")
-
-
-
-
-    # try:
-    #     email_body = download_blob_to_input_folder_by_reference(beautify_data)
-    #     from summary_storage_utils import download_blob_to_input_folder_by_reference
-
-# ensure EMAIL_BODY = "email_body" at top of summary_handler.py
-
-# call it (since it's async, await it)
-    # try:
-    #     download_results = await download_blob_to_input_folder_by_reference(
-    #         beautify_data,
-    #         output_folder=EMAIL_BODY,
-    #         container_name="attachment-downloader",
-    #         blob_name_template="body_{ref}.txt",
-    #     )
-    #     print("Email body download results:", download_results)
-    # except Exception as e:
-    #     print("Failed to download email bodies by reference:", e)
-
-
-    # return cleaned_payload
     return beautified
 
 
