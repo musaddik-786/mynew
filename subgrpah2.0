@@ -1,3 +1,448 @@
+main.py
+
+from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi_mcp import FastApiMCP
+
+from router import router
+
+app = FastAPI(title="Dummy MCP Server")
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+app.include_router(router)
+
+# Expose all routes as MCP tools
+FastApiMCP(
+    app,
+    include_operations=[
+        "email_reader_mcp",
+        "write_email_to_excel",
+        "email_attachment_mcp",
+        "layout_detection_mcp",
+        "document_extract_mcp",
+        "query_pdf_vectorizer_mcp",
+        "attachment_summary_mcp",
+    ]
+).mount_http()
+
+if __name__ == "__main__":
+    import uvicorn
+    uvicorn.run(app, host="0.0.0.0", port=9000)
+
+
+router.py
+
+from fastapi import APIRouter
+from fastapi.responses import JSONResponse
+
+router = APIRouter()
+
+
+@router.post("/email_reader_mcp", operation_id="email_reader_mcp")
+async def email_reader_mcp():
+    return JSONResponse({
+        "jsonrpc": "2.0",
+        "id": 1,
+        "result": {
+            "subject": "Insurance Quote Request",
+            "body": "This email is related to insurance"
+        }
+    })
+
+
+@router.post("/write_email_to_excel", operation_id="write_email_to_excel")
+async def write_email_to_excel():
+    return JSONResponse({
+        "jsonrpc": "2.0",
+        "id": 1,
+        "result": {"status": "written"}
+    })
+
+
+@router.post("/email_attachment_mcp", operation_id="email_attachment_mcp")
+async def email_attachment_mcp():
+    return JSONResponse({
+        "jsonrpc": "2.0",
+        "id": 1,
+        "result": {
+            "attachments": [
+                {"blob_url": "accord_policy_1.pdf"},
+                {"blob_url": "quote_details_1.pdf"}
+            ]
+        }
+    })
+
+
+@router.post("/layout_detection_mcp", operation_id="layout_detection_mcp")
+async def layout_detection_mcp():
+    return JSONResponse({
+        "jsonrpc": "2.0",
+        "id": 1,
+        "result": {"layout": "ACORD"}
+    })
+
+
+@router.post("/document_extract_mcp", operation_id="document_extract_mcp")
+async def document_extract_mcp():
+    return JSONResponse({
+        "jsonrpc": "2.0",
+        "id": 1,
+        "result": {
+            "Document_Confidence_Score": 0.95
+        }
+    })
+
+
+@router.post("/query_pdf_vectorizer_mcp", operation_id="query_pdf_vectorizer_mcp")
+async def query_pdf_vectorizer_mcp():
+    return JSONResponse({
+        "jsonrpc": "2.0",
+        "id": 1,
+        "result": {"embedded": True}
+    })
+
+
+@router.post("/attachment_summary_mcp", operation_id="attachment_summary_mcp")
+async def attachment_summary_mcp():
+    return JSONResponse({
+        "jsonrpc": "2.0",
+        "id": 1,
+        "result": {
+            "summary": "All attachments summarized"
+        }
+    })
+
+
+
+
+# -----------------------------
+# ELIGIBILITY AGENT TOOLS
+# -----------------------------
+@router.post("/risk_type_checker_MCP", operation_id="risk_type_checker_MCP")
+async def risk_type_checker():
+   return JSONResponse({
+       "jsonrpc": "2.0",
+       "id": 1,
+       "result": {
+           "line_of_business": "Commercial Property"
+       }
+   })
+
+
+
+
+
+@router.post("/renewal_checker_mcp", operation_id="renewal_checker_mcp")
+async def renewal_checker():
+   return JSONResponse({
+       "jsonrpc": "2.0",
+       "id": 1,
+       "result": {
+           "is_renewal": False
+       }
+   })
+
+@router.post("/Licensing_and_Sanction_Checker_MCP",
+            operation_id="Licensing_and_Sanction_Checker_MCP")
+async def sanction_checker():
+   return JSONResponse({
+       "jsonrpc": "2.0",
+       "id": 1,
+       "result": {
+           "is_Sanctioned": False
+       }
+   })
+
+@router.post("/Json_Reader_Read", operation_id="Json_Reader_Read")
+async def json_reader():
+   return JSONResponse({
+       "jsonrpc": "2.0",
+       "id": 1,
+       "result": {
+           "policy_number": "POL123",
+           "insured_name": "ABC Corp"
+       }
+   })
+
+
+langgraphclient.py inside eligibilty_agent
+import asyncio
+from typing import TypedDict, Annotated
+from langgraph.graph import StateGraph, START, END
+from langgraph.graph.message import add_messages
+from langgraph.prebuilt import ToolNode
+from langchain_core.messages import AIMessage, SystemMessage
+from langchain_mcp_adapters.client import MultiServerMCPClient
+from langchain_openai.chat_models import AzureChatOpenAI
+
+# -------------------------
+# STATE
+# -------------------------
+class State(TypedDict):
+   messages: Annotated[list, add_messages]
+
+# -------------------------
+# ROUTER
+# -------------------------
+def router(state: State):
+   last = state["messages"][-1]
+   if isinstance(last, AIMessage) and last.tool_calls:
+       return "tools"
+   if isinstance(last, AIMessage) and last.content:
+       if "Continue" in last.content:
+           return "agent"
+       if "End" in last.content:
+           return "end"
+   return "end"
+
+# -------------------------
+# PROMPT LOADER
+# -------------------------
+def load_prompt():
+   with open("prompt_eligibility.txt", "r", encoding="utf-8") as f:
+       return f.read()
+
+# -------------------------
+# BUILD ELIGIBILITY GRAPH
+# -------------------------
+async def build_eligibility_graph():
+   # Discover MCP tools dynamically
+   mcp_client = MultiServerMCPClient({
+       "dummy_mcp": {
+           "url": "http://localhost:9000/mcp",
+           "transport": "streamable_http",
+       }
+   })
+   all_tools = await mcp_client.get_tools()
+   # Boundary exists, behavior enforced by prompt
+   eligibility_tools = all_tools
+   model = AzureChatOpenAI(
+    api_key="3w3,
+    api_version="20ew",
+    azure_deployment="g",
+    azure_endpoint="https://agom/"
+   )
+   llm = model.bind_tools(eligibility_tools)
+   prompt = load_prompt()
+   async def agent_node(state: State):
+       system = SystemMessage(content=prompt)
+       response = await llm.ainvoke([system] + state["messages"])
+       return {"messages": [response]}
+   graph = StateGraph(State)
+   graph.add_node("agent", agent_node)
+   graph.add_node("tools", ToolNode(eligibility_tools))
+   graph.add_edge(START, "agent")
+   graph.add_conditional_edges(
+       "agent",
+       router,
+       {
+           "tools": "tools",
+           "agent": "agent",
+           "end": END,
+       },
+   )
+   graph.add_edge("tools", "agent")
+   return graph.compile()
+
+# -------------------------
+# LOCAL TEST RUN
+# -------------------------
+async def main():
+   graph = await build_eligibility_graph()
+   async for step in graph.astream(
+       {"messages": ["Start eligibility check"]},
+       config={"recursion_limit": 50},
+   ):
+       print(step)
+
+if __name__ == "__main__":
+   asyncio.run(main())
+
+prompt_eligibility.txt inside eligibility_agent folder itself
+
+You are EligibilityAgent in an insurance underwriting system.
+You MUST strictly follow this workflow:
+1. Call risk_type_checker_MCP
+  - If Line of Business is Commercial Property → respond exactly: Continue
+  - Else → respond exactly: End
+2. Call renewal_checker_mcp
+  - After tool finishes → respond exactly: Continue
+3. Call Licensing_and_Sanction_Checker_MCP
+  - If is_Sanctioned is False → respond exactly: Continue
+  - If is_Sanctioned is True → respond exactly: End
+4. Call Json_Reader_Read
+  - After tool finishes → respond exactly: Continue
+IMPORTANT RULES:
+- Respond ONLY with Continue or End
+- Do NOT add explanations
+- Do NOT add punctuation
+
+
+similarly langgraphclient.py of emailintentagent folder
+import asyncio
+from typing import TypedDict, Annotated
+
+from langgraph.graph import StateGraph, START, END
+from langgraph.graph.message import add_messages
+from langgraph.prebuilt import ToolNode
+from langchain_core.messages import AIMessage, SystemMessage
+
+from langchain_mcp_adapters.client import MultiServerMCPClient
+from langchain_openai.chat_models import AzureChatOpenAI
+
+
+# -------------------------
+# STATE
+# -------------------------
+class State(TypedDict):
+    messages: Annotated[list, add_messages]
+
+
+# -------------------------
+# ROUTER
+# -------------------------
+def router(state: State):
+    last = state["messages"][-1]
+
+    if isinstance(last, AIMessage) and last.tool_calls:
+        return "tools"
+
+    if isinstance(last, AIMessage) and last.content:
+        if "Continue" in last.content:
+            return "agent"
+        if "End" in last.content:
+            return "end"
+
+    return "end"
+
+
+# -------------------------
+# PROMPT LOADER
+# -------------------------
+def load_prompt():
+    with open("prompt_email.txt", "r", encoding="utf-8") as f:
+        return f.read()
+
+
+# -------------------------
+# BUILD EMAIL INTENT GRAPH
+# -------------------------
+async def build_email_intent_graph():
+
+    # Discover MCP tools dynamically
+    mcp_client = MultiServerMCPClient({
+        "dummy_mcp": {
+            "url": "http://localhost:9000/mcp",
+            "transport": "streamable_http",
+        }
+    })
+
+    all_tools = await mcp_client.get_tools()
+
+    # NOTE:
+    # Boundary filtering exists,
+    # but behavior is controlled by PROMPT
+    email_tools = all_tools
+
+    model = AzureChatOpenAI(
+        # AZURE_OPENAI_API_KEY="AHu
+        # AZURE_OPENAI_ENDPOINT="https.com/"
+        # AZURE_OPENAI_API_VERSION="2ew"
+        # AZURE_OPENAI_CHAT_DEPLOYMENT="gis"
+        api_key="Ab5CcpPYKuA",
+        api_version="w",
+        azure_deployment="",
+        azure_endpoint=".com/"
+    )
+
+    llm = model.bind_tools(email_tools)
+    prompt = load_prompt()
+
+    async def agent_node(state: State):
+        system = SystemMessage(content=prompt)
+        response = await llm.ainvoke([system] + state["messages"])
+        return {"messages": [response]}
+
+    graph = StateGraph(State)
+
+    graph.add_node("agent", agent_node)
+    graph.add_node("tools", ToolNode(email_tools))
+
+    graph.add_edge(START, "agent")
+
+    graph.add_conditional_edges(
+        "agent",
+        router,
+        {
+            "tools": "tools",
+            "agent": "agent",
+            "end": END,
+        },
+    )
+
+    graph.add_edge("tools", "agent")
+
+    return graph.compile()
+
+
+# -------------------------
+# LOCAL TEST RUN
+# -------------------------
+async def main():
+    graph = await build_email_intent_graph()
+
+    async for step in graph.astream(
+        {"messages": ["Start your task"]},
+        config={"recursion_limit": 50},
+    ):
+        print(step)
+
+
+if __name__ == "__main__":
+    asyncio.run(main())
+
+prompt_email.txt
+You are EmailIntentAgent in an insurance underwriting system.
+
+You MUST strictly follow this workflow:
+
+1. Call email_reader_mcp
+   - If email is NOT related to insurance → respond exactly: End
+   - If related → respond exactly: Continue
+
+2. Call write_email_to_excel
+   - After tool finishes → respond exactly: Continue
+
+3. Call email_attachment_mcp
+   - After tool finishes → respond exactly: Continue
+
+4. Call layout_detection_mcp ONLY for attachments containing
+   'accord' OR 'quote'
+   - After finishing → respond exactly: Continue
+
+5. Call document_extract_mcp ONLY for ACORD documents
+   - If confidence < 0.90 → End
+   - Else → Continue
+
+6. Call query_pdf_vectorizer_mcp
+   - Respond Continue
+
+7. Call attachment_summary_mcp
+   - Respond Continue
+
+IMPORTANT:
+- Respond ONLY with Continue or End
+- Do NOT add explanations
+- Do NOT add punctuation
+
+
+
 (venv) Jarvis@JarvisPhase2:~/Musaddique/project_root/eligibility_agent$ python3 langgraph_client.py
 {'agent': {'messages': [AIMessage(content='', additional_kwargs={'refusal': None}, response_metadata={'token_usage': {'completion_tokens': 13, 'prompt_tokens': 432, 'total_tokens': 445, 'completion_tokens_details': {'accepted_prediction_tokens': 0, 'audio_tokens': 0, 'reasoning_tokens': 0, 'rejected_prediction_tokens': 0}, 'prompt_tokens_details': {'audio_tokens': 0, 'cached_tokens': 0}}, 'model_provider': 'openai', 'model_name': 'gpt-4.1-2025-04-14', 'system_fingerprint': 'fp_e05894342c', 'id': 'chatcmpl-DCh76PAaZo6YxBw2ENFDJOtbYPBPg', 'prompt_filter_results': [{'prompt_index': 0, 'content_filter_results': {'hate': {'filtered': False, 'severity': 'safe'}, 'jailbreak': {'filtered': False, 'detected': False}, 'self_harm': {'filtered': False, 'severity': 'safe'}, 'sexual': {'filtered': False, 'severity': 'safe'}, 'violence': {'filtered': False, 'severity': 'safe'}}}], 'finish_reason': 'tool_calls', 'logprobs': None, 'content_filter_results': {}}, id='lc_run--019c8e8b-8eca-7f92-be4f-a5025180a13f-0', tool_calls=[{'name': 'email_reader_mcp', 'args': {}, 'id': 'call_UEju8QTMri6XsfgM4idKpMuM', 'type': 'tool_call'}], invalid_tool_calls=[], usage_metadata={'input_tokens': 432, 'output_tokens': 13, 'total_tokens': 445, 'input_token_details': {'audio': 0, 'cache_read': 0}, 'output_token_details': {'audio': 0, 'reasoning': 0}})]}}
 {'tools': {'messages': [ToolMessage(content=[{'type': 'text', 'text': '{\n  "jsonrpc": "2.0",\n  "id": 1,\n  "result": {\n    "subject": "Insurance Quote Request",\n    "body": "This email is related to insurance"\n  }\n}', 'id': 'lc_aa887cc9-c5ac-49e8-ba15-ecc7b48e8185'}], name='email_reader_mcp', id='333ab235-2911-46fc-9220-935590288d3a', tool_call_id='call_UEju8QTMri6XsfgM4idKpMuM')]}}
