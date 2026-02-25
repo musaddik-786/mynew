@@ -1,3 +1,11 @@
+
+INFO:     127.0.0.1:48224 - "POST /mcp HTTP/1.1" 200 OK
+INFO:     127.0.0.1:48224 - "POST /mcp HTTP/1.1" 202 Accepted
+INFO:     127.0.0.1:48242 - "POST /mcp HTTP/1.1" 200 OK
+INFO:     127.0.0.1:48242 - "DELETE /mcp HTTP/1.1" 200 OK
+INFO:     127.0.0.1:48234 - "GET /mcp HTTP/1.1" 200 OK
+
+
 (venv) Jarvis@JarvisPhase2:~/Musaddique/project_root/email_intent_agent$ python3 langgraph_client.py 
 Traceback (most recent call last):
   File "/home/Jarvis/Musaddique/project_root/venv/lib/python3.11/site-packages/httpx/_transports/default.py", line 101, in map_httpcore_exceptions
@@ -98,5 +106,106 @@ Traceback (most recent call last):
   File "/home/Jarvis/Musaddique/project_root/venv/lib/python3.11/site-packages/openai/_base_client.py", line 1636, in request
     raise APIConnectionError(request=request) from err
 openai.APIConnectionError: Connection error.
-During task with name 'agent' and id 'e9863c77-ab2c-993c-da71-01b694df2bb1'
+During task with name 'agent' and id '3ed1512b-426e-645a-8b2c-0a40ca7ccdcd'
+(venv) Jarvis@JarvisPhase2:~/Musaddique/project_root/email_intent_agent$ python3 langgraph_client.py 
+Traceback (most recent call last):
+  File "/home/Jarvis/Musaddique/project_root/venv/lib/python3.11/site-packages/httpx/_transports/default.py", line 101, in map_httpcore_exceptions
+    yield
+  File "/home/Jarvis/Musaddique/project_root/venv/lib/python3.11/site-packages/httpx/_transports/default.py", line 394, in handle_async_request
+    resp = await self._pool.handle_async_request(req)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/Jarvis/Musaddique/project_root/venv/lib/python3.11/site-packages/httpcore/_async/connection_pool.py", line 207, in handle_async_request
+    raise UnsupportedProtocol(
+httpcore.UnsupportedProtocol: Request URL is missing an 'http://' or 'https://' protocol.
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "/home/Jarvis/Musaddique/project_root/venv/lib/python3.11/site-packages/openai/_base_client.py", line 1604, in request
+    response = await self._client.send(
+               ^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/Jarvis/Musaddique/project_root/venv/lib/python3.11/site-packages/httpx/_client.py", line 1629, in send
+    response = await self._send_handling_auth(
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/Jarvis/Musaddique/project_root/venv/lib/python3.11/site-packages/httpx/_client.py", line 1657, in _send_handling_auth
+    response = await self._send_handling_redirects(
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/Jarvis/Musaddique/project_root/venv/lib/python3.11/site-packages/httpx/_client.py", line 1694, in _send_handling_redirects
+    response = await self._send_single_request(request)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/Jarvis/Musaddique/project_root/venv/lib/python3.11/site-packages/httpx/_client.py", line 1730, in _send_single_request
+    response = await transport.handle_async_request(request)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/Jarvis/Musaddique/project_root/venv/lib/python3.11/site-packages/httpx/_transports/default.py", line 393, in handle_async_request
+    with map_httpcore_exceptions():
+  File "/usr/lib/python3.11/contextlib.py", line 155, in __exit__
+    self.gen.throw(typ, value, traceback)
+  File "/home/Jarvis/Musaddique/project_root/venv/lib/python3.11/site-packages/httpx/_transports/default.py", line 118, in map_httpcore_exceptions
+    raise mapped_exc(message) from exc
+httpx.UnsupportedProtocol: Request URL is missing an 'http://' or 'https://' protocol.
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "/home/Jarvis/Musaddique/project_root/email_intent_agent/langgraph_client.py", line 244, in <module>
+    asyncio.run(main())
+  File "/usr/lib/python3.11/asyncio/runners.py", line 190, in run
+    return runner.run(main)
+           ^^^^^^^^^^^^^^^^
+  File "/usr/lib/python3.11/asyncio/runners.py", line 118, in run
+    return self._loop.run_until_complete(task)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/lib/python3.11/asyncio/base_events.py", line 653, in run_until_complete
+    return future.result()
+           ^^^^^^^^^^^^^^^
+  File "/home/Jarvis/Musaddique/project_root/email_intent_agent/langgraph_client.py", line 236, in main
+    async for step in graph.astream(
+  File "/home/Jarvis/Musaddique/project_root/venv/lib/python3.11/site-packages/langgraph/pregel/main.py", line 2974, in astream
+    async for _ in runner.atick(
+  File "/home/Jarvis/Musaddique/project_root/venv/lib/python3.11/site-packages/langgraph/pregel/_runner.py", line 304, in atick
+    await arun_with_retry(
+  File "/home/Jarvis/Musaddique/project_root/venv/lib/python3.11/site-packages/langgraph/pregel/_retry.py", line 138, in arun_with_retry
+    return await task.proc.ainvoke(task.input, config)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/Jarvis/Musaddique/project_root/venv/lib/python3.11/site-packages/langgraph/_internal/_runnable.py", line 705, in ainvoke
+    input = await asyncio.create_task(
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/Jarvis/Musaddique/project_root/venv/lib/python3.11/site-packages/langgraph/_internal/_runnable.py", line 473, in ainvoke
+    ret = await self.afunc(*args, **kwargs)
+          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/Jarvis/Musaddique/project_root/email_intent_agent/langgraph_client.py", line 205, in agent_node
+    response = await llm.ainvoke([system] + state["messages"])
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/Jarvis/Musaddique/project_root/venv/lib/python3.11/site-packages/langchain_core/runnables/base.py", line 5704, in ainvoke
+    return await self.bound.ainvoke(
+           ^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/Jarvis/Musaddique/project_root/venv/lib/python3.11/site-packages/langchain_core/language_models/chat_models.py", line 425, in ainvoke
+    llm_result = await self.agenerate_prompt(
+                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/Jarvis/Musaddique/project_root/venv/lib/python3.11/site-packages/langchain_core/language_models/chat_models.py", line 1132, in agenerate_prompt
+    return await self.agenerate(
+           ^^^^^^^^^^^^^^^^^^^^^
+  File "/home/Jarvis/Musaddique/project_root/venv/lib/python3.11/site-packages/langchain_core/language_models/chat_models.py", line 1090, in agenerate
+    raise exceptions[0]
+  File "/home/Jarvis/Musaddique/project_root/venv/lib/python3.11/site-packages/langchain_core/language_models/chat_models.py", line 1359, in _agenerate_with_cache
+    result = await self._agenerate(
+             ^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/Jarvis/Musaddique/project_root/venv/lib/python3.11/site-packages/langchain_openai/chat_models/base.py", line 1634, in _agenerate
+    raise e
+  File "/home/Jarvis/Musaddique/project_root/venv/lib/python3.11/site-packages/langchain_openai/chat_models/base.py", line 1627, in _agenerate
+    raw_response = await self.async_client.with_raw_response.create(
+                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/Jarvis/Musaddique/project_root/venv/lib/python3.11/site-packages/openai/_legacy_response.py", line 381, in wrapped
+    return cast(LegacyAPIResponse[R], await func(*args, **kwargs))
+                                      ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/Jarvis/Musaddique/project_root/venv/lib/python3.11/site-packages/openai/resources/chat/completions/completions.py", line 2678, in create
+    return await self._post(
+           ^^^^^^^^^^^^^^^^^
+  File "/home/Jarvis/Musaddique/project_root/venv/lib/python3.11/site-packages/openai/_base_client.py", line 1884, in post
+    return await self.request(cast_to, opts, stream=stream, stream_cls=stream_cls)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/Jarvis/Musaddique/project_root/venv/lib/python3.11/site-packages/openai/_base_client.py", line 1636, in request
+    raise APIConnectionError(request=request) from err
+openai.APIConnectionError: Connection error.
+During task with name 'agent' and id 'f3332e69-0a2e-01d6-3ef0-78b74e54567e'
 (venv) Jarvis@JarvisPhase2:~/Musaddique/project_root/email_intent_agent$ 
