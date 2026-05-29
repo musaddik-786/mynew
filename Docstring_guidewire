@@ -1,82 +1,516 @@
-so here are 2 files i have been told to improve the docstring as per our scenario also some where there are mentions of Layout word so also we need to remove it for eg the summary part , Download PDF from blob, analyze layout using Form Recognizer, and classify layout
-this was actually not for our use case at all, as we know 
+client.py
+"""
+Jarvis Claims Agent — Interactive CLI Client
 
-from fastapi import APIRouter
-from fastapi.responses import JSONResponse
-from pydantic import BaseModel, Field
-from handler import guidewire_api_call
+Usage:
+    python client.py
+    Type 'exit' or 'quit' to end the session.
+"""
 
-router = APIRouter()
+import asyncio
+import httpx
+import uuid
+import json
+import os
+from dotenv import load_dotenv
 
-class QuoteRequest(BaseModel):
-    attachment_url: str = Field(..., description="Full Azure Blob URL to the PDF attachment.")
+load_dotenv(os.path.join(os.path.dirname(__file__), ".env"))
 
-@router.post("/Guidewire_Quote", operation_id="Guidewire_Quote",
-             summary="Download PDF from blob, analyze layout using Form Recognizer, and classify layout")
-async def generate_quote(request: QuoteRequest):
-    """Downloades the blob based on blob url and calls the Guidewire API with the data present in the blob for Quote generation
+AGENT_URL = os.getenv("AGENT_URL", "http://localhost:8002")
 
-    
-    Args:
-        attachment_url: The Blob URL oreturned by the email_attachment_mcp
-    
-    Returns:
-        JSONResponse: returns the json response containing Quote generated.
-    """
-    try:
-        result = await guidewire_api_call(request.attachment_url)
-        return JSONResponse(content={"jsonrpc": "2.0", "id": 1, "result": result}, status_code=200)
-    except Exception as e:
-        return JSONResponse(content={"jsonrpc": "2.0", "id": 1,
-                                     "result": {"status": False, "error": str(e)}}, status_code=200)
+W = 70  # display width
 
+# ── Colours ───────────────────────────────────────────────────────────────────
+C = {
+    "reset":    "\033[0m",
+    "bold":     "\033[1m",
+    "dim":      "\033[2m",
+    "user":     "\033[94m",   # blue
+    "ai":       "\033[92m",   # green
+    "tool_call":"\033[95m",   # magenta
+    "tool_ok":  "\033[96m",   # cyan
+    "tool_err": "\033[91m",   # red
+    "interrupt":"\033[93m",   # yellow
+    "error":    "\033[91m",   # red
+    "rule":     "\033[90m",   # dark grey
+}
 
+def rule(char="─"):
+    print(f"{C['rule']}{char * W}{C['reset']}")
 
+def header(label: str, colour: str):
+    pad = W - len(label) - 4
+    left = pad // 2
+    right = pad - left
+    print(f"{colour}{'─' * left}[ {label} ]{'─' * right}{C['reset']}")
 
-from fastapi import FastAPI
-from fastapi.middleware.cors import CORSMiddleware
-from fastapi_mcp import FastApiMCP
-import uvicorn
+def block(label: str, colour: str, body: str):
+    header(label, colour)
+    for line in body.strip().splitlines():
+        print(f"  {colour}{line}{C['reset']}")
+    rule()
 
-from router import router as file_router
+# ── Content extractor ─────────────────────────────────────────────────────────
 
+def extract_text(content) -> str:
+    if isinstance(content, str):
+        return content
+    if isinstance(content, list):
+        parts = []
+        for item in content:
+            if isinstance(item, dict):
+                parts.append(item.get("text") or item.get("content") or json.dumps(item))
+            else:
+                parts.append(str(item))
+        return "\n".join(p for p in parts if p)
+    return str(content) if content else ""
 
-def apply_cors(app: FastAPI):
-    app.add_middleware(
-        CORSMiddleware,
-        allow_origins=["*"],
-        allow_methods=["*"],
-        allow_headers=["*"],
-    )
+# ── Stream Handler ────────────────────────────────────────────────────────────
 
+async def stream_chat(query: str, thread_id: str, endpoint: str = "/chat"):
+    payload  = {"query": query, "thread_id": thread_id}
+    final_state = {"state": ""}
 
-def create_sub_app(title: str, description: str, version: str = "0.1.0") -> FastAPI:
-    sub = FastAPI(title=title, description=description, version=version)
-    apply_cors(sub)
-    return sub
+    async with httpx.AsyncClient(timeout=None) as client:
+        async with client.stream("POST", f"{AGENT_URL}{endpoint}", json=payload) as response:
+            async for line in response.aiter_lines():
+                if not line.startswith("data: "):
+                    continue
+                raw = line.removeprefix("data: ").strip()
+                if not raw:
+                    continue
+                try:
+                    parsed = json.loads(raw)
+                except json.JSONDecodeError:
+                    continue
 
+                # ── Stream-level error ────────────────────────────────────────
+                if "error" in parsed:
+                    block("STREAM ERROR", C["error"], parsed["error"])
+                    yield parsed
 
-app = FastAPI()
-apply_cors(app)
+                # ── Agent message ─────────────────────────────────────────────
+                elif "message" in parsed:
+                    msg      = parsed["message"]
+                    msg_type = msg.get("type", "") if isinstance(msg, dict) else ""
+                    content  = msg.get("content", "") if isinstance(msg, dict) else str(msg)
 
-file_app = create_sub_app(
-    title="Guide wire Integration",
-    description="Receives Response from Licensing_&Sanction_Check_MCP andreceives a JSON-RPC request from the Licensing & Sanction Checker MCP containing the `is_Sanctioned` flag. Based on this value, it reads the ref_eligibility_check Table and writes corresponding data into agent_eligibility Table."
-)
-file_app.include_router(file_router)
+                    if msg_type == "ai":
+                        tool_calls = msg.get("tool_calls") or []
 
-# Expose ONLY this operation id via MCP HTTP (client will use transport='http')
-FastApiMCP(file_app, include_operations=["Guidewire_Quote"]).mount_http()
+                        # Tool-call invocations
+                        for tc in tool_calls:
+                            name = tc.get("name", "?")
+                            args = tc.get("args") or tc.get("input") or {}
+                            body = json.dumps(args, indent=2, ensure_ascii=False)
+                            block(f"TOOL CALL → {name}", C["tool_call"], body)
 
-# Mount the sub-app under this prefix (keep as-is per your request)
-# app.mount("/api/v1/eligibility_agent", file_app)
-app.mount("/api/v1/quote", file_app)
+                        # Plain AI text (no tool call)
+                        if not tool_calls:
+                            text = extract_text(content)
+                            if text:
+                                block("JARVIS", C["ai"], text)
+
+                    elif msg_type == "tool":
+                        name = msg.get("name", "tool")
+                        text = extract_text(content)
+                        is_err = "error" in text.lower() or "failed" in text.lower()
+                        colour = C["tool_err"] if is_err else C["tool_ok"]
+                        label  = f"TOOL ERROR ← {name}" if is_err else f"TOOL RESULT ← {name}"
+                        block(label, colour, text[:600] + ("…" if len(text) > 600 else ""))
+
+                    elif msg_type == "human":
+                        text = extract_text(content)
+                        if text:
+                            block("YOU", C["user"], text)
+
+                    yield parsed
+
+                # ── Human-in-the-loop interrupt ───────────────────────────────
+                elif "interrupt" in parsed:
+                    data = parsed["interrupt"]
+                    query_text = data.get("query", str(data))
+                    block("JARVIS ASKS — Human Assistance Required", C["interrupt"], query_text)
+                    final_state = {"state": "interrupt", "content": parsed}
+                    yield parsed
+
+    yield final_state
+
+# ── Main Loop ─────────────────────────────────────────────────────────────────
+
+async def main():
+    session_id = str(uuid.uuid4())
+    state = {"state": ""}
+
+    print()
+    print(f"{C['ai']}{C['bold']}{'═' * W}{C['reset']}")
+    print(f"{C['ai']}{C['bold']}{'  Jarvis Claims Agent':^{W}}{C['reset']}")
+    print(f"{C['rule']}{'  Session: ' + session_id:^{W}}{C['reset']}")
+    print(f"{C['rule']}{'  Type exit to quit':^{W}}{C['reset']}")
+    print(f"{C['ai']}{C['bold']}{'═' * W}{C['reset']}")
+    print()
+
+    while True:
+        try:
+            user_input = input(f"{C['user']}{C['bold']}You:{C['reset']} ").strip()
+        except (EOFError, KeyboardInterrupt):
+            print("\nSession ended.")
+            break
+
+        if user_input.lower() in ("exit", "quit", "q"):
+            print("Session ended.")
+            break
+
+        if not user_input:
+            continue
+
+        # Echo the user message in the same block style
+        rule("─")
+        header("YOU", C["user"])
+        print(f"  {C['user']}{user_input}{C['reset']}")
+        rule("─")
+        print()
+
+        endpoint  = "/continue_chat" if state.get("state") == "interrupt" else "/chat"
+        new_state = {"state": ""}
+
+        async for resp in stream_chat(user_input, session_id, endpoint):
+            if isinstance(resp, dict):
+                if resp.get("state") == "interrupt":
+                    new_state = resp
+                elif resp.get("state") == "":
+                    new_state = {"state": ""}
+
+        state = new_state
+        print()
 
 
 if __name__ == "__main__":
-    uvicorn.run(app, host="0.0.0.0", port=8601)
+    asyncio.run(main())
+
+
+
+graph.py
+
+"""
+Jarvis Claims Agent — Interactive CLI Client
+
+Usage:
+    python client.py
+    Type 'exit' or 'quit' to end the session.
+"""
+
+import asyncio
+import httpx
+import uuid
+import json
+import os
+from dotenv import load_dotenv
+
+load_dotenv(os.path.join(os.path.dirname(__file__), ".env"))
+
+AGENT_URL = os.getenv("AGENT_URL", "http://localhost:8002")
+
+W = 70  # display width
+
+# ── Colours ───────────────────────────────────────────────────────────────────
+C = {
+    "reset":    "\033[0m",
+    "bold":     "\033[1m",
+    "dim":      "\033[2m",
+    "user":     "\033[94m",   # blue
+    "ai":       "\033[92m",   # green
+    "tool_call":"\033[95m",   # magenta
+    "tool_ok":  "\033[96m",   # cyan
+    "tool_err": "\033[91m",   # red
+    "interrupt":"\033[93m",   # yellow
+    "error":    "\033[91m",   # red
+    "rule":     "\033[90m",   # dark grey
+}
+
+def rule(char="─"):
+    print(f"{C['rule']}{char * W}{C['reset']}")
+
+def header(label: str, colour: str):
+    pad = W - len(label) - 4
+    left = pad // 2
+    right = pad - left
+    print(f"{colour}{'─' * left}[ {label} ]{'─' * right}{C['reset']}")
+
+def block(label: str, colour: str, body: str):
+    header(label, colour)
+    for line in body.strip().splitlines():
+        print(f"  {colour}{line}{C['reset']}")
+    rule()
+
+# ── Content extractor ─────────────────────────────────────────────────────────
+
+def extract_text(content) -> str:
+    if isinstance(content, str):
+        return content
+    if isinstance(content, list):
+        parts = []
+        for item in content:
+            if isinstance(item, dict):
+                parts.append(item.get("text") or item.get("content") or json.dumps(item))
+            else:
+                parts.append(str(item))
+        return "\n".join(p for p in parts if p)
+    return str(content) if content else ""
+
+# ── Stream Handler ────────────────────────────────────────────────────────────
+
+async def stream_chat(query: str, thread_id: str, endpoint: str = "/chat"):
+    payload  = {"query": query, "thread_id": thread_id}
+    final_state = {"state": ""}
+
+    async with httpx.AsyncClient(timeout=None) as client:
+        async with client.stream("POST", f"{AGENT_URL}{endpoint}", json=payload) as response:
+            async for line in response.aiter_lines():
+                if not line.startswith("data: "):
+                    continue
+                raw = line.removeprefix("data: ").strip()
+                if not raw:
+                    continue
+                try:
+                    parsed = json.loads(raw)
+                except json.JSONDecodeError:
+                    continue
+
+                # ── Stream-level error ────────────────────────────────────────
+                if "error" in parsed:
+                    block("STREAM ERROR", C["error"], parsed["error"])
+                    yield parsed
+
+                # ── Agent message ─────────────────────────────────────────────
+                elif "message" in parsed:
+                    msg      = parsed["message"]
+                    msg_type = msg.get("type", "") if isinstance(msg, dict) else ""
+                    content  = msg.get("content", "") if isinstance(msg, dict) else str(msg)
+
+                    if msg_type == "ai":
+                        tool_calls = msg.get("tool_calls") or []
+
+                        # Tool-call invocations
+                        for tc in tool_calls:
+                            name = tc.get("name", "?")
+                            args = tc.get("args") or tc.get("input") or {}
+                            body = json.dumps(args, indent=2, ensure_ascii=False)
+                            block(f"TOOL CALL → {name}", C["tool_call"], body)
+
+                        # Plain AI text (no tool call)
+                        if not tool_calls:
+                            text = extract_text(content)
+                            if text:
+                                block("JARVIS", C["ai"], text)
+
+                    elif msg_type == "tool":
+                        name = msg.get("name", "tool")
+                        text = extract_text(content)
+                        is_err = "error" in text.lower() or "failed" in text.lower()
+                        colour = C["tool_err"] if is_err else C["tool_ok"]
+                        label  = f"TOOL ERROR ← {name}" if is_err else f"TOOL RESULT ← {name}"
+                        block(label, colour, text[:600] + ("…" if len(text) > 600 else ""))
+
+                    elif msg_type == "human":
+                        text = extract_text(content)
+                        if text:
+                            block("YOU", C["user"], text)
+
+                    yield parsed
+
+                # ── Human-in-the-loop interrupt ───────────────────────────────
+                elif "interrupt" in parsed:
+                    data = parsed["interrupt"]
+                    query_text = data.get("query", str(data))
+                    block("JARVIS ASKS — Human Assistance Required", C["interrupt"], query_text)
+                    final_state = {"state": "interrupt", "content": parsed}
+                    yield parsed
+
+    yield final_state
+
+# ── Main Loop ─────────────────────────────────────────────────────────────────
+
+async def main():
+    session_id = str(uuid.uuid4())
+    state = {"state": ""}
+
+    print()
+    print(f"{C['ai']}{C['bold']}{'═' * W}{C['reset']}")
+    print(f"{C['ai']}{C['bold']}{'  Jarvis Claims Agent':^{W}}{C['reset']}")
+    print(f"{C['rule']}{'  Session: ' + session_id:^{W}}{C['reset']}")
+    print(f"{C['rule']}{'  Type exit to quit':^{W}}{C['reset']}")
+    print(f"{C['ai']}{C['bold']}{'═' * W}{C['reset']}")
+    print()
+
+    while True:
+        try:
+            user_input = input(f"{C['user']}{C['bold']}You:{C['reset']} ").strip()
+        except (EOFError, KeyboardInterrupt):
+            print("\nSession ended.")
+            break
+
+        if user_input.lower() in ("exit", "quit", "q"):
+            print("Session ended.")
+            break
+
+        if not user_input:
+            continue
+
+        # Echo the user message in the same block style
+        rule("─")
+        header("YOU", C["user"])
+        print(f"  {C['user']}{user_input}{C['reset']}")
+        rule("─")
+        print()
+
+        endpoint  = "/continue_chat" if state.get("state") == "interrupt" else "/chat"
+        new_state = {"state": ""}
+
+        async for resp in stream_chat(user_input, session_id, endpoint):
+            if isinstance(resp, dict):
+                if resp.get("state") == "interrupt":
+                    new_state = resp
+                elif resp.get("state") == "":
+                    new_state = {"state": ""}
+
+        state = new_state
+        print()
+
+
+
+if __name__ == "__main__":
+    asyncio.run(main())
 
 
 
 
 
+server.py
+import os
+from dotenv import load_dotenv
+
+load_dotenv(os.path.join(os.path.dirname(__file__), ".env"))
+
+import sys
+sys.path.insert(0, os.path.dirname(__file__))
+
+from graph import graph
+from langgraph.types import Command
+
+from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import StreamingResponse
+from pydantic import BaseModel
+import uvicorn
+import json
+
+AGENT_PORT = int(os.getenv("AGENT_PORT", "8002"))
+
+# ── SSE Streaming Helpers ─────────────────────────────────────────────────────
+
+async def _stream_graph(input_data, thread_id: str):
+    """Shared generator for both /chat and /continue_chat."""
+    config = {"configurable": {"thread_id": thread_id}}
+    try:
+        async for event in graph.astream(input_data, config):
+            for value in event.values():
+                if "messages" in value:
+                    msg = value["messages"][-1]
+                    if hasattr(msg, "model_dump"):
+                        data = {"message": msg.model_dump()}
+                    elif hasattr(msg, "dict"):
+                        data = {"message": msg.dict()}
+                    else:
+                        data = {"message": str(msg)}
+                    yield f"data: {json.dumps(data)}\n\n"
+                else:
+                    # LangGraph interrupt — human assistance required
+                    try:
+                        interrupt_payload = {
+                            "query":   value[0].value["query"],
+                            "id":      value[0].id,
+                            "session": thread_id,
+                        }
+                        yield f"data: {json.dumps({'interrupt': interrupt_payload})}\n\n"
+                    except (IndexError, KeyError, TypeError):
+                        yield f"data: {json.dumps({'interrupt': {'query': str(value), 'session': thread_id}})}\n\n"
+    except Exception as exc:
+        yield f"data: {json.dumps({'error': str(exc)})}\n\n"
+
+
+async def stream(message: str, thread_id: str):
+    input_data = {"messages": [{"role": "user", "content": message}]}
+    async for chunk in _stream_graph(input_data, thread_id):
+        yield chunk
+
+
+async def continue_stream(message: str, thread_id: str):
+    input_data = Command(resume={"messages": [{"role": "user", "content": message}]})
+    async for chunk in _stream_graph(input_data, thread_id):
+        yield chunk
+
+# ── FastAPI App ───────────────────────────────────────────────────────────────
+
+app = FastAPI(
+    title="Jarvis Claims Agent",
+    description="Autonomous AI claims adjuster powered by LangGraph + Claude.",
+    version="1.0.0",
+    docs_url="/docs",
+)
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+# ── Request Schema ────────────────────────────────────────────────────────────
+
+class ChatInput(BaseModel):
+    query: str
+    thread_id: str
+
+# ── Routes ────────────────────────────────────────────────────────────────────
+
+@app.post(
+    "/chat",
+    summary="Start or continue a claim session",
+    description="Send a message to Jarvis. Returns a server-sent event stream. "
+                "Each event is either `{message: {...}}` (agent output) or "
+                "`{interrupt: {query, id, session}}` (human assistance required).",
+)
+async def chat(input: ChatInput):
+    return StreamingResponse(
+        stream(input.query, input.thread_id),
+        media_type="text/event-stream",
+    )
+
+
+@app.post(
+    "/continue_chat",
+    summary="Resume after a human-assistance interrupt",
+    description="Called after the agent emits an `interrupt` event. "
+                "Pass the same `thread_id` and the human's response as `query`.",
+)
+async def continue_chat(input: ChatInput):
+    return StreamingResponse(
+        continue_stream(input.query, input.thread_id),
+        media_type="text/event-stream",
+    )
+
+
+@app.get("/health", summary="Health check")
+async def health():
+    return {
+        "status": "ok",
+        "agent": "Jarvis Claims Agent",
+        "port": AGENT_PORT,
+    }
+
+# ── Entry Point ───────────────────────────────────────────────────────────────
+
+if __name__ == "__main__":
+    uvicorn.run(app, host="0.0.0.0", port=AGENT_PORT)
