@@ -191,198 +191,335 @@ if __name__ == "__main__":
 
 
 graph.py
-
-"""
-Jarvis Claims Agent — Interactive CLI Client
-
-Usage:
-    python client.py
-    Type 'exit' or 'quit' to end the session.
-"""
-
-import asyncio
-import httpx
-import uuid
-import json
 import os
 from dotenv import load_dotenv
 
 load_dotenv(os.path.join(os.path.dirname(__file__), ".env"))
 
-AGENT_URL = os.getenv("AGENT_URL", "http://localhost:8002")
+import asyncio
+import json
+import httpx
+import base64
+from typing import Annotated, Optional
+from typing_extensions import TypedDict
 
-W = 70  # display width
+from langgraph.graph import StateGraph, START, END
+from langgraph.graph.message import add_messages
+from langgraph.checkpoint.memory import InMemorySaver
+from langgraph.prebuilt import ToolNode, tools_condition
+from langgraph.types import interrupt
+from langchain_core.tools import tool
+from langchain_core.messages import SystemMessage, AIMessage, HumanMessage
+from langchain_mcp_adapters.client import MultiServerMCPClient
 
-# ── Colours ───────────────────────────────────────────────────────────────────
-C = {
-    "reset":    "\033[0m",
-    "bold":     "\033[1m",
-    "dim":      "\033[2m",
-    "user":     "\033[94m",   # blue
-    "ai":       "\033[92m",   # green
-    "tool_call":"\033[95m",   # magenta
-    "tool_ok":  "\033[96m",   # cyan
-    "tool_err": "\033[91m",   # red
-    "interrupt":"\033[93m",   # yellow
-    "error":    "\033[91m",   # red
-    "rule":     "\033[90m",   # dark grey
+# ── Config ────────────────────────────────────────────────────────────────────
+
+MCP_GATEWAY = os.getenv("MCP_GATEWAY_URL", "http://localhost:8001")
+LLM_PROVIDER = os.getenv("LLM_PROVIDER", "anthropic")
+
+MCP_SERVERS = {
+    "fnol":        {"url": f"{MCP_GATEWAY}/api/v1/fnol_mcp/mcp",        "transport": "streamable_http"},
+    "guidewire":   {"url": f"{MCP_GATEWAY}/api/v1/guidewire_mcp/mcp",   "transport": "streamable_http"},
+    "claims_core": {"url": f"{MCP_GATEWAY}/api/v1/claims_core_mcp/mcp", "transport": "streamable_http"},
+    "fraud":       {"url": f"{MCP_GATEWAY}/api/v1/fraud_mcp/mcp",       "transport": "streamable_http"},
 }
 
-def rule(char="─"):
-    print(f"{C['rule']}{char * W}{C['reset']}")
+# ── System Prompt ─────────────────────────────────────────────────────────────
 
-def header(label: str, colour: str):
-    pad = W - len(label) - 4
-    left = pad // 2
-    right = pad - left
-    print(f"{colour}{'─' * left}[ {label} ]{'─' * right}{C['reset']}")
+SYSTEM_PROMPT = """You are Jarvis, an AI-powered insurance FNOL intake specialist. Your role is to
+collect all required information from the policyholder and create a complete First Notice of Loss record.
 
-def block(label: str, colour: str, body: str):
-    header(label, colour)
-    for line in body.strip().splitlines():
-        print(f"  {colour}{line}{C['reset']}")
-    rule()
+## Your Tools
 
-# ── Content extractor ─────────────────────────────────────────────────────────
+### fnol_mcp
+  get_mandatory_fields     — retrieve the list of required FNOL fields
+  create_fnol_submission   — open a new FNOL record
+  update_fnol_field        — fill or correct a field on an existing FNOL
+  get_fnol_submission      — read back a FNOL record to verify completeness
+  get_fnol_evidence        — list evidence already attached to a FNOL
+  register_fnol_evidence   — attach an already-uploaded file URL as evidence
 
-def extract_text(content) -> str:
-    if isinstance(content, str):
-        return content
-    if isinstance(content, list):
-        parts = []
-        for item in content:
-            if isinstance(item, dict):
-                parts.append(item.get("text") or item.get("content") or json.dumps(item))
-            else:
-                parts.append(str(item))
-        return "\n".join(p for p in parts if p)
-    return str(content) if content else ""
+Note: image verification runs automatically after register_fnol_evidence — you do not need to call it.
 
-# ── Stream Handler ────────────────────────────────────────────────────────────
+### guidewire_mcp
+  get_guidewire_policy     — look up a policy from Guidewire PolicyCenter by policy number.
+                             Returns coverage details, effective dates, insured name, and underwriting info.
+                             Use this to verify the policy exists and is active before creating the FNOL.
 
-async def stream_chat(query: str, thread_id: str, endpoint: str = "/chat"):
-    payload  = {"query": query, "thread_id": thread_id}
-    final_state = {"state": ""}
+### claims_core_mcp
+  create_claim             — register a formal claim record after FNOL is complete.
+                             Map fields directly from the completed FNOL: policyNumber, insuredName →
+                             policyholderName, lossType, lossDescription → shortDescription, dateOfLoss,
+                             causeOfLoss → detectedCause, location. Do NOT pass claimNumber — the server
+                             generates it automatically.
 
-    async with httpx.AsyncClient(timeout=None) as client:
-        async with client.stream("POST", f"{AGENT_URL}{endpoint}", json=payload) as response:
-            async for line in response.aiter_lines():
-                if not line.startswith("data: "):
-                    continue
-                raw = line.removeprefix("data: ").strip()
-                if not raw:
-                    continue
-                try:
-                    parsed = json.loads(raw)
-                except json.JSONDecodeError:
-                    continue
+### fraud_mcp
+  write_fraud_flag         — raise a fraud flag on a claim when a suspicious signal is detected.
+                             Required fields:
+                               claimId         — the claimNumber STRING from create_claim (e.g. "CLM-2024-001"), NOT the numeric id
+                               flagType        — "image_mismatch", "image_manipulation", "inconsistent_damage", "suspicious_evidence"
+                               flagDescription — full narrative including red_flags list and assessment text
+                               riskScore       — 0–100 (90=high confidence mismatch, 60=medium, 30=low)
+                               detectedBy      — always "ai" for image verification findings
+                             Optional: status (default "Active")
 
-                # ── Stream-level error ────────────────────────────────────────
-                if "error" in parsed:
-                    block("STREAM ERROR", C["error"], parsed["error"])
-                    yield parsed
+## FNOL Intake Workflow
+1. get_mandatory_fields        — know exactly what information is required
+2. human_assistance            — ask the policyholder for their policy number and loss details
+3. get_guidewire_policy        — verify the policy in Guidewire before proceeding
+   ↳ If policy not found or inactive, inform the policyholder via human_assistance and stop
+   ↳ Pre-fill insuredName and policyNumber from the Guidewire response
+4. create_fnol_submission      — open the FNOL with the collected data
+5. update_fnol_field           — fill any fields that were missing or incorrect
+6. get_fnol_submission         — verify the FNOL record is complete
+7. register_fnol_evidence      — if the policyholder provides a document/photo URL, attach it
+   ↳ image verification runs automatically and the result is added to your context
+   ↳ if match=false OR red_flags is non-empty → proceed to step 7a, then step 8
+7a. write_fraud_flag           — ONLY if image verification returned match=false or red_flags:
+   ↳ claimId = claimNumber string from create_claim (e.g. "CLM-2024-001")
+   ↳ detectedBy = "ai"
+   ↳ derive flagType from red_flags content
+   ↳ riskScore: confidence=high → 90, medium → 65, low → 35
+   ↳ flagDescription: include full assessment text and all red_flags items
+8. create_claim                — convert the completed FNOL into a formal claim record
+   ↳ map fields from the FNOL response; omit claimNumber (auto-generated)
+   ↳ set severity based on estimatedCost if provided, otherwise use "Medium" as default
+   ↳ if a fraud flag was raised, set aiConfidence to a lower value (e.g. 50) to ensure manual review
+9. human_assistance            — confirm with the policyholder: share the FNOL number and Claim Number;
+                                 if fraud was flagged, inform them clearly that the claim has been marked
+                                 for review and an adjuster will follow up
 
-                # ── Agent message ─────────────────────────────────────────────
-                elif "message" in parsed:
-                    msg      = parsed["message"]
-                    msg_type = msg.get("type", "") if isinstance(msg, dict) else ""
-                    content  = msg.get("content", "") if isinstance(msg, dict) else str(msg)
+## Critical Rules
+1. ALWAYS call get_mandatory_fields first — never guess what fields are required.
+2. ALWAYS call get_guidewire_policy to verify the policy in Guidewire before creating a FNOL.
+3. NEVER create a FNOL for a policy that does not exist or is inactive in Guidewire.
+4. ALWAYS call create_claim after the FNOL is verified complete — every FNOL must result in a claim.
+5. NEVER pass claimNumber to create_claim — the server generates it automatically.
+6. If image verification returns match=false OR any red_flags, ALWAYS call write_fraud_flag before create_claim.
+7. NEVER suppress or ignore fraud signals — even Low severity flags must be recorded.
+8. ALWAYS call human_assistance at the end to share both the FNOL number and the Claim Number.
+9. NEVER invent or assume field values — ask the policyholder if anything is unclear.
+10. If a tool returns {"error": "..."}, report the error and ask human_assistance.
+11. Be concise — one sentence on what you found, one on what you will do next.
 
-                    if msg_type == "ai":
-                        tool_calls = msg.get("tool_calls") or []
+## Tone
+Warm, patient, and professional. You are helping a policyholder who may be stressed after an incident."""
 
-                        # Tool-call invocations
-                        for tc in tool_calls:
-                            name = tc.get("name", "?")
-                            args = tc.get("args") or tc.get("input") or {}
-                            body = json.dumps(args, indent=2, ensure_ascii=False)
-                            block(f"TOOL CALL → {name}", C["tool_call"], body)
+# ── Human-in-the-loop tool ────────────────────────────────────────────────────
 
-                        # Plain AI text (no tool call)
-                        if not tool_calls:
-                            text = extract_text(content)
-                            if text:
-                                block("JARVIS", C["ai"], text)
+@tool
+def human_assistance(query: str) -> str:
+    """Pause and request input from a human — adjuster, policyholder, or supervisor.
+    Use before any irreversible action and whenever critical information is missing
+    or ambiguous. Be specific about what you need."""
+    response = interrupt({"query": query})
+    if isinstance(response, dict) and "messages" in response:
+        messages = response["messages"]
+        if messages and isinstance(messages[-1], dict):
+            return messages[-1].get("content", str(response))
+    return str(response)
 
-                    elif msg_type == "tool":
-                        name = msg.get("name", "tool")
-                        text = extract_text(content)
-                        is_err = "error" in text.lower() or "failed" in text.lower()
-                        colour = C["tool_err"] if is_err else C["tool_ok"]
-                        label  = f"TOOL ERROR ← {name}" if is_err else f"TOOL RESULT ← {name}"
-                        block(label, colour, text[:600] + ("…" if len(text) > 600 else ""))
+# ── LLM ───────────────────────────────────────────────────────────────────────
 
-                    elif msg_type == "human":
-                        text = extract_text(content)
-                        if text:
-                            block("YOU", C["user"], text)
+if LLM_PROVIDER == "azure" or os.getenv("AZURE_INFERENCE_ENDPOINT"):
+    from langchain_openai import AzureChatOpenAI
+    llm = AzureChatOpenAI(
+        azure_endpoint=os.getenv("AZURE_INFERENCE_ENDPOINT"),
+        azure_deployment=os.getenv("AZURE_OPENAI_CHAT_DEPLOYMENT_NAME", "gpt-4o"),
+        api_key=os.getenv("AZURE_INFERENCE_CREDENTIAL"),
+        api_version=os.getenv("AZURE_OPENAI_API_VERSION", "2025-01-01-preview"),
+        temperature=0.0,
+        max_tokens=4096,
+    )
+else:
+    from langchain_anthropic import ChatAnthropic
+    llm = ChatAnthropic(
+        model=os.getenv("ANTHROPIC_MODEL", "claude-sonnet-4-6"),
+        temperature=0.0,
+        max_tokens=4096,
+    )
 
-                    yield parsed
+# ── MCP Tool Loading ──────────────────────────────────────────────────────────
 
-                # ── Human-in-the-loop interrupt ───────────────────────────────
-                elif "interrupt" in parsed:
-                    data = parsed["interrupt"]
-                    query_text = data.get("query", str(data))
-                    block("JARVIS ASKS — Human Assistance Required", C["interrupt"], query_text)
-                    final_state = {"state": "interrupt", "content": parsed}
-                    yield parsed
+async def _load_mcp_tools() -> list:
+    client = MultiServerMCPClient(MCP_SERVERS)
+    return await client.get_tools()
 
-    yield final_state
+mcp_tools = asyncio.run(_load_mcp_tools())
+tools = [human_assistance] + mcp_tools
 
-# ── Main Loop ─────────────────────────────────────────────────────────────────
+print("=" * 60)
+print(f"  Jarvis Agent — {len(tools)} tools loaded")
+print("=" * 60)
+for i, t in enumerate(tools, 1):
+    print(f"  {i:3}. {t.name}")
+print("=" * 60)
 
-async def main():
-    session_id = str(uuid.uuid4())
-    state = {"state": ""}
+llm_with_tools = llm.bind_tools(tools)
 
-    print()
-    print(f"{C['ai']}{C['bold']}{'═' * W}{C['reset']}")
-    print(f"{C['ai']}{C['bold']}{'  Jarvis Claims Agent':^{W}}{C['reset']}")
-    print(f"{C['rule']}{'  Session: ' + session_id:^{W}}{C['reset']}")
-    print(f"{C['rule']}{'  Type exit to quit':^{W}}{C['reset']}")
-    print(f"{C['ai']}{C['bold']}{'═' * W}{C['reset']}")
-    print()
+def _handle_tool_errors(e: Exception) -> str:
+    return f"Tool call failed: {e}. Fix the inputs and try again."
 
-    while True:
+tool_node = ToolNode(tools=tools, handle_tool_errors=_handle_tool_errors)
+
+# ── Graph State ───────────────────────────────────────────────────────────────
+
+class State(TypedDict):
+    messages:             Annotated[list, add_messages]
+    pending_image_url:    Optional[str]   # set when register_fnol_evidence is called
+    incident_description: Optional[str]   # captured from the FNOL submission context
+
+memory = InMemorySaver()
+
+# ── Graph Nodes ───────────────────────────────────────────────────────────────
+
+async def chatbot(state: State) -> dict:
+    messages = [SystemMessage(content=SYSTEM_PROMPT)] + state["messages"]
+    message = await llm_with_tools.ainvoke(messages)
+
+    # Capture image URL + incident description whenever register_fnol_evidence is called
+    updates: dict = {"messages": [message]}
+    if message.tool_calls:
+        for tc in message.tool_calls:
+            if tc["name"] == "register_fnol_evidence":
+                args = tc.get("args", {})
+                updates["pending_image_url"] = args.get("file_url")
+                # Build incident description from recent conversation
+                description_parts = []
+                for msg in state["messages"]:
+                    content = msg.content if hasattr(msg, "content") else ""
+                    if isinstance(content, str) and content:
+                        description_parts.append(content)
+                updates["incident_description"] = " ".join(description_parts)[-800:]
+                break
+    return updates
+
+
+async def verify_image_node(state: State) -> dict:
+    """Mandatory graph node: automatically verifies the uploaded image against the
+    incident description using Azure OpenAI Vision. Injects the result into the
+    message history so the chatbot can act on it. Always runs after register_fnol_evidence."""
+    file_url    = state.get("pending_image_url", "")
+    description = state.get("incident_description", "")
+
+    if not file_url:
+        return {"pending_image_url": None}
+
+    endpoint    = os.getenv("AZURE_INFERENCE_ENDPOINT", "").rstrip("/")
+    api_key     = os.getenv("AZURE_INFERENCE_CREDENTIAL", "")
+    deployment  = os.getenv("AZURE_OPENAI_CHAT_DEPLOYMENT_NAME", "gpt-4o")
+    api_version = os.getenv("AZURE_OPENAI_API_VERSION", "2025-01-01-preview")
+
+    if not endpoint or not api_key:
+        result_text = json.dumps({"error": "Azure OpenAI credentials not configured."})
+    else:
+        vision_url = f"{endpoint}/openai/deployments/{deployment}/chat/completions?api-version={api_version}"
+        payload = {
+            "messages": [
+                {
+                    "role": "system",
+                    "content": (
+                        "You are an insurance fraud and evidence analyst. "
+                        "Determine whether the image is consistent with the described incident. "
+                        "Respond ONLY with a valid JSON object with these exact keys: "
+                        "match (bool), confidence (high/medium/low), detected_content (str), "
+                        "assessment (str), red_flags (list of str)."
+                    ),
+                },
+                {
+                    "role": "user",
+                    "content": [
+                        {
+                            "type": "text",
+                            "text": (
+                                f"Incident context from conversation: {description}\n\n"
+                                "Does the image below match this incident?"
+                            ),
+                        },
+                        {
+                            "type": "image_url",
+                            "image_url": {"url": file_url},
+                        },
+                    ],
+                },
+            ],
+            "max_tokens": 512,
+            "temperature": 0.0,
+        }
         try:
-            user_input = input(f"{C['user']}{C['bold']}You:{C['reset']} ").strip()
-        except (EOFError, KeyboardInterrupt):
-            print("\nSession ended.")
-            break
+            # Download blob using Azure SDK (handles private containers)
+            conn_str = os.getenv("AZURE_STORAGE_CONNECTION_STRING", "")
+            if conn_str:
+                from azure.storage.blob import BlobServiceClient
+                # Parse container and blob name from URL
+                # URL format: https://<account>.blob.core.windows.net/<container>/<blob>
+                url_path = file_url.split(".blob.core.windows.net/", 1)[-1]
+                container_name, blob_name = url_path.split("/", 1)
+                blob_client = BlobServiceClient.from_connection_string(conn_str).get_blob_client(
+                    container=container_name, blob=blob_name
+                )
+                img_bytes = blob_client.download_blob().readall()
+                mime = "image/jpeg"
+            else:
+                # Fallback: try direct HTTP download
+                async with httpx.AsyncClient(timeout=30) as client:
+                    img_response = await client.get(file_url)
+                    img_response.raise_for_status()
+                    mime = img_response.headers.get("content-type", "image/jpeg").split(";")[0]
+                    img_bytes = img_response.content
 
-        if user_input.lower() in ("exit", "quit", "q"):
-            print("Session ended.")
-            break
+            b64 = base64.b64encode(img_bytes).decode("utf-8")
+            payload["messages"][1]["content"][1]["image_url"] = {
+                "url": f"data:{mime};base64,{b64}"
+            }
 
-        if not user_input:
-            continue
+            async with httpx.AsyncClient(timeout=30) as client:
+                r = await client.post(vision_url, json=payload, headers={"api-key": api_key})
+            if r.status_code != 200:
+                result_text = json.dumps({
+                    "error": f"Azure Vision returned {r.status_code}",
+                    "detail": r.text[:500],
+                })
+            else:
+                raw = r.json()["choices"][0]["message"]["content"].strip()
+                if raw.startswith("```"):
+                    raw = raw.split("\n", 1)[-1].rsplit("```", 1)[0].strip()
+                result_text = raw
+        except Exception as e:
+            result_text = json.dumps({"error": f"Image verification failed: {e}"})
 
-        # Echo the user message in the same block style
-        rule("─")
-        header("YOU", C["user"])
-        print(f"  {C['user']}{user_input}{C['reset']}")
-        rule("─")
-        print()
+    verification_msg = HumanMessage(
+        content=f"[System: Automatic image verification result]\n{result_text}",
+    )
+    return {
+        "messages":          [verification_msg],
+        "pending_image_url": None,  # clear after verification
+    }
 
-        endpoint  = "/continue_chat" if state.get("state") == "interrupt" else "/chat"
-        new_state = {"state": ""}
+# ── Routing ───────────────────────────────────────────────────────────────────
 
-        async for resp in stream_chat(user_input, session_id, endpoint):
-            if isinstance(resp, dict):
-                if resp.get("state") == "interrupt":
-                    new_state = resp
-                elif resp.get("state") == "":
-                    new_state = {"state": ""}
+def after_tools(state: State) -> str:
+    """Route to verify_image if an image is waiting for verification."""
+    if state.get("pending_image_url"):
+        return "verify_image"
+    return "chatbot"
 
-        state = new_state
-        print()
+# ── Graph Definition ──────────────────────────────────────────────────────────
 
+graph_builder = StateGraph(State)
+graph_builder.add_node("chatbot",      chatbot)
+graph_builder.add_node("tools",        tool_node)
+graph_builder.add_node("verify_image", verify_image_node)
 
+graph_builder.add_edge(START, "chatbot")
+graph_builder.add_conditional_edges("chatbot", tools_condition)
+graph_builder.add_conditional_edges("tools", after_tools, {
+    "verify_image": "verify_image",
+    "chatbot":      "chatbot",
+})
+graph_builder.add_edge("verify_image", "chatbot")
 
-if __name__ == "__main__":
-    asyncio.run(main())
-
-
+graph = graph_builder.compile(checkpointer=memory)
 
 
 
