@@ -1,0 +1,1647 @@
+attachment_info_repo.py
+import os
+import logging
+import psycopg2
+
+logger = logging.getLogger(__name__)
+
+# ─────────────────────────────────────────────
+# ENV CONFIG (WITH DEFAULTS)
+# ─────────────────────────────────────────────
+ATTACHMENT_INFO_SCHEMA = os.getenv(
+    "ATTACHMENT_INFO_SCHEMA", "public"
+)
+
+ATTACHMENT_INFO_TABLE = os.getenv(
+    "ATTACHMENT_INFO_TABLE", "attachment_info"
+)
+
+DATABASE_URL = os.getenv("DATABASE_URL")
+
+# ─────────────────────────────────────────────
+# TEMPLATED DOCUMENT TYPES
+# ─────────────────────────────────────────────
+TEMPLATED_DOCUMENT_TYPES = {
+    "accord",
+    "accord_certificate",
+    "accord_form"
+}
+
+
+def is_templated_doc(document_type: str) -> int:
+    """
+    Returns 1 if document is templated, else 0
+    """
+    if not document_type:
+        return 0
+    return 1 if document_type.lower() in TEMPLATED_DOCUMENT_TYPES else 0
+
+
+def get_connection():
+    if not DATABASE_URL:
+        raise RuntimeError("DATABASE_URL not set in .env")
+    return psycopg2.connect(DATABASE_URL)
+
+
+def insert_attachment_info(
+    *,
+    reference_id: str,
+    blob_url: str,
+    document_type: str
+):
+    """
+    Inserts metadata into attachment_info table
+    """
+
+    is_templated = is_templated_doc(document_type)
+
+    with get_connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                f"""
+                INSERT INTO {ATTACHMENT_INFO_SCHEMA}.{ATTACHMENT_INFO_TABLE} (
+                    submission_id,
+                    attachment_blob_url,
+                    document_classification,
+                    is_templated
+                )
+                VALUES (%s, %s, %s, %s)
+                ON CONFLICT DO NOTHING
+                """,
+                (
+                    reference_id,
+                    blob_url,
+                    document_type,
+                    is_templated
+                )
+            )
+        conn.commit()
+
+
+
+
+pgvectorinjest.py
+
+## code with logger 
+import os
+import json
+import hashlib
+import argparse
+from datetime import datetime
+from typing import Optional, Tuple
+from urllib.parse import urlparse, unquote
+
+from dotenv import load_dotenv
+import psycopg2
+from psycopg2.extras import execute_values
+from azure.storage.blob import BlobClient
+from openai import AzureOpenAI
+import logging
+
+from fastapi import FastAPI
+from pydantic import BaseModel
+import uvicorn
+
+# ✅ Retrieval pipeline (USES PROMPT DB INTERNALLY)
+from pgvector_retrieval_mcp.postgres_retriever import process_retrieval_pg
+
+# for inserting data in attachment info table
+from pgvector_retrieval_mcp.attachement_info_repo import insert_attachment_info
+
+# ─────────────────────────────────────────────
+# ENV
+# ─────────────────────────────────────────────
+load_dotenv()
+logger = logging.getLogger(__name__)
+
+# code for skipping duplicates
+###this means basically if we are doing some changes in pdf and using the same refernce id it will not get ingest in vector db 
+###as the refernce id is same. so it will skip ingesting and give the retriving from previous saved embeddings
+def normalize_text(text: str) -> str:
+    """Normalize whitespace so same text always hashes the same"""
+    return " ".join(text.strip().split())
+
+
+def compute_content_hash(text: str) -> str:
+    """
+    Hash used for deduplication per reference_id.
+    """
+    return hashlib.sha256(normalize_text(text).encode("utf-8")).hexdigest()
+
+# ── CHUNK DB (pgvector)
+DATABASE_URL = os.getenv("DATABASE_URL")
+DB_SCHEMA = os.getenv("DB_SCHEMA", "public")
+DB_TABLE = os.getenv("DB_TABLE", "pgvector_store")
+
+# ── PROMPT DB CONFIG (used inside postgres_retriever.py – NOT HERE)
+# PG_PROMPT_SCHEMA
+# PG_PROMPT_TABLE
+# PG_PROMPT_COL_DOCUMENT_TYPE
+# PG_PROMPT_COL_PROMPT
+
+# ── Azure Blob
+AZURE_BLOB_ACCOUNT_URL = os.getenv("AZURE_BLOB_ACCOUNT_URL_PGVECTOR")
+AZURE_BLOB_CONTAINER = os.getenv("AZURE_BLOB_CONTAINER_PGVECTOR")
+
+# ── Azure OpenAI (Embeddings only here)
+AZURE_OPENAI_ENDPOINT = os.getenv("AZURE_OPENAI_ENDPOINT_PGVECTOR")
+AZURE_OPENAI_API_KEY = os.getenv("AZURE_OPENAI_API_KEY_PGVECTOR")
+AZURE_OPENAI_API_VERSION = os.getenv("AZURE_OPENAI_API_VERSION_PGVECTOR")
+AZURE_OPENAI_EMBEDDING_DEPLOYMENT = os.getenv("AZURE_OPENAI_EMBEDDING_DEPLOYMENT_PGVECTOR")
+
+# ── Processing
+EMBED_DIM = 3072
+CHUNK_CHARS = int(os.getenv("CHUNK_CHARS", "800"))
+OVERLAP_CHARS = int(os.getenv("OVERLAP_CHARS", "100"))
+OUTPUT_DIR = os.getenv("OUTPUT_DIR")
+
+
+# ─────────────────────────────────────────────
+# CHUNK DB HELPERS
+# ─────────────────────────────────────────────
+def get_chunk_conn():
+    return psycopg2.connect(DATABASE_URL)
+
+
+# def ensure_pgvector_table(conn):
+#     with conn.cursor() as cur:
+#         cur.execute("CREATE EXTENSION IF NOT EXISTS vector;")
+#         cur.execute(f"""
+#         CREATE TABLE IF NOT EXISTS {DB_SCHEMA}.{DB_TABLE} (
+#             id BIGSERIAL PRIMARY KEY,
+#             doc_id TEXT NOT NULL,
+#             source TEXT NOT NULL,
+#             page INT NOT NULL,
+#             chunk_index INT NOT NULL,
+#             content TEXT NOT NULL,
+#             embedding VECTOR({EMBED_DIM}) NOT NULL,
+#             metadata JSONB,
+#             mail_ref_id TEXT,
+#             attachment_id TEXT,
+#             UNIQUE (mail_ref_id, attachment_id, page, chunk_index)
+#         );
+#         """)
+#     conn.commit()
+
+### code for skipping duplicates 
+def ensure_pgvector_table(conn):
+    with conn.cursor() as cur:
+        cur.execute("CREATE EXTENSION IF NOT EXISTS vector;")
+        cur.execute(f"""
+        CREATE TABLE IF NOT EXISTS {DB_SCHEMA}.{DB_TABLE} (
+            id BIGSERIAL PRIMARY KEY,
+            doc_id TEXT NOT NULL,
+            source TEXT NOT NULL,
+            page INT NOT NULL,
+            chunk_index INT NOT NULL,
+            content TEXT NOT NULL,
+            content_hash TEXT NOT NULL,
+            embedding VECTOR({EMBED_DIM}) NOT NULL,
+            metadata JSONB,
+            mail_ref_id TEXT,
+            attachment_id TEXT,
+
+            -- ✅ Dedup ONLY per reference_id
+            UNIQUE (mail_ref_id, content_hash),
+
+            -- ✅ Keep old safety constraint
+            UNIQUE (mail_ref_id, attachment_id, page, chunk_index)
+        );
+        """)
+    conn.commit()
+
+# for skipping duplicates 
+def chunk_exists(conn, reference_id: str, content_hash: str) -> bool:
+    with conn.cursor() as cur:
+        cur.execute(
+            f"""
+            SELECT 1
+            FROM {DB_SCHEMA}.{DB_TABLE}
+            WHERE mail_ref_id = %s
+              AND content_hash = %s
+            LIMIT 1
+            """,
+            (reference_id, content_hash),
+        )
+        return cur.fetchone() is not None
+
+# def already_ingested(reference_id: str, attachment_id: str) -> bool:
+#     with get_chunk_conn() as conn, conn.cursor() as cur:
+#         cur.execute(
+#             f"""
+#             SELECT 1 FROM {DB_SCHEMA}.{DB_TABLE}
+#             WHERE mail_ref_id=%s AND attachment_id=%s
+#             LIMIT 1
+#             """,
+#             (reference_id, attachment_id),
+#         )
+#         return cur.fetchone() is not None
+
+def already_ingested(reference_id: str, attachment_id: str) -> bool:
+    with get_chunk_conn() as conn:
+        # ✅ Ensure table exists BEFORE querying
+        ensure_pgvector_table(conn)
+
+        with conn.cursor() as cur:
+            cur.execute(
+                f"""
+                SELECT 1
+                FROM {DB_SCHEMA}.{DB_TABLE}
+                WHERE mail_ref_id=%s AND attachment_id=%s
+                LIMIT 1
+                """,
+                (reference_id, attachment_id)
+            )
+            return cur.fetchone() is not None
+
+
+# ─────────────────────────────────────────────
+# AZURE BLOB
+# ─────────────────────────────────────────────
+def split_blob_url(blob_url: str) -> Tuple[str, str, str]:
+    parsed = urlparse(blob_url)
+    account_url = f"{parsed.scheme}://{parsed.netloc}"
+    parts = parsed.path.lstrip("/").split("/", 1)
+    container = parts[0]
+    blob_name = unquote(parts[1]) if len(parts) > 1 else ""
+    return account_url, container, blob_name
+
+
+def resolve_blob(blob_url: Optional[str], blob_name: Optional[str]):
+    if blob_url:
+        return split_blob_url(blob_url)
+
+    if not (AZURE_BLOB_ACCOUNT_URL and AZURE_BLOB_CONTAINER and blob_name):
+        raise ValueError("Provide blob_url OR blob_name with AZURE_BLOB_* env vars")
+
+    return AZURE_BLOB_ACCOUNT_URL, AZURE_BLOB_CONTAINER, blob_name
+
+
+# def read_txt_from_blob(account_url: str, container: str, blob_name: str) -> str:
+#     bc = BlobClient(account_url, container, blob_name)
+#     return bc.download_blob().readall().decode("utf-8")
+
+
+def read_txt_from_blob(account_url: str, container: str, blob_name: str) -> str:
+    conn_str = os.getenv("AZURE_STORAGE_CONNECTION_STRING_PGVECTOR")
+    if not conn_str:
+        raise RuntimeError("AZURE_STORAGE_CONNECTION_STRING not set")
+
+    bc = BlobClient.from_connection_string(
+        conn_str=conn_str,
+        container_name=container,
+        blob_name=blob_name
+    )
+    return bc.download_blob().readall().decode("utf-8")
+
+
+# ─────────────────────────────────────────────
+# TEXT → CHUNKS
+# ─────────────────────────────────────────────
+def chunk_text(text: str):
+    clean = " ".join(text.split())
+    chunks = []
+    start, idx = 0, 0
+
+    while start < len(clean):
+        end = min(start + CHUNK_CHARS, len(clean))
+        part = clean[start:end]
+        if part.strip():
+            chunks.append((1, idx, part))
+            idx += 1
+        start = end - OVERLAP_CHARS if end < len(clean) else end
+
+    return chunks
+
+
+# ─────────────────────────────────────────────
+# AZURE OPENAI EMBEDDINGS
+# ─────────────────────────────────────────────
+def aoai_client():
+    return AzureOpenAI(
+        azure_endpoint=AZURE_OPENAI_ENDPOINT,
+        api_key=AZURE_OPENAI_API_KEY,
+        api_version=AZURE_OPENAI_API_VERSION,
+    )
+
+
+def embed_texts(texts):
+    client = aoai_client()
+    resp = client.embeddings.create(
+        model=AZURE_OPENAI_EMBEDDING_DEPLOYMENT,
+        input=texts,
+        dimensions=EMBED_DIM,
+    )
+    return [d.embedding for d in resp.data]
+
+
+def vec(v):
+    return "[" + ",".join(f"{x:.8f}" for x in v) + "]"
+
+
+# ─────────────────────────────────────────────
+# INGESTION (CHUNK DB)
+# ─────────────────────────────────────────────
+# def ingest(reference_id: str, account_url: str, container: str, blob_name: str):
+#     attachment_id = blob_name
+
+#     if already_ingested(reference_id, attachment_id):
+#         return "already_ingested"
+
+#     text = read_txt_from_blob(account_url, container, blob_name)
+#     chunks = chunk_text(text)
+#     embeddings = embed_texts([c[2] for c in chunks])
+
+#     doc_id = hashlib.sha1(f"{container}/{blob_name}".encode()).hexdigest()
+
+#     with get_chunk_conn() as conn:
+#         ensure_pgvector_table(conn)
+#         with conn.cursor() as cur:
+#             execute_values(
+#                 cur,
+#                 f"""
+#                 INSERT INTO {DB_SCHEMA}.{DB_TABLE}
+#                 (doc_id, source, page, chunk_index, content, embedding, metadata, mail_ref_id, attachment_id)
+#                 VALUES %s
+#                 ON CONFLICT (mail_ref_id, attachment_id, page, chunk_index)
+#                 DO UPDATE SET content=EXCLUDED.content, embedding=EXCLUDED.embedding
+#                 """,
+#                 [
+#                     (
+#                         doc_id,
+#                         f"{container}/{blob_name}",
+#                         page,
+#                         idx,
+#                         text,
+#                         vec(emb),
+#                         json.dumps({"chunk": idx}),
+#                         reference_id,
+#                         attachment_id,
+#                     )
+#                     for (page, idx, text), emb in zip(chunks, embeddings)
+#                 ],
+#             )
+#         conn.commit()
+
+#     return "ingested"
+
+
+#### code for skipping duplicates in ingestion
+def _ingest_with_conn(conn, reference_id: str, container: str, blob_name: str, doc_id: str, chunks, embeddings):
+    """Core ingestion logic — called with an already-open connection."""
+    attachment_id = blob_name
+    ensure_pgvector_table(conn)
+
+    rows_to_insert = []
+    for (page, idx, chunk_content), emb in zip(chunks, embeddings):
+        content_hash = compute_content_hash(chunk_content)
+        if chunk_exists(conn, reference_id, content_hash):
+            logger.info(
+                "Duplicate chunk skipped",
+                extra={"reference_id": reference_id, "chunk_index": idx}
+            )
+            continue
+        rows_to_insert.append(
+            (
+                doc_id,
+                f"{container}/{blob_name}",
+                page,
+                idx,
+                chunk_content,
+                content_hash,
+                vec(emb),
+                json.dumps({"chunk": idx}),
+                reference_id,
+                attachment_id,
+            )
+        )
+
+    if not rows_to_insert:
+        logger.warning("No new chunks to ingest", extra={"reference_id": reference_id})
+        return "no_new_chunks"
+
+    with conn.cursor() as cur:
+        execute_values(
+            cur,
+            f"""
+            INSERT INTO {DB_SCHEMA}.{DB_TABLE}
+            (
+                doc_id, source, page, chunk_index,
+                content, content_hash, embedding,
+                metadata, mail_ref_id, attachment_id
+            )
+            VALUES %s
+            ON CONFLICT DO NOTHING
+            """,
+            rows_to_insert,
+        )
+    conn.commit()
+    return rows_to_insert
+
+
+def ingest(reference_id: str, account_url: str, container: str, blob_name: str):
+    logger.info(
+        "Starting vector ingestion",
+        extra={"reference_id": reference_id, "blob_name": blob_name}
+    )
+
+    text = read_txt_from_blob(account_url, container, blob_name)
+    chunks = chunk_text(text)
+    embeddings = embed_texts([c[2] for c in chunks])
+    doc_id = hashlib.sha1(f"{container}/{blob_name}".encode()).hexdigest()
+
+    _RETRYABLE = (psycopg2.OperationalError, psycopg2.InterfaceError)
+    max_attempts = 3
+
+    for attempt in range(1, max_attempts + 1):
+        try:
+            conn = get_chunk_conn()
+            try:
+                rows_to_insert = _ingest_with_conn(conn, reference_id, container, blob_name, doc_id, chunks, embeddings)
+            finally:
+                try:
+                    conn.close()
+                except Exception:
+                    pass
+            break  # success
+        except _RETRYABLE as e:
+            logger.warning(
+                "DB connection error on attempt %d/%d, retrying with fresh connection: %s",
+                attempt, max_attempts, e,
+                extra={"reference_id": reference_id}
+            )
+            if attempt == max_attempts:
+                logger.error(
+                    "Ingestion failed after %d attempts due to connection errors",
+                    max_attempts,
+                    extra={"reference_id": reference_id}
+                )
+                raise
+
+    if rows_to_insert == "no_new_chunks":
+        return "no_new_chunks"
+
+    logger.info(
+        "Vector ingestion successful",
+        extra={"reference_id": reference_id, "chunks_inserted": len(rows_to_insert)}
+    )
+    return "ingested"
+
+# ─────────────────────────────────────────────
+# OUTPUT STORAGE
+# ─────────────────────────────────────────────
+# def save_output(reference_id, document_type, output):
+#     os.makedirs(OUTPUT_DIR, exist_ok=True)
+#     ts = datetime.utcnow().strftime("%Y%m%d_%H%M%S")
+#     path = f"{OUTPUT_DIR}/{reference_id}_{document_type}_{ts}.json"
+#     with open(path, "w", encoding="utf-8") as f:
+#         json.dump(output, f, indent=2)
+#     return path
+
+
+# ─────────────────────────────────────────────
+# MCP PIPELINE
+# ─────────────────────────────────────────────
+# async def run_mcp(reference_id, document_type, blob_url, blob_name):
+#     try:
+#         account, container, blob = resolve_blob(blob_url, blob_name)
+#         ingestion_status = ingest(reference_id, account, container, blob)
+
+#         extraction = await process_retrieval_pg(
+#             reference_id=reference_id,
+#             document_type=document_type,
+#         )
+
+#         if not extraction.get("is_extracted"):
+#             return {
+#                 "is_extracted": False,
+#                 "error": extraction.get("error"),
+#                 "metadata": extraction.get("metadata")
+#                 # "output": None
+#             }
+#             # raise RuntimeError(extraction["metadata"]["error_message"])
+
+#         output_path = save_output(reference_id, document_type, extraction["output"])
+
+#         return {
+#             "is_extracted": True,
+#             "error": None,
+#             "metadata":extraction.get("metadata")
+#         }
+
+#     except Exception as e:
+#         return {
+#             "is_extracted": False,
+#             "error": str(e),
+#             "metadata": {
+#                 "reference_id": reference_id,
+#                 "document_type": document_type,
+#             },
+#             # "output": None,
+#         }
+
+#### original code without insertion in attachment info table ####
+# async def run_mcp(reference_id, document_type, blob_url, blob_name):
+#     try:
+#         # 1. Resolve and ingest
+#         account, container, blob = resolve_blob(blob_url, blob_name)
+#         ingest(reference_id, account, container, blob)
+
+#         # 2. Run extraction
+#         extraction = await process_retrieval_pg(
+#             reference_id=reference_id,
+#             document_type=document_type,
+#         )
+
+#         # ✅ 3. DO NOT reshape — just return it
+#         return extraction
+
+#     except Exception as e:
+#         return {
+#             "extracted": False,
+#             "reference_id": reference_id,
+#             "document_type": document_type,
+#             "error_message": str(e),
+#         }
+
+# updated code with insertion in attachment info table
+async def run_mcp(reference_id, document_type, blob_url, blob_name):
+    try:
+        logger.info(
+            "MCP ingestion started",
+            extra={
+                "reference_id": reference_id,
+                "document_type": document_type,
+                "blob_name": blob_name
+            }
+        )
+        # 1. Resolve blob + ingest chunks
+        account, container, blob = resolve_blob(blob_url, blob_name)
+        ingest(reference_id, account, container, blob)
+
+        # ✅ 2. Store attachment metadata
+        insert_attachment_info(
+            reference_id=reference_id,
+            blob_url=blob_url,
+            document_type=document_type
+        )
+
+        # 3. Run extraction
+        extraction = await process_retrieval_pg(
+            reference_id=reference_id,
+            document_type=document_type,
+        )
+
+        return extraction
+
+    # except Exception as e:
+    #     return {
+    #         "extracted": False,
+    #         "reference_id": reference_id,
+    #         "document_type": document_type,
+    #         "error_message": str(e),
+    #     }
+
+    except Exception as e:
+        logger.exception(
+            "MCP ingestion failed",
+            extra={
+                "reference_id": reference_id,
+                "document_type": document_type
+            }
+        )
+        return {
+            "extracted": False,
+            "reference_id": reference_id,
+            "document_type": document_type,
+            "error_message": str(e),
+        }
+
+
+
+
+pgvectorlogger.py
+
+
+##### code without overwrite(working)
+import os
+import logging
+from datetime import datetime
+from threading import Lock
+
+from azure.storage.blob import BlobServiceClient
+from azure.core.exceptions import ResourceExistsError
+
+LOG_FORMAT = "%(asctime)s | %(levelname)-8s | %(name)s | %(module)s:%(lineno)d | %(message)s"
+LOG_DATE_FORMAT = "%Y-%m-%d %H:%M:%S"
+
+
+class AzureBlobLogHandler(logging.Handler):
+    """
+    Creates ONE log blob per MCP run using date + time in blob name.
+    Writes the same human-readable format as the console handler.
+    """
+
+    _lock = Lock()
+
+    def __init__(
+        self,
+        *,
+        connection_string: str,
+        container_name: str,
+        app_name: str,
+    ):
+        super().__init__()
+        self.setFormatter(logging.Formatter(LOG_FORMAT, datefmt=LOG_DATE_FORMAT))
+
+        service_client = BlobServiceClient.from_connection_string(connection_string)
+        self.container_client = service_client.get_container_client(container_name)
+
+        try:
+            self.container_client.create_container()
+        except ResourceExistsError:
+            pass
+
+        timestamp = datetime.utcnow().strftime("%Y%m%d_%H%M%S")
+        self.blob_client = self.container_client.get_blob_client(
+            f"{app_name}_{timestamp}.log"
+        )
+        self.blob_client.create_append_blob()
+
+    def emit(self, record: logging.LogRecord):
+        try:
+            line = self.format(record) + "\n"
+            with self._lock:
+                self.blob_client.append_block(line.encode("utf-8"))
+        except Exception:
+            pass
+
+
+def get_logger(name: str) -> logging.Logger:
+    logger = logging.getLogger(name)
+
+    if logger.handlers:
+        return logger
+
+    logger.setLevel(os.getenv("LOG_LEVEL", "INFO").upper())
+
+    console_handler = logging.StreamHandler()
+    console_handler.setFormatter(logging.Formatter(LOG_FORMAT, datefmt=LOG_DATE_FORMAT))
+    logger.addHandler(console_handler)
+
+    conn_str = os.getenv("AZURE_STORAGE_CONNECTION_STRING_PGVECTOR")
+    if conn_str:
+        try:
+            blob_handler = AzureBlobLogHandler(
+                connection_string=conn_str,
+                container_name=os.getenv("AZURE_BLOB_LOG_CONTAINER", "pgvector-logs"),
+                app_name=os.getenv("MCP_NAME", name),
+            )
+            logger.addHandler(blob_handler)
+        except Exception as e:
+            logger.warning(f"Azure Blob log handler unavailable, using console only: {e}")
+    else:
+        logger.warning(
+            "AZURE_STORAGE_CONNECTION_STRING_PGVECTOR not set; Azure Blob logging disabled"
+        )
+
+    logger.propagate = False
+    return logger
+
+
+    pgvector_retriever.py
+
+    
+
+### code with logger 
+import os
+import json
+import logging
+import asyncio
+import re
+import time
+from typing import Dict, Any, List, Optional, Tuple
+from datetime import datetime
+
+from dotenv import load_dotenv
+import psycopg2
+from psycopg2.extras import RealDictCursor
+from psycopg2 import sql
+
+from langchain_openai import AzureChatOpenAI, AzureOpenAIEmbeddings
+from langchain_core.prompts import PromptTemplate
+from langchain_core.documents import Document
+from langchain_core.runnables import RunnableSequence
+
+from azure.storage.blob import BlobServiceClient, ContainerClient
+from azure.core.exceptions import ResourceExistsError
+
+import random
+
+# ─────────────────────────────────────────────────────────────
+# LLM CONCURRENCY CONTROL (PRODUCTION SAFE)
+# ─────────────────────────────────────────────────────────────
+LLM_CONCURRENCY_LIMIT = int(os.getenv("LLM_CONCURRENCY_LIMIT", "5"))
+llm_semaphore = asyncio.Semaphore(LLM_CONCURRENCY_LIMIT)
+
+# ─────────────────────────────────────────────────────────────
+# ENV & LOGGING
+# ─────────────────────────────────────────────────────────────
+load_dotenv()
+# logging.basicConfig(level=logging.INFO)
+# logger = logging.getLogger(__name__)
+
+logger = logging.getLogger(__name__)
+
+
+# ─────────────────────────────────────────────────────────────
+# PROMPT DB MANAGER (UNCHANGED LOGIC, FIXED IMPORTS)
+# ─────────────────────────────────────────────────────────────
+class PostgreSQLPromptManager:
+    """Manages dynamic prompt fetching from PostgreSQL (Prompt DB)"""
+
+    def __init__(self):
+        self.connection_params = {
+            "host": os.getenv("PGHOST_PROMPT"),
+            "port": int(os.getenv("PGPORT_PROMPT", "5432")),
+            "database": os.getenv("PGDATABASE_PROMPT"),
+            "user": os.getenv("PGUSER_PROMPT"),
+            "password": os.getenv("PGPASSWORD_PROMPT"),
+        }
+
+        self.prompt_schema = os.getenv("PG_PROMPT_SCHEMA", "public")
+        self.prompt_table  = os.getenv("PG_PROMPT_TABLE",  "ref_prompt_only")
+
+        self.col_doc_type = os.getenv("PG_PROMPT_COL_DOCUMENT_TYPE", "document_type")
+        self.col_prompt   = os.getenv("PG_PROMPT_COL_PROMPT", "prompt_text")
+        self.col_rules    = os.getenv("PG_PROMPT_COL_EXTRACTION_RULES", "extraction_rules")
+
+    def get_prompt_and_extraction_rules(self, document_type: str) -> Optional[Dict]:
+        """
+        Fetch prompt + extraction_rules for a document_type.
+
+        Returns:
+        {
+          "prompt": <string>,
+          "extraction_rules": { attribute_name: { ... } }
+        }
+        """
+        try:
+            conn = psycopg2.connect(**self.connection_params)
+        except Exception as e:
+            logger.error(f"❌ Prompt DB connection failed: {e}")
+            return None
+
+        try:
+            with conn.cursor(cursor_factory=RealDictCursor) as cur:
+                query = f"""
+                SELECT {self.col_prompt} AS prompt,
+                       {self.col_rules}  AS extraction_rules
+                FROM {self.prompt_schema}.{self.prompt_table}
+                WHERE LOWER({self.col_doc_type}) = LOWER(%s)
+                LIMIT 1
+                """
+                cur.execute(query, (document_type,))
+                result = cur.fetchone()
+
+                if not result or not result.get("prompt"):
+                    logger.warning(f"⚠️ No prompt found for document_type={document_type}")
+                    return None
+
+                rules = {}
+                raw_rules = result.get("extraction_rules")
+
+                if raw_rules:
+                    try:
+                        if isinstance(raw_rules, str):
+                            rules = json.loads(raw_rules)
+                        elif isinstance(raw_rules, dict):
+                            rules = raw_rules
+                    except json.JSONDecodeError as e:
+                        logger.warning(f"⚠️ Failed to parse extraction_rules JSON: {e}")
+                        rules = {}
+
+                logger.info(
+                    f"✅ Loaded prompt + {len(rules)} extraction rules "
+                    f"for document_type={document_type}"
+                )
+
+                return {
+                    "prompt": result["prompt"],
+                    "extraction_rules": rules
+                }
+
+        except Exception as e:
+            logger.exception("❌ Error fetching prompt and extraction rules")
+            return None
+
+        finally:
+            conn.close()
+
+
+prompt_manager = PostgreSQLPromptManager()
+
+# ─────────────────────────────────────────────────────────────
+# EMBEDDINGS
+# ─────────────────────────────────────────────────────────────
+embeddings = AzureOpenAIEmbeddings(
+    azure_deployment=os.getenv("AZURE_OPENAI_EMBEDDING_DEPLOYMENT_PGVECTOR"),
+    openai_api_key=os.getenv("AZURE_OPENAI_API_KEY_PGVECTOR"),
+    openai_api_version=os.getenv("AZURE_OPENAI_API_VERSION_PGVECTOR"),
+    azure_endpoint=os.getenv("AZURE_OPENAI_ENDPOINT_PGVECTOR"),
+)
+
+# ─────────────────────────────────────────────────────────────
+# POSTGRES VECTOR STORE (UNCHANGED LOGIC)
+# ─────────────────────────────────────────────────────────────
+class PostgresVectorStore:
+    def __init__(self, embeddings, reference_id: str):
+        self.embeddings = embeddings
+        self.reference_id = reference_id
+        self.connection_params = {
+            "host": os.getenv("PGHOST_PGVECTOR"),
+            "port": int(os.getenv("PGPORT_PGVECTOR", "5432")),
+            "database": os.getenv("PGDATABASE_PGVECTOR"),
+            "user": os.getenv("PGUSER_PGVECTOR"),
+            "password": os.getenv("PGPASSWORD_PGVECTOR"),
+        }
+
+        self.schema = os.getenv("PG_VECTOR_SCHEMA", "public")
+        self.table = os.getenv("PG_VECTOR_TABLE", "pgvector_store")
+        self.text_col = os.getenv("PG_COL_TEXT", "content")
+        self.embedding_col = os.getenv("PG_COL_EMBEDDING", "embedding")
+        self.ref_col = os.getenv("PG_COL_REFERENCE_ID", "mail_ref_id")
+        self.meta_col = os.getenv("PG_COL_METADATA", "metadata")
+
+    def similarity_search(self, query: str, k: int = 10) -> List[Document]:
+        vec = self.embeddings.embed_query(query)
+        vec_str = "[" + ",".join(f"{x:.8f}" for x in vec) + "]"
+
+        sql_query = f"""
+            SELECT {self.text_col}, {self.meta_col}
+            FROM {self.schema}.{self.table}
+            WHERE {self.ref_col} = %s
+            ORDER BY {self.embedding_col} <=> %s::vector
+            LIMIT %s
+        """
+
+        with psycopg2.connect(**self.connection_params) as conn:
+            with conn.cursor() as cur:
+                cur.execute(sql_query, (self.reference_id, vec_str, k))
+                rows = cur.fetchall()
+
+        return [
+            Document(page_content=row[0], metadata=row[1] or {})
+            for row in rows
+        ]
+# ─────────────────────────────────────────────────────────────
+# Grouping helpers 
+# ─────────────────────────────────────────────────────────────
+
+def _extract_json_object(text: str) -> str:
+    cleaned = re.sub(r"```(?:json)?|```", "", text).strip()
+    try:
+        json.loads(cleaned)
+        return cleaned
+    except Exception:
+        pass
+
+    start = cleaned.find("{")
+    if start == -1:
+        raise ValueError("No JSON object found.")
+
+    depth = 0
+    for i in range(start, len(cleaned)):
+        if cleaned[i] == "{":
+            depth += 1
+        elif cleaned[i] == "}":
+            depth -= 1
+            if depth == 0:
+                candidate = cleaned[start:i + 1]
+                json.loads(candidate)
+                return candidate
+
+    raise ValueError("Unbalanced JSON in response.")
+
+
+def _validate_and_repair_grouping(
+    input_attrs: Dict[str, str],
+    grouped: Dict[str, Dict[str, Any]]
+) -> Dict[str, Dict[str, Any]]:
+    input_keys = set(input_attrs.keys())
+    seen = set()
+    repaired = {}
+
+    for category, fields in grouped.items():
+        if not isinstance(fields, dict):
+            continue
+
+        valid = {}
+        for k, v in fields.items():
+            if k in input_keys and k not in seen:
+                valid[k] = v
+                seen.add(k)
+
+        if valid:
+            repaired[category] = valid
+
+    missing = input_keys - seen
+    if missing:
+        repaired.setdefault("Other", {})
+        for k in missing:
+            repaired["Other"][k] = input_attrs[k]
+
+    return repaired
+
+# ─────────────────────────────────────────────────────────────
+# Prompt template safety helpers
+# ─────────────────────────────────────────────────────────────
+
+def escape_non_template_vars(template: str, allowed_vars: set[str]) -> str:
+    """
+    Make the prompt LangChain-safe by:
+    1. Escaping ALL braces
+    2. Re-enabling only allowed template variables
+    """
+
+    # Step 1: Escape EVERYTHING
+    escaped = template.replace("{", "{{").replace("}", "}}")
+
+    # Step 2: Restore allowed variables
+    for var in allowed_vars:
+        escaped = escaped.replace(
+            "{{" + var + "}}",
+            "{" + var + "}"
+        )
+
+    return escaped
+# ─────────────────────────────────────────────────────────────
+# MAIN RETRIEVAL PIPELINE
+# ─────────────────────────────────────────────────────────────
+
+def group_attributes_by_category(attributes_dict: Dict[str, str]) -> Dict[str, Any]:
+    """
+    Robust grouping with:
+    - LLM-based semantic grouping
+    - Retry/backoff
+    - Strict JSON enforcement
+    - Full coverage validation
+    - Deterministic fallback
+    """
+
+    llm = AzureChatOpenAI(
+        openai_api_key=os.getenv("AZURE_OPENAI_API_KEY_PGVECTOR"),
+        azure_endpoint=os.getenv("AZURE_OPENAI_ENDPOINT_PGVECTOR"),
+        openai_api_version=os.getenv("AZURE_OPENAI_API_VERSION_PGVECTOR"),
+        deployment_name=os.getenv("AZURE_OPENAI_CHAT_DEPLOYMENT_PGVECTOR"),
+        temperature=0,
+        top_p=1,
+    )
+
+#     grouping_prompt = PromptTemplate(
+#         input_variables=["attributes_json"],
+#         template="""You are a JSON data formatter for insurance underwriting documents.
+
+# Group the following extracted attributes logically based on insurance context.
+
+# RULES:
+# - Each attribute must appear exactly once
+# - Preserve exact attribute names and values
+# - Create meaningful insurance categories
+# - If unsure, place in "Other"
+# - DO NOT return explanations
+# - Return STRICT JSON ONLY
+
+# INPUT:
+# {attributes_json}
+
+# OUTPUT:
+# {{ 
+#   "Category Name": {{
+#     "attribute": "value"
+#   }}
+# }}
+# """
+
+    grouping_prompt = PromptTemplate(
+    input_variables=["attributes_json"],
+    template="""You are an insurance underwriting assistant.
+
+Group the following extracted attributes into logical insurance categories.
+
+RULES:
+- Do NOT alter attribute names or values
+- Each attribute must appear exactly once
+- Create meaningful insurance categories
+- Use "Other" if unsure
+- Return STRICT JSON ONLY
+
+INPUT:
+{attributes_json}
+
+OUTPUT:
+{{ 
+  "Category Name": {{
+    "attribute": "value"
+  }}
+}}
+"""
+)
+
+
+    chain = grouping_prompt | llm
+
+    max_attempts = 3
+    backoff = 1.5
+    attributes_json = json.dumps(attributes_dict, ensure_ascii=False)
+
+    for attempt in range(1, max_attempts + 1):
+        try:
+            raw = chain.invoke({"attributes_json": attributes_json})
+            text = raw.content if hasattr(raw, "content") else str(raw)
+            json_text = _extract_json_object(text)
+            candidate = json.loads(json_text)
+
+            cleaned = _validate_and_repair_grouping(attributes_dict, candidate)
+            return cleaned
+
+        except Exception as e:
+            logger.warning(f"[grouping] attempt {attempt} failed: {e}")
+            if attempt < max_attempts:
+                time.sleep(backoff * attempt)
+
+    logger.warning("[grouping] falling back to deterministic grouping")
+    return {"Other": attributes_dict}
+
+# ────────────────────────────────────────────────────────────────
+# Async wrapper for grouping (REQUIRED)
+# ────────────────────────────────────────────────────────────────
+
+async def group_attributes_by_category_async(attributes_dict: Dict[str, str]) -> Dict[str, Any]:
+    return await asyncio.to_thread(group_attributes_by_category, attributes_dict)
+
+# ─────────────────────────────────────────────────────────────
+#  Azure Blob upload helper 
+# ─────────────────────────────────────────────────────────────
+def upload_json_to_blob(
+    *,
+    container_name: str,
+    file_name: str,
+    data: dict
+) -> str:
+    """
+    Upload JSON data to Azure Blob Storage and return the blob URL.
+
+    Requires:
+      - AZURE_STORAGE_CONNECTION_STRING
+      - OUTPUT_BLOB_CONTAINER (passed in as container_name)
+
+    Auto-creates container if it does not exist.
+    """
+
+    from azure.storage.blob import BlobServiceClient
+    from azure.core.exceptions import ResourceExistsError
+
+    connection_string = os.getenv("AZURE_STORAGE_CONNECTION_STRING_PGVECTOR")
+    if not connection_string:
+        raise RuntimeError(
+            "AZURE_STORAGE_CONNECTION_STRING is not set in .env"
+        )
+
+    if not container_name:
+        raise RuntimeError(
+            "OUTPUT_BLOB_CONTAINER is not set or empty"
+        )
+
+    # Initialize client
+    blob_service_client = BlobServiceClient.from_connection_string(
+        connection_string
+    )
+
+    container_client = blob_service_client.get_container_client(
+        container_name
+    )
+
+    # Create container if missing
+    try:
+        container_client.create_container()
+        logger.info(f"☁️ Created blob container: {container_name}")
+    except ResourceExistsError:
+        pass  # Container already exists
+
+    blob_client = container_client.get_blob_client(file_name)
+
+    payload = json.dumps(
+        data,
+        indent=2,
+        ensure_ascii=False
+    ).encode("utf-8")
+
+    # Upload JSON
+    blob_client.upload_blob(
+        payload,
+        overwrite=True,
+        content_type="application/json"
+    )
+
+    logger.info(f"☁️ Uploaded output JSON to blob: {blob_client.url}")
+
+    return blob_client.url
+
+
+
+async def invoke_llm_with_retry(
+    chain,
+    payload: Dict[str, Any],
+    *,
+    max_retries: int = 5,
+    base_delay: float = 1.0,
+):
+    logger.info("🧠 LLM CALL MADE")
+    """
+    Invoke LLM with retry + exponential backoff
+    Retries ONLY on Azure OpenAI rate limiting (429)
+    """
+    for attempt in range(1, max_retries + 1):
+        try:
+            async with llm_semaphore:
+                return await asyncio.to_thread(
+                    chain.invoke,
+                    payload
+                )
+
+        except Exception as e:
+            msg = str(e).lower()
+
+            if "429" in msg or "too_many_requests" in msg:
+                if attempt == max_retries:
+                    raise
+
+                backoff = base_delay * (2 ** (attempt - 1))
+                backoff += random.uniform(0, 0.5)
+
+                logger.warning(
+                    f"🚦 OpenAI throttled (attempt {attempt}/{max_retries}), "
+                    f"retrying in {backoff:.2f}s"
+                )
+                await asyncio.sleep(backoff)
+            else:
+                # Non-rate-limit errors should fail fast
+                raise
+
+# ────────────────────────────────────────────────────────────
+# For Batch PGVector retrieval WITHOUT LLM calls (for debugging + testing)
+#───────────────────────────────────────────────────────────
+async def build_attribute_contexts(
+    vectordb: PostgresVectorStore,
+    extraction_rules: Dict[str, Any]
+) -> Dict[str, Dict[str, str]]:
+    """
+    Concurrent PGVector retrieval for ALL attributes.
+    No LLM calls here.
+    """
+
+    async def fetch_context(attr: str, rule: Dict[str, Any]):
+        k = int(rule.get("k", 13))
+        instruction = rule.get("description", "")
+
+        docs = await asyncio.to_thread(
+            vectordb.similarity_search,
+            attr,
+            k
+        )
+
+        if not docs:
+            return None
+
+        return attr, {
+            "instruction": instruction,
+            "context": "\n".join(d.page_content for d in docs)
+        }
+
+    tasks = [
+        fetch_context(attr, rule)
+        for attr, rule in extraction_rules.items()
+    ]
+
+    results = await asyncio.gather(*tasks)
+
+    # Filter out None results
+    return {
+        attr: payload
+        for item in results
+        if item is not None
+        for attr, payload in [item]
+    }
+
+    logger.info(f"🔍 PGVector search for attribute: {attr}")
+
+batched_extraction_prompt = PromptTemplate(
+    input_variables=["attributes_bundle"],
+    template="""
+You are an insurance underwriting extraction engine.
+
+For each attribute:
+- Use ONLY the provided context
+- Follow the instruction
+- Do NOT hallucinate
+- Return null if not found
+
+INPUT (JSON):
+{attributes_bundle}
+
+OUTPUT (STRICT JSON ONLY):
+{
+  "attribute_name": value | null
+}
+"""
+)
+
+
+async def extract_all_attributes_batched(
+    llm: AzureChatOpenAI,
+    attribute_contexts: Dict[str, Dict[str, str]]
+) -> Dict[str, Any]:
+    """
+    ONE LLM call to extract ALL attributes.
+    """
+
+    if not attribute_contexts:
+        return {}
+
+    chain = batched_extraction_prompt | llm
+
+    raw = await invoke_llm_with_retry(
+        chain,
+        {
+            "attributes_bundle": json.dumps(
+                attribute_contexts,
+                ensure_ascii=False
+            )
+        }
+    )
+
+    text = raw.content if hasattr(raw, "content") else str(raw)
+    json_text = _extract_json_object(text)
+    parsed = json.loads(json_text)
+
+    return {
+        attr: value
+        for attr, value in parsed.items()
+        if value is not None
+    }
+
+
+# async def process_retrieval_pg(reference_id: str, document_type: str) -> Dict[str, Any]:
+#     try:
+#         # ──────────────────────────────────────
+#         # 1. Load prompt + extraction rules
+#         # ──────────────────────────────────────
+#         db_data = prompt_manager.get_prompt_and_extraction_rules(document_type)
+#         if not db_data:
+#             raise RuntimeError(f"No prompt data found for document_type={document_type}")
+
+#         raw_prompt = db_data["prompt"]
+#         extraction_rules = db_data.get("extraction_rules", {})
+#         if not extraction_rules:
+#             raise RuntimeError("No extraction rules found")
+
+#         # ──────────────────────────────────────
+#         # 2. Escape ALL non-template braces
+#         #    (Only allow context/attribute/instruction)
+#         # ──────────────────────────────────────
+#         prompt_template = escape_non_template_vars(
+#             raw_prompt,
+#             allowed_vars={"context", "attribute", "instruction"}
+#         )
+
+#         # ✅ Critical debug log (can downgrade to DEBUG later)
+#         logger.info("🧠 Final Prompt Template:\n" + prompt_template)
+
+#         # ──────────────────────────────────────
+#         # 3. Build PromptTemplate + LLM
+#         # ──────────────────────────────────────
+#         attribute_prompt = PromptTemplate(
+#             input_variables=["context", "attribute", "instruction"],
+#             template=prompt_template
+#         )
+
+#         llm = AzureChatOpenAI(
+#             azure_endpoint=os.getenv("AZURE_OPENAI_ENDPOINT_PGVECTOR"),
+#             openai_api_key=os.getenv("AZURE_OPENAI_API_KEY_PGVECTOR"),
+#             openai_api_version=os.getenv("AZURE_OPENAI_API_VERSION_PGVECTOR"),
+#             deployment_name=os.getenv("AZURE_OPENAI_CHAT_DEPLOYMENT_PGVECTOR"),
+#             temperature=0,
+#         )
+
+#         chain = attribute_prompt | llm
+
+#         vectordb = PostgresVectorStore(
+#             embeddings=embeddings,
+#             reference_id=reference_id
+#         )
+
+#         # ──────────────────────────────────────
+#         # 4. Attribute extraction worker
+#         # ──────────────────────────────────────
+#         async def extract_one(attr: str, rule: Dict[str, Any]) -> Tuple[str, Optional[Any]]:
+#             try:
+#                 k = int(rule.get("k", 13))
+#                 instruction = rule.get("description", "")
+
+#                 docs = await asyncio.to_thread(
+#                     vectordb.similarity_search,
+#                     attr,
+#                     k
+#                 )
+
+#                 if not docs:
+#                     return attr, None
+
+#                 context = "\n".join(d.page_content for d in docs)
+
+#                 # raw = await asyncio.to_thread(
+#                 #     chain.invoke,
+#                 #     {
+#                 #         "context": context,
+#                 #         "attribute": attr,
+#                 #         "instruction": instruction
+#                 #     }
+#                 # )
+
+#                 raw = await invoke_llm_with_retry(
+#                     chain,
+#                     {
+#                         "context": context,
+#                         "attribute": attr,
+#                         "instruction": instruction
+#                     }
+#                 )
+
+#                 text = raw.content if hasattr(raw, "content") else str(raw)
+#                 cleaned = re.sub(r"```(?:json)?|```", "", text).strip()
+
+#                 parsed = json.loads(cleaned)
+#                 return attr, parsed.get("amount")
+
+#             # except Exception as e:
+#             #     logger.warning(f"⚠️ Failed to extract {attr}: {e}")
+#             #     return attr, None
+
+#             except Exception as e:
+#                 error_message = str(e)
+
+#                 if "429" in error_message or "too_many_requests" in error_message.lower():
+#                     logger.error(
+#                         f"🚦 Rate limited while extracting '{attr}'. "
+#                         f"Consider lowering LLM_CONCURRENCY_LIMIT or increasing Azure quota."
+#                     )
+#                 else:
+#                     logger.warning(f"⚠️ Failed to extract '{attr}': {error_message}")
+
+#                 return attr, None
+
+
+#         # ──────────────────────────────────────
+#         # 5. Run ALL extractions concurrently
+#         # ──────────────────────────────────────
+#         results = await asyncio.gather(
+#             *(extract_one(attr, rule) for attr, rule in extraction_rules.items())
+#         )
+
+#         extracted = {
+#             attr: value
+#             for attr, value in results
+#             if value is not None
+#         }
+
+#         if not extracted:
+#             return {
+#                 "extracted": False,
+#                 "reference_id": reference_id,
+#                 "document_type": document_type,
+#                 "error_message": "No attributes were extracted"
+#             }
+
+#         # ──────────────────────────────────────
+#         # 6. Group attributes (semantic categories)
+#         # ──────────────────────────────────────
+#         grouped = await group_attributes_by_category_async(extracted)
+
+#         # ──────────────────────────────────────
+#         # 7. Save locally + upload to Blob
+#         # ──────────────────────────────────────
+#         output_dir = os.getenv("OUTPUT_DIR", "./data/extraction_outputs")
+#         os.makedirs(output_dir, exist_ok=True)
+
+#         timestamp = datetime.utcnow().strftime("%Y%m%d_%H%M%S")
+#         filename = f"{reference_id}_{document_type}_{timestamp}.json"
+
+#         local_path = os.path.join(output_dir, filename)
+#         with open(local_path, "w", encoding="utf-8") as f:
+#             json.dump(grouped, f, indent=2, ensure_ascii=False)
+
+#         blob_url = upload_json_to_blob(
+#             container_name=os.getenv("OUTPUT_BLOB_CONTAINER", "extraction-results"),
+#             file_name=filename,
+#             data=grouped
+#         )
+
+#         # ──────────────────────────────────────
+#         # 8. Final API response
+#         # ──────────────────────────────────────
+#         return {
+#             "extracted": True,
+#             "reference_id": reference_id,
+#             "document_type": document_type,
+#             "output_blob_url": blob_url
+#         }
+
+#     except Exception as e:
+#         logger.exception("❌ Extraction failed")
+#         return {
+#             "extracted": False,
+#             "reference_id": reference_id,
+#             "document_type": document_type,
+#             "error_message": str(e)
+#         }
+
+
+
+## new process retrieval with batched extraction (for testing/debugging)
+async def process_retrieval_pg(reference_id: str, document_type: str) -> Dict[str, Any]:
+    try:
+        # ──────────────────────────────────────
+        # 1. Load prompt + extraction rules
+        # ──────────────────────────────────────
+        db_data = prompt_manager.get_prompt_and_extraction_rules(document_type)
+        if not db_data:
+            raise RuntimeError(
+                f"No prompt data found for document_type={document_type}"
+            )
+
+        raw_prompt = db_data["prompt"]
+        extraction_rules = db_data.get("extraction_rules", {})
+        if not extraction_rules:
+            raise RuntimeError("No extraction rules found")
+
+        # ──────────────────────────────────────
+        # 2. Escape non-template braces
+        #    (only allow the batching variable)
+        # ──────────────────────────────────────
+        prompt_template = escape_non_template_vars(
+            raw_prompt,
+            allowed_vars={"attributes_bundle"}
+        )
+
+        logger.info("🧠 Final Batched Prompt Loaded")
+
+        batched_prompt = PromptTemplate(
+            input_variables=["attributes_bundle"],
+            template=prompt_template
+        )
+
+        # ──────────────────────────────────────
+        # 3. Build LLM + VectorDB
+        # ──────────────────────────────────────
+        llm = AzureChatOpenAI(
+            azure_endpoint=os.getenv("AZURE_OPENAI_ENDPOINT_PGVECTOR"),
+            openai_api_key=os.getenv("AZURE_OPENAI_API_KEY_PGVECTOR"),
+            openai_api_version=os.getenv("AZURE_OPENAI_API_VERSION_PGVECTOR"),
+            deployment_name=os.getenv("AZURE_OPENAI_CHAT_DEPLOYMENT_PGVECTOR"),
+            temperature=0,
+        )
+
+        vectordb = PostgresVectorStore(
+            embeddings=embeddings,
+            reference_id=reference_id
+        )
+
+        # ──────────────────────────────────────
+        # 4. Concurrent PGVector retrieval
+        # ──────────────────────────────────────
+        async def fetch_context(attr: str, rule: Dict[str, Any]):
+            k = int(rule.get("k", 13))
+            instruction = rule.get("description", "")
+
+            docs = await asyncio.to_thread(
+                vectordb.similarity_search,
+                attr,
+                k
+            )
+
+            if not docs:
+                return None
+
+            return attr, {
+                "instruction": instruction,
+                "context": "\n".join(d.page_content for d in docs)
+            }
+
+        tasks = [
+            fetch_context(attr, rule)
+            for attr, rule in extraction_rules.items()
+        ]
+
+        results = await asyncio.gather(*tasks)
+
+        attribute_contexts = {
+            attr: payload
+            for item in results
+            if item is not None
+            for attr, payload in [item]
+        }
+
+        if not attribute_contexts:
+            return {
+                "extracted": False,
+                "reference_id": reference_id,
+                "document_type": document_type,
+                "error_message": "No relevant context found"
+            }
+
+        
+        logger.info(
+            "🧾 Attribute contexts ready: %d attribute(s) — %s",
+            len(attribute_contexts),
+            list(attribute_contexts.keys()),
+        )
+
+
+        # ──────────────────────────────────────
+        # 5. SINGLE batched LLM call
+        # ──────────────────────────────────────
+        chain = batched_prompt | llm
+
+        raw = await invoke_llm_with_retry(
+            chain,
+            {
+                "attributes_bundle": json.dumps(
+                    attribute_contexts,
+                    ensure_ascii=False
+                )
+            }
+        )
+
+        text = raw.content if hasattr(raw, "content") else str(raw)
+        json_text = _extract_json_object(text)
+        parsed = json.loads(json_text)
+
+        extracted = {
+            k: v for k, v in parsed.items() if v is not None
+        }
+
+        if not extracted:
+            return {
+                "extracted": False,
+                "reference_id": reference_id,
+                "document_type": document_type,
+                "error_message": "LLM returned no extracted attributes"
+            }
+
+        # ──────────────────────────────────────
+        # 6. Group attributes (unchanged)
+        # ──────────────────────────────────────
+        grouped = await group_attributes_by_category_async(extracted)
+
+        # ──────────────────────────────────────
+        # 7. Save + upload
+        # ──────────────────────────────────────
+        output_dir = os.getenv("OUTPUT_DIR", "./data/extraction_outputs")
+        os.makedirs(output_dir, exist_ok=True)
+
+        timestamp = datetime.utcnow().strftime("%Y%m%d_%H%M%S")
+        filename = f"{reference_id}_{document_type}_{timestamp}.json"
+
+        local_path = os.path.join(output_dir, filename)
+        with open(local_path, "w", encoding="utf-8") as f:
+            json.dump(grouped, f, indent=2, ensure_ascii=False)
+
+        blob_url = upload_json_to_blob(
+            container_name=os.getenv("OUTPUT_BLOB_CONTAINER", "extraction-results"),
+            file_name=filename,
+            data=grouped
+        )
+
+        # ──────────────────────────────────────
+        # 8. Final response
+        # ──────────────────────────────────────
+        return {
+            "extracted": True,
+            "reference_id": reference_id,
+            "document_type": document_type,
+            "output_blob_url": blob_url
+        }
+
+    except Exception as e:
+        logger.exception("❌ Extraction failed")
+        return {
+            "extracted": False,
+            "reference_id": reference_id,
+            "document_type": document_type,
+            "error_message": str(e)
+        }
+
+
+
+Forget about logger and all i want to understnad this code in detail also i have forgotten RAG so brush my those skills as well in detail , dont just go brief
