@@ -1,149 +1,75 @@
-That’s completely normal.
+Perfect. Since you mentioned you’ve forgotten RAG, let’s not jump directly into the code.
 
-You understood the theory flow, but now when you open the code, you see:
-
-async def run_mcp(...)
-ingest(...)
-process_retrieval_pg(...)
-execute_values(...)
-
-and it feels disconnected from the diagram.
-
-The problem is that you are trying to map:
-
-Theory
-↓
-Entire Codebase
-
-in one jump.
-
-Instead let’s map one box of the RAG diagram to one function in the code.
+We will first rebuild the complete mental model of RAG, then map every file to the RAG pipeline, and only then go line-by-line through the code.
 
 ⸻
 
-Step 1: Start from run_mcp()
+Part 1: What is RAG?
 
-Forget every other file.
+RAG = Retrieval Augmented Generation
 
-Imagine somebody calls:
+Without RAG:
 
-await run_mcp(
-    reference_id="REF123",
-    document_type="accord",
-    blob_url="blob_url_here",
-    blob_name=None
-)
+User Question
+      ↓
+LLM
+      ↓
+Answer
+
+Example:
+
+What is my policy number?
+
+GPT does not know.
+
+Because GPT only knows what it was trained on.
+
+⸻
+
+With RAG:
+
+User Question
+      ↓
+Retriever
+      ↓
+Find relevant documents
+      ↓
+Pass documents to LLM
+      ↓
+Answer
+
+Example:
+
+What is my policy number?
+
+Retriever searches your uploaded policy document.
+
+Finds:
+
+Policy Number: POL12345
+
+Then sends to LLM:
 
 Question:
+What is my policy number?
+Context:
+Policy Number: POL12345
 
-What is run_mcp actually doing?
+LLM answers:
 
-Answer:
-
-async def run_mcp(...)
-
-is the conductor of the orchestra.
-
-It doesn’t do the work.
-
-It tells others what to do.
-
-Like:
-
-Manager
- |
- +--> Employee 1
- |
- +--> Employee 2
- |
- +--> Employee 3
-
-Look at this:
-
-account, container, blob = resolve_blob(blob_url, blob_name)
-
-Then
-
-ingest(reference_id, account, container, blob)
-
-Then
-
-insert_attachment_info(...)
-
-Then
-
-process_retrieval_pg(...)
-
-So visually:
-
-run_mcp
- |
- +--> resolve_blob
- |
- +--> ingest
- |
- +--> insert_attachment_info
- |
- +--> process_retrieval_pg
-
-Notice:
-
-run_mcp itself does almost nothing.
-
-It just coordinates.
+POL12345
 
 ⸻
 
-Step 2: What does resolve_blob() do?
+Part 2: Components of RAG
 
-Look at:
+A RAG system has two phases.
 
-account, container, blob = resolve_blob(blob_url, blob_name)
+Phase 1: Ingestion
 
-Suppose blob url is:
+Convert documents into searchable format.
 
-https://storage.blob.core.windows.net/docs/file.txt
-
-Inside:
-
-split_blob_url(blob_url)
-
-returns:
-
-account_url = "https://storage.blob.core.windows.net"
-container = "docs"
-blob_name = "file.txt"
-
-So after this line:
-
-account, container, blob = resolve_blob(...)
-
-variables become:
-
-account   = https://storage.blob.core.windows.net
-container = docs
-blob      = file.txt
-
-Nothing magical.
-
-Just string parsing.
-
-⸻
-
-Step 3: Then run_mcp calls ingest()
-
-Now we enter:
-
-ingest(
-    reference_id,
-    account,
-    container,
-    blob
-)
-
-The theory said:
-
-Blob
+PDF
  ↓
 Text
  ↓
@@ -151,231 +77,13 @@ Chunks
  ↓
 Embeddings
  ↓
-PGVector
-
-Let’s find those exact lines.
+Vector Database
 
 ⸻
 
-Blob → Text
+Phase 2: Retrieval
 
-This line:
-
-text = read_txt_from_blob(
-    account_url,
-    container,
-    blob_name
-)
-
-Suppose blob contains:
-
-Policy Number: POL123
-Named Insured: ABC Corp
-
-After execution:
-
-text =
-"""
-Policy Number: POL123
-Named Insured: ABC Corp
-"""
-
-Now theory:
-
-Blob
- ↓
-Text
-
-Code:
-
-text = read_txt_from_blob(...)
-
-Direct mapping.
-
-⸻
-
-Step 4: Text → Chunks
-
-Theory:
-
-Text
- ↓
-Chunks
-
-Code:
-
-chunks = chunk_text(text)
-
-Suppose text is:
-
-Policy Number: POL123
-Named Insured: ABC Corp
-Coverage Limit: 1M
-
-chunk_text() returns:
-
-[
-   (1,0,"Policy Number: POL123"),
-   (1,1,"Named Insured: ABC Corp"),
-   (1,2,"Coverage Limit: 1M")
-]
-
-Let’s understand tuple.
-
-One chunk:
-
-(1,0,"Policy Number: POL123")
-
-means:
-
-page = 1
-chunk_index = 0
-chunk_content =
-"Policy Number: POL123"
-
-⸻
-
-Step 5: Chunks → Embeddings
-
-Theory:
-
-Chunk
- ↓
-Embedding
-
-Code:
-
-embeddings = embed_texts(
-    [c[2] for c in chunks]
-)
-
-This line confuses many beginners.
-
-Let’s break it.
-
-Suppose:
-
-chunks =
-[
-   (1,0,"Policy Number"),
-   (1,1,"Named Insured")
-]
-
-Then:
-
-[c[2] for c in chunks]
-
-becomes:
-
-[
-   "Policy Number",
-   "Named Insured"
-]
-
-Then:
-
-embed_texts(...)
-
-calls Azure OpenAI.
-
-Returns:
-
-[
-   [0.12,0.34,0.89...],
-   [0.77,0.21,0.44...]
-]
-
-Now:
-
-chunk 1
-↔
-embedding 1
-chunk 2
-↔
-embedding 2
-
-⸻
-
-Step 6: Embeddings → Database
-
-Theory:
-
-Embedding
- ↓
-Vector DB
-
-Code:
-
-Eventually reaches:
-
-execute_values(...)
-
-Inside rows_to_insert:
-
-(
-    doc_id,
-    source,
-    page,
-    idx,
-    chunk_content,
-    content_hash,
-    vec(emb),
-    metadata,
-    reference_id,
-    attachment_id
-)
-
-Imagine:
-
-(
- "abc123",
- "file.txt",
- 1,
- 0,
- "Policy Number: POL123",
- "HASH123",
- "[0.12,0.44,0.78]",
- '{"chunk":0}',
- "REF123",
- "file.txt"
-)
-
-Inserted into PGVector table.
-
-Now theory:
-
-Blob
- ↓
-Text
- ↓
-Chunks
- ↓
-Embeddings
- ↓
-PGVector
-
-matches exactly:
-
-read_txt_from_blob()
-chunk_text()
-embed_texts()
-execute_values()
-
-⸻
-
-Step 7: Now Retrieval Starts
-
-Back in:
-
-run_mcp()
-
-next line:
-
-process_retrieval_pg(...)
-
-Now we enter Retrieval Phase.
-
-Theory:
+When user asks question.
 
 Question
  ↓
@@ -389,176 +97,719 @@ LLM
  ↓
 Answer
 
-But your project doesn’t use user questions.
+⸻
 
-Instead it uses attributes.
+Part 3: Where does your code fit?
+
+Your codebase contains both phases.
+
+⸻
+
+Ingestion Side
+
+File:
+
+pgvectoringest.py
+
+Purpose:
+
+Blob
+ ↓
+Read Text
+ ↓
+Chunk Text
+ ↓
+Generate Embeddings
+ ↓
+Store in PGVector
+
+⸻
+
+Retrieval Side
+
+File:
+
+pgvector_retriever.py
+
+Purpose:
+
+Attribute
+ ↓
+Search PGVector
+ ↓
+Get Relevant Chunks
+ ↓
+Send Context To LLM
+ ↓
+Extract Value
+
+⸻
+
+Metadata Side
+
+File:
+
+attachment_info_repo.py
+
+Purpose:
+
+Store metadata about uploaded attachment.
 
 Example:
 
-{
-  "policy_number": {},
-  "named_insured": {},
-  "coverage_limit": {}
-}
-
-Each attribute behaves like a question.
+submission_id	document_type	blob_url
+REF123	accord	xyz.pdf
 
 ⸻
 
-Step 8: Attribute = Question
+Part 4: What happens when run_mcp() is called?
 
-Suppose:
+This is your main flow.
 
-attr = "policy_number"
+User sends:
 
-Think of it as:
-
-Question:
-"What is the policy number?"
-
-Now:
-
-vectordb.similarity_search(
-    attr,
-    k
+run_mcp(
+    reference_id="REF123",
+    document_type="accord",
+    blob_url="..."
 )
 
-runs.
+⸻
+
+Step 1
+
+account, container, blob = resolve_blob(...)
+
+Extract:
+
+Account URL
+Container
+Blob Name
+
+Example:
+
+Input:
+
+https://storage.blob.core.windows.net/docs/file.txt
+
+Output:
+
+Account:
+https://storage.blob.core.windows.net
+Container:
+docs
+Blob:
+file.txt
 
 ⸻
 
-Step 9: similarity_search()
+Step 2
 
-This is the most important RAG function.
+ingest(...)
 
-Look:
-
-vec = self.embeddings.embed_query(query)
-
-Suppose:
-
-query = "policy_number"
-
-becomes:
-
-[0.88,0.12,0.77...]
-
-Query embedding generated.
+Starts ingestion.
 
 ⸻
 
-Then:
+Part 5: Ingestion Deep Dive
 
-ORDER BY embedding <=> query_vector
+Inside:
 
-This means:
-
-Find nearest chunks
-
-inside PGVector.
+ingest()
 
 ⸻
 
-Suppose database contains:
+Read File
 
-Chunk A:
+text = read_txt_from_blob(...)
+
+Downloads text from Azure Blob.
+
+Example:
+
+Blob contains:
+
+Named Insured: ABC Corp
+Policy Number: POL123
+Limit: 1,000,000
+
+⸻
+
+Chunking
+
+chunks = chunk_text(text)
+
+Why?
+
+Embeddings cannot process huge documents efficiently.
+
+We split.
+
+Example:
+
+Chunk 1
+Named Insured: ABC Corp
+Chunk 2
+Policy Number: POL123
+Chunk 3
+Limit: 1,000,000
+
+⸻
+
+Embeddings
+
+embeddings = embed_texts(...)
+
+This is Azure OpenAI Embeddings.
+
+Example:
+
+Text:
+
+Policy Number
+
+Converted into:
+
+[0.125,
+ 0.781,
+ -0.234,
+ ...
+]
+
+3072 dimensions.
+
+Not readable by humans.
+
+But mathematically represents meaning.
+
+⸻
+
+Why Embeddings?
+
+Suppose user asks:
+
+Policy ID
+
+Document contains:
+
+Policy Number
+
+Text differs.
+
+Meaning same.
+
+Embeddings capture meaning.
+
+⸻
+
+Part 6: PGVector
+
+You are storing embeddings in PostgreSQL.
+
+Normally PostgreSQL stores:
+
+Text
+Integer
+Date
+
+PGVector allows:
+
+Vectors
+
+Example:
+
+[0.12,0.34,-0.22...]
+
+⸻
+
+Table:
+
+CREATE TABLE pgvector_store
+
+Contains:
+
+Column	Meaning
+doc_id	document identifier
+content	chunk text
+embedding	vector
+mail_ref_id	reference
+attachment_id	file
+content_hash	duplicate detection
+
+⸻
+
+Part 7: Duplicate Logic
+
+You added:
+
+content_hash
+
+Generated using:
+
+SHA256
+
+Example:
+
+Text:
+
+Policy Number: 123
+
+Hash:
+
+A8D92JDKS...
+
+⸻
+
+Purpose:
+
+Avoid storing same chunk again.
+
+⸻
+
+Example:
+
+Document uploaded again.
+
+Same text.
+
+Same hash.
+
+System checks:
+
+chunk_exists()
+
+If exists:
+
+Skip insertion
+
+⸻
+
+Without this:
+
+Database becomes:
+
+Policy Number
+Policy Number
+Policy Number
+Policy Number
+
+Many duplicates.
+
+⸻
+
+Part 8: Why Chunk Similarity Search Works
+
+Imagine database contains:
+
+Chunk A
+
 Named Insured ABC
-Chunk B:
-Policy Number POL123
-Chunk C:
-Coverage Limit 1M
-
-Distances:
-
-Chunk A → 0.8
-Chunk B → 0.1
-Chunk C → 0.7
-
-PGVector returns:
 
 Chunk B
 
-because it is closest.
+Policy Number POL123
+
+Chunk C
+
+Limit 1,000,000
+
+Each chunk has embedding.
 
 ⸻
 
-Step 10: Why attribute_contexts exists
+User asks:
 
-After retrieval:
+Policy ID
 
-attribute_contexts
+Convert question to embedding.
 
-becomes:
+Now PGVector calculates distance.
+
+Conceptually:
+
+Question Vector
+     ↓
+Chunk A distance = 0.8
+Chunk B distance = 0.1
+Chunk C distance = 0.9
+
+Smaller distance = more similar.
+
+Therefore:
+
+Chunk B returned
+
+⸻
+
+Part 9: Retrieval Side
+
+Now we enter:
+
+process_retrieval_pg()
+
+⸻
+
+First:
+
+prompt_manager.get_prompt_and_extraction_rules()
+
+Reads prompt from PostgreSQL.
+
+Not from code.
+
+This is important.
+
+Your prompts are dynamic.
+
+Database contains:
+
+document_type	prompt
+accord	extraction prompt
+
+⸻
+
+Why useful?
+
+Business users can change prompts.
+
+No code deployment needed.
+
+⸻
+
+Part 10: Extraction Rules
+
+Database also contains:
 
 {
-   "policy_number":
-   {
-      "instruction":"Extract policy number",
-      "context":"Policy Number POL123"
-   },
-   "named_insured":
-   {
-      "instruction":"Extract insured",
-      "context":"ABC Corp"
-   }
+  "policy_number": {
+    "description": "Extract policy number",
+    "k": 13
+  },
+  "named_insured": {
+    "description": "Extract insured name",
+    "k": 13
+  }
 }
-
-Now you have gathered evidence.
-
-Think:
-
-Retriever finished work.
 
 ⸻
 
-Step 11: One Big LLM Call
+Meaning:
+
+For every attribute:
+
+policy_number
+named_insured
+limit
+carrier
+...
+
+Run retrieval.
+
+⸻
+
+Part 11: What is k?
+
+Example:
+
+k = 13
+
+Means:
+
+Give me top 13 matching chunks
+
+from vector database.
+
+⸻
+
+Example:
+
+Searching:
+
+policy_number
+
+returns:
+
+Chunk 5
+Chunk 8
+Chunk 12
+...
+
+13 chunks total.
+
+⸻
+
+Part 12: Similarity Search
+
+Inside:
+
+vectordb.similarity_search()
+
+Flow:
+
+Attribute
+ ↓
+Embedding
+ ↓
+PGVector Search
+ ↓
+Top K Chunks
+
+⸻
+
+Example
+
+Attribute:
+
+policy_number
+
+Search result:
+
+Policy Number: POL123
+
+⸻
+
+Part 13: Your New Batched Design
+
+Originally:
+
+For every attribute:
+
+Search
+ ↓
+LLM Call
+
+Suppose:
+
+50 attributes
+
+Then:
+
+50 LLM Calls
+
+Expensive.
+
+Slow.
+
+⸻
 
 Now:
 
+You do:
+
+50 Retrievals
+ ↓
+1 LLM Call
+
+Huge improvement.
+
+⸻
+
+The variable:
+
+attribute_contexts
+
+looks like:
+
+{
+  "policy_number": {
+      "instruction":"Extract policy number",
+      "context":"Policy Number POL123"
+  },
+  "named_insured": {
+      "instruction":"Extract insured",
+      "context":"ABC Corporation"
+  }
+}
+
+⸻
+
+Everything bundled.
+
+Then:
+
 json.dumps(attribute_contexts)
 
-is sent to:
+Sent in ONE prompt.
 
-chain.invoke(...)
+⸻
+
+Part 14: LLM Extraction
 
 Prompt receives:
 
 {
-   "policy_number":
-   {
+  "policy_number": {
       "context":"Policy Number POL123"
-   }
+  },
+  "named_insured": {
+      "context":"ABC Corp"
+  }
 }
 
 LLM returns:
 
 {
-   "policy_number":"POL123"
+  "policy_number":"POL123",
+  "named_insured":"ABC Corp"
 }
-
-That’s the answer generation step of RAG.
 
 ⸻
 
-The Most Important Mapping
+Part 15: Grouping Stage
 
-Whenever you forget the code, remember this table:
+After extraction:
 
-Theory	Code
-Document	Blob Storage
-Read Document	read_txt_from_blob()
-Chunking	chunk_text()
-Embeddings	embed_texts()
-Vector DB	pgvector table
-Store vectors	execute_values()
-Question	attribute
-Query embedding	embed_query()
-Similarity search	similarity_search()
-Retrieved chunks	docs
-Context creation	attribute_contexts
-LLM generation	chain.invoke()
-Final JSON	extracted
+{
+  "policy_number":"POL123",
+  "named_insured":"ABC Corp",
+  "limit":"1000000"
+}
 
-This table is the bridge between the RAG theory and your code.
+You call:
 
-The next step would be to open only one function — similarity_search() — and explain every single line (including the SQL query, vector creation, <=> operator, and returned Document objects) because that function is the heart of retrieval and usually where people get lost.
+group_attributes_by_category()
+
+LLM converts:
+
+{
+  "Policy Information": {
+      "policy_number":"POL123"
+  },
+  "Insured Information": {
+      "named_insured":"ABC Corp"
+  },
+  "Coverage": {
+      "limit":"1000000"
+  }
+}
+
+Purely for readability.
+
+Not retrieval.
+
+Not RAG.
+
+Just formatting.
+
+⸻
+
+Part 16: Output Storage
+
+Output saved:
+
+Local:
+
+output_dir
+
+and Azure Blob:
+
+upload_json_to_blob()
+
+Result:
+
+{
+  "Policy Information":{
+      "policy_number":"POL123"
+  }
+}
+
+stored as JSON.
+
+⸻
+
+Part 17: Attachment Info Table Purpose
+
+This file:
+
+attachment_info_repo.py
+
+is NOT part of RAG.
+
+Many beginners confuse this.
+
+It is only metadata storage.
+
+⸻
+
+It stores:
+
+insert_attachment_info()
+
+Data like:
+
+submission_id	blob_url	document_type
+REF123	xyz.pdf	accord
+
+⸻
+
+This table is NOT used for:
+
+❌ embeddings
+
+❌ retrieval
+
+❌ similarity search
+
+❌ LLM
+
+⸻
+
+It is only:
+
+Document Tracking Table
+
+⸻
+
+Complete Flow Diagram
+
+run_mcp()
+    │
+    ▼
+resolve_blob()
+    │
+    ▼
+read_txt_from_blob()
+    │
+    ▼
+chunk_text()
+    │
+    ▼
+embed_texts()
+    │
+    ▼
+store in PGVector
+    │
+    ▼
+insert_attachment_info()
+    │
+    ▼
+process_retrieval_pg()
+    │
+    ▼
+load prompt from DB
+    │
+    ▼
+load extraction rules
+    │
+    ▼
+similarity search for each attribute
+    │
+    ▼
+build attribute_contexts
+    │
+    ▼
+ONE batched LLM call
+    │
+    ▼
+Extract values
+    │
+    ▼
+Group attributes
+    │
+    ▼
+Upload JSON output
+    │
+    ▼
+Return blob URL
+
+The next thing we should do is go into the mathematics of embeddings, vectors, cosine similarity, pgvector <=> operator, and exactly how similarity search works internally, because that is usually the part people forget after learning RAG once. Understanding that will make the retrieval code (similarity_search) much easier to understand.
