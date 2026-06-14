@@ -1,357 +1,540 @@
-Almost, but there is one important correction.
+Excellent. This is exactly the function that makes RAG work.
 
-You said:
+Let’s take your actual code:
 
-the question which is in embedding mode is searched only in those top k chunks
+def similarity_search(self, query: str, k: int = 10) -> List[Document]:
+    vec = self.embeddings.embed_query(query)
+    vec_str = "[" + ",".join(f"{x:.8f}" for x in vec) + "]"
+    sql_query = f"""
+        SELECT {self.text_col}, {self.meta_col}
+        FROM {self.schema}.{self.table}
+        WHERE {self.ref_col} = %s
+        ORDER BY {self.embedding_col} <=> %s::vector
+        LIMIT %s
+    """
+    with psycopg2.connect(**self.connection_params) as conn:
+        with conn.cursor() as cur:
+            cur.execute(sql_query, (self.reference_id, vec_str, k))
+            rows = cur.fetchall()
+    return [
+        Document(page_content=row[0], metadata=row[1] or {})
+        for row in rows
+    ]
 
-Actually the order is the opposite.
+Forget code for 2 minutes.
 
-The question is not searched inside the top k chunks.
-
-Instead:
-
-Question
-   ↓
-Convert question to embedding
-   ↓
-Compare with ALL chunk embeddings in the vector DB
-   ↓
-Rank chunks by similarity
-   ↓
-Return Top K chunks
-
-Let’s use an example.
-
-⸻
-
-Suppose your PGVector table contains 5 chunks.
-
-Chunk	Content
-C1	Named Insured: ABC Corp
-C2	Policy Number: POL123
-C3	Coverage Limit: 1M
-C4	Effective Date: 01-Jan-2025
-C5	Broker Name: XYZ Insurance
-
-Each chunk already has an embedding stored.
-
-C1 -> [0.12, 0.44, ...]
-C2 -> [0.88, 0.11, ...]
-C3 -> [0.56, 0.33, ...]
-...
+Let’s first understand what this function is trying to achieve.
 
 ⸻
 
-Now attribute:
+Input
 
-attr = "policy_number"
+Suppose:
 
-becomes a query embedding.
+similarity_search(
+    query="policy_number",
+    k=3
+)
+
+Meaning:
+
+Find the 3 chunks most related to "policy_number"
+
+That’s all.
+
+⸻
+
+Step 1
+
+vec = self.embeddings.embed_query(query)
+
+Input:
+
+query = "policy_number"
+
+Question:
+
+What is embed_query()?
+
+Answer:
+
+Azure OpenAI converts text into numbers.
+
+Before:
 
 policy_number
-     ↓
-[0.85, 0.09, ...]
+
+After:
+
+[0.82, 0.44, -0.12, 0.67, ...]
+
+3072 numbers.
+
+You can think:
+
+Text
+ ↓
+Embedding Model
+ ↓
+Vector
+
+So now:
+
+vec
+
+contains:
+
+[
+   0.82,
+   0.44,
+   -0.12,
+   ...
+]
 
 ⸻
 
-Now PGVector compares this query embedding with every chunk embedding.
+Why convert text to numbers?
+
+Computers cannot calculate:
+
+Policy Number
+
+vs
+
+Policy ID
+
+But they can calculate:
+
+[0.82, 0.44, ...]
+vs
+[0.81, 0.45, ...]
+
+and determine they’re very close.
+
+⸻
+
+Step 2
+
+vec_str = "[" + ",".join(f"{x:.8f}" for x in vec) + "]"
+
+This line scares beginners.
+
+Let’s simplify.
+
+Suppose:
+
+vec =
+[
+  0.123456789,
+  0.987654321
+]
+
+The loop:
+
+f"{x:.8f}"
+
+means:
+
+Keep 8 digits after decimal
+
+Result:
+
+[
+ "0.12345679",
+ "0.98765432"
+]
+
+Then:
+
+",".join(...)
+
+becomes:
+
+0.12345679,0.98765432
+
+Then:
+
+"[" + ... + "]"
+
+becomes:
+
+[0.12345679,0.98765432]
+
+⸻
+
+Why?
+
+Because PGVector expects vectors in text format:
+
+'[0.1,0.2,0.3]'
+
+So this line is simply formatting Python data into PostgreSQL vector format.
+
+⸻
+
+Step 3
+
+Now we build SQL.
+
+sql_query = f"""
+SELECT content, metadata
+FROM pgvector_store
+WHERE mail_ref_id = %s
+ORDER BY embedding <=> %s::vector
+LIMIT %s
+"""
+
+Let’s replace variables.
+
+Suppose:
+
+reference_id = "REF123"
+k = 3
+
+SQL becomes conceptually:
+
+SELECT content, metadata
+FROM pgvector_store
+WHERE mail_ref_id = 'REF123'
+ORDER BY embedding <=> '[0.82,0.44,...]'::vector
+LIMIT 3
+
+⸻
+
+Why WHERE mail_ref_id?
+
+This is very important.
+
+Suppose database contains:
+
+Document A
+
+Policy Number: POL123
+
+Reference:
+
+REF123
+
+⸻
+
+Document B
+
+Policy Number: POL999
+
+Reference:
+
+REF999
+
+If we remove:
+
+WHERE mail_ref_id='REF123'
+
+Search could return chunks from another document.
+
+Disaster.
+
+⸻
+
+So:
+
+WHERE mail_ref_id='REF123'
+
+means:
+
+Only search inside THIS document
+
+⸻
+
+Step 4
+
+The most important line in RAG
+
+ORDER BY embedding <=> query_vector
+
+What does <=> mean?
+
+This is a PGVector operator.
+
+Think:
+
+How similar are two vectors?
+
+⸻
+
+Suppose query vector is:
+
+policy_number
+
+↓
+
+[1,2]
+
+⸻
+
+Database chunks:
+
+Chunk A
+
+Named Insured
+
+↓
+
+[10,20]
+
+⸻
+
+Chunk B
+
+Policy Number
+
+↓
+
+[1.1,2.2]
+
+⸻
+
+Chunk C
+
+Coverage Limit
+
+↓
+
+[8,15]
+
+⸻
+
+PGVector calculates distance.
 
 Conceptually:
 
-Distance(Query, C1) = 0.85
-Distance(Query, C2) = 0.05
-Distance(Query, C3) = 0.72
-Distance(Query, C4) = 0.91
-Distance(Query, C5) = 0.80
+Distance(Query, A)=20
+Distance(Query, B)=0.3
+Distance(Query, C)=15
 
 ⸻
 
-Then PGVector sorts them.
+Then sorts:
 
-1. C2 -> 0.05
-2. C3 -> 0.72
-3. C5 -> 0.80
-4. C1 -> 0.85
-5. C4 -> 0.91
+B
+C
+A
 
-If:
+Smallest distance first.
 
-k = 3
-
-then only these are returned:
-
-C2
-C3
-C5
-
-These are the Top K chunks.
+Most similar first.
 
 ⸻
 
-Only after that does your code do:
+Think of it like GPS
+
+Imagine:
+
+You are at:
+(1,2)
+
+Friends:
+
+Friend A:
+(10,20)
+Friend B:
+(1.1,2.2)
+Friend C:
+(8,15)
+
+Who is closest?
+
+Obviously:
+
+Friend B
+
+Vector search is doing the same thing.
+
+Except instead of 2 dimensions:
+
+x,y
+
+you have:
+
+3072 dimensions
+
+⸻
+
+Step 5
+
+cur.execute(
+    sql_query,
+    (
+        self.reference_id,
+        vec_str,
+        k
+    )
+)
+
+Actual values inserted:
+
+(
+  "REF123",
+  "[0.82,0.44,...]",
+  3
+)
+
+Database runs search.
+
+⸻
+
+Step 6
+
+rows = cur.fetchall()
+
+Suppose DB returns:
+
+[
+ (
+   "Policy Number: POL123",
+   {"chunk":5}
+ ),
+ (
+   "Policy Number Effective Date...",
+   {"chunk":6}
+ ),
+ (
+   "Coverage Limit 1M",
+   {"chunk":8}
+ )
+]
+
+These are your Top K chunks.
+
+Notice:
+
+The embeddings are NOT returned.
+
+Only content.
+
+Why?
+
+Because LLM cannot read:
+
+[0.82,0.44,0.67]
+
+LLM needs text.
+
+⸻
+
+Step 7
+
+This line:
+
+return [
+    Document(
+        page_content=row[0],
+        metadata=row[1] or {}
+    )
+    for row in rows
+]
+
+Transforms tuples into LangChain Documents.
+
+⸻
+
+Before:
+
+(
+  "Policy Number: POL123",
+  {"chunk":5}
+)
+
+After:
+
+Document(
+   page_content="Policy Number: POL123",
+   metadata={"chunk":5}
+)
+
+⸻
+
+Why use Document objects?
+
+Because LangChain standardizes retrieved content.
+
+Instead of:
+
+row[0]
+row[1]
+
+you can use:
+
+doc.page_content
+doc.metadata
+
+Much cleaner.
+
+⸻
+
+What process_retrieval_pg receives
+
+After:
+
+docs = vectordb.similarity_search(
+    "policy_number",
+    13
+)
+
+docs contains:
+
+[
+ Document(
+   page_content="Policy Number: POL123",
+   metadata={"chunk":5}
+ ),
+ Document(
+   page_content="Named Insured: ABC Corp",
+   metadata={"chunk":6}
+ )
+]
+
+Then your code does:
 
 context = "\n".join(
     d.page_content
     for d in docs
 )
 
-which creates:
+Result:
 
 Policy Number: POL123
-Coverage Limit: 1M
-Broker Name: XYZ Insurance
+Named Insured: ABC Corp
 
-and sends that context to the LLM.
-
-⸻
-
-Think of it like a class teacher.
-
-You ask:
-
-Who got the highest marks in Math?
-
-The teacher doesn’t first pick 10 students and then search.
-
-Instead:
-
-Check ALL students
-    ↓
-Sort by marks
-    ↓
-Take top students
-
-PGVector works similarly.
+And THAT is what is sent to the LLM.
 
 ⸻
 
-In your code the relevant line is:
-
-SELECT content, metadata
-FROM pgvector_store
-WHERE mail_ref_id = %s
-ORDER BY embedding <=> %s::vector
-LIMIT %s
-
-This means:
-
-Take all chunks for this reference_id
-        ↓
-Compare every chunk embedding
-        ↓
-Sort by similarity
-        ↓
-Return only K rows
-
-So the actual flow is:
-
-Attribute (policy_number)
-        ↓
-Embedding
-        ↓
-Compare against ALL chunk embeddings
-        ↓
-Sort by similarity
-        ↓
-Top K chunks returned
-        ↓
-LLM receives those chunks
-        ↓
-Extract value
-
-A question for you:
-
-Suppose a document was chunked into 100 chunks and k=13.
-
-How many chunk embeddings does PGVector compare against:
-
-A) 13
-
-B) 100
-
-This is the key point that determines whether you’ve understood vector search correctly.
-
-Exactly! That’s the core idea of RAG.
-
-Let’s use your code as the example.
-
-⸻
-
-Suppose the attribute is:
-
-attr = "policy_number"
-
-This is effectively the “question”.
-
-⸻
-
-Step 1: Retrieve relevant chunks
-
-PGVector searches and returns:
-
-Chunk 1:
-Policy Number: POL123
-Chunk 2:
-Named Insured: ABC Corporation
-Chunk 3:
-Coverage Limit: $1,000,000
-
-These become the context.
-
-⸻
-
-Step 2: Build the prompt
-
-In your code:
-
-attribute_contexts = {
-    "policy_number": {
-        "instruction": "Extract policy number",
-        "context": "Policy Number: POL123 ..."
-    }
-}
-
-Eventually this is sent to the LLM.
-
-Conceptually the LLM sees something like:
-
-Attribute:
-policy_number
-Instruction:
-Extract policy number
-Context:
-Policy Number: POL123
-Named Insured: ABC Corporation
-Coverage Limit: $1,000,000
-Return JSON only.
-
-⸻
-
-Step 3: LLM answers
-
-The LLM reads the context and responds:
-
-{
-  "policy_number": "POL123"
-}
-
-⸻
-
-The important thing
-
-The LLM is not searching the entire document.
-
-The LLM only sees:
-
-Question/Attribute
-+
-Retrieved Chunks
-
-Think of it as an open-book exam.
-
-Without RAG:
-
-Question
-↓
-LLM memory
-↓
-Answer
-
-With RAG:
-
-Question
-↓
-Retriever finds relevant pages
-↓
-Question + Relevant Pages
-↓
-LLM
-↓
-Answer
-
-⸻
-
-In your project, the “question” is not a user’s natural language question.
-
-Instead:
-
-policy_number
-named_insured
-coverage_limit
-effective_date
-
-are acting as mini-questions.
-
-For example:
-
-policy_number
-
-is basically equivalent to:
-
-"What is the policy number?"
-
-and
-
-named_insured
-
-is basically:
-
-"Who is the named insured?"
-
-⸻
-
-One more important thing about your specific implementation:
-
-The old version of your code did:
-
-policy_number
-    ↓
-retrieve chunks
-    ↓
-LLM call
-named_insured
-    ↓
-retrieve chunks
-    ↓
-LLM call
-coverage_limit
-    ↓
-retrieve chunks
-    ↓
-LLM call
-
-Many LLM calls.
-
-Your new batched version does:
-
-Retrieve chunks for policy_number
-Retrieve chunks for named_insured
-Retrieve chunks for coverage_limit
-...
-            ↓
-Bundle everything together
-            ↓
-ONE LLM call
-
-So the LLM receives something like:
-
-{
-  "policy_number": {
-    "instruction": "...",
-    "context": "..."
-  },
-  "named_insured": {
-    "instruction": "...",
-    "context": "..."
-  },
-  "coverage_limit": {
-    "instruction": "...",
-    "context": "..."
-  }
-}
-
-and extracts all attributes in a single call.
-
-That’s why your new design is much faster and cheaper.
-
-
+So the complete flow of similarity_search() is:
+
+Attribute
+(policy_number)
+       ↓
+embed_query()
+       ↓
+Query Vector
+       ↓
+Compare against ALL chunk vectors
+inside REF123
+       ↓
+Sort by similarity (<=>)
+       ↓
+Take Top K
+       ↓
+Return chunk text
+       ↓
+Build Context
+       ↓
+Send Context to LLM
+
+Notice something very important:
+
+The LLM never sees the embeddings.
+
+Embeddings are only used by PGVector to find relevant chunks.
+
+The LLM only receives human-readable text from those chunks. That’s one of the biggest RAG concepts to remember.
