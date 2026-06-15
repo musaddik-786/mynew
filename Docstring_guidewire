@@ -1,600 +1,373 @@
-client.py
+this is my current code
+main.py
 """
-Jarvis Claims Agent — Interactive CLI Client
+main.py
+───────
+MCP server entry point for the Policyholder Agents platform — hosts 9
+agent MCP sub-apps on a single FastAPI app (port 8800), backed by a local
+SQLite database.
 
-Usage:
-    python client.py
-    Type 'exit' or 'quit' to end the session.
+Registered sub-apps:
+  /api/v1/voice_text_intake   — Voice/Text Intake (FNOL)              [FULL]
+  /api/v1/duplicate_check     — Duplicate Claim Check                  [FULL]
+  /api/v1/segmentation         — Claim Segmentation / STP              [FULL]
+  /api/v1/claim_status          — Claim Status ("Follow My Claim")      [FULL]
+  /api/v1/document_submission   — Document Submission & Classification [FULL]
+  /api/v1/feedback               — Feedback / Sentiment Tracking         [FULL]
+  /api/v1/policy_coverage         — Policy Coverage Verification        [PLACEHOLDER]
+  /api/v1/claim_readiness          — Claim Readiness                     [PLACEHOLDER]
+  /api/v1/communication             — Communication                       [PLACEHOLDER]
+
+Run:
+    py -3 main.py
 """
 
-import asyncio
-import httpx
-import uuid
-import json
 import os
-from dotenv import load_dotenv
-
-load_dotenv(os.path.join(os.path.dirname(__file__), ".env"))
-
-AGENT_URL = os.getenv("AGENT_URL", "http://localhost:8002")
-
-W = 70  # display width
-
-# ── Colours ───────────────────────────────────────────────────────────────────
-C = {
-    "reset":    "\033[0m",
-    "bold":     "\033[1m",
-    "dim":      "\033[2m",
-    "user":     "\033[94m",   # blue
-    "ai":       "\033[92m",   # green
-    "tool_call":"\033[95m",   # magenta
-    "tool_ok":  "\033[96m",   # cyan
-    "tool_err": "\033[91m",   # red
-    "interrupt":"\033[93m",   # yellow
-    "error":    "\033[91m",   # red
-    "rule":     "\033[90m",   # dark grey
-}
-
-def rule(char="─"):
-    print(f"{C['rule']}{char * W}{C['reset']}")
-
-def header(label: str, colour: str):
-    pad = W - len(label) - 4
-    left = pad // 2
-    right = pad - left
-    print(f"{colour}{'─' * left}[ {label} ]{'─' * right}{C['reset']}")
-
-def block(label: str, colour: str, body: str):
-    header(label, colour)
-    for line in body.strip().splitlines():
-        print(f"  {colour}{line}{C['reset']}")
-    rule()
-
-# ── Content extractor ─────────────────────────────────────────────────────────
-
-def extract_text(content) -> str:
-    if isinstance(content, str):
-        return content
-    if isinstance(content, list):
-        parts = []
-        for item in content:
-            if isinstance(item, dict):
-                parts.append(item.get("text") or item.get("content") or json.dumps(item))
-            else:
-                parts.append(str(item))
-        return "\n".join(p for p in parts if p)
-    return str(content) if content else ""
-
-# ── Stream Handler ────────────────────────────────────────────────────────────
-
-async def stream_chat(query: str, thread_id: str, endpoint: str = "/chat"):
-    payload  = {"query": query, "thread_id": thread_id}
-    final_state = {"state": ""}
-
-    async with httpx.AsyncClient(timeout=None) as client:
-        async with client.stream("POST", f"{AGENT_URL}{endpoint}", json=payload) as response:
-            async for line in response.aiter_lines():
-                if not line.startswith("data: "):
-                    continue
-                raw = line.removeprefix("data: ").strip()
-                if not raw:
-                    continue
-                try:
-                    parsed = json.loads(raw)
-                except json.JSONDecodeError:
-                    continue
-
-                # ── Stream-level error ────────────────────────────────────────
-                if "error" in parsed:
-                    block("STREAM ERROR", C["error"], parsed["error"])
-                    yield parsed
-
-                # ── Agent message ─────────────────────────────────────────────
-                elif "message" in parsed:
-                    msg      = parsed["message"]
-                    msg_type = msg.get("type", "") if isinstance(msg, dict) else ""
-                    content  = msg.get("content", "") if isinstance(msg, dict) else str(msg)
-
-                    if msg_type == "ai":
-                        tool_calls = msg.get("tool_calls") or []
-
-                        # Tool-call invocations
-                        for tc in tool_calls:
-                            name = tc.get("name", "?")
-                            args = tc.get("args") or tc.get("input") or {}
-                            body = json.dumps(args, indent=2, ensure_ascii=False)
-                            block(f"TOOL CALL → {name}", C["tool_call"], body)
-
-                        # Plain AI text (no tool call)
-                        if not tool_calls:
-                            text = extract_text(content)
-                            if text:
-                                block("JARVIS", C["ai"], text)
-
-                    elif msg_type == "tool":
-                        name = msg.get("name", "tool")
-                        text = extract_text(content)
-                        is_err = "error" in text.lower() or "failed" in text.lower()
-                        colour = C["tool_err"] if is_err else C["tool_ok"]
-                        label  = f"TOOL ERROR ← {name}" if is_err else f"TOOL RESULT ← {name}"
-                        block(label, colour, text[:600] + ("…" if len(text) > 600 else ""))
-
-                    elif msg_type == "human":
-                        text = extract_text(content)
-                        if text:
-                            block("YOU", C["user"], text)
-
-                    yield parsed
-
-                # ── Human-in-the-loop interrupt ───────────────────────────────
-                elif "interrupt" in parsed:
-                    data = parsed["interrupt"]
-                    query_text = data.get("query", str(data))
-                    block("JARVIS ASKS — Human Assistance Required", C["interrupt"], query_text)
-                    final_state = {"state": "interrupt", "content": parsed}
-                    yield parsed
-
-    yield final_state
-
-# ── Main Loop ─────────────────────────────────────────────────────────────────
-
-async def main():
-    session_id = str(uuid.uuid4())
-    state = {"state": ""}
-
-    print()
-    print(f"{C['ai']}{C['bold']}{'═' * W}{C['reset']}")
-    print(f"{C['ai']}{C['bold']}{'  Jarvis Claims Agent':^{W}}{C['reset']}")
-    print(f"{C['rule']}{'  Session: ' + session_id:^{W}}{C['reset']}")
-    print(f"{C['rule']}{'  Type exit to quit':^{W}}{C['reset']}")
-    print(f"{C['ai']}{C['bold']}{'═' * W}{C['reset']}")
-    print()
-
-    while True:
-        try:
-            user_input = input(f"{C['user']}{C['bold']}You:{C['reset']} ").strip()
-        except (EOFError, KeyboardInterrupt):
-            print("\nSession ended.")
-            break
-
-        if user_input.lower() in ("exit", "quit", "q"):
-            print("Session ended.")
-            break
-
-        if not user_input:
-            continue
-
-        # Echo the user message in the same block style
-        rule("─")
-        header("YOU", C["user"])
-        print(f"  {C['user']}{user_input}{C['reset']}")
-        rule("─")
-        print()
-
-        endpoint  = "/continue_chat" if state.get("state") == "interrupt" else "/chat"
-        new_state = {"state": ""}
-
-        async for resp in stream_chat(user_input, session_id, endpoint):
-            if isinstance(resp, dict):
-                if resp.get("state") == "interrupt":
-                    new_state = resp
-                elif resp.get("state") == "":
-                    new_state = {"state": ""}
-
-        state = new_state
-        print()
-
-
-if __name__ == "__main__":
-    asyncio.run(main())
-
-
-
-graph.py
-import os
-from dotenv import load_dotenv
-
-load_dotenv(os.path.join(os.path.dirname(__file__), ".env"))
-
-import asyncio
-import json
-import httpx
-import base64
-from typing import Annotated, Optional
-from typing_extensions import TypedDict
-
-from langgraph.graph import StateGraph, START, END
-from langgraph.graph.message import add_messages
-from langgraph.checkpoint.memory import InMemorySaver
-from langgraph.prebuilt import ToolNode, tools_condition
-from langgraph.types import interrupt
-from langchain_core.tools import tool
-from langchain_core.messages import SystemMessage, AIMessage, HumanMessage
-from langchain_mcp_adapters.client import MultiServerMCPClient
-
-# ── Config ────────────────────────────────────────────────────────────────────
-
-MCP_GATEWAY = os.getenv("MCP_GATEWAY_URL", "http://localhost:8001")
-LLM_PROVIDER = os.getenv("LLM_PROVIDER", "anthropic")
-
-MCP_SERVERS = {
-    "fnol":        {"url": f"{MCP_GATEWAY}/api/v1/fnol_mcp/mcp",        "transport": "streamable_http"},
-    "guidewire":   {"url": f"{MCP_GATEWAY}/api/v1/guidewire_mcp/mcp",   "transport": "streamable_http"},
-    "claims_core": {"url": f"{MCP_GATEWAY}/api/v1/claims_core_mcp/mcp", "transport": "streamable_http"},
-    "fraud":       {"url": f"{MCP_GATEWAY}/api/v1/fraud_mcp/mcp",       "transport": "streamable_http"},
-}
-
-# ── System Prompt ─────────────────────────────────────────────────────────────
-
-SYSTEM_PROMPT = """You are Jarvis, an AI-powered insurance FNOL intake specialist. Your role is to
-collect all required information from the policyholder and create a complete First Notice of Loss record.
-
-## Your Tools
-
-### fnol_mcp
-  get_mandatory_fields     — retrieve the list of required FNOL fields
-  create_fnol_submission   — open a new FNOL record
-  update_fnol_field        — fill or correct a field on an existing FNOL
-  get_fnol_submission      — read back a FNOL record to verify completeness
-  get_fnol_evidence        — list evidence already attached to a FNOL
-  register_fnol_evidence   — attach an already-uploaded file URL as evidence
-
-Note: image verification runs automatically after register_fnol_evidence — you do not need to call it.
-
-### guidewire_mcp
-  get_guidewire_policy     — look up a policy from Guidewire PolicyCenter by policy number.
-                             Returns coverage details, effective dates, insured name, and underwriting info.
-                             Use this to verify the policy exists and is active before creating the FNOL.
-
-### claims_core_mcp
-  create_claim             — register a formal claim record after FNOL is complete.
-                             Map fields directly from the completed FNOL: policyNumber, insuredName →
-                             policyholderName, lossType, lossDescription → shortDescription, dateOfLoss,
-                             causeOfLoss → detectedCause, location. Do NOT pass claimNumber — the server
-                             generates it automatically.
-
-### fraud_mcp
-  write_fraud_flag         — raise a fraud flag on a claim when a suspicious signal is detected.
-                             Required fields:
-                               claimId         — the claimNumber STRING from create_claim (e.g. "CLM-2024-001"), NOT the numeric id
-                               flagType        — "image_mismatch", "image_manipulation", "inconsistent_damage", "suspicious_evidence"
-                               flagDescription — full narrative including red_flags list and assessment text
-                               riskScore       — 0–100 (90=high confidence mismatch, 60=medium, 30=low)
-                               detectedBy      — always "ai" for image verification findings
-                             Optional: status (default "Active")
-
-## FNOL Intake Workflow
-1. get_mandatory_fields        — know exactly what information is required
-2. human_assistance            — ask the policyholder for their policy number and loss details
-3. get_guidewire_policy        — verify the policy in Guidewire before proceeding
-   ↳ If policy not found or inactive, inform the policyholder via human_assistance and stop
-   ↳ Pre-fill insuredName and policyNumber from the Guidewire response
-4. create_fnol_submission      — open the FNOL with the collected data
-5. update_fnol_field           — fill any fields that were missing or incorrect
-6. get_fnol_submission         — verify the FNOL record is complete
-7. register_fnol_evidence      — if the policyholder provides a document/photo URL, attach it
-   ↳ image verification runs automatically and the result is added to your context
-   ↳ if match=false OR red_flags is non-empty → proceed to step 7a, then step 8
-7a. write_fraud_flag           — ONLY if image verification returned match=false or red_flags:
-   ↳ claimId = claimNumber string from create_claim (e.g. "CLM-2024-001")
-   ↳ detectedBy = "ai"
-   ↳ derive flagType from red_flags content
-   ↳ riskScore: confidence=high → 90, medium → 65, low → 35
-   ↳ flagDescription: include full assessment text and all red_flags items
-8. create_claim                — convert the completed FNOL into a formal claim record
-   ↳ map fields from the FNOL response; omit claimNumber (auto-generated)
-   ↳ set severity based on estimatedCost if provided, otherwise use "Medium" as default
-   ↳ if a fraud flag was raised, set aiConfidence to a lower value (e.g. 50) to ensure manual review
-9. human_assistance            — confirm with the policyholder: share the FNOL number and Claim Number;
-                                 if fraud was flagged, inform them clearly that the claim has been marked
-                                 for review and an adjuster will follow up
-
-## Critical Rules
-1. ALWAYS call get_mandatory_fields first — never guess what fields are required.
-2. ALWAYS call get_guidewire_policy to verify the policy in Guidewire before creating a FNOL.
-3. NEVER create a FNOL for a policy that does not exist or is inactive in Guidewire.
-4. ALWAYS call create_claim after the FNOL is verified complete — every FNOL must result in a claim.
-5. NEVER pass claimNumber to create_claim — the server generates it automatically.
-6. If image verification returns match=false OR any red_flags, ALWAYS call write_fraud_flag before create_claim.
-7. NEVER suppress or ignore fraud signals — even Low severity flags must be recorded.
-8. ALWAYS call human_assistance at the end to share both the FNOL number and the Claim Number.
-9. NEVER invent or assume field values — ask the policyholder if anything is unclear.
-10. If a tool returns {"error": "..."}, report the error and ask human_assistance.
-11. Be concise — one sentence on what you found, one on what you will do next.
-
-## Tone
-Warm, patient, and professional. You are helping a policyholder who may be stressed after an incident."""
-
-# ── Human-in-the-loop tool ────────────────────────────────────────────────────
-
-@tool
-def human_assistance(query: str) -> str:
-    """Pause and request input from a human — adjuster, policyholder, or supervisor.
-    Use before any irreversible action and whenever critical information is missing
-    or ambiguous. Be specific about what you need."""
-    response = interrupt({"query": query})
-    if isinstance(response, dict) and "messages" in response:
-        messages = response["messages"]
-        if messages and isinstance(messages[-1], dict):
-            return messages[-1].get("content", str(response))
-    return str(response)
-
-# ── LLM ───────────────────────────────────────────────────────────────────────
-
-if LLM_PROVIDER == "azure" or os.getenv("AZURE_INFERENCE_ENDPOINT"):
-    from langchain_openai import AzureChatOpenAI
-    llm = AzureChatOpenAI(
-        azure_endpoint=os.getenv("AZURE_INFERENCE_ENDPOINT"),
-        azure_deployment=os.getenv("AZURE_OPENAI_CHAT_DEPLOYMENT_NAME", "gpt-4o"),
-        api_key=os.getenv("AZURE_INFERENCE_CREDENTIAL"),
-        api_version=os.getenv("AZURE_OPENAI_API_VERSION", "2025-01-01-preview"),
-        temperature=0.0,
-        max_tokens=4096,
-    )
-else:
-    from langchain_anthropic import ChatAnthropic
-    llm = ChatAnthropic(
-        model=os.getenv("ANTHROPIC_MODEL", "claude-sonnet-4-6"),
-        temperature=0.0,
-        max_tokens=4096,
-    )
-
-# ── MCP Tool Loading ──────────────────────────────────────────────────────────
-
-async def _load_mcp_tools() -> list:
-    client = MultiServerMCPClient(MCP_SERVERS)
-    return await client.get_tools()
-
-mcp_tools = asyncio.run(_load_mcp_tools())
-tools = [human_assistance] + mcp_tools
-
-print("=" * 60)
-print(f"  Jarvis Agent — {len(tools)} tools loaded")
-print("=" * 60)
-for i, t in enumerate(tools, 1):
-    print(f"  {i:3}. {t.name}")
-print("=" * 60)
-
-llm_with_tools = llm.bind_tools(tools)
-
-def _handle_tool_errors(e: Exception) -> str:
-    return f"Tool call failed: {e}. Fix the inputs and try again."
-
-tool_node = ToolNode(tools=tools, handle_tool_errors=_handle_tool_errors)
-
-# ── Graph State ───────────────────────────────────────────────────────────────
-
-class State(TypedDict):
-    messages:             Annotated[list, add_messages]
-    pending_image_url:    Optional[str]   # set when register_fnol_evidence is called
-    incident_description: Optional[str]   # captured from the FNOL submission context
-
-memory = InMemorySaver()
-
-# ── Graph Nodes ───────────────────────────────────────────────────────────────
-
-async def chatbot(state: State) -> dict:
-    messages = [SystemMessage(content=SYSTEM_PROMPT)] + state["messages"]
-    message = await llm_with_tools.ainvoke(messages)
-
-    # Capture image URL + incident description whenever register_fnol_evidence is called
-    updates: dict = {"messages": [message]}
-    if message.tool_calls:
-        for tc in message.tool_calls:
-            if tc["name"] == "register_fnol_evidence":
-                args = tc.get("args", {})
-                updates["pending_image_url"] = args.get("file_url")
-                # Build incident description from recent conversation
-                description_parts = []
-                for msg in state["messages"]:
-                    content = msg.content if hasattr(msg, "content") else ""
-                    if isinstance(content, str) and content:
-                        description_parts.append(content)
-                updates["incident_description"] = " ".join(description_parts)[-800:]
-                break
-    return updates
-
-
-async def verify_image_node(state: State) -> dict:
-    """Mandatory graph node: automatically verifies the uploaded image against the
-    incident description using Azure OpenAI Vision. Injects the result into the
-    message history so the chatbot can act on it. Always runs after register_fnol_evidence."""
-    file_url    = state.get("pending_image_url", "")
-    description = state.get("incident_description", "")
-
-    if not file_url:
-        return {"pending_image_url": None}
-
-    endpoint    = os.getenv("AZURE_INFERENCE_ENDPOINT", "").rstrip("/")
-    api_key     = os.getenv("AZURE_INFERENCE_CREDENTIAL", "")
-    deployment  = os.getenv("AZURE_OPENAI_CHAT_DEPLOYMENT_NAME", "gpt-4o")
-    api_version = os.getenv("AZURE_OPENAI_API_VERSION", "2025-01-01-preview")
-
-    if not endpoint or not api_key:
-        result_text = json.dumps({"error": "Azure OpenAI credentials not configured."})
-    else:
-        vision_url = f"{endpoint}/openai/deployments/{deployment}/chat/completions?api-version={api_version}"
-        payload = {
-            "messages": [
-                {
-                    "role": "system",
-                    "content": (
-                        "You are an insurance fraud and evidence analyst. "
-                        "Determine whether the image is consistent with the described incident. "
-                        "Respond ONLY with a valid JSON object with these exact keys: "
-                        "match (bool), confidence (high/medium/low), detected_content (str), "
-                        "assessment (str), red_flags (list of str)."
-                    ),
-                },
-                {
-                    "role": "user",
-                    "content": [
-                        {
-                            "type": "text",
-                            "text": (
-                                f"Incident context from conversation: {description}\n\n"
-                                "Does the image below match this incident?"
-                            ),
-                        },
-                        {
-                            "type": "image_url",
-                            "image_url": {"url": file_url},
-                        },
-                    ],
-                },
-            ],
-            "max_tokens": 512,
-            "temperature": 0.0,
-        }
-        try:
-            # Download blob using Azure SDK (handles private containers)
-            conn_str = os.getenv("AZURE_STORAGE_CONNECTION_STRING", "")
-            if conn_str:
-                from azure.storage.blob import BlobServiceClient
-                # Parse container and blob name from URL
-                # URL format: https://<account>.blob.core.windows.net/<container>/<blob>
-                url_path = file_url.split(".blob.core.windows.net/", 1)[-1]
-                container_name, blob_name = url_path.split("/", 1)
-                blob_client = BlobServiceClient.from_connection_string(conn_str).get_blob_client(
-                    container=container_name, blob=blob_name
-                )
-                img_bytes = blob_client.download_blob().readall()
-                mime = "image/jpeg"
-            else:
-                # Fallback: try direct HTTP download
-                async with httpx.AsyncClient(timeout=30) as client:
-                    img_response = await client.get(file_url)
-                    img_response.raise_for_status()
-                    mime = img_response.headers.get("content-type", "image/jpeg").split(";")[0]
-                    img_bytes = img_response.content
-
-            b64 = base64.b64encode(img_bytes).decode("utf-8")
-            payload["messages"][1]["content"][1]["image_url"] = {
-                "url": f"data:{mime};base64,{b64}"
-            }
-
-            async with httpx.AsyncClient(timeout=30) as client:
-                r = await client.post(vision_url, json=payload, headers={"api-key": api_key})
-            if r.status_code != 200:
-                result_text = json.dumps({
-                    "error": f"Azure Vision returned {r.status_code}",
-                    "detail": r.text[:500],
-                })
-            else:
-                raw = r.json()["choices"][0]["message"]["content"].strip()
-                if raw.startswith("```"):
-                    raw = raw.split("\n", 1)[-1].rsplit("```", 1)[0].strip()
-                result_text = raw
-        except Exception as e:
-            result_text = json.dumps({"error": f"Image verification failed: {e}"})
-
-    verification_msg = HumanMessage(
-        content=f"[System: Automatic image verification result]\n{result_text}",
-    )
-    return {
-        "messages":          [verification_msg],
-        "pending_image_url": None,  # clear after verification
-    }
-
-# ── Routing ───────────────────────────────────────────────────────────────────
-
-def after_tools(state: State) -> str:
-    """Route to verify_image if an image is waiting for verification."""
-    if state.get("pending_image_url"):
-        return "verify_image"
-    return "chatbot"
-
-# ── Graph Definition ──────────────────────────────────────────────────────────
-
-graph_builder = StateGraph(State)
-graph_builder.add_node("chatbot",      chatbot)
-graph_builder.add_node("tools",        tool_node)
-graph_builder.add_node("verify_image", verify_image_node)
-
-graph_builder.add_edge(START, "chatbot")
-graph_builder.add_conditional_edges("chatbot", tools_condition)
-graph_builder.add_conditional_edges("tools", after_tools, {
-    "verify_image": "verify_image",
-    "chatbot":      "chatbot",
-})
-graph_builder.add_edge("verify_image", "chatbot")
-
-graph = graph_builder.compile(checkpointer=memory)
-
-
-
-server.py
-import os
-from dotenv import load_dotenv
-
-load_dotenv(os.path.join(os.path.dirname(__file__), ".env"))
-
 import sys
-sys.path.insert(0, os.path.dirname(__file__))
 
-from graph import graph
-from langgraph.types import Command
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "common"))
+
+from dotenv import load_dotenv
+load_dotenv()
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import StreamingResponse
-from pydantic import BaseModel
+from fastapi_mcp import FastApiMCP
+
+from init_db import init_db
+
+from voice_text_intake_router import router as voice_text_intake_router
+from duplicate_check_router import router as duplicate_check_router
+from segmentation_router import router as segmentation_router
+from claim_status_router import router as claim_status_router
+from document_submission_router import router as document_submission_router
+from feedback_router import router as feedback_router
+from policy_coverage_router import router as policy_coverage_router
+from claim_readiness_router import router as claim_readiness_router
+from communication_router import router as communication_router
+
 import uvicorn
-import json
-
-AGENT_PORT = int(os.getenv("AGENT_PORT", "8002"))
-
-# ── SSE Streaming Helpers ─────────────────────────────────────────────────────
-
-async def _stream_graph(input_data, thread_id: str):
-    """Shared generator for both /chat and /continue_chat."""
-    config = {"configurable": {"thread_id": thread_id}}
-    try:
-        async for event in graph.astream(input_data, config):
-            for value in event.values():
-                if "messages" in value:
-                    msg = value["messages"][-1]
-                    if hasattr(msg, "model_dump"):
-                        data = {"message": msg.model_dump()}
-                    elif hasattr(msg, "dict"):
-                        data = {"message": msg.dict()}
-                    else:
-                        data = {"message": str(msg)}
-                    yield f"data: {json.dumps(data)}\n\n"
-                else:
-                    # LangGraph interrupt — human assistance required
-                    try:
-                        interrupt_payload = {
-                            "query":   value[0].value["query"],
-                            "id":      value[0].id,
-                            "session": thread_id,
-                        }
-                        yield f"data: {json.dumps({'interrupt': interrupt_payload})}\n\n"
-                    except (IndexError, KeyError, TypeError):
-                        yield f"data: {json.dumps({'interrupt': {'query': str(value), 'session': thread_id}})}\n\n"
-    except Exception as exc:
-        yield f"data: {json.dumps({'error': str(exc)})}\n\n"
 
 
-async def stream(message: str, thread_id: str):
-    input_data = {"messages": [{"role": "user", "content": message}]}
-    async for chunk in _stream_graph(input_data, thread_id):
-        yield chunk
+app = FastAPI(docs_url="/docs", title="Jarvis Policyholder Agents MCP Server")
 
-
-async def continue_stream(message: str, thread_id: str):
-    input_data = Command(resume={"messages": [{"role": "user", "content": message}]})
-    async for chunk in _stream_graph(input_data, thread_id):
-        yield chunk
-
-# ── FastAPI App ───────────────────────────────────────────────────────────────
-
-app = FastAPI(
-    title="Jarvis Claims Agent",
-    description="Autonomous AI claims adjuster powered by LangGraph + Claude.",
-    version="1.0.0",
-    docs_url="/docs",
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_methods=["*"],
+    allow_headers=["*"],
 )
+
+
+def _make_cors_app(title: str, description: str = "") -> FastAPI:
+    sub = FastAPI(title=title, description=description)
+    sub.add_middleware(
+        CORSMiddleware,
+        allow_origins=["*"],
+        allow_methods=["*"],
+        allow_headers=["*"],
+    )
+    return sub
+
+
+# ── Sub-app: voice_text_intake (FULL) ─────────────────────────────────────────
+
+voice_intake_app = _make_cors_app(
+    title="voice_text_intake_agent_mcps",
+    description="MCP tools for FNOL Voice/Text Intake: field extraction, "
+                 "submission management, and audit logging.",
+)
+voice_intake_app.include_router(voice_text_intake_router)
+FastApiMCP(
+    voice_intake_app,
+    include_operations=[
+        "create_fnol_submission",
+        "get_fnol_submission",
+        "get_fnol_by_policy",
+        "update_fnol_submission",
+        "submit_fnol",
+        "get_mandatory_fields",
+        "save_voice_text_extraction",
+        "get_voice_text_extractions",
+        "save_ai_inferences",
+        "log_question_answer",
+        "get_question_log",
+        "save_field_attribution",
+        "extract_fnol_fields_from_text",
+    ],
+).mount_http()
+app.mount("/api/v1/voice_text_intake", voice_intake_app)
+
+
+# ── Sub-app: duplicate_check (FULL) ───────────────────────────────────────────
+
+duplicate_check_app = _make_cors_app(
+    title="duplicate_claim_check_agent_mcps",
+    description="MCP tools for checking duplicate FNOL/claim submissions.",
+)
+duplicate_check_app.include_router(duplicate_check_router)
+FastApiMCP(
+    duplicate_check_app,
+    include_operations=[
+        "check_duplicate_claim",
+        "get_recent_claims_for_policy",
+    ],
+).mount_http()
+app.mount("/api/v1/duplicate_check", duplicate_check_app)
+
+
+# ── Sub-app: segmentation (FULL) ──────────────────────────────────────────────
+
+segmentation_app = _make_cors_app(
+    title="claim_segmentation_agent_mcps",
+    description="MCP tools for STP scoring and claim segmentation.",
+)
+segmentation_app.include_router(segmentation_router)
+FastApiMCP(
+    segmentation_app,
+    include_operations=[
+        "get_claim_for_segmentation",
+        "compute_stp_score",
+        "get_segmentation_result",
+        "get_stp_classification",
+    ],
+).mount_http()
+app.mount("/api/v1/segmentation", segmentation_app)
+
+
+# ── Sub-app: claim_status (FULL) ──────────────────────────────────────────────
+
+claim_status_app = _make_cors_app(
+    title="claim_status_agent_mcps",
+    description="MCP tools for claim journey tracking ('Follow My Claim').",
+)
+claim_status_app.include_router(claim_status_router)
+FastApiMCP(
+    claim_status_app,
+    include_operations=[
+        "get_claim_journey",
+        "get_claim_status_summary",
+        "advance_claim_stage",
+        "log_policyholder_action",
+        "get_policyholder_actions",
+    ],
+).mount_http()
+app.mount("/api/v1/claim_status", claim_status_app)
+
+
+# ── Sub-app: document_submission (FULL) ───────────────────────────────────────
+
+document_submission_app = _make_cors_app(
+    title="document_submission_agent_mcps",
+    description="MCP tools for uploading and classifying claim documents.",
+)
+document_submission_app.include_router(document_submission_router)
+FastApiMCP(
+    document_submission_app,
+    include_operations=[
+        "upload_document",
+        "classify_document_type",
+        "get_claim_documents",
+        "get_document",
+    ],
+).mount_http()
+app.mount("/api/v1/document_submission", document_submission_app)
+
+
+# ── Sub-app: feedback (FULL) ───────────────────────────────────────────────────
+
+feedback_app = _make_cors_app(
+    title="feedback_agent_mcps",
+    description="MCP tools for policyholder feedback and sentiment tracking.",
+)
+feedback_app.include_router(feedback_router)
+FastApiMCP(
+    feedback_app,
+    include_operations=[
+        "write_customer_feedback",
+        "get_customer_feedback",
+        "update_sentiment_tracker",
+        "get_sentiment_tracker",
+    ],
+).mount_http()
+app.mount("/api/v1/feedback", feedback_app)
+
+
+# ── Sub-app: policy_coverage (PLACEHOLDER) ────────────────────────────────────
+
+policy_coverage_app = _make_cors_app(
+    title="policy_coverage_agent_mcps",
+    description="[PLACEHOLDER] MCP tools for local policy coverage verification.",
+)
+policy_coverage_app.include_router(policy_coverage_router)
+FastApiMCP(
+    policy_coverage_app,
+    include_operations=["get_policy_details_stub"],
+).mount_http()
+app.mount("/api/v1/policy_coverage", policy_coverage_app)
+
+
+# ── Sub-app: claim_readiness (PLACEHOLDER) ────────────────────────────────────
+
+claim_readiness_app = _make_cors_app(
+    title="claim_readiness_agent_mcps",
+    description="[PLACEHOLDER] MCP tools for claim readiness / completeness validation.",
+)
+claim_readiness_app.include_router(claim_readiness_router)
+FastApiMCP(
+    claim_readiness_app,
+    include_operations=["get_intake_validation_result_stub"],
+).mount_http()
+app.mount("/api/v1/claim_readiness", claim_readiness_app)
+
+
+# ── Sub-app: communication (PLACEHOLDER) ──────────────────────────────────────
+
+communication_app = _make_cors_app(
+    title="communication_agent_mcps",
+    description="[PLACEHOLDER] MCP tools for policyholder communication history.",
+)
+communication_app.include_router(communication_router)
+FastApiMCP(
+    communication_app,
+    include_operations=["get_communication_history_stub"],
+).mount_http()
+app.mount("/api/v1/communication", communication_app)
+
+
+# ── Health ────────────────────────────────────────────────────────────────────
+
+@app.on_event("startup")
+def _startup():
+    init_db()
+
+
+@app.get("/health")
+def health():
+    return {
+        "status": "healthy",
+        "service": "jarvis_policyholder_agents_mcp",
+        "sub_apps": [
+            "voice_text_intake",
+            "duplicate_check",
+            "segmentation",
+            "claim_status",
+            "document_submission",
+            "feedback",
+            "policy_coverage",
+            "claim_readiness",
+            "communication",
+        ],
+    }
+
+
+if __name__ == "__main__":
+    uvicorn.run(app, host="0.0.0.0", port=8800)
+
+
+
+policy_coverage_router.py
+"""
+policy_coverage_router.py — PLACEHOLDER
+─────────────────────────────────────────
+Local-DB Policy Coverage Verification MCP. Only get_policy_details_stub is
+implemented (real read of policy_details). Full coverage-vs-loss
+verification logic is TODO — see policy_coverage_mcp/handler.py.
+
+Tool / Endpoint map:
+  get_policy_details_stub  GET /api/policy_coverage/policy/{policy_id}
+"""
+
+import logging
+from fastapi import APIRouter, HTTPException
+
+from policy_coverage_mcp import handler
+
+log = logging.getLogger(__name__)
+
+router = APIRouter()
+
+
+@router.get(
+    "/api/policy_coverage/policy/{policy_id}",
+    operation_id="get_policy_details_stub",
+    summary="[PLACEHOLDER] Read policy_details for a policy_id",
+    tags=["PolicyCoverage"],
+)
+def get_policy_details_stub(policy_id: str):
+    """
+    Real read of policy_details for the given policy_id.
+
+    TODO: This agent is a placeholder. Coverage-vs-loss verification logic
+    (comparing reported loss type/cause against policy coverage_type,
+    deductible, limit, and exclusions) needs to be designed for the local-DB
+    platform.
+    """
+    record = handler.get_policy_details_stub(policy_id)
+    if not record:
+        return {"status": "not_implemented", "note": "Policy not found, and coverage-vs-loss verification logic is not yet designed for this platform."}
+    return {"status": "not_implemented", "note": "Coverage-vs-loss verification logic is not yet designed for this platform.", "policy_details": record}
+
+server.py under PolicyCoverageVerificationAgent
+"""
+server.py — Policy Coverage Verification Agent (PLACEHOLDER, local-DB version)
+─────────────────────────────────────────────────────────────────────────────
+This is a minimal placeholder pending full design. It exposes only a
+trivial agent/tools loop wired to the get_policy_details_stub MCP tool.
+
+TODO: Coverage-vs-loss verification logic (comparing the reported loss
+against policy coverage_type, deductible, limit, and exclusions) needs to
+be designed for this local-DB platform. The Guidewire-based agent in
+Jarvis_claims_agents/PolicyCoverageVerificationAgent is separate and not
+reused here.
+
+Port: 8807
+MCP : http://0.0.0.0:8800/api/v1/policy_coverage/mcp
+
+Run:
+    py -3 server.py
+"""
+
+import logging
+import os
+import sys
+import time
+from datetime import timedelta
+from typing import Annotated, TypedDict
+
+import uvicorn
+from dotenv import load_dotenv
+from fastapi import FastAPI, Request
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import StreamingResponse
+from langchain_core.messages import AIMessage, SystemMessage
+from langchain_mcp_adapters.client import MultiServerMCPClient
+from langchain_openai.chat_models import AzureChatOpenAI
+from langgraph.graph import END, START, StateGraph
+from langgraph.graph.message import add_messages
+from langgraph.prebuilt import ToolNode
+
+load_dotenv()
+
+logging.basicConfig(level=logging.INFO, stream=sys.stdout, force=True)
+logger = logging.getLogger("policy_coverage_agent_placeholder")
+
+PHOENIX_API_KEY = os.getenv("PHOENIX_API_KEY", "")
+PHOENIX_ENDPOINT = os.getenv("PHOENIX_ENDPOINT", "")
+MCP_URL = os.getenv("MCP_URL", "http://0.0.0.0:8800/api/v1/policy_coverage/mcp")
+AGENT_PORT = int(os.getenv("AGENT_PORT", "8807"))
+
+config_mcp_server = {
+    "policy_coverage_mcp": {
+        "url": MCP_URL,
+        "transport": "streamable_http",
+        "timeout": timedelta(seconds=120),
+        "sse_read_timeout": timedelta(seconds=600),
+    }
+}
+
+app = FastAPI(title="Policy Coverage Verification Agent (Placeholder)")
 
 app.add_middleware(
     CORSMiddleware,
@@ -604,50 +377,949 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# ── Request Schema ────────────────────────────────────────────────────────────
 
-class ChatInput(BaseModel):
-    query: str
-    thread_id: str
+class State(TypedDict):
+    messages: Annotated[list, add_messages]
 
-# ── Routes ────────────────────────────────────────────────────────────────────
 
-@app.post(
-    "/chat",
-    summary="Start or continue a claim session",
-    description="Send a message to Jarvis. Returns a server-sent event stream. "
-                "Each event is either `{message: {...}}` (agent output) or "
-                "`{interrupt: {query, id, session}}` (human assistance required).",
-)
-async def chat(input: ChatInput):
-    return StreamingResponse(
-        stream(input.query, input.thread_id),
-        media_type="text/event-stream",
+def router(state: State):
+    last = state["messages"][-1]
+    if isinstance(last, AIMessage) and getattr(last, "tool_calls", None):
+        return "tools"
+    return "End"
+
+
+_FALLBACK_PROMPT = """
+You are the Policy Coverage Verification Agent (Policyholder, local-DB
+version) for an insurance claims platform.
+
+THIS AGENT IS A PLACEHOLDER PENDING FULL DESIGN.
+
+Currently the only available tool is get_policy_details_stub, which reads
+the policy_details table for a given policy_id.
+
+TODO (not yet implemented):
+- Coverage-vs-loss verification logic comparing the reported loss type/
+  cause against the policy's coverage_type, deductible, limit, and any
+  exclusions.
+
+If asked about coverage verification, call get_policy_details_stub with the
+policy_id and explain to the user that full coverage verification logic for
+this platform is still being designed; only the raw policy_details record
+is available for now.
+"""
+
+
+def create_graph(model, tools, prompt):
+    graph_builder = StateGraph(State)
+    llm_with_tools = model.bind_tools(tools)
+
+    async def agent_node(state: State):
+        all_messages = [SystemMessage(content=prompt)] + state["messages"]
+        message = await llm_with_tools.ainvoke(all_messages)
+        return {"messages": [message]}
+
+    graph_builder.add_node("agent", agent_node)
+    graph_builder.add_node("tools", ToolNode(tools=tools))
+    graph_builder.add_edge(START, "agent")
+    graph_builder.add_conditional_edges("agent", router, {"tools": "tools", "End": END})
+    graph_builder.add_edge("tools", "agent")
+    return graph_builder.compile()
+
+
+async def get_tools():
+    client = MultiServerMCPClient(config_mcp_server)
+    tools = await client.get_tools()
+    logger.info("Tools loaded from MCP: %s", [t.name for t in tools])
+    return tools
+
+
+async def stream_graph(graph, initial_state, config):
+    async for event in graph.astream_events(initial_state, config=config, version="v2"):
+        kind = event.get("event", "")
+        if kind == "on_chat_model_stream":
+            chunk = event["data"].get("chunk")
+            if chunk and hasattr(chunk, "content") and chunk.content:
+                yield f"data: {chunk.content}\n\n"
+        elif kind == "on_tool_start":
+            yield f"data: [Tool: {event.get('name', 'unknown_tool')}] Starting...\n\n"
+        elif kind == "on_tool_end":
+            yield f"data: [Tool: {event.get('name', 'unknown_tool')}] Done\n\n"
+
+
+@app.post("/chat")
+async def chat_stream(request: Request):
+    load_dotenv()
+    tools = await get_tools()
+
+    model = AzureChatOpenAI(
+        api_key=os.getenv("AZURE_OPENAI_API_KEY"),
+        api_version=os.getenv("AZURE_OPENAI_API_VERSION"),
+        azure_deployment=os.getenv("AZURE_OPENAI_CHAT_DEPLOYMENT"),
+        azure_endpoint=os.getenv("AZURE_OPENAI_ENDPOINT"),
     )
 
+    body = await request.json()
+    user_message = body.get("message", "Verify policy coverage")
 
-@app.post(
-    "/continue_chat",
-    summary="Resume after a human-assistance interrupt",
-    description="Called after the agent emits an `interrupt` event. "
-                "Pass the same `thread_id` and the human's response as `query`.",
-)
-async def continue_chat(input: ChatInput):
-    return StreamingResponse(
-        continue_stream(input.query, input.thread_id),
-        media_type="text/event-stream",
-    )
+    graph = create_graph(model=model, tools=tools, prompt=_FALLBACK_PROMPT)
+
+    async def generate():
+        try:
+            async for event in stream_graph(
+                graph=graph,
+                initial_state={"messages": [user_message]},
+                config={"recursion_limit": 50},
+            ):
+                yield event
+        except Exception as e:
+            logger.exception("agent error")
+            yield f"data: [AGENT_ERROR] {str(e)}\n\n"
+
+    return StreamingResponse(generate(), media_type="text/event-stream")
 
 
-@app.get("/health", summary="Health check")
+@app.get("/health")
 async def health():
-    return {
-        "status": "ok",
-        "agent": "Jarvis Claims Agent",
-        "port": AGENT_PORT,
-    }
+    return {"status": "healthy", "agent": "policy_coverage_agent_placeholder", "note": "placeholder pending full design"}
 
-# ── Entry Point ───────────────────────────────────────────────────────────────
 
 if __name__ == "__main__":
     uvicorn.run(app, host="0.0.0.0", port=AGENT_PORT)
+
+and i am asking you to not change the above code completely rather i want these 2 to be replacing the above one where we were searching the details in table which is not what i want , what i want is hitting thiese endpoints instead to get those details
+
+coverage_handler.py
+"""
+coverage_handler.py
+───────────────────
+Business logic for:
+  1. Guidewire policy search + policyholder existence check
+  2. LLM-based coverage verification (reported loss vs policy terms)
+  3. Loss reporting to Guidewire ClaimCenter
+  4. Local DB persistence of verification results and policy details
+"""
+
+import json
+import logging
+import os
+from datetime import datetime
+from typing import Optional
+
+from dotenv import load_dotenv
+from openai import AzureOpenAI
+
+from policy_coverage_mcp import guidewire_client
+from policy_coverage_mcp.db import get_db_connection
+from policy_coverage_mcp.models import (
+    SaveCoverageVerificationRequest,
+    SaveLocalPolicyRequest,
+    VerifyCoverageRequest,
+    GwReportLossRequest,
+    UpdateClaimCoverageRequest,
+)
+
+load_dotenv()
+
+log = logging.getLogger(__name__)
+
+AZURE_OPENAI_ENDPOINT = os.environ.get("AZURE_OPENAI_ENDPOINT", "")
+AZURE_OPENAI_API_KEY = os.environ.get("AZURE_OPENAI_API_KEY", "")
+AZURE_OPENAI_API_VERSION = os.environ.get("AZURE_OPENAI_API_VERSION", "2025-01-01-preview")
+AZURE_OPENAI_CHAT_DEPLOYMENT = os.environ.get("AZURE_OPENAI_CHAT_DEPLOYMENT", "gpt-4.1-jarvis-demo")
+
+
+def _get_openai_client() -> AzureOpenAI:
+    return AzureOpenAI(
+        api_key=AZURE_OPENAI_API_KEY,
+        api_version=AZURE_OPENAI_API_VERSION,
+        azure_endpoint=AZURE_OPENAI_ENDPOINT,
+    )
+
+
+# ── Guidewire: Policy Search ──────────────────────────────────────────────────
+
+def gw_search_policy(policy_number: str) -> dict:
+    """
+    Searches Guidewire PolicyCenter for the given policy number.
+
+    Returns a normalised dict with:
+      found            : bool
+      policy           : flat policy dict (or None)
+      error            : error message if not found / API error
+      raw_gw_response  : the full Guidewire JSON (for downstream tools)
+    """
+    try:
+        raw = guidewire_client.search_policy(policy_number)
+        parsed = guidewire_client.parse_policy_from_search(raw)
+
+        if not parsed:
+            return {
+                "found": False,
+                "policy": None,
+                "error": f"No policy found in Guidewire for policy number '{policy_number}'.",
+                "raw_gw_response": raw,
+            }
+
+        return {
+            "found": True,
+            "policy": parsed,
+            "error": None,
+            "raw_gw_response": raw,
+        }
+
+    except Exception as exc:
+        status_code = getattr(getattr(exc, "response", None), "status_code", None)
+        if status_code == 404:
+            return {
+                "found": False,
+                "policy": None,
+                "error": f"Policy '{policy_number}' does not exist in Guidewire (HTTP 404). "
+                         "Verify the policy number and retry.",
+                "raw_gw_response": {},
+            }
+        log.exception("Guidewire policy search failed for %s", policy_number)
+        return {
+            "found": False,
+            "policy": None,
+            "error": f"Guidewire API error: {str(exc)}",
+            "raw_gw_response": {},
+        }
+
+
+# ── Guidewire: Policy Coverages ───────────────────────────────────────────────
+
+def gw_get_policy_coverages(policy_number: str) -> dict:
+    """
+    Fetches full coverage details for a policy from Guidewire.
+    First searches by policy number, then fetches the policy detail record.
+    """
+    search_result = gw_search_policy(policy_number)
+    if not search_result["found"]:
+        return search_result
+
+    gw_policy_id = search_result["policy"]["gw_policy_id"]
+    try:
+        detail = guidewire_client.get_policy_coverages(gw_policy_id)
+        return {
+            "found": True,
+            "policy_id": gw_policy_id,
+            "coverage_detail": detail,
+            "error": None,
+        }
+    except Exception as exc:
+        log.exception("Guidewire get_policy_coverages failed for %s", gw_policy_id)
+        return {
+            "found": False,
+            "policy_id": gw_policy_id,
+            "coverage_detail": None,
+            "error": str(exc),
+        }
+
+
+# ── Coverage Verification (LLM) ───────────────────────────────────────────────
+
+_COVERAGE_VERIFICATION_PROMPT = """
+You are an expert insurance coverage analyst. Your job is to determine whether a
+reported loss is covered under the given policy, based on the information available.
+
+You will receive:
+1. The reported loss type and description from the policyholder
+2. The policy information retrieved from Guidewire (coverage types, status, dates)
+
+Your task is to:
+a) Confirm whether the policy is ACTIVE on the date of loss
+b) Determine if the reported loss type falls within the policy's coverage
+c) Identify any likely exclusions that may apply
+d) Provide a clear coverage decision with reasoning
+
+Return ONLY valid JSON in this exact format:
+{
+  "coverage_decision": "Covered" | "Not Covered" | "Conditionally Covered",
+  "coverage_status":   "Confirmed" | "Excluded" | "Partial" | "Pending Review",
+  "policy_active":     true | false,
+  "coverage_type_matched": "<the specific coverage clause that applies, or null>",
+  "deductible_applicable": <integer or null>,
+  "limit_applicable": <integer or null>,
+  "exclusion_reason": "<reason if not covered, or null>",
+  "confidence": <0-100>,
+  "reasoning": "<1-3 sentence explanation of your decision>",
+  "missing_info": ["<any information needed to finalise determination>"]
+}
+"""
+
+
+def verify_coverage_against_loss(req: VerifyCoverageRequest) -> dict:
+    """
+    Uses Azure OpenAI to compare the reported loss type and description
+    against the policy coverage terms retrieved from Guidewire.
+
+    If req.policy_data is not provided, automatically calls Guidewire first.
+    """
+    # Step 1: Get policy data if not supplied
+    if req.policy_data:
+        policy_info = req.policy_data
+        gw_found = True
+    else:
+        search_result = gw_search_policy(req.policy_number)
+        if not search_result["found"]:
+            return {
+                "coverage_decision": "Not Covered",
+                "coverage_status": "Pending Review",
+                "policy_active": False,
+                "error": search_result["error"],
+                "confidence": 0,
+            }
+        policy_info = search_result["policy"]
+        gw_found = True
+
+    # Step 2: Call Azure OpenAI to reason over coverage
+    client = _get_openai_client()
+
+    user_content = f"""
+REPORTED LOSS:
+  Claim ID    : {req.claim_id}
+  Loss Type   : {req.reported_loss_type}
+  Description : {req.loss_description or 'Not provided'}
+  Loss Date   : {req.loss_date or 'Not provided'}
+
+POLICY FROM GUIDEWIRE:
+  Policy Number  : {req.policy_number}
+  Status         : {policy_info.get('status', 'Unknown')}
+  Effective Date : {policy_info.get('effective_date', 'Unknown')}
+  Expiry Date    : {policy_info.get('expiration_date', 'Unknown')}
+  Coverage Types : {policy_info.get('coverage_types', [])}
+  Insured Name   : {policy_info.get('insured_name', 'Unknown')}
+"""
+
+    response = client.chat.completions.create(
+        model=AZURE_OPENAI_CHAT_DEPLOYMENT,
+        messages=[
+            {"role": "system", "content": _COVERAGE_VERIFICATION_PROMPT},
+            {"role": "user",   "content": user_content},
+        ],
+        temperature=0.0,
+        response_format={"type": "json_object"},
+    )
+
+    content = response.choices[0].message.content
+    try:
+        result = json.loads(content)
+        result["policy_number"] = req.policy_number
+        result["claim_id"] = req.claim_id
+        return result
+    except json.JSONDecodeError:
+        log.error("LLM returned non-JSON for coverage verification: %s", content)
+        return {
+            "coverage_decision": "Pending Review",
+            "coverage_status": "Pending Review",
+            "error": "Failed to parse LLM response",
+            "raw": content,
+        }
+
+
+# ── Guidewire: Report Loss (FNOL) ─────────────────────────────────────────────
+
+def report_loss_to_guidewire(req: GwReportLossRequest) -> dict:
+    """
+    Reports a new loss to Guidewire ClaimCenter by creating an FNOL record.
+    Returns the Guidewire response including the GW claim ID.
+    """
+    try:
+        gw_response = guidewire_client.report_loss_to_guidewire(
+            policy_number=req.policy_number,
+            claim_number=req.claim_number,
+            loss_type=req.loss_type,
+            loss_date=req.loss_date,
+            loss_description=req.loss_description,
+            insured_name=req.insured_name,
+            loss_location=req.loss_location,
+            estimated_amount=req.estimated_amount,
+        )
+        gw_claim_id = (
+            gw_response.get("data", {}).get("id")
+            or gw_response.get("data", {}).get("attributes", {}).get("claimNumber")
+            or "Unknown"
+        )
+        return {
+            "success": True,
+            "gw_claim_id": gw_claim_id,
+            "message": f"Loss reported to Guidewire. GW Claim ID: {gw_claim_id}",
+            "raw_gw_response": gw_response,
+        }
+    except Exception as exc:
+        log.exception("report_loss_to_guidewire failed for claim %s", req.claim_number)
+        return {
+            "success": False,
+            "gw_claim_id": None,
+            "message": f"Failed to report loss to Guidewire: {str(exc)}",
+            "raw_gw_response": {},
+        }
+
+
+# ── Local DB: Save verification result ───────────────────────────────────────
+
+def save_coverage_verification_result(req: SaveCoverageVerificationRequest) -> dict:
+    """
+    Saves the coverage verification outcome to intake_validation_result_output
+    (re-used for coverage verification records) and upserts policy_details.
+    """
+    conn = get_db_connection()
+    try:
+        cur = conn.cursor()
+
+        validation_id = f"COV-{req.claim_id}-{int(datetime.utcnow().timestamp())}"
+
+        # Save to intake_validation_result_output (coverage_status + result fields)
+        cur.execute(
+            """
+            INSERT INTO intake_validation_result_output (
+                validation_id, claim_id, completeness_score,
+                coverage_status, fraud_risk, result, created_at
+            ) VALUES (%s, %s, %s, %s, %s, %s, NOW())
+            RETURNING *
+            """,
+            (
+                validation_id,
+                req.claim_id,
+                100,  # completeness not relevant here
+                req.coverage_status,
+                "Low",
+                req.coverage_decision,
+            ),
+        )
+        verification_row = dict(cur.fetchone())
+
+        # Upsert policy_details with Guidewire data
+        cur.execute(
+            "SELECT id FROM policy_details WHERE policy_id = %s LIMIT 1",
+            (req.policy_number,),
+        )
+        existing = cur.fetchone()
+        if existing:
+            cur.execute(
+                """
+                UPDATE policy_details
+                SET status = %s, coverage_type = %s, deductible = %s, "limit" = %s
+                WHERE policy_id = %s
+                RETURNING *
+                """,
+                (
+                    "Active" if req.coverage_status == "Confirmed" else "Under Review",
+                    req.coverage_type_matched,
+                    req.deductible,
+                    req.coverage_limit,
+                    req.policy_number,
+                ),
+            )
+        else:
+            cur.execute(
+                """
+                INSERT INTO policy_details (policy_id, status, coverage_type, deductible, "limit")
+                VALUES (%s, %s, %s, %s, %s)
+                RETURNING *
+                """,
+                (
+                    req.policy_number,
+                    "Active" if req.coverage_status == "Confirmed" else "Under Review",
+                    req.coverage_type_matched,
+                    req.deductible,
+                    req.coverage_limit,
+                ),
+            )
+        policy_row = dict(cur.fetchone())
+
+        conn.commit()
+        return {
+            "verification_record": verification_row,
+            "policy_details":      policy_row,
+            "validation_id":       validation_id,
+        }
+    except Exception:
+        conn.rollback()
+        raise
+    finally:
+        conn.close()
+
+
+# ── Local DB: Read operations ─────────────────────────────────────────────────
+
+def get_local_policy_details(policy_id: str) -> Optional[dict]:
+    conn = get_db_connection()
+    try:
+        cur = conn.cursor()
+        cur.execute(
+            "SELECT * FROM policy_details WHERE policy_id = %s LIMIT 1",
+            (policy_id,),
+        )
+        row = cur.fetchone()
+        return dict(row) if row else None
+    finally:
+        conn.close()
+
+
+def get_claim_for_verification(claim_number: str) -> Optional[dict]:
+    """
+    Fetches the claims row (from the main `claims` table) for the given
+    claim number, including coverage and loss-type fields needed for
+    coverage verification.
+    """
+    conn = get_db_connection()
+    try:
+        cur = conn.cursor()
+        cur.execute(
+            "SELECT * FROM claims WHERE claim_number = %s LIMIT 1",
+            (claim_number,),
+        )
+        row = cur.fetchone()
+        return dict(row) if row else None
+    finally:
+        conn.close()
+
+
+def get_intake_validation_result(claim_id: str) -> Optional[dict]:
+    conn = get_db_connection()
+    try:
+        cur = conn.cursor()
+        cur.execute(
+            """
+            SELECT * FROM intake_validation_result_output
+            WHERE claim_id = %s
+            ORDER BY created_at DESC LIMIT 1
+            """,
+            (claim_id,),
+        )
+        row = cur.fetchone()
+        return dict(row) if row else None
+    finally:
+        conn.close()
+
+
+def update_claim_coverage_status(claim_number: str, req: UpdateClaimCoverageRequest) -> Optional[dict]:
+    """
+    Updates the coverage field and optionally status on the claims table
+    after verification is complete.
+    """
+    fields = req.model_dump(exclude_none=True)
+    if not fields:
+        return get_claim_for_verification(claim_number)
+
+    set_clauses = ", ".join(f"{k} = %s" for k in fields)
+    values = list(fields.values()) + [claim_number]
+
+    conn = get_db_connection()
+    try:
+        cur = conn.cursor()
+        cur.execute(
+            f"UPDATE claims SET {set_clauses} WHERE claim_number = %s RETURNING *",
+            values,
+        )
+        row = cur.fetchone()
+        conn.commit()
+        return dict(row) if row else None
+    except Exception:
+        conn.rollback()
+        raise
+    finally:
+        conn.close()
+
+guidewireclient.py
+"""
+guidewire_client.py
+───────────────────
+All HTTP calls to the Guidewire PolicyCenter and ClaimCenter REST APIs.
+
+PolicyCenter base : https://pc-sandbox-gwcpdev.hexaware.zeta1-andromeda.guidewire.net/rest
+ClaimCenter base  : https://cc-sandbox-gwcpdev.hexaware.zeta1-andromeda.guidewire.net/rest
+                    (adjust CC_BASE_URL in .env if the Claims Center host differs)
+"""
+
+import logging
+import os
+from typing import Optional
+
+import requests
+from dotenv import load_dotenv
+
+load_dotenv()
+
+log = logging.getLogger(__name__)
+
+# ── Config ────────────────────────────────────────────────────────────────────
+
+PC_BASE_URL = os.environ.get(
+    "GW_PC_BASE_URL",
+    "https://pc-sandbox-gwcpdev.hexaware.zeta1-andromeda.guidewire.net/rest",
+)
+CC_BASE_URL = os.environ.get(
+    "GW_CC_BASE_URL",
+    "https://cc-sandbox-gwcpdev.hexaware.zeta1-andromeda.guidewire.net/rest",
+)
+GW_AUTH = os.environ.get("GW_AUTHORIZATION", "Basic c3U6Z3c=")
+
+HEADERS = {
+    "accept": "application/json",
+    "Content-Type": "application/json",
+    "authorization": GW_AUTH,
+}
+
+REQUEST_TIMEOUT = int(os.environ.get("GW_TIMEOUT_SECONDS", "30"))
+
+
+# ── Low-level helpers ─────────────────────────────────────────────────────────
+
+def _pc_post(uri: str, body: dict) -> dict:
+    url = PC_BASE_URL + uri
+    log.info("GW PC POST %s", url)
+    resp = requests.post(url, json=body, headers=HEADERS, timeout=REQUEST_TIMEOUT)
+    _raise_for_status(resp, "PC POST", uri)
+    return resp.json()
+
+
+def _pc_get(uri: str, params: Optional[dict] = None) -> dict:
+    url = PC_BASE_URL + uri
+    log.info("GW PC GET %s", url)
+    resp = requests.get(url, headers=HEADERS, params=params, timeout=REQUEST_TIMEOUT)
+    _raise_for_status(resp, "PC GET", uri)
+    return resp.json()
+
+
+def _cc_post(uri: str, body: dict) -> dict:
+    url = CC_BASE_URL + uri
+    log.info("GW CC POST %s", url)
+    resp = requests.post(url, json=body, headers=HEADERS, timeout=REQUEST_TIMEOUT)
+    _raise_for_status(resp, "CC POST", uri)
+    return resp.json()
+
+
+def _raise_for_status(resp: requests.Response, method: str, uri: str):
+    if not resp.ok:
+        log.error(
+            "Guidewire %s %s → HTTP %s: %s",
+            method, uri, resp.status_code, resp.text[:500],
+        )
+        resp.raise_for_status()
+
+
+# ── PolicyCenter — Policy Search ──────────────────────────────────────────────
+
+def search_policy(policy_number: str) -> dict:
+    """
+    Search for a policy in Guidewire PolicyCenter by policy number.
+
+    Uses: POST /policy/v1/search/policies
+    Body: {"data": {"attributes": {"policyNumber": "<policy_number>"}}}
+
+    Returns:
+        The full Guidewire JSON response on success.
+        Raises requests.HTTPError (404 etc.) if not found.
+
+    Caller should check:
+        result["data"]              — list of matched policies
+        result["data"][0]           — first match
+        result["data"][0]["attributes"]["policyNumber"]
+        result["data"][0]["attributes"]["account"]["accountNumber"]
+        result["data"][0]["attributes"]["periods"][0]["status"]
+        result["data"][0]["attributes"]["periods"][0]["lines"]
+    """
+    body = {
+        "data": {
+            "attributes": {
+                "policyNumber": policy_number
+            }
+        }
+    }
+    return _pc_post("/policy/v1/search/policies", body)
+
+
+def get_policy_coverages(policy_id: str) -> dict:
+    """
+    Retrieve detailed coverage information for a policy period from Guidewire.
+
+    Uses: GET /policy/v1/policies/{policyId}
+    """
+    return _pc_get(f"/policy/v1/policies/{policy_id}")
+
+
+# ── ClaimCenter — Loss / FNOL Reporting ──────────────────────────────────────
+
+def report_loss_to_guidewire(
+    policy_number: str,
+    claim_number: str,
+    loss_type: str,
+    loss_date: str,
+    loss_description: str,
+    insured_name: str,
+    loss_location: Optional[str] = None,
+    estimated_amount: Optional[float] = None,
+) -> dict:
+    """
+    Reports a new loss (FNOL) to Guidewire ClaimCenter.
+
+    Uses: POST /claim/v1/fnols
+
+    Maps local loss type to Guidewire loss cause codes:
+        Water Damage  → WaterDamage
+        Fire          → Fire
+        Wind/Hail     → WindHail
+        Theft         → Theft
+        Structural    → Other
+        Tree Damage   → WindHail
+        Motor/Auto    → Collision
+        Other         → Other
+
+    Returns the Guidewire claim ID and confirmation number on success.
+    """
+    loss_cause_map = {
+        "water damage":  "WaterDamage",
+        "fire":          "Fire",
+        "fire damage":   "Fire",
+        "wind/hail":     "WindHail",
+        "hail":          "WindHail",
+        "wind":          "WindHail",
+        "tree damage":   "WindHail",
+        "theft":         "Theft",
+        "structural":    "Other",
+        "motor":         "Collision",
+        "auto":          "Collision",
+        "collision":     "Collision",
+    }
+    loss_cause = loss_cause_map.get(loss_type.lower().strip(), "Other")
+
+    body = {
+        "data": {
+            "attributes": {
+                "policyNumber": policy_number,
+                "lossDate": loss_date,
+                "lossCause": loss_cause,
+                "description": loss_description,
+                "claimNumber": claim_number,
+                "insured": {
+                    "displayName": insured_name
+                },
+            }
+        }
+    }
+
+    if loss_location:
+        body["data"]["attributes"]["lossLocation"] = {"displayName": loss_location}
+
+    if estimated_amount is not None:
+        body["data"]["attributes"]["estimatedTotalClaim"] = {
+            "amount": estimated_amount,
+            "currency": "USD",
+        }
+
+    return _cc_post("/claim/v1/fnols", body)
+
+
+# ── Response parsers ──────────────────────────────────────────────────────────
+
+# def parse_policy_from_search(gw_response: dict) -> Optional[dict]:
+#     """
+#     Extracts a flat, normalised policy dict from a Guidewire search response.
+
+#     Returns None if no policies were found.
+#     """
+#     data_list = gw_response.get("data", [])
+#     if not data_list:
+#         return None
+
+#     policy = data_list[0]
+#     attrs = policy.get("attributes", {})
+#     periods = attrs.get("periods", [{}])
+#     period = periods[0] if periods else {}
+#     period_attrs = period.get("attributes", {}) if isinstance(period, dict) else {}
+
+#     # Account
+#     account = attrs.get("account", {})
+#     account_attrs = account.get("attributes", {}) if isinstance(account, dict) else {}
+
+#     # Lines of business (coverages)
+#     lines = period_attrs.get("lines", [])
+#     coverage_types = []
+#     for line in lines:
+#         line_attrs = line.get("attributes", {}) if isinstance(line, dict) else {}
+#         if line_attrs.get("lineOfBusiness"):
+#             coverage_types.append(line_attrs["lineOfBusiness"])
+
+#     return {
+#         "gw_policy_id":    policy.get("id", ""),
+#         "policy_number":   attrs.get("policyNumber", ""),
+#         "status":          period_attrs.get("status", "Unknown"),
+#         "effective_date":  period_attrs.get("periodStart", ""),
+#         "expiration_date": period_attrs.get("periodEnd", ""),
+#         "coverage_types":  coverage_types,
+#         "insured_name":    account_attrs.get("accountHolderName", ""),
+#         "account_number":  account_attrs.get("accountNumber", ""),
+#         "raw":             gw_response,
+#     }
+
+
+def parse_policy_from_search(gw_response: dict) -> Optional[dict]:
+    """
+    Extracts a flat, normalised policy dict from a Guidewire search response.
+
+    Returns None if no policies were found.
+    """
+    try:
+        data_list = gw_response.get("data", [])
+
+        if not data_list:
+            log.warning("No policy data returned from Guidewire")
+            return None
+
+        policy = data_list[0]
+        attrs = policy.get("attributes", {})
+
+        parsed = {
+            "gw_policy_id": attrs.get("policyId", ""),
+            "policy_number": attrs.get("policyNumber", ""),
+            "status": attrs.get("status", "Unknown"),
+            "effective_date": attrs.get("effectiveDate", ""),
+            "expiration_date": attrs.get("expirationDate", ""),
+            "coverage_types": attrs.get("coverageTypes", []),
+            "insured_name": attrs.get("insuredName", ""),
+            "account_number": attrs.get("accountNumber", ""),
+            "raw": gw_response,
+        }
+
+        log.info("Parsed policy data: %s", parsed)
+
+        return parsed
+
+    except Exception as exc:
+        log.exception("Failed to parse Guidewire policy response")
+        raise ValueError(
+            f"Unable to parse Guidewire response structure: {str(exc)}"
+        )
+
+
+models.py
+from pydantic import BaseModel, Field
+from typing import Optional, List, Any
+
+
+# ── Guidewire requests ────────────────────────────────────────────────────────
+
+class GwSearchPolicyRequest(BaseModel):
+    policy_number: str = Field(..., description="Policy number to look up in Guidewire, e.g. '9802322834'")
+
+
+class GwReportLossRequest(BaseModel):
+    policy_number: str = Field(..., description="Policy number the loss is reported against")
+    claim_number: str = Field(..., description="Local claim number, e.g. CLM-2026-1234")
+    loss_type: str = Field(..., description="Type of loss, e.g. 'Water Damage', 'Fire'")
+    loss_date: str = Field(..., description="Date of loss in YYYY-MM-DD format")
+    loss_description: str = Field(..., description="Free-text description of what happened")
+    loss_location: Optional[str] = Field(None, description="Address or area where loss occurred")
+    insured_name: str = Field(..., description="Name of the insured policyholder")
+    estimated_amount: Optional[float] = Field(None, description="Policyholder's estimated loss amount")
+
+
+# ── Coverage verification ─────────────────────────────────────────────────────
+
+class VerifyCoverageRequest(BaseModel):
+    claim_id: str = Field(..., description="Local claim number or FNOL id")
+    policy_number: str = Field(..., description="Policy number to verify against")
+    reported_loss_type: str = Field(..., description="Loss type reported by policyholder, e.g. 'Water Damage'")
+    loss_description: Optional[str] = Field(None, description="Full text description of the loss")
+    loss_date: Optional[str] = Field(None, description="Date of loss YYYY-MM-DD")
+    policy_data: Optional[dict] = Field(
+        None,
+        description="Raw Guidewire policy response — pass the output of gw_search_policy here. "
+                    "If not provided the tool will call Guidewire automatically.",
+    )
+
+
+class SaveCoverageVerificationRequest(BaseModel):
+    claim_id: str = Field(..., description="Local claim number")
+    policy_number: str = Field(..., description="Policy number that was verified")
+    coverage_status: str = Field(..., description="'Confirmed', 'Excluded', 'Partial', 'Pending Review'")
+    coverage_decision: str = Field(..., description="'Covered', 'Not Covered', 'Conditionally Covered'")
+    coverage_type_matched: Optional[str] = Field(None, description="The specific coverage clause that applies")
+    deductible: Optional[int] = Field(None, description="Applicable deductible from policy")
+    coverage_limit: Optional[int] = Field(None, description="Applicable coverage limit from policy")
+    exclusion_reason: Optional[str] = Field(None, description="Reason for exclusion if not covered")
+    verification_notes: Optional[str] = Field(None, description="Additional notes from verification")
+    gw_policy_id: Optional[str] = Field(None, description="Guidewire internal policy ID")
+    verified_by: Optional[str] = Field("Policy Coverage Verification Agent", description="Who performed the verification")
+
+
+# ── Local DB ──────────────────────────────────────────────────────────────────
+
+class SaveLocalPolicyRequest(BaseModel):
+    policy_id: str
+    status: Optional[str] = "Active"
+    coverage_type: Optional[str] = None
+    deductible: Optional[int] = None
+    limit: Optional[int] = None
+
+
+class UpdateClaimCoverageRequest(BaseModel):
+    coverage: Optional[bool] = None
+    status: Optional[str] = None
+    ai_confidence: Optional[int] = None
+
+
+policy_coverage_router.py 
+the below 2 once are here
+"""
+policy_coverage_router.py
+──────────────────────────
+FastAPI sub-app exposing all Policy Coverage Verification MCP tools.
+Mounted at /api/v1/policy_coverage in main.py.
+FastApiMCP exposes each endpoint as a tool via its operation_id.
+"""
+
+from fastapi import FastAPI, HTTPException
+
+from policy_coverage_mcp.models import (
+    GwSearchPolicyRequest,
+    GwReportLossRequest,
+    SaveCoverageVerificationRequest,
+    SaveLocalPolicyRequest,
+    UpdateClaimCoverageRequest,
+    VerifyCoverageRequest,
+)
+from policy_coverage_mcp import coverage_handler
+
+policy_coverage_app = FastAPI(title="Policy Coverage Verification MCP")
+
+
+# ── 1. Guidewire: Search policy ───────────────────────────────────────────────
+
+@policy_coverage_app.post(
+    "/gw_search_policy",
+    operation_id="gw_search_policy",
+    summary="Search Guidewire PolicyCenter for a policy by policy number",
+)
+def gw_search_policy(req: GwSearchPolicyRequest):
+    """
+    Looks up a policy in Guidewire PolicyCenter using the policy number.
+    Returns found=True with the policy details if the policy exists,
+    or found=False with an error message if it does not.
+    Use this before any coverage verification to confirm the policyholder exists.
+    """
+    result = coverage_handler.gw_search_policy(req.policy_number)
+    return result
+
+
+# ── 2. Guidewire: Get full coverage detail ────────────────────────────────────
+
+@policy_coverage_app.post(
+    "/gw_get_policy_coverages",
+    operation_id="gw_get_policy_coverages",
+    summary="Retrieve full coverage details for a policy from Guidewire",
+)
+def gw_get_policy_coverages(req: GwSearchPolicyRequest):
+    """
+    Fetches the detailed policy record from Guidewire PolicyCenter,
+    including all lines of business and coverage clauses.
+    First searches by policy number, then fetches the full policy record.
+    """
+    result = coverage_handler.gw_get_policy_coverages(req.policy_number)
+    return result
+
+
+
