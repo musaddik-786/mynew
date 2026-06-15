@@ -1,540 +1,257 @@
-Excellent. This is exactly the function that makes RAG work.
-
-Let’s take your actual code:
-
-def similarity_search(self, query: str, k: int = 10) -> List[Document]:
-    vec = self.embeddings.embed_query(query)
-    vec_str = "[" + ",".join(f"{x:.8f}" for x in vec) + "]"
-    sql_query = f"""
-        SELECT {self.text_col}, {self.meta_col}
-        FROM {self.schema}.{self.table}
-        WHERE {self.ref_col} = %s
-        ORDER BY {self.embedding_col} <=> %s::vector
-        LIMIT %s
-    """
-    with psycopg2.connect(**self.connection_params) as conn:
-        with conn.cursor() as cur:
-            cur.execute(sql_query, (self.reference_id, vec_str, k))
-            rows = cur.fetchall()
-    return [
-        Document(page_content=row[0], metadata=row[1] or {})
-        for row in rows
-    ]
-
-Forget code for 2 minutes.
-
-Let’s first understand what this function is trying to achieve.
-
-⸻
-
-Input
-
-Suppose:
-
-similarity_search(
-    query="policy_number",
-    k=3
-)
-
-Meaning:
-
-Find the 3 chunks most related to "policy_number"
-
-That’s all.
-
-⸻
-
-Step 1
-
-vec = self.embeddings.embed_query(query)
-
-Input:
-
-query = "policy_number"
-
-Question:
-
-What is embed_query()?
-
-Answer:
-
-Azure OpenAI converts text into numbers.
-
-Before:
-
-policy_number
-
-After:
-
-[0.82, 0.44, -0.12, 0.67, ...]
-
-3072 numbers.
-
-You can think:
-
-Text
- ↓
-Embedding Model
- ↓
-Vector
-
-So now:
-
-vec
-
-contains:
-
-[
-   0.82,
-   0.44,
-   -0.12,
-   ...
-]
-
-⸻
-
-Why convert text to numbers?
-
-Computers cannot calculate:
-
-Policy Number
-
-vs
-
-Policy ID
-
-But they can calculate:
-
-[0.82, 0.44, ...]
-vs
-[0.81, 0.45, ...]
-
-and determine they’re very close.
-
-⸻
-
-Step 2
-
-vec_str = "[" + ",".join(f"{x:.8f}" for x in vec) + "]"
-
-This line scares beginners.
-
-Let’s simplify.
-
-Suppose:
-
-vec =
-[
-  0.123456789,
-  0.987654321
-]
-
-The loop:
-
-f"{x:.8f}"
-
-means:
-
-Keep 8 digits after decimal
-
-Result:
-
-[
- "0.12345679",
- "0.98765432"
-]
-
-Then:
-
-",".join(...)
-
-becomes:
-
-0.12345679,0.98765432
-
-Then:
-
-"[" + ... + "]"
-
-becomes:
-
-[0.12345679,0.98765432]
-
-⸻
-
-Why?
-
-Because PGVector expects vectors in text format:
-
-'[0.1,0.2,0.3]'
-
-So this line is simply formatting Python data into PostgreSQL vector format.
-
-⸻
-
-Step 3
-
-Now we build SQL.
-
-sql_query = f"""
-SELECT content, metadata
-FROM pgvector_store
-WHERE mail_ref_id = %s
-ORDER BY embedding <=> %s::vector
-LIMIT %s
+policycoveragemcp
+handler.py
+"""
+handler.py — Policy Coverage Verification (placeholder, local-DB version)
+────────────────────────────────────────────────────────────────────────
+TODO: Coverage-vs-loss verification logic (comparing the reported loss
+against policy coverage terms, exclusions, deductibles, and limits) needs
+to be designed for this local-DB platform. The Guidewire-based
+implementation in Jarvis_claims_agents/PolicyCoverageVerificationAgent is a
+separate, Guidewire-specific agent and is not reused here.
+
+Only a real read of policy_details is implemented below.
 """
 
-Let’s replace variables.
+import logging
+import os
+import sys
+
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "common"))
+
+from db import get_db_connection, row_to_dict  # noqa: E402
+
+log = logging.getLogger(__name__)
+
+
+def get_policy_details_stub(policy_id: str):
+    conn = get_db_connection()
+    try:
+        cur = conn.cursor()
+        cur.execute("SELECT * FROM policy_details WHERE policy_id = ?", (policy_id,))
+        return row_to_dict(cur.fetchone())
+    finally:
+        conn.close()
+
+policycoveragemcp
+policy_coverage_router.py
+"""
+policy_coverage_router.py — PLACEHOLDER
+─────────────────────────────────────────
+Local-DB Policy Coverage Verification MCP. Only get_policy_details_stub is
+implemented (real read of policy_details). Full coverage-vs-loss
+verification logic is TODO — see policy_coverage_mcp/handler.py.
+
+Tool / Endpoint map:
+  get_policy_details_stub  GET /api/policy_coverage/policy/{policy_id}
+"""
+
+import logging
+from fastapi import APIRouter, HTTPException
+
+from policy_coverage_mcp import handler
+
+log = logging.getLogger(__name__)
+
+router = APIRouter()
+
+
+@router.get(
+    "/api/policy_coverage/policy/{policy_id}",
+    operation_id="get_policy_details_stub",
+    summary="[PLACEHOLDER] Read policy_details for a policy_id",
+    tags=["PolicyCoverage"],
+)
+def get_policy_details_stub(policy_id: str):
+    """
+    Real read of policy_details for the given policy_id.
+
+    TODO: This agent is a placeholder. Coverage-vs-loss verification logic
+    (comparing reported loss type/cause against policy coverage_type,
+    deductible, limit, and exclusions) needs to be designed for the local-DB
+    platform.
+    """
+    record = handler.get_policy_details_stub(policy_id)
+    if not record:
+        return {"status": "not_implemented", "note": "Policy not found, and coverage-vs-loss verification logic is not yet designed for this platform."}
+    return {"status": "not_implemented", "note": "Coverage-vs-loss verification logic is not yet designed for this platform.", "policy_details": record}
+
+
+Policy verification agent 
+server.py
+"""
+server.py — Policy Coverage Verification Agent (PLACEHOLDER, local-DB version)
+─────────────────────────────────────────────────────────────────────────────
+This is a minimal placeholder pending full design. It exposes only a
+trivial agent/tools loop wired to the get_policy_details_stub MCP tool.
+
+TODO: Coverage-vs-loss verification logic (comparing the reported loss
+against policy coverage_type, deductible, limit, and exclusions) needs to
+be designed for this local-DB platform. The Guidewire-based agent in
+Jarvis_claims_agents/PolicyCoverageVerificationAgent is separate and not
+reused here.
+
+Port: 8807
+MCP : http://0.0.0.0:8800/api/v1/policy_coverage/mcp
+
+Run:
+    py -3 server.py
+"""
+
+import logging
+import os
+import sys
+import time
+from datetime import timedelta
+from typing import Annotated, TypedDict
+
+import uvicorn
+from dotenv import load_dotenv
+from fastapi import FastAPI, Request
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import StreamingResponse
+from langchain_core.messages import AIMessage, SystemMessage
+from langchain_mcp_adapters.client import MultiServerMCPClient
+from langchain_openai.chat_models import AzureChatOpenAI
+from langgraph.graph import END, START, StateGraph
+from langgraph.graph.message import add_messages
+from langgraph.prebuilt import ToolNode
 
-Suppose:
+load_dotenv()
+
+logging.basicConfig(level=logging.INFO, stream=sys.stdout, force=True)
+logger = logging.getLogger("policy_coverage_agent_placeholder")
 
-reference_id = "REF123"
-k = 3
-
-SQL becomes conceptually:
-
-SELECT content, metadata
-FROM pgvector_store
-WHERE mail_ref_id = 'REF123'
-ORDER BY embedding <=> '[0.82,0.44,...]'::vector
-LIMIT 3
-
-⸻
-
-Why WHERE mail_ref_id?
-
-This is very important.
-
-Suppose database contains:
-
-Document A
-
-Policy Number: POL123
-
-Reference:
-
-REF123
-
-⸻
-
-Document B
-
-Policy Number: POL999
-
-Reference:
-
-REF999
-
-If we remove:
-
-WHERE mail_ref_id='REF123'
-
-Search could return chunks from another document.
-
-Disaster.
-
-⸻
-
-So:
-
-WHERE mail_ref_id='REF123'
-
-means:
-
-Only search inside THIS document
-
-⸻
-
-Step 4
-
-The most important line in RAG
-
-ORDER BY embedding <=> query_vector
-
-What does <=> mean?
-
-This is a PGVector operator.
-
-Think:
-
-How similar are two vectors?
-
-⸻
-
-Suppose query vector is:
-
-policy_number
-
-↓
-
-[1,2]
-
-⸻
-
-Database chunks:
-
-Chunk A
-
-Named Insured
-
-↓
-
-[10,20]
-
-⸻
-
-Chunk B
-
-Policy Number
-
-↓
-
-[1.1,2.2]
-
-⸻
-
-Chunk C
-
-Coverage Limit
-
-↓
-
-[8,15]
-
-⸻
-
-PGVector calculates distance.
-
-Conceptually:
-
-Distance(Query, A)=20
-Distance(Query, B)=0.3
-Distance(Query, C)=15
-
-⸻
-
-Then sorts:
-
-B
-C
-A
-
-Smallest distance first.
-
-Most similar first.
-
-⸻
-
-Think of it like GPS
-
-Imagine:
-
-You are at:
-(1,2)
-
-Friends:
-
-Friend A:
-(10,20)
-Friend B:
-(1.1,2.2)
-Friend C:
-(8,15)
-
-Who is closest?
-
-Obviously:
-
-Friend B
-
-Vector search is doing the same thing.
-
-Except instead of 2 dimensions:
-
-x,y
-
-you have:
-
-3072 dimensions
-
-⸻
-
-Step 5
-
-cur.execute(
-    sql_query,
-    (
-        self.reference_id,
-        vec_str,
-        k
+PHOENIX_API_KEY = os.getenv("PHOENIX_API_KEY", "")
+PHOENIX_ENDPOINT = os.getenv("PHOENIX_ENDPOINT", "")
+MCP_URL = os.getenv("MCP_URL", "http://0.0.0.0:8800/api/v1/policy_coverage/mcp")
+AGENT_PORT = int(os.getenv("AGENT_PORT", "8807"))
+
+config_mcp_server = {
+    "policy_coverage_mcp": {
+        "url": MCP_URL,
+        "transport": "streamable_http",
+        "timeout": timedelta(seconds=120),
+        "sse_read_timeout": timedelta(seconds=600),
+    }
+}
+
+app = FastAPI(title="Policy Coverage Verification Agent (Placeholder)")
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+
+class State(TypedDict):
+    messages: Annotated[list, add_messages]
+
+
+def router(state: State):
+    last = state["messages"][-1]
+    if isinstance(last, AIMessage) and getattr(last, "tool_calls", None):
+        return "tools"
+    return "End"
+
+
+_FALLBACK_PROMPT = """
+You are the Policy Coverage Verification Agent (Policyholder, local-DB
+version) for an insurance claims platform.
+
+THIS AGENT IS A PLACEHOLDER PENDING FULL DESIGN.
+
+Currently the only available tool is get_policy_details_stub, which reads
+the policy_details table for a given policy_id.
+
+TODO (not yet implemented):
+- Coverage-vs-loss verification logic comparing the reported loss type/
+  cause against the policy's coverage_type, deductible, limit, and any
+  exclusions.
+
+If asked about coverage verification, call get_policy_details_stub with the
+policy_id and explain to the user that full coverage verification logic for
+this platform is still being designed; only the raw policy_details record
+is available for now.
+"""
+
+
+def create_graph(model, tools, prompt):
+    graph_builder = StateGraph(State)
+    llm_with_tools = model.bind_tools(tools)
+
+    async def agent_node(state: State):
+        all_messages = [SystemMessage(content=prompt)] + state["messages"]
+        message = await llm_with_tools.ainvoke(all_messages)
+        return {"messages": [message]}
+
+    graph_builder.add_node("agent", agent_node)
+    graph_builder.add_node("tools", ToolNode(tools=tools))
+    graph_builder.add_edge(START, "agent")
+    graph_builder.add_conditional_edges("agent", router, {"tools": "tools", "End": END})
+    graph_builder.add_edge("tools", "agent")
+    return graph_builder.compile()
+
+
+async def get_tools():
+    client = MultiServerMCPClient(config_mcp_server)
+    tools = await client.get_tools()
+    logger.info("Tools loaded from MCP: %s", [t.name for t in tools])
+    return tools
+
+
+async def stream_graph(graph, initial_state, config):
+    async for event in graph.astream_events(initial_state, config=config, version="v2"):
+        kind = event.get("event", "")
+        if kind == "on_chat_model_stream":
+            chunk = event["data"].get("chunk")
+            if chunk and hasattr(chunk, "content") and chunk.content:
+                yield f"data: {chunk.content}\n\n"
+        elif kind == "on_tool_start":
+            yield f"data: [Tool: {event.get('name', 'unknown_tool')}] Starting...\n\n"
+        elif kind == "on_tool_end":
+            yield f"data: [Tool: {event.get('name', 'unknown_tool')}] Done\n\n"
+
+
+@app.post("/chat")
+async def chat_stream(request: Request):
+    load_dotenv()
+    tools = await get_tools()
+
+    model = AzureChatOpenAI(
+        api_key=os.getenv("AZURE_OPENAI_API_KEY"),
+        api_version=os.getenv("AZURE_OPENAI_API_VERSION"),
+        azure_deployment=os.getenv("AZURE_OPENAI_CHAT_DEPLOYMENT"),
+        azure_endpoint=os.getenv("AZURE_OPENAI_ENDPOINT"),
     )
-)
 
-Actual values inserted:
+    body = await request.json()
+    user_message = body.get("message", "Verify policy coverage")
 
-(
-  "REF123",
-  "[0.82,0.44,...]",
-  3
-)
+    graph = create_graph(model=model, tools=tools, prompt=_FALLBACK_PROMPT)
 
-Database runs search.
+    async def generate():
+        try:
+            async for event in stream_graph(
+                graph=graph,
+                initial_state={"messages": [user_message]},
+                config={"recursion_limit": 50},
+            ):
+                yield event
+        except Exception as e:
+            logger.exception("agent error")
+            yield f"data: [AGENT_ERROR] {str(e)}\n\n"
 
-⸻
+    return StreamingResponse(generate(), media_type="text/event-stream")
 
-Step 6
 
-rows = cur.fetchall()
+@app.get("/health")
+async def health():
+    return {"status": "healthy", "agent": "policy_coverage_agent_placeholder", "note": "placeholder pending full design"}
 
-Suppose DB returns:
 
-[
- (
-   "Policy Number: POL123",
-   {"chunk":5}
- ),
- (
-   "Policy Number Effective Date...",
-   {"chunk":6}
- ),
- (
-   "Coverage Limit 1M",
-   {"chunk":8}
- )
-]
+if __name__ == "__main__":
+    uvicorn.run(app, host="0.0.0.0", port=AGENT_PORT)
 
-These are your Top K chunks.
-
-Notice:
-
-The embeddings are NOT returned.
-
-Only content.
-
-Why?
-
-Because LLM cannot read:
-
-[0.82,0.44,0.67]
-
-LLM needs text.
-
-⸻
-
-Step 7
-
-This line:
-
-return [
-    Document(
-        page_content=row[0],
-        metadata=row[1] or {}
-    )
-    for row in rows
-]
-
-Transforms tuples into LangChain Documents.
-
-⸻
-
-Before:
-
-(
-  "Policy Number: POL123",
-  {"chunk":5}
-)
-
-After:
-
-Document(
-   page_content="Policy Number: POL123",
-   metadata={"chunk":5}
-)
-
-⸻
-
-Why use Document objects?
-
-Because LangChain standardizes retrieved content.
-
-Instead of:
-
-row[0]
-row[1]
-
-you can use:
-
-doc.page_content
-doc.metadata
-
-Much cleaner.
-
-⸻
-
-What process_retrieval_pg receives
-
-After:
-
-docs = vectordb.similarity_search(
-    "policy_number",
-    13
-)
-
-docs contains:
-
-[
- Document(
-   page_content="Policy Number: POL123",
-   metadata={"chunk":5}
- ),
- Document(
-   page_content="Named Insured: ABC Corp",
-   metadata={"chunk":6}
- )
-]
-
-Then your code does:
-
-context = "\n".join(
-    d.page_content
-    for d in docs
-)
-
-Result:
-
-Policy Number: POL123
-Named Insured: ABC Corp
-
-And THAT is what is sent to the LLM.
-
-⸻
-
-So the complete flow of similarity_search() is:
-
-Attribute
-(policy_number)
-       ↓
-embed_query()
-       ↓
-Query Vector
-       ↓
-Compare against ALL chunk vectors
-inside REF123
-       ↓
-Sort by similarity (<=>)
-       ↓
-Take Top K
-       ↓
-Return chunk text
-       ↓
-Build Context
-       ↓
-Send Context to LLM
-
-Notice something very important:
-
-The LLM never sees the embeddings.
-
-Embeddings are only used by PGVector to find relevant chunks.
-
-The LLM only receives human-readable text from those chunks. That’s one of the biggest RAG concepts to remember.
