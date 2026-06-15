@@ -1,4 +1,33 @@
 http://localhost:8807/docs#/default/chat_stream_chat_post
+Parameters
+Cancel
+No parameters
+
+Execute
+Clear
+Responses
+Curl
+
+curl -X 'POST' \
+  'http://localhost:8807/chat' \
+  -H 'accept: application/json' \
+  -d ''
+Request URL
+http://localhost:8807/chat
+Server response
+Code	Details
+500
+Undocumented
+Error: Internal Server Error
+
+Response body
+Download
+Internal Server Error
+Response headers
+ content-length: 21 
+ content-type: text/plain; charset=utf-8 
+ date: Mon,15 Jun 2026 10:59:24 GMT 
+ server: uvicorn 
 python3 server.py
 
 INFO:     127.0.0.1:34838 - "GET /docs HTTP/1.1" 200 OK
