@@ -1,106 +1,359 @@
-http://localhost:8807/docs#/default/chat_stream_chat_post
-Parameters
-Cancel
-No parameters
+instead of 
 
-Execute
-Clear
-Responses
-Curl
+@router.get(
+    "/api/policy_coverage/policy/{policy_id}",
+    operation_id="get_policy_details_stub",
+    summary="[PLACEHOLDER] Read policy_details for a policy_id",
+    tags=["PolicyCoverage"],
+)
+def get_policy_details_stub(policy_id: str):
+    """
+    Real read of policy_details for the given policy_id.
 
-curl -X 'POST' \
-  'http://localhost:8807/chat' \
-  -H 'accept: application/json' \
-  -d ''
-Request URL
-http://localhost:8807/chat
-Server response
-Code	Details
-500
-Undocumented
-Error: Internal Server Error
+    TODO: This agent is a placeholder. Coverage-vs-loss verification logic
+    (comparing reported loss type/cause against policy coverage_type,
+    deductible, limit, and exclusions) needs to be designed for the local-DB
+    platform.
+    """
+    record = handler.get_policy_details_stub(policy_id)
+    if not record:
+        return {"status": "not_implemented", "note": "Policy not found, and coverage-vs-loss verification logic is not yet designed for this platform."}
+    return {"status": "not_implemented", "note": "Coverage-vs-loss verification logic is not yet designed for this platform.", "policy_details": record}
 
-Response body
-Download
-Internal Server Error
-Response headers
- content-length: 21 
- content-type: text/plain; charset=utf-8 
- date: Mon,15 Jun 2026 10:59:24 GMT 
- server: uvicorn 
-python3 server.py
 
-INFO:     127.0.0.1:34838 - "GET /docs HTTP/1.1" 200 OK
-INFO:     127.0.0.1:34838 - "GET /openapi.json HTTP/1.1" 200 OK
-INFO:httpx:HTTP Request: POST http://0.0.0.0:8800/api/v1/policy_coverage/mcp "HTTP/1.1 200 OK"
-INFO:mcp.client.streamable_http:Received session ID: e5fbbe1cbc4546a6b3475e2e322adf5b
-INFO:mcp.client.streamable_http:Negotiated protocol version: 2025-11-25
-INFO:httpx:HTTP Request: POST http://0.0.0.0:8800/api/v1/policy_coverage/mcp "HTTP/1.1 202 Accepted"
-INFO:httpx:HTTP Request: POST http://0.0.0.0:8800/api/v1/policy_coverage/mcp "HTTP/1.1 200 OK"
-INFO:httpx:HTTP Request: DELETE http://0.0.0.0:8800/api/v1/policy_coverage/mcp "HTTP/1.1 200 OK"
-INFO:policy_coverage_agent_placeholder:Tools loaded from MCP: ['get_policy_details_stub']
-INFO:     127.0.0.1:34840 - "POST /chat HTTP/1.1" 500 Internal Server Error
-ERROR:    Exception in ASGI application
-Traceback (most recent call last):
-  File "/home/Jarvis/Musaddique/jarvis_claims_agents/Jarvis_claims_agents/PolicyholderAgents/MCP/venv/lib/python3.11/site-packages/uvicorn/protocols/http/httptools_impl.py", line 409, in run_asgi
-    result = await app(  # type: ignore[func-returns-value]
-             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "/home/Jarvis/Musaddique/jarvis_claims_agents/Jarvis_claims_agents/PolicyholderAgents/MCP/venv/lib/python3.11/site-packages/uvicorn/middleware/proxy_headers.py", line 60, in __call__
-    return await self.app(scope, receive, send)
-           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "/home/Jarvis/Musaddique/jarvis_claims_agents/Jarvis_claims_agents/PolicyholderAgents/MCP/venv/lib/python3.11/site-packages/fastapi/applications.py", line 1133, in __call__
-    await super().__call__(scope, receive, send)
-  File "/home/Jarvis/Musaddique/jarvis_claims_agents/Jarvis_claims_agents/PolicyholderAgents/MCP/venv/lib/python3.11/site-packages/starlette/applications.py", line 113, in __call__
-    await self.middleware_stack(scope, receive, send)
-  File "/home/Jarvis/Musaddique/jarvis_claims_agents/Jarvis_claims_agents/PolicyholderAgents/MCP/venv/lib/python3.11/site-packages/starlette/middleware/errors.py", line 186, in __call__
-    raise exc
-  File "/home/Jarvis/Musaddique/jarvis_claims_agents/Jarvis_claims_agents/PolicyholderAgents/MCP/venv/lib/python3.11/site-packages/starlette/middleware/errors.py", line 164, in __call__
-    await self.app(scope, receive, _send)
-  File "/home/Jarvis/Musaddique/jarvis_claims_agents/Jarvis_claims_agents/PolicyholderAgents/MCP/venv/lib/python3.11/site-packages/starlette/middleware/cors.py", line 93, in __call__
-    await self.simple_response(scope, receive, send, request_headers=headers)
-  File "/home/Jarvis/Musaddique/jarvis_claims_agents/Jarvis_claims_agents/PolicyholderAgents/MCP/venv/lib/python3.11/site-packages/starlette/middleware/cors.py", line 144, in simple_response
-    await self.app(scope, receive, send)
-  File "/home/Jarvis/Musaddique/jarvis_claims_agents/Jarvis_claims_agents/PolicyholderAgents/MCP/venv/lib/python3.11/site-packages/starlette/middleware/exceptions.py", line 63, in __call__
-    await wrap_app_handling_exceptions(self.app, conn)(scope, receive, send)
-  File "/home/Jarvis/Musaddique/jarvis_claims_agents/Jarvis_claims_agents/PolicyholderAgents/MCP/venv/lib/python3.11/site-packages/starlette/_exception_handler.py", line 53, in wrapped_app
-    raise exc
-  File "/home/Jarvis/Musaddique/jarvis_claims_agents/Jarvis_claims_agents/PolicyholderAgents/MCP/venv/lib/python3.11/site-packages/starlette/_exception_handler.py", line 42, in wrapped_app
-    await app(scope, receive, sender)
-  File "/home/Jarvis/Musaddique/jarvis_claims_agents/Jarvis_claims_agents/PolicyholderAgents/MCP/venv/lib/python3.11/site-packages/fastapi/middleware/asyncexitstack.py", line 18, in __call__
-    await self.app(scope, receive, send)
-  File "/home/Jarvis/Musaddique/jarvis_claims_agents/Jarvis_claims_agents/PolicyholderAgents/MCP/venv/lib/python3.11/site-packages/starlette/routing.py", line 716, in __call__
-    await self.middleware_stack(scope, receive, send)
-  File "/home/Jarvis/Musaddique/jarvis_claims_agents/Jarvis_claims_agents/PolicyholderAgents/MCP/venv/lib/python3.11/site-packages/starlette/routing.py", line 736, in app
-    await route.handle(scope, receive, send)
-  File "/home/Jarvis/Musaddique/jarvis_claims_agents/Jarvis_claims_agents/PolicyholderAgents/MCP/venv/lib/python3.11/site-packages/starlette/routing.py", line 290, in handle
-    await self.app(scope, receive, send)
-  File "/home/Jarvis/Musaddique/jarvis_claims_agents/Jarvis_claims_agents/PolicyholderAgents/MCP/venv/lib/python3.11/site-packages/fastapi/routing.py", line 123, in app
-    await wrap_app_handling_exceptions(app, request)(scope, receive, send)
-  File "/home/Jarvis/Musaddique/jarvis_claims_agents/Jarvis_claims_agents/PolicyholderAgents/MCP/venv/lib/python3.11/site-packages/starlette/_exception_handler.py", line 53, in wrapped_app
-    raise exc
-  File "/home/Jarvis/Musaddique/jarvis_claims_agents/Jarvis_claims_agents/PolicyholderAgents/MCP/venv/lib/python3.11/site-packages/starlette/_exception_handler.py", line 42, in wrapped_app
-    await app(scope, receive, sender)
-  File "/home/Jarvis/Musaddique/jarvis_claims_agents/Jarvis_claims_agents/PolicyholderAgents/MCP/venv/lib/python3.11/site-packages/fastapi/routing.py", line 109, in app
-    response = await f(request)
-               ^^^^^^^^^^^^^^^^
-  File "/home/Jarvis/Musaddique/jarvis_claims_agents/Jarvis_claims_agents/PolicyholderAgents/MCP/venv/lib/python3.11/site-packages/fastapi/routing.py", line 387, in app
-    raw_response = await run_endpoint_function(
-                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "/home/Jarvis/Musaddique/jarvis_claims_agents/Jarvis_claims_agents/PolicyholderAgents/MCP/venv/lib/python3.11/site-packages/fastapi/routing.py", line 288, in run_endpoint_function
-    return await dependant.call(**values)
-           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "/home/Jarvis/Musaddique/jarvis_claims_agents/Jarvis_claims_agents/PolicyholderAgents/PolicyCoverageVerificationAgent/server.py", line 150, in chat_stream
-    body = await request.json()
-           ^^^^^^^^^^^^^^^^^^^^
-  File "/home/Jarvis/Musaddique/jarvis_claims_agents/Jarvis_claims_agents/PolicyholderAgents/MCP/venv/lib/python3.11/site-packages/starlette/requests.py", line 250, in json
-    self._json = json.loads(body)
-                 ^^^^^^^^^^^^^^^^
-  File "/usr/lib/python3.11/json/__init__.py", line 346, in loads
-    return _default_decoder.decode(s)
-           ^^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "/usr/lib/python3.11/json/decoder.py", line 337, in decode
-    obj, end = self.raw_decode(s, idx=_w(s, 0).end())
-               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "/usr/lib/python3.11/json/decoder.py", line 355, in raw_decode
-    raise JSONDecodeError("Expecting value", s, err.value) from None
-json.decoder.JSONDecodeError: Expecting value: line 1 column 1 (char 0)
+
+i want this to be replacing it
+
+# ── 1. Guidewire: Search policy ───────────────────────────────────────────────
+
+@policy_coverage_app.post(
+    "/gw_search_policy",
+    operation_id="gw_search_policy",
+    summary="Search Guidewire PolicyCenter for a policy by policy number",
+)
+def gw_search_policy(req: GwSearchPolicyRequest):
+    """
+    Looks up a policy in Guidewire PolicyCenter using the policy number.
+    Returns found=True with the policy details if the policy exists,
+    or found=False with an error message if it does not.
+    Use this before any coverage verification to confirm the policyholder exists.
+    """
+    result = coverage_handler.gw_search_policy(req.policy_number)
+    return result
+
+
+# ── 2. Guidewire: Get full coverage detail ────────────────────────────────────
+
+@policy_coverage_app.post(
+    "/gw_get_policy_coverages",
+    operation_id="gw_get_policy_coverages",
+    summary="Retrieve full coverage details for a policy from Guidewire",
+)
+def gw_get_policy_coverages(req: GwSearchPolicyRequest):
+    """
+    Fetches the detailed policy record from Guidewire PolicyCenter,
+    including all lines of business and coverage clauses.
+    First searches by policy number, then fetches the full policy record.
+    """
+    result = coverage_handler.gw_get_policy_coverages(req.policy_number)
+    return result
+
+
+
+# ── Guidewire: Policy Search ──────────────────────────────────────────────────
+
+def gw_search_policy(policy_number: str) -> dict:
+    """
+    Searches Guidewire PolicyCenter for the given policy number.
+
+    Returns a normalised dict with:
+      found            : bool
+      policy           : flat policy dict (or None)
+      error            : error message if not found / API error
+      raw_gw_response  : the full Guidewire JSON (for downstream tools)
+    """
+    try:
+        raw = guidewire_client.search_policy(policy_number)
+        parsed = guidewire_client.parse_policy_from_search(raw)
+
+        if not parsed:
+            return {
+                "found": False,
+                "policy": None,
+                "error": f"No policy found in Guidewire for policy number '{policy_number}'.",
+                "raw_gw_response": raw,
+            }
+
+        return {
+            "found": True,
+            "policy": parsed,
+            "error": None,
+            "raw_gw_response": raw,
+        }
+
+    except Exception as exc:
+        status_code = getattr(getattr(exc, "response", None), "status_code", None)
+        if status_code == 404:
+            return {
+                "found": False,
+                "policy": None,
+                "error": f"Policy '{policy_number}' does not exist in Guidewire (HTTP 404). "
+                         "Verify the policy number and retry.",
+                "raw_gw_response": {},
+            }
+        log.exception("Guidewire policy search failed for %s", policy_number)
+        return {
+            "found": False,
+            "policy": None,
+            "error": f"Guidewire API error: {str(exc)}",
+            "raw_gw_response": {},
+        }
+
+
+# ── Guidewire: Policy Coverages ───────────────────────────────────────────────
+
+def gw_get_policy_coverages(policy_number: str) -> dict:
+    """
+    Fetches full coverage details for a policy from Guidewire.
+    First searches by policy number, then fetches the policy detail record.
+    """
+    search_result = gw_search_policy(policy_number)
+    if not search_result["found"]:
+        return search_result
+
+    gw_policy_id = search_result["policy"]["gw_policy_id"]
+    try:
+        detail = guidewire_client.get_policy_coverages(gw_policy_id)
+        return {
+            "found": True,
+            "policy_id": gw_policy_id,
+            "coverage_detail": detail,
+            "error": None,
+        }
+    except Exception as exc:
+        log.exception("Guidewire get_policy_coverages failed for %s", gw_policy_id)
+        return {
+            "found": False,
+            "policy_id": gw_policy_id,
+            "coverage_detail": None,
+            "error": str(exc),
+        }
+
+below is guidewireclient.py, remember i only want above 2 so you can make guidewireclient.py also accordingly not everything, so now provide complete code for all the files so that i can copy paste it
+
+import logging
+import os
+from typing import Optional
+
+import requests
+from dotenv import load_dotenv
+
+load_dotenv()
+
+log = logging.getLogger(__name__)
+
+# ── Config ────────────────────────────────────────────────────────────────────
+
+PC_BASE_URL = os.environ.get(
+    "GW_PC_BASE_URL",
+    "https://pc-sandbox-gwcpdev.hexaware.zeta1-andromeda.guidewire.net/rest",
+)
+CC_BASE_URL = os.environ.get(
+    "GW_CC_BASE_URL",
+    "https://cc-sandbox-gwcpdev.hexaware.zeta1-andromeda.guidewire.net/rest",
+)
+GW_AUTH = os.environ.get("GW_AUTHORIZATION", "Basic c3U6Z3c=")
+
+HEADERS = {
+    "accept": "application/json",
+    "Content-Type": "application/json",
+    "authorization": GW_AUTH,
+}
+
+REQUEST_TIMEOUT = int(os.environ.get("GW_TIMEOUT_SECONDS", "30"))
+
+
+# ── Low-level helpers ─────────────────────────────────────────────────────────
+
+def _pc_post(uri: str, body: dict) -> dict:
+    url = PC_BASE_URL + uri
+    log.info("GW PC POST %s", url)
+    resp = requests.post(url, json=body, headers=HEADERS, timeout=REQUEST_TIMEOUT)
+    _raise_for_status(resp, "PC POST", uri)
+    return resp.json()
+
+
+def _pc_get(uri: str, params: Optional[dict] = None) -> dict:
+    url = PC_BASE_URL + uri
+    log.info("GW PC GET %s", url)
+    resp = requests.get(url, headers=HEADERS, params=params, timeout=REQUEST_TIMEOUT)
+    _raise_for_status(resp, "PC GET", uri)
+    return resp.json()
+
+
+def _cc_post(uri: str, body: dict) -> dict:
+    url = CC_BASE_URL + uri
+    log.info("GW CC POST %s", url)
+    resp = requests.post(url, json=body, headers=HEADERS, timeout=REQUEST_TIMEOUT)
+    _raise_for_status(resp, "CC POST", uri)
+    return resp.json()
+
+
+def _raise_for_status(resp: requests.Response, method: str, uri: str):
+    if not resp.ok:
+        log.error(
+            "Guidewire %s %s → HTTP %s: %s",
+            method, uri, resp.status_code, resp.text[:500],
+        )
+        resp.raise_for_status()
+
+
+# ── PolicyCenter — Policy Search ──────────────────────────────────────────────
+
+def search_policy(policy_number: str) -> dict:
+    """
+    Search for a policy in Guidewire PolicyCenter by policy number.
+
+    Uses: POST /policy/v1/search/policies
+    Body: {"data": {"attributes": {"policyNumber": "<policy_number>"}}}
+
+    Returns:
+        The full Guidewire JSON response on success.
+        Raises requests.HTTPError (404 etc.) if not found.
+
+    Caller should check:
+        result["data"]              — list of matched policies
+        result["data"][0]           — first match
+        result["data"][0]["attributes"]["policyNumber"]
+        result["data"][0]["attributes"]["account"]["accountNumber"]
+        result["data"][0]["attributes"]["periods"][0]["status"]
+        result["data"][0]["attributes"]["periods"][0]["lines"]
+    """
+    body = {
+        "data": {
+            "attributes": {
+                "policyNumber": policy_number
+            }
+        }
+    }
+    return _pc_post("/policy/v1/search/policies", body)
+
+
+def get_policy_coverages(policy_id: str) -> dict:
+    """
+    Retrieve detailed coverage information for a policy period from Guidewire.
+
+    Uses: GET /policy/v1/policies/{policyId}
+    """
+    return _pc_get(f"/policy/v1/policies/{policy_id}")
+
+
+# ── ClaimCenter — Loss / FNOL Reporting ──────────────────────────────────────
+
+def report_loss_to_guidewire(
+    policy_number: str,
+    claim_number: str,
+    loss_type: str,
+    loss_date: str,
+    loss_description: str,
+    insured_name: str,
+    loss_location: Optional[str] = None,
+    estimated_amount: Optional[float] = None,
+) -> dict:
+    """
+    Reports a new loss (FNOL) to Guidewire ClaimCenter.
+
+    Uses: POST /claim/v1/fnols
+
+    Maps local loss type to Guidewire loss cause codes:
+        Water Damage  → WaterDamage
+        Fire          → Fire
+        Wind/Hail     → WindHail
+        Theft         → Theft
+        Structural    → Other
+        Tree Damage   → WindHail
+        Motor/Auto    → Collision
+        Other         → Other
+
+    Returns the Guidewire claim ID and confirmation number on success.
+    """
+    loss_cause_map = {
+        "water damage":  "WaterDamage",
+        "fire":          "Fire",
+        "fire damage":   "Fire",
+        "wind/hail":     "WindHail",
+        "hail":          "WindHail",
+        "wind":          "WindHail",
+        "tree damage":   "WindHail",
+        "theft":         "Theft",
+        "structural":    "Other",
+        "motor":         "Collision",
+        "auto":          "Collision",
+        "collision":     "Collision",
+    }
+    loss_cause = loss_cause_map.get(loss_type.lower().strip(), "Other")
+
+    body = {
+        "data": {
+            "attributes": {
+                "policyNumber": policy_number,
+                "lossDate": loss_date,
+                "lossCause": loss_cause,
+                "description": loss_description,
+                "claimNumber": claim_number,
+                "insured": {
+                    "displayName": insured_name
+                },
+            }
+        }
+    }
+
+    if loss_location:
+        body["data"]["attributes"]["lossLocation"] = {"displayName": loss_location}
+
+    if estimated_amount is not None:
+        body["data"]["attributes"]["estimatedTotalClaim"] = {
+            "amount": estimated_amount,
+            "currency": "USD",
+        }
+
+    return _cc_post("/claim/v1/fnols", body)
+
+
+def parse_policy_from_search(gw_response: dict) -> Optional[dict]:
+    """
+    Extracts a flat, normalised policy dict from a Guidewire search response.
+
+    Returns None if no policies were found.
+    """
+    try:
+        data_list = gw_response.get("data", [])
+
+        if not data_list:
+            log.warning("No policy data returned from Guidewire")
+            return None
+
+        policy = data_list[0]
+        attrs = policy.get("attributes", {})
+
+        parsed = {
+            "gw_policy_id": attrs.get("policyId", ""),
+            "policy_number": attrs.get("policyNumber", ""),
+            "status": attrs.get("status", "Unknown"),
+            "effective_date": attrs.get("effectiveDate", ""),
+            "expiration_date": attrs.get("expirationDate", ""),
+            "coverage_types": attrs.get("coverageTypes", []),
+            "insured_name": attrs.get("insuredName", ""),
+            "account_number": attrs.get("accountNumber", ""),
+            "raw": gw_response,
+        }
+
+        log.info("Parsed policy data: %s", parsed)
+
+        return parsed
+
+    except Exception as exc:
+        log.exception("Failed to parse Guidewire policy response")
+        raise ValueError(
+            f"Unable to parse Guidewire response structure: {str(exc)}"
+        )
