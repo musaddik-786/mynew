@@ -1,942 +1,430 @@
-Jarvis@JarvisPhase2:~/Musaddique$ curl -X POST http://localhost:8807/chat -H "Content-Type: application/json" -d '{
- "message":"Get policy details for policy 9802322834"
-}'
-data: I
-
-data:  will
-
-data:  first
-
-data:  search
-
-data:  for
-
-data:  policy
-
-data:  number
-
-data:  
-
-data: 980
-
-data: 232
-
-data: 283
-
-data: 4
-
-data: ,
-
-data:  and
-
-data:  then
-
-data:  retrieve
-
-data:  its
-
-data:  coverage
-
-data:  details
-
-data:  if
-
-data:  it
-
-data:  is
-
-data:  found
-
-data: .
-
-data:  Please
-
-data:  hold
-
-data:  on
-
-data:  a
-
-data:  moment
-
-data: .
-
-data: 
-
-
-data: I
-
-data:  will
-
-data:  search
-
-data:  for
-
-data:  policy
-
-data:  number
-
-data:  
-
-data: 980
-
-data: 232
-
-data: 283
-
-data: 4
-
-data:  to
-
-data:  verify
-
-data:  its
-
-data:  existence
-
-data: ,
-
-data:  and
-
-data:  if
-
-data:  found
-
-data: ,
-
-data:  I
-
-data: ’ll
-
-data:  retrieve
-
-data:  the
-
-data:  detailed
-
-data:  policy
-
-data:  coverage
-
-data:  information
-
-data: .
-
-Jarvis@JarvisPhase2:~/Musaddique$ 
-
-
-coverage_handler.py
-"""
-coverage_handler.py
-───────────────────
-Business logic for:
-  1. Guidewire policy search + policyholder existence check
-  2. LLM-based coverage verification (reported loss vs policy terms)
-  3. Loss reporting to Guidewire ClaimCenter
-  4. Local DB persistence of verification results and policy details
-"""
-
-import json
-import logging
-import os
-from datetime import datetime
-from typing import Optional
-
-from dotenv import load_dotenv
-from openai import AzureOpenAI
-
-from policy_coverage_mcp import guidewire_client
-# from policy_coverage_mcp.db import get_db_connection
-from policy_coverage_mcp.models import (
-    SaveCoverageVerificationRequest,
-    SaveLocalPolicyRequest,
-    VerifyCoverageRequest,
-    GwReportLossRequest,
-    UpdateClaimCoverageRequest,
-)
-
-load_dotenv()
-
-log = logging.getLogger(__name__)
-
-AZURE_OPENAI_ENDPOINT = os.environ.get("AZURE_OPENAI_ENDPOINT", "")
-AZURE_OPENAI_API_KEY = os.environ.get("AZURE_OPENAI_API_KEY", "")
-AZURE_OPENAI_API_VERSION = os.environ.get("AZURE_OPENAI_API_VERSION", "2025-01-01-preview")
-AZURE_OPENAI_CHAT_DEPLOYMENT = os.environ.get("AZURE_OPENAI_CHAT_DEPLOYMENT", "gpt-4.1-jarvis-demo")
-
-
-def _get_openai_client() -> AzureOpenAI:
-    return AzureOpenAI(
-        api_key=AZURE_OPENAI_API_KEY,
-        api_version=AZURE_OPENAI_API_VERSION,
-        azure_endpoint=AZURE_OPENAI_ENDPOINT,
-    )
-
-
-# ── Guidewire: Policy Search ──────────────────────────────────────────────────
-
-def gw_search_policy(policy_number: str) -> dict:
-    """
-    Searches Guidewire PolicyCenter for the given policy number.
-
-    Returns a normalised dict with:
-      found            : bool
-      policy           : flat policy dict (or None)
-      error            : error message if not found / API error
-      raw_gw_response  : the full Guidewire JSON (for downstream tools)
-    """
-    try:
-        raw = guidewire_client.search_policy(policy_number)
-        parsed = guidewire_client.parse_policy_from_search(raw)
-
-        if not parsed:
-            return {
-                "found": False,
-                "policy": None,
-                "error": f"No policy found in Guidewire for policy number '{policy_number}'.",
-                "raw_gw_response": raw,
-            }
-
-        return {
-            "found": True,
-            "policy": parsed,
-            "error": None,
-            "raw_gw_response": raw,
-        }
-
-    except Exception as exc:
-        status_code = getattr(getattr(exc, "response", None), "status_code", None)
-        if status_code == 404:
-            return {
-                "found": False,
-                "policy": None,
-                "error": f"Policy '{policy_number}' does not exist in Guidewire (HTTP 404). "
-                         "Verify the policy number and retry.",
-                "raw_gw_response": {},
-            }
-        log.exception("Guidewire policy search failed for %s", policy_number)
-        return {
-            "found": False,
-            "policy": None,
-            "error": f"Guidewire API error: {str(exc)}",
-            "raw_gw_response": {},
-        }
-
-
-# ── Guidewire: Policy Coverages ───────────────────────────────────────────────
-
-def gw_get_policy_coverages(policy_number: str) -> dict:
-    """
-    Fetches full coverage details for a policy from Guidewire.
-    First searches by policy number, then fetches the policy detail record.
-    """
-    search_result = gw_search_policy(policy_number)
-    if not search_result["found"]:
-        return search_result
-
-    gw_policy_id = search_result["policy"]["gw_policy_id"]
-    try:
-        detail = guidewire_client.get_policy_coverages(gw_policy_id)
-        return {
-            "found": True,
-            "policy_id": gw_policy_id,
-            "coverage_detail": detail,
-            "error": None,
-        }
-    except Exception as exc:
-        log.exception("Guidewire get_policy_coverages failed for %s", gw_policy_id)
-        return {
-            "found": False,
-            "policy_id": gw_policy_id,
-            "coverage_detail": None,
-            "error": str(exc),
-        }
-
-
-# ── Coverage Verification (LLM) ───────────────────────────────────────────────
-
-_COVERAGE_VERIFICATION_PROMPT = """
-You are an expert insurance coverage analyst. Your job is to determine whether a
-reported loss is covered under the given policy, based on the information available.
-
-You will receive:
-1. The reported loss type and description from the policyholder
-2. The policy information retrieved from Guidewire (coverage types, status, dates)
-
-Your task is to:
-a) Confirm whether the policy is ACTIVE on the date of loss
-b) Determine if the reported loss type falls within the policy's coverage
-c) Identify any likely exclusions that may apply
-d) Provide a clear coverage decision with reasoning
-
-Return ONLY valid JSON in this exact format:
-{
-  "coverage_decision": "Covered" | "Not Covered" | "Conditionally Covered",
-  "coverage_status":   "Confirmed" | "Excluded" | "Partial" | "Pending Review",
-  "policy_active":     true | false,
-  "coverage_type_matched": "<the specific coverage clause that applies, or null>",
-  "deductible_applicable": <integer or null>,
-  "limit_applicable": <integer or null>,
-  "exclusion_reason": "<reason if not covered, or null>",
-  "confidence": <0-100>,
-  "reasoning": "<1-3 sentence explanation of your decision>",
-  "missing_info": ["<any information needed to finalise determination>"]
-}
-"""
-
-guidewire_client.py
-"""
-guidewire_client.py
-───────────────────
-All HTTP calls to the Guidewire PolicyCenter and ClaimCenter REST APIs.
-
-PolicyCenter base : https://pc-sandbox-gwcpdev.hexaware.zeta1-andromeda.guidewire.net/rest
-ClaimCenter base  : https://cc-sandbox-gwcpdev.hexaware.zeta1-andromeda.guidewire.net/rest
-                    (adjust CC_BASE_URL in .env if the Claims Center host differs)
-"""
-
-import logging
-import os
-from typing import Optional
-
-import requests
-from dotenv import load_dotenv
-
-load_dotenv()
-
-log = logging.getLogger(__name__)
-
-# ── Config ────────────────────────────────────────────────────────────────────
-
-PC_BASE_URL = os.environ.get(
-    "GW_PC_BASE_URL",
-    "https://pc-sandbox-gwcpdev.hexaware.zeta1-andromeda.guidewire.net/rest",
-)
-CC_BASE_URL = os.environ.get(
-    "GW_CC_BASE_URL",
-    "https://cc-sandbox-gwcpdev.hexaware.zeta1-andromeda.guidewire.net/rest",
-)
-GW_AUTH = os.environ.get("GW_AUTHORIZATION", "Basic c3U6Z3c=")
-
-HEADERS = {
-    "accept": "application/json",
-    "Content-Type": "application/json",
-    "authorization": GW_AUTH,
-}
-
-REQUEST_TIMEOUT = int(os.environ.get("GW_TIMEOUT_SECONDS", "30"))
-
-
-# ── Low-level helpers ─────────────────────────────────────────────────────────
-
-def _pc_post(uri: str, body: dict) -> dict:
-    url = PC_BASE_URL + uri
-    log.info("GW PC POST %s", url)
-    resp = requests.post(url, json=body, headers=HEADERS, timeout=REQUEST_TIMEOUT)
-    _raise_for_status(resp, "PC POST", uri)
-    return resp.json()
-
-
-def _pc_get(uri: str, params: Optional[dict] = None) -> dict:
-    url = PC_BASE_URL + uri
-    log.info("GW PC GET %s", url)
-    resp = requests.get(url, headers=HEADERS, params=params, timeout=REQUEST_TIMEOUT)
-    _raise_for_status(resp, "PC GET", uri)
-    return resp.json()
-
-
-def _cc_post(uri: str, body: dict) -> dict:
-    url = CC_BASE_URL + uri
-    log.info("GW CC POST %s", url)
-    resp = requests.post(url, json=body, headers=HEADERS, timeout=REQUEST_TIMEOUT)
-    _raise_for_status(resp, "CC POST", uri)
-    return resp.json()
-
-
-def _raise_for_status(resp: requests.Response, method: str, uri: str):
-    if not resp.ok:
-        log.error(
-            "Guidewire %s %s → HTTP %s: %s",
-            method, uri, resp.status_code, resp.text[:500],
-        )
-        resp.raise_for_status()
-
-
-# ── PolicyCenter — Policy Search ──────────────────────────────────────────────
-
-def search_policy(policy_number: str) -> dict:
-    """
-    Search for a policy in Guidewire PolicyCenter by policy number.
-
-    Uses: POST /policy/v1/search/policies
-    Body: {"data": {"attributes": {"policyNumber": "<policy_number>"}}}
-
-    Returns:
-        The full Guidewire JSON response on success.
-        Raises requests.HTTPError (404 etc.) if not found.
-
-    Caller should check:
-        result["data"]              — list of matched policies
-        result["data"][0]           — first match
-        result["data"][0]["attributes"]["policyNumber"]
-        result["data"][0]["attributes"]["account"]["accountNumber"]
-        result["data"][0]["attributes"]["periods"][0]["status"]
-        result["data"][0]["attributes"]["periods"][0]["lines"]
-    """
-    body = {
-        "data": {
-            "attributes": {
-                "policyNumber": policy_number
-            }
-        }
-    }
-    return _pc_post("/policy/v1/search/policies", body)
-
-
-def get_policy_coverages(policy_id: str) -> dict:
-    """
-    Retrieve detailed coverage information for a policy period from Guidewire.
-
-    Uses: GET /policy/v1/policies/{policyId}
-    """
-    return _pc_get(f"/policy/v1/policies/{policy_id}")
-
-
-# ── ClaimCenter — Loss / FNOL Reporting ──────────────────────────────────────
-
-def report_loss_to_guidewire(
-    policy_number: str,
-    claim_number: str,
-    loss_type: str,
-    loss_date: str,
-    loss_description: str,
-    insured_name: str,
-    loss_location: Optional[str] = None,
-    estimated_amount: Optional[float] = None,
-) -> dict:
-    """
-    Reports a new loss (FNOL) to Guidewire ClaimCenter.
-
-    Uses: POST /claim/v1/fnols
-
-    Maps local loss type to Guidewire loss cause codes:
-        Water Damage  → WaterDamage
-        Fire          → Fire
-        Wind/Hail     → WindHail
-        Theft         → Theft
-        Structural    → Other
-        Tree Damage   → WindHail
-        Motor/Auto    → Collision
-        Other         → Other
-
-    Returns the Guidewire claim ID and confirmation number on success.
-    """
-    loss_cause_map = {
-        "water damage":  "WaterDamage",
-        "fire":          "Fire",
-        "fire damage":   "Fire",
-        "wind/hail":     "WindHail",
-        "hail":          "WindHail",
-        "wind":          "WindHail",
-        "tree damage":   "WindHail",
-        "theft":         "Theft",
-        "structural":    "Other",
-        "motor":         "Collision",
-        "auto":          "Collision",
-        "collision":     "Collision",
-    }
-    loss_cause = loss_cause_map.get(loss_type.lower().strip(), "Other")
-
-    body = {
-        "data": {
-            "attributes": {
-                "policyNumber": policy_number,
-                "lossDate": loss_date,
-                "lossCause": loss_cause,
-                "description": loss_description,
-                "claimNumber": claim_number,
-                "insured": {
-                    "displayName": insured_name
-                },
-            }
-        }
-    }
-
-    if loss_location:
-        body["data"]["attributes"]["lossLocation"] = {"displayName": loss_location}
-
-    if estimated_amount is not None:
-        body["data"]["attributes"]["estimatedTotalClaim"] = {
-            "amount": estimated_amount,
-            "currency": "USD",
-        }
-
-    return _cc_post("/claim/v1/fnols", body)
-
-
-# ── Response parsers ──────────────────────────────────────────────────────────
-
-# def parse_policy_from_search(gw_response: dict) -> Optional[dict]:
-#     """
-#     Extracts a flat, normalised policy dict from a Guidewire search response.
-
-#     Returns None if no policies were found.
-#     """
-#     data_list = gw_response.get("data", [])
-#     if not data_list:
-#         return None
-
-#     policy = data_list[0]
-#     attrs = policy.get("attributes", {})
-#     periods = attrs.get("periods", [{}])
-#     period = periods[0] if periods else {}
-#     period_attrs = period.get("attributes", {}) if isinstance(period, dict) else {}
-
-#     # Account
-#     account = attrs.get("account", {})
-#     account_attrs = account.get("attributes", {}) if isinstance(account, dict) else {}
-
-#     # Lines of business (coverages)
-#     lines = period_attrs.get("lines", [])
-#     coverage_types = []
-#     for line in lines:
-#         line_attrs = line.get("attributes", {}) if isinstance(line, dict) else {}
-#         if line_attrs.get("lineOfBusiness"):
-#             coverage_types.append(line_attrs["lineOfBusiness"])
-
-#     return {
-#         "gw_policy_id":    policy.get("id", ""),
-#         "policy_number":   attrs.get("policyNumber", ""),
-#         "status":          period_attrs.get("status", "Unknown"),
-#         "effective_date":  period_attrs.get("periodStart", ""),
-#         "expiration_date": period_attrs.get("periodEnd", ""),
-#         "coverage_types":  coverage_types,
-#         "insured_name":    account_attrs.get("accountHolderName", ""),
-#         "account_number":  account_attrs.get("accountNumber", ""),
-#         "raw":             gw_response,
-#     }
-
-
-def parse_policy_from_search(gw_response: dict) -> Optional[dict]:
-    """
-    Extracts a flat, normalised policy dict from a Guidewire search response.
-
-    Returns None if no policies were found.
-    """
-    try:
-        data_list = gw_response.get("data", [])
-
-        if not data_list:
-            log.warning("No policy data returned from Guidewire")
-            return None
-
-        policy = data_list[0]
-        attrs = policy.get("attributes", {})
-
-        parsed = {
-            "gw_policy_id": attrs.get("policyId", ""),
-            "policy_number": attrs.get("policyNumber", ""),
-            "status": attrs.get("status", "Unknown"),
-            "effective_date": attrs.get("effectiveDate", ""),
-            "expiration_date": attrs.get("expirationDate", ""),
-            "coverage_types": attrs.get("coverageTypes", []),
-            "insured_name": attrs.get("insuredName", ""),
-            "account_number": attrs.get("accountNumber", ""),
-            "raw": gw_response,
-        }
-
-        log.info("Parsed policy data: %s", parsed)
-
-        return parsed
-
-    except Exception as exc:
-        log.exception("Failed to parse Guidewire policy response")
-        raise ValueError(
-            f"Unable to parse Guidewire response structure: {str(exc)}"
-        )
-
-models.py
-from pydantic import BaseModel, Field
-from typing import Optional, List, Any
-
-
-# ── Guidewire requests ────────────────────────────────────────────────────────
-
-class GwSearchPolicyRequest(BaseModel):
-    policy_number: str = Field(..., description="Policy number to look up in Guidewire, e.g. '9802322834'")
-
-
-class GwReportLossRequest(BaseModel):
-    policy_number: str = Field(..., description="Policy number the loss is reported against")
-    claim_number: str = Field(..., description="Local claim number, e.g. CLM-2026-1234")
-    loss_type: str = Field(..., description="Type of loss, e.g. 'Water Damage', 'Fire'")
-    loss_date: str = Field(..., description="Date of loss in YYYY-MM-DD format")
-    loss_description: str = Field(..., description="Free-text description of what happened")
-    loss_location: Optional[str] = Field(None, description="Address or area where loss occurred")
-    insured_name: str = Field(..., description="Name of the insured policyholder")
-    estimated_amount: Optional[float] = Field(None, description="Policyholder's estimated loss amount")
-
-
-# ── Coverage verification ─────────────────────────────────────────────────────
-
-class VerifyCoverageRequest(BaseModel):
-    claim_id: str = Field(..., description="Local claim number or FNOL id")
-    policy_number: str = Field(..., description="Policy number to verify against")
-    reported_loss_type: str = Field(..., description="Loss type reported by policyholder, e.g. 'Water Damage'")
-    loss_description: Optional[str] = Field(None, description="Full text description of the loss")
-    loss_date: Optional[str] = Field(None, description="Date of loss YYYY-MM-DD")
-    policy_data: Optional[dict] = Field(
-        None,
-        description="Raw Guidewire policy response — pass the output of gw_search_policy here. "
-                    "If not provided the tool will call Guidewire automatically.",
-    )
-
-
-class SaveCoverageVerificationRequest(BaseModel):
-    claim_id: str = Field(..., description="Local claim number")
-    policy_number: str = Field(..., description="Policy number that was verified")
-    coverage_status: str = Field(..., description="'Confirmed', 'Excluded', 'Partial', 'Pending Review'")
-    coverage_decision: str = Field(..., description="'Covered', 'Not Covered', 'Conditionally Covered'")
-    coverage_type_matched: Optional[str] = Field(None, description="The specific coverage clause that applies")
-    deductible: Optional[int] = Field(None, description="Applicable deductible from policy")
-    coverage_limit: Optional[int] = Field(None, description="Applicable coverage limit from policy")
-    exclusion_reason: Optional[str] = Field(None, description="Reason for exclusion if not covered")
-    verification_notes: Optional[str] = Field(None, description="Additional notes from verification")
-    gw_policy_id: Optional[str] = Field(None, description="Guidewire internal policy ID")
-    verified_by: Optional[str] = Field("Policy Coverage Verification Agent", description="Who performed the verification")
-
-
-# ── Local DB ──────────────────────────────────────────────────────────────────
-
-class SaveLocalPolicyRequest(BaseModel):
-    policy_id: str
-    status: Optional[str] = "Active"
-    coverage_type: Optional[str] = None
-    deductible: Optional[int] = None
-    limit: Optional[int] = None
-
-
-class UpdateClaimCoverageRequest(BaseModel):
-    coverage: Optional[bool] = None
-    status: Optional[str] = None
-    ai_confidence: Optional[int] = None
-
-policy_coverage_router.py
-# """
-# policy_coverage_router.py — PLACEHOLDER
-# ─────────────────────────────────────────
-# Local-DB Policy Coverage Verification MCP. Only get_policy_details_stub is
-# implemented (real read of policy_details). Full coverage-vs-loss
-# verification logic is TODO — see policy_coverage_mcp/handler.py.
-
-# Tool / Endpoint map:
-#   get_policy_details_stub  GET /api/policy_coverage/policy/{policy_id}
-# """
-
-# import logging
-# from fastapi import APIRouter, HTTPException
-
-# from policy_coverage_mcp import handler
-
-# log = logging.getLogger(__name__)
-
-# router = APIRouter()
-
-
-# @router.get(
-#     "/api/policy_coverage/policy/{policy_id}",
-#     operation_id="get_policy_details_stub",
-#     summary="[PLACEHOLDER] Read policy_details for a policy_id",
-#     tags=["PolicyCoverage"],
-# )
-# def get_policy_details_stub(policy_id: str):
-#     """
-#     Real read of policy_details for the given policy_id.
-
-#     TODO: This agent is a placeholder. Coverage-vs-loss verification logic
-#     (comparing reported loss type/cause against policy coverage_type,
-#     deductible, limit, and exclusions) needs to be designed for the local-DB
-#     platform.
-#     """
-#     record = handler.get_policy_details_stub(policy_id)
-#     if not record:
-#         return {"status": "not_implemented", "note": "Policy not found, and coverage-vs-loss verification logic is not yet designed for this platform."}
-#     return {"status": "not_implemented", "note": "Coverage-vs-loss verification logic is not yet designed for this platform.", "policy_details": record}
-
-
-
-
-
-
-
+for claim number CLM-2026-1001 
+i want to add data in communication history table, you know right the adjuster, siu , policyholder personas etc you  knwo the flow right just add now i need to add the dummy data in that table 
 
 
 """
-policy_coverage_router.py
-──────────────────────────
-FastAPI sub-app exposing all Policy Coverage Verification MCP tools.
-Mounted at /api/v1/policy_coverage in main.py.
-FastApiMCP exposes each endpoint as a tool via its operation_id.
-"""
-
-from fastapi import FastAPI, HTTPException
-
-from policy_coverage_mcp.models import (
-    GwSearchPolicyRequest,
-    GwReportLossRequest,
-    # SaveCoverageVerificationRequest,
-    # SaveLocalPolicyRequest,
-    # UpdateClaimCoverageRequest,
-    # VerifyCoverageRequest,
-)
-from policy_coverage_mcp import coverage_handler
-
-from fastapi import APIRouter, HTTPException
-
-from policy_coverage_mcp import handler
-
-# log = logging.getLogger(__name__)
-
-router = APIRouter()
-
-
-
-# ── 1. Guidewire: Search policy ───────────────────────────────────────────────
-
-@router.post(
-    "/gw_search_policy",
-    operation_id="gw_search_policy",
-    summary="Search Guidewire PolicyCenter for a policy by policy number",
-)
-def gw_search_policy(req: GwSearchPolicyRequest):
-    """
-    Looks up a policy in Guidewire PolicyCenter using the policy number.
-    Returns found=True with the policy details if the policy exists,
-    or found=False with an error message if it does not.
-    Use this before any coverage verification to confirm the policyholder exists.
-    """
-    result = coverage_handler.gw_search_policy(req.policy_number)
-    return result
-
-
-# ── 2. Guidewire: Get full coverage detail ────────────────────────────────────
-
-@router.post(
-    "/gw_get_policy_coverages",
-    operation_id="gw_get_policy_coverages",
-    summary="Retrieve full coverage details for a policy from Guidewire",
-)
-def gw_get_policy_coverages(req: GwSearchPolicyRequest):
-    """
-    Fetches the detailed policy record from Guidewire PolicyCenter,
-    including all lines of business and coverage clauses.
-    First searches by policy number, then fetches the full policy record.
-    """
-    result = coverage_handler.gw_get_policy_coverages(req.policy_number)
-    return result
-
-
-server.pyunder policy ccoverageverification agent
-"""
-server.py — Policy Coverage Verification Agent (PLACEHOLDER, local-DB version)
-─────────────────────────────────────────────────────────────────────────────
-This is a minimal placeholder pending full design. It exposes only a
-trivial agent/tools loop wired to the get_policy_details_stub MCP tool.
-
-TODO: Coverage-vs-loss verification logic (comparing the reported loss
-against policy coverage_type, deductible, limit, and exclusions) needs to
-be designed for this local-DB platform. The Guidewire-based agent in
-Jarvis_claims_agents/PolicyCoverageVerificationAgent is separate and not
-reused here.
-
-Port: 8807
-MCP : http://0.0.0.0:8800/api/v1/policy_coverage/mcp
+init_db.py
+──────────
+Creates all SQLite tables for the Policyholder Agents platform and seeds
+reference/sample data. Safe to re-run (idempotent).
 
 Run:
-    py -3 server.py
+    py -3 MCP/common/init_db.py
 """
 
-import logging
 import os
 import sys
-import time
-from datetime import timedelta
-from typing import Annotated, TypedDict
 
-import uvicorn
-from dotenv import load_dotenv
-from fastapi import FastAPI, Request
-from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import StreamingResponse
-from langchain_core.messages import AIMessage, SystemMessage
-from langchain_mcp_adapters.client import MultiServerMCPClient
-from langchain_openai.chat_models import AzureChatOpenAI
-from langgraph.graph import END, START, StateGraph
-from langgraph.graph.message import add_messages
-from langgraph.prebuilt import ToolNode
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
-load_dotenv()
+from db import get_db_connection  # noqa: E402
 
-logging.basicConfig(level=logging.INFO, stream=sys.stdout, force=True)
-logger = logging.getLogger("policy_coverage_agent_placeholder")
+SCHEMA_SQL = """
+CREATE TABLE IF NOT EXISTS claims (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    claim_number TEXT UNIQUE,
+    policyholder_name TEXT,
+    policy_number TEXT,
+    loss_type TEXT,
+    short_description TEXT,
+    ai_generated_summary TEXT,
+    detected_cause TEXT,
+    severity TEXT,
+    complexity TEXT,
+    estimated_cost REAL,
+    coverage INTEGER DEFAULT 1,
+    ai_confidence INTEGER,
+    status TEXT DEFAULT 'Open',
+    location TEXT,
+    assigned_adjuster TEXT,
+    assigned_vendor TEXT,
+    date_of_loss TEXT,
+    filed_at TEXT DEFAULT (datetime('now'))
+);
 
-PHOENIX_API_KEY = os.getenv("PHOENIX_API_KEY", "")
-PHOENIX_ENDPOINT = os.getenv("PHOENIX_ENDPOINT", "")
-MCP_URL = os.getenv("MCP_URL", "http://0.0.0.0:8800/api/v1/policy_coverage/mcp")
-AGENT_PORT = int(os.getenv("AGENT_PORT", "8807"))
+CREATE TABLE IF NOT EXISTS claims_master (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    claim_number TEXT UNIQUE,
+    customer_name TEXT,
+    policy_number TEXT,
+    policy_type TEXT,
+    loss_date TEXT,
+    coverage_limit REAL,
+    deductible REAL,
+    claim_status TEXT
+);
 
-config_mcp_server = {
-    "policy_coverage_mcp": {
-        "url": MCP_URL,
-        "transport": "streamable_http",
-        "timeout": timedelta(seconds=120),
-        "sse_read_timeout": timedelta(seconds=600),
-    }
-}
+CREATE TABLE IF NOT EXISTS claim_journey_master (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    claim_id INTEGER,
+    claim_number TEXT,
+    current_stage INTEGER DEFAULT 1,
+    current_stage_name TEXT DEFAULT 'Claim Initiated',
+    sub_status TEXT DEFAULT 'Under Review',
+    journey_start_date TEXT DEFAULT (datetime('now')),
+    last_stage_change_date TEXT DEFAULT (datetime('now')),
+    expected_completion_date TEXT,
+    overall_sla_status TEXT DEFAULT 'on_track',
+    total_days_in_journey INTEGER DEFAULT 0
+);
 
-app = FastAPI(title="Policy Coverage Verification Agent (Placeholder)")
+CREATE TABLE IF NOT EXISTS stage_time_sla_tracking (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    claim_id INTEGER,
+    claim_number TEXT,
+    stage_number INTEGER,
+    stage_name TEXT,
+    entered_at TEXT DEFAULT (datetime('now')),
+    exited_at TEXT,
+    sla_days INTEGER,
+    sla_status TEXT
+);
 
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
+CREATE TABLE IF NOT EXISTS policy_details (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    policy_id TEXT,
+    status TEXT DEFAULT 'Active',
+    coverage_type TEXT,
+    deductible REAL,
+    "limit" REAL,
+    created_at TEXT DEFAULT (datetime('now'))
+);
 
+CREATE TABLE IF NOT EXISTS fnol_submissions (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    fnol_number TEXT UNIQUE,
+    policy_number TEXT,
+    insured_name TEXT,
+    insured_address TEXT,
+    policy_effective_date TEXT,
+    policy_expiration_date TEXT,
+    loss_type TEXT,
+    loss_type_source TEXT,
+    cause_of_loss TEXT,
+    cause_of_loss_source TEXT,
+    date_of_loss TEXT,
+    date_of_loss_source TEXT,
+    time_of_loss TEXT,
+    time_of_loss_source TEXT,
+    area_affected TEXT,
+    area_affected_source TEXT,
+    occupancy_at_loss INTEGER,
+    occupancy_at_loss_source TEXT,
+    sudden_vs_gradual TEXT,
+    emotional_context TEXT,
+    severity TEXT,
+    urgency_indicator TEXT,
+    voice_transcript TEXT,
+    text_input TEXT,
+    overall_confidence INTEGER,
+    confidence_notes TEXT,
+    status TEXT DEFAULT 'draft',
+    created_at TEXT DEFAULT (datetime('now')),
+    updated_at TEXT DEFAULT (datetime('now')),
+    submitted_at TEXT
+);
 
-class State(TypedDict):
-    messages: Annotated[list, add_messages]
+CREATE TABLE IF NOT EXISTS fnol_mandatory_fields (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    field_name TEXT UNIQUE,
+    field_label TEXT,
+    field_category TEXT,
+    is_required INTEGER DEFAULT 1,
+    can_be_inferred INTEGER DEFAULT 1,
+    inference_question TEXT,
+    input_type TEXT DEFAULT 'text',
+    input_options TEXT,
+    display_order INTEGER DEFAULT 0
+);
 
+CREATE TABLE IF NOT EXISTS fnol_ai_inferences (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    fnol_id INTEGER,
+    field_name TEXT,
+    inferred_value TEXT,
+    confidence INTEGER,
+    source TEXT,
+    source_details TEXT,
+    customer_confirmed INTEGER DEFAULT 0,
+    customer_edited_value TEXT,
+    inferred_at TEXT DEFAULT (datetime('now'))
+);
 
-def router(state: State):
-    last = state["messages"][-1]
-    if isinstance(last, AIMessage) and getattr(last, "tool_calls", None):
-        return "tools"
-    return "End"
+CREATE TABLE IF NOT EXISTS fnol_voice_text_extraction (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    fnol_id INTEGER,
+    input_type TEXT,
+    raw_input TEXT,
+    transcribed_text TEXT,
+    extracted_loss_type TEXT,
+    extracted_cause TEXT,
+    extracted_area TEXT,
+    extracted_temporal TEXT,
+    sudden_gradual_signal TEXT,
+    emotional_context TEXT,
+    extraction_confidence INTEGER,
+    created_at TEXT DEFAULT (datetime('now'))
+);
 
+CREATE TABLE IF NOT EXISTS fnol_mandatory_question_log (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    fnol_id INTEGER,
+    question_text TEXT,
+    field_name TEXT,
+    answer_text TEXT,
+    answer_type TEXT,
+    was_skipped INTEGER DEFAULT 0,
+    question_order INTEGER DEFAULT 0,
+    asked_at TEXT DEFAULT (datetime('now')),
+    answered_at TEXT
+);
 
-# _FALLBACK_PROMPT = """
-# You are the Policy Coverage Verification Agent (Policyholder, local-DB
-# version) for an insurance claims platform.
+CREATE TABLE IF NOT EXISTS fnol_field_attribution (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    fnol_id INTEGER,
+    field_name TEXT,
+    field_label TEXT,
+    field_value TEXT,
+    source TEXT,
+    confidence INTEGER,
+    was_edited INTEGER DEFAULT 0,
+    was_confirmed INTEGER DEFAULT 0,
+    original_value TEXT,
+    edited_value TEXT,
+    created_at TEXT DEFAULT (datetime('now')),
+    confirmed_at TEXT
+);
 
-# THIS AGENT IS A PLACEHOLDER PENDING FULL DESIGN.
+CREATE TABLE IF NOT EXISTS documents (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    document_id TEXT UNIQUE,
+    claim_id TEXT,
+    file_name TEXT,
+    file_url TEXT,
+    file_size INTEGER,
+    content_type TEXT,
+    document_type TEXT,
+    classification_confidence INTEGER DEFAULT 0,
+    uploaded_by TEXT,
+    uploaded_by_role TEXT,
+    status TEXT DEFAULT 'Classified',
+    visibility TEXT DEFAULT 'public',
+    extracted_data TEXT,
+    insights TEXT,
+    investigation_notes TEXT,
+    flagged INTEGER DEFAULT 0,
+    uploaded_at TEXT DEFAULT (datetime('now'))
+);
 
-# Currently the only available tool is get_policy_details_stub, which reads
-# the policy_details table for a given policy_id.
+CREATE TABLE IF NOT EXISTS customer_feedback_per_stage (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    claim_id TEXT,
+    claim_number TEXT,
+    stage_number INTEGER,
+    stage_name TEXT,
+    sentiment TEXT,
+    comment TEXT,
+    submitted_at TEXT DEFAULT (datetime('now'))
+);
 
-# TODO (not yet implemented):
-# - Coverage-vs-loss verification logic comparing the reported loss type/
-#   cause against the policy's coverage_type, deductible, limit, and any
-#   exclusions.
+CREATE TABLE IF NOT EXISTS claim_sentiment_tracker (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    tracker_id TEXT UNIQUE,
+    claim_id TEXT,
+    claim_number TEXT,
+    policyholder_name TEXT,
+    current_sentiment TEXT,
+    sentiment_score REAL,
+    sentiment_trend TEXT,
+    last_interaction_date TEXT,
+    escalation_risk TEXT,
+    satisfaction_rating REAL,
+    nps_score INTEGER,
+    notes TEXT,
+    assigned_adjuster TEXT,
+    created_at TEXT DEFAULT (datetime('now')),
+    updated_at TEXT DEFAULT (datetime('now'))
+);
 
-# If asked about coverage verification, call get_policy_details_stub with the
-# policy_id and explain to the user that full coverage verification logic for
-# this platform is still being designed; only the raw policy_details record
-# is available for now.
-# """
+CREATE TABLE IF NOT EXISTS communication_history (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    communication_id TEXT UNIQUE,
+    claim_id TEXT,
+    claim_number TEXT,
+    policyholder_name TEXT,
+    communication_type TEXT,
+    direction TEXT,
+    subject TEXT,
+    summary TEXT,
+    sentiment_detected TEXT,
+    handled_by TEXT,
+    response_time_minutes INTEGER,
+    resolution_status TEXT,
+    follow_up_required INTEGER DEFAULT 0,
+    follow_up_date TEXT,
+    attachments TEXT,
+    communication_date TEXT DEFAULT (datetime('now'))
+);
 
+CREATE TABLE IF NOT EXISTS segmentation_result_output (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    claim_id TEXT,
+    severity TEXT,
+    complexity TEXT,
+    stp_score INTEGER,
+    recommended_path TEXT,
+    created_at TEXT DEFAULT (datetime('now'))
+);
 
+CREATE TABLE IF NOT EXISTS stp_classification (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    stp_id TEXT,
+    claim_id TEXT,
+    readiness INTEGER DEFAULT 0,
+    fraud_ambiguity TEXT DEFAULT 'Low',
+    subrogation TEXT DEFAULT 'Low',
+    vis INTEGER DEFAULT 0,
+    stp_category TEXT DEFAULT 'Manual Review',
+    created_at TEXT DEFAULT (datetime('now'))
+);
 
-_FALLBACK_PROMPT = """
-You are the Policy Coverage Verification Agent.
-You have access to the following Guidewire tools:
-1. gw_search_policy
-  - Searches Guidewire PolicyCenter using a policy number.
-  - Use this first to verify the policy exists.
-2. gw_get_policy_coverages
-  - Retrieves the detailed policy coverage record from Guidewire.
-  - Use this after locating the policy.
-Current implementation status:
-- Policy search is available.
-- Policy coverage retrieval is available.
-- Full coverage verification logic has NOT yet been implemented.
-When the user asks about a policy:
-1. Search the policy using gw_search_policy.
-2. If found, retrieve detailed coverage information using
-  gw_get_policy_coverages when appropriate.
-3. Return the Guidewire information clearly.
-4. Do not invent coverage decisions.
-5. Explain that automated coverage-vs-loss verification is still under
-  development if the user asks whether a loss is covered.
+CREATE TABLE IF NOT EXISTS intake_validation_result_output (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    validation_id TEXT,
+    claim_id TEXT,
+    completeness_score INTEGER,
+    coverage_status TEXT,
+    fraud_risk TEXT,
+    result TEXT,
+    created_at TEXT DEFAULT (datetime('now'))
+);
+
+CREATE TABLE IF NOT EXISTS policyholder_actions (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    claim_id TEXT,
+    claim_number TEXT,
+    action_type TEXT,
+    action_label TEXT,
+    details TEXT,
+    stage_at_action INTEGER,
+    performed_by TEXT DEFAULT 'Policyholder',
+    timestamp TEXT DEFAULT (datetime('now'))
+);
 """
 
-def create_graph(model, tools, prompt):
-    graph_builder = StateGraph(State)
-    llm_with_tools = model.bind_tools(tools)
 
-    async def agent_node(state: State):
-        all_messages = [SystemMessage(content=prompt)] + state["messages"]
-        message = await llm_with_tools.ainvoke(all_messages)
-        return {"messages": [message]}
-
-    graph_builder.add_node("agent", agent_node)
-    graph_builder.add_node("tools", ToolNode(tools=tools))
-    graph_builder.add_edge(START, "agent")
-    graph_builder.add_conditional_edges("agent", router, {"tools": "tools", "End": END})
-    graph_builder.add_edge("tools", "agent")
-    return graph_builder.compile()
-
-
-async def get_tools():
-    client = MultiServerMCPClient(config_mcp_server)
-    tools = await client.get_tools()
-    logger.info("Tools loaded from MCP: %s", [t.name for t in tools])
-    return tools
-
-
-async def stream_graph(graph, initial_state, config):
-    async for event in graph.astream_events(initial_state, config=config, version="v2"):
-        kind = event.get("event", "")
-        if kind == "on_chat_model_stream":
-            chunk = event["data"].get("chunk")
-            if chunk and hasattr(chunk, "content") and chunk.content:
-                yield f"data: {chunk.content}\n\n"
-        elif kind == "on_tool_start":
-            yield f"data: [Tool: {event.get('name', 'unknown_tool')}] Starting...\n\n"
-        elif kind == "on_tool_end":
-            yield f"data: [Tool: {event.get('name', 'unknown_tool')}] Done\n\n"
+MANDATORY_FIELDS = [
+    ("loss_type", "Type of Loss", "loss_details", 1, 1,
+     "What type of loss occurred (e.g. water damage, fire, theft)?", "text", None, 1),
+    ("cause_of_loss", "Cause of Loss", "loss_details", 1, 1,
+     "What caused the loss?", "text", None, 2),
+    ("date_of_loss", "Date of Loss", "loss_details", 1, 1,
+     "On what date did the loss occur?", "date", None, 3),
+    ("time_of_loss", "Time of Loss", "loss_details", 1, 1,
+     "Approximately what time did the loss occur?", "time", None, 4),
+    ("area_affected", "Area Affected", "loss_details", 1, 1,
+     "Which room or area was affected?", "text", None, 5),
+    ("occupancy_at_loss", "Occupancy at Time of Loss", "loss_details", 1, 1,
+     "Was the property occupied at the time of the loss?", "boolean", None, 6),
+    ("sudden_vs_gradual", "Sudden or Gradual", "loss_details", 1, 1,
+     "Did this happen suddenly or develop gradually over time?", "select",
+     '["Sudden", "Gradual"]', 7),
+    ("severity", "Severity", "loss_details", 1, 1,
+     "How severe would you say the damage is — minor, moderate, or severe?", "select",
+     '["Low", "Medium", "High", "Critical"]', 8),
+    ("insured_address", "Insured Property Address", "policy_details", 1, 0,
+     "What is the address of the insured property?", "text", None, 9),
+    ("policy_number", "Policy Number", "policy_details", 1, 0,
+     "What is your policy number?", "text", None, 10),
+]
 
 
-@app.post("/chat")
-async def chat_stream(request: Request):
-    load_dotenv()
-    tools = await get_tools()
+def init_db():
+    conn = get_db_connection()
+    try:
+        cur = conn.cursor()
+        cur.executescript(SCHEMA_SQL)
 
-    model = AzureChatOpenAI(
-        api_key=os.getenv("AZURE_OPENAI_API_KEY"),
-        api_version=os.getenv("AZURE_OPENAI_API_VERSION"),
-        azure_deployment=os.getenv("AZURE_OPENAI_CHAT_DEPLOYMENT"),
-        azure_endpoint=os.getenv("AZURE_OPENAI_ENDPOINT"),
-    )
+        # Seed mandatory fields
+        for row in MANDATORY_FIELDS:
+            cur.execute(
+                """
+                INSERT OR IGNORE INTO fnol_mandatory_fields (
+                    field_name, field_label, field_category, is_required,
+                    can_be_inferred, inference_question, input_type,
+                    input_options, display_order
+                ) VALUES (?,?,?,?,?,?,?,?,?)
+                """,
+                row,
+            )
 
-    body = await request.json()
-    user_message = body.get("message", "Verify policy coverage")
+        # Seed sample policy
+        cur.execute("SELECT COUNT(*) FROM policy_details WHERE policy_id = 'POL-1001'")
+        if cur.fetchone()[0] == 0:
+            cur.execute(
+                """
+                INSERT INTO policy_details (policy_id, status, coverage_type, deductible, "limit")
+                VALUES ('POL-1001', 'Active', 'Homeowners', 1000, 250000)
+                """
+            )
+        cur.execute("SELECT COUNT(*) FROM policy_details WHERE policy_id = 'POL-1002'")
+        if cur.fetchone()[0] == 0:
+            cur.execute(
+                """
+                INSERT INTO policy_details (policy_id, status, coverage_type, deductible, "limit")
+                VALUES ('POL-1002', 'Active', 'Auto', 500, 50000)
+                """
+            )
 
-    graph = create_graph(model=model, tools=tools, prompt=_FALLBACK_PROMPT)
+        # Seed sample claim
+        cur.execute("SELECT COUNT(*) FROM claims WHERE claim_number = 'CLM-2026-1001'")
+        if cur.fetchone()[0] == 0:
+            cur.execute(
+                """
+                INSERT INTO claims (
+                    claim_number, policyholder_name, policy_number, loss_type,
+                    short_description, severity, complexity, estimated_cost,
+                    coverage, ai_confidence, status, location, date_of_loss
+                ) VALUES (
+                    'CLM-2026-1001', 'John Doe', 'POL-1001', 'Water Damage',
+                    'Burst pipe in kitchen caused flooding', 'Medium', 'Low', 8500,
+                    1, 85, 'Open', '123 Main St, Springfield', '2026-05-20'
+                )
+                """
+            )
+            claim_id = cur.lastrowid
 
-    async def generate():
-        try:
-            async for event in stream_graph(
-                graph=graph,
-                initial_state={"messages": [user_message]},
-                config={"recursion_limit": 50},
-            ):
-                yield event
-        except Exception as e:
-            logger.exception("agent error")
-            yield f"data: [AGENT_ERROR] {str(e)}\n\n"
+            cur.execute("SELECT COUNT(*) FROM claims_master WHERE claim_number = 'CLM-2026-1001'")
+            if cur.fetchone()[0] == 0:
+                cur.execute(
+                    """
+                    INSERT INTO claims_master (
+                        claim_number, customer_name, policy_number, policy_type,
+                        loss_date, coverage_limit, deductible, claim_status
+                    ) VALUES (
+                        'CLM-2026-1001', 'John Doe', 'POL-1001', 'Homeowners',
+                        '2026-05-20', 250000, 1000, 'Open'
+                    )
+                    """
+                )
 
-    return StreamingResponse(generate(), media_type="text/event-stream")
+            cur.execute("SELECT COUNT(*) FROM claim_journey_master WHERE claim_number = 'CLM-2026-1001'")
+            if cur.fetchone()[0] == 0:
+                cur.execute(
+                    """
+                    INSERT INTO claim_journey_master (
+                        claim_id, claim_number, current_stage, current_stage_name,
+                        sub_status, overall_sla_status
+                    ) VALUES (?, 'CLM-2026-1001', 1, 'Claim Initiated', 'Under Review', 'on_track')
+                    """,
+                    (claim_id,),
+                )
 
-
-@app.get("/health")
-async def health():
-    return {"status": "healthy", "agent": "policy_coverage_agent_placeholder", "note": "placeholder pending full design"}
+        conn.commit()
+    finally:
+        conn.close()
 
 
 if __name__ == "__main__":
-    uvicorn.run(app, host="0.0.0.0", port=AGENT_PORT)
-
-
-
+    init_db()
+    print("Database initialized at:", os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..", "data", "policyholder.db"))
