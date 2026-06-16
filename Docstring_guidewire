@@ -1,430 +1,210 @@
-for claim number CLM-2026-1001 
-i want to add data in communication history table, you know right the adjuster, siu , policyholder personas etc you  knwo the flow right just add now i need to add the dummy data in that table 
 
-
-"""
-init_db.py
-──────────
-Creates all SQLite tables for the Policyholder Agents platform and seeds
-reference/sample data. Safe to re-run (idempotent).
-
-Run:
-    py -3 MCP/common/init_db.py
-"""
 
 import os
 import sys
 
-sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+# sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(file)),"common"))
+
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "common"))
 
 from db import get_db_connection  # noqa: E402
 
-SCHEMA_SQL = """
-CREATE TABLE IF NOT EXISTS claims (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    claim_number TEXT UNIQUE,
-    policyholder_name TEXT,
-    policy_number TEXT,
-    loss_type TEXT,
-    short_description TEXT,
-    ai_generated_summary TEXT,
-    detected_cause TEXT,
-    severity TEXT,
-    complexity TEXT,
-    estimated_cost REAL,
-    coverage INTEGER DEFAULT 1,
-    ai_confidence INTEGER,
-    status TEXT DEFAULT 'Open',
-    location TEXT,
-    assigned_adjuster TEXT,
-    assigned_vendor TEXT,
-    date_of_loss TEXT,
-    filed_at TEXT DEFAULT (datetime('now'))
-);
+def seed_communication_history():
+   conn= get_db_connection()
+   try:
+      cur = conn.cursor()
+      claim_number = "CLM-2026-1001"
+      cur.execute(
+         "SELECT COUNT(*) FROM communication_history WHERE claim_number = ?",
+         (claim_number,),
+      )
+      if cur.fetchone()[0] > 0:
+         print(f"Communication history already exists for {claim_number}")
+         return
+      communications = [
+         (
+            "COMM-10001",
+            "1",
+            "CLM-2026-1001",
+            "John Doe",
+            "FNOL Intake",
+            "Inbound",
+            "Initial Loss Report",
+            "Policyholder reported burst pipe in kitchen causing water damage.",
+            "Concerned",
+            "Policyholder",
+            0,
+            "Completed",
+            0,
+            None,
+            None,
+         ),
+         (
+            "COMM-10002",
+            "1",
+            "CLM-2026-1001",
+            "John Doe",
+            "Adjuster Contact",
+            "Outbound",
+            "Claim Acknowledgement",
+            "Assigned adjuster contacted customer and explained the claim process.",
+            "Neutral",
+            "Sarah Johnson (Adjuster)",
+            15,
+            "Completed",
+            0,
+            None,
+            None,
+         ),
+         (
+            "COMM-10003",
+            "1",
+            "CLM-2026-1001",
+            "John Doe",
+            "Document Request",
+            "Outbound",
+            "Supporting Documents Needed",
+            "Requested photos of damage and plumbing repair invoice.",
+            "Neutral",
+            "Document Submission Agent",
+            20,
+            "Awaiting Documents",
+            1,
+            "2026-05-23",
+            None,
+         ),
+         (
+            "COMM-10004",
+            "1",
+            "CLM-2026-1001",
+            "John Doe",
+            "Document Submission",
+            "Inbound",
+            "Documents Uploaded",
+            "Customer uploaded photos and plumber inspection report.",
+            "Cooperative",
+            "Policyholder",
+            0,
+            "Completed",
+            0,
+            None,
+            "kitchen_photos.zip,plumber_report.pdf",
+         ),
+         (
+            "COMM-10005",
+            "1",
+            "CLM-2026-1001",
+            "John Doe",
+            "Coverage Review",
+            "Internal",
+            "Coverage Validation",
+            "Policy reviewed and water damage coverage identified.",
+            "Neutral",
+            "Policy Coverage Verification Agent",
+            45,
+            "Completed",
+            0,
+            None,
+            None,
+         ),
+         (
+            "COMM-10006",
+            "1",
+            "CLM-2026-1001",
+            "John Doe",
+            "Fraud Screening",
+            "Internal",
+            "SIU Review",
+            "Claim screened for fraud indicators. No suspicious activity found.",
+            "Neutral",
+            "Michael Chen (SIU Analyst)",
+            30,
+            "Cleared",
+            0,
+            None,
+            None,
+         ),
+         (
+            "COMM-10007",
+            "1",
+            "CLM-2026-1001",
+            "John Doe",
+            "Readiness Check",
+            "Internal",
+            "Claim Completeness Review",
+            "All mandatory documents and information received.",
+            "Positive",
+            "Claim Readiness Agent",
+            15,
+            "Ready",
+            0,
+            None,
+            None,
+         ),
+         (
+            "COMM-10008",
+            "1",
+            "CLM-2026-1001",
+            "John Doe",
+            "Settlement Discussion",
+            "Outbound",
+            "Coverage Decision",
+            "Customer informed claim is covered subject to deductible.",
+            "Satisfied",
+            "Sarah Johnson (Adjuster)",
+            10,
+            "Completed",
+            0,
+            None,
+            None,
+         ),
+         (
+            "COMM-10009",
+            "1",
+            "CLM-2026-1001",
+            "John Doe",
+            "Payment Notification",
+            "Outbound",
+            "Settlement Approved",
+            "Settlement payment approved and processing initiated.",
+            "Positive",
+            "Claims Settlement Team",
+            5,
+            "Resolved",
+            0,
+            None,
+            None,
+         ),
+      ]
+      cur.executemany(
+         """
+         INSERT INTO communication_history (
+            communication_id,
+            claim_id,
+            claim_number,
+            policyholder_name,
+            communication_type,
+            direction,
+            subject,
+            summary,
+            sentiment_detected,
+            handled_by,
+            response_time_minutes,
+            resolution_status,
+            follow_up_required,
+            follow_up_date,
+            attachments
+         )
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+         """,
+         communications,
+      )
+      conn.commit()
+      print(f"Inserted {len(communications)} communication history records.")
+   finally:
+      conn.close()
 
-CREATE TABLE IF NOT EXISTS claims_master (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    claim_number TEXT UNIQUE,
-    customer_name TEXT,
-    policy_number TEXT,
-    policy_type TEXT,
-    loss_date TEXT,
-    coverage_limit REAL,
-    deductible REAL,
-    claim_status TEXT
-);
+Jarvis@JarvisPhase2:~/Musaddique/jarvis_claims_agents/Jarvis_claims_agents/PolicyholderAgents/MCP/common$ python3 insert.py 
+Jarvis@JarvisPhase2:~/Musaddique/jarvis_claims_agents/Jarvis_claims_agents/PolicyholderAgents/MCP/common$ 
 
-CREATE TABLE IF NOT EXISTS claim_journey_master (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    claim_id INTEGER,
-    claim_number TEXT,
-    current_stage INTEGER DEFAULT 1,
-    current_stage_name TEXT DEFAULT 'Claim Initiated',
-    sub_status TEXT DEFAULT 'Under Review',
-    journey_start_date TEXT DEFAULT (datetime('now')),
-    last_stage_change_date TEXT DEFAULT (datetime('now')),
-    expected_completion_date TEXT,
-    overall_sla_status TEXT DEFAULT 'on_track',
-    total_days_in_journey INTEGER DEFAULT 0
-);
-
-CREATE TABLE IF NOT EXISTS stage_time_sla_tracking (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    claim_id INTEGER,
-    claim_number TEXT,
-    stage_number INTEGER,
-    stage_name TEXT,
-    entered_at TEXT DEFAULT (datetime('now')),
-    exited_at TEXT,
-    sla_days INTEGER,
-    sla_status TEXT
-);
-
-CREATE TABLE IF NOT EXISTS policy_details (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    policy_id TEXT,
-    status TEXT DEFAULT 'Active',
-    coverage_type TEXT,
-    deductible REAL,
-    "limit" REAL,
-    created_at TEXT DEFAULT (datetime('now'))
-);
-
-CREATE TABLE IF NOT EXISTS fnol_submissions (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    fnol_number TEXT UNIQUE,
-    policy_number TEXT,
-    insured_name TEXT,
-    insured_address TEXT,
-    policy_effective_date TEXT,
-    policy_expiration_date TEXT,
-    loss_type TEXT,
-    loss_type_source TEXT,
-    cause_of_loss TEXT,
-    cause_of_loss_source TEXT,
-    date_of_loss TEXT,
-    date_of_loss_source TEXT,
-    time_of_loss TEXT,
-    time_of_loss_source TEXT,
-    area_affected TEXT,
-    area_affected_source TEXT,
-    occupancy_at_loss INTEGER,
-    occupancy_at_loss_source TEXT,
-    sudden_vs_gradual TEXT,
-    emotional_context TEXT,
-    severity TEXT,
-    urgency_indicator TEXT,
-    voice_transcript TEXT,
-    text_input TEXT,
-    overall_confidence INTEGER,
-    confidence_notes TEXT,
-    status TEXT DEFAULT 'draft',
-    created_at TEXT DEFAULT (datetime('now')),
-    updated_at TEXT DEFAULT (datetime('now')),
-    submitted_at TEXT
-);
-
-CREATE TABLE IF NOT EXISTS fnol_mandatory_fields (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    field_name TEXT UNIQUE,
-    field_label TEXT,
-    field_category TEXT,
-    is_required INTEGER DEFAULT 1,
-    can_be_inferred INTEGER DEFAULT 1,
-    inference_question TEXT,
-    input_type TEXT DEFAULT 'text',
-    input_options TEXT,
-    display_order INTEGER DEFAULT 0
-);
-
-CREATE TABLE IF NOT EXISTS fnol_ai_inferences (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    fnol_id INTEGER,
-    field_name TEXT,
-    inferred_value TEXT,
-    confidence INTEGER,
-    source TEXT,
-    source_details TEXT,
-    customer_confirmed INTEGER DEFAULT 0,
-    customer_edited_value TEXT,
-    inferred_at TEXT DEFAULT (datetime('now'))
-);
-
-CREATE TABLE IF NOT EXISTS fnol_voice_text_extraction (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    fnol_id INTEGER,
-    input_type TEXT,
-    raw_input TEXT,
-    transcribed_text TEXT,
-    extracted_loss_type TEXT,
-    extracted_cause TEXT,
-    extracted_area TEXT,
-    extracted_temporal TEXT,
-    sudden_gradual_signal TEXT,
-    emotional_context TEXT,
-    extraction_confidence INTEGER,
-    created_at TEXT DEFAULT (datetime('now'))
-);
-
-CREATE TABLE IF NOT EXISTS fnol_mandatory_question_log (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    fnol_id INTEGER,
-    question_text TEXT,
-    field_name TEXT,
-    answer_text TEXT,
-    answer_type TEXT,
-    was_skipped INTEGER DEFAULT 0,
-    question_order INTEGER DEFAULT 0,
-    asked_at TEXT DEFAULT (datetime('now')),
-    answered_at TEXT
-);
-
-CREATE TABLE IF NOT EXISTS fnol_field_attribution (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    fnol_id INTEGER,
-    field_name TEXT,
-    field_label TEXT,
-    field_value TEXT,
-    source TEXT,
-    confidence INTEGER,
-    was_edited INTEGER DEFAULT 0,
-    was_confirmed INTEGER DEFAULT 0,
-    original_value TEXT,
-    edited_value TEXT,
-    created_at TEXT DEFAULT (datetime('now')),
-    confirmed_at TEXT
-);
-
-CREATE TABLE IF NOT EXISTS documents (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    document_id TEXT UNIQUE,
-    claim_id TEXT,
-    file_name TEXT,
-    file_url TEXT,
-    file_size INTEGER,
-    content_type TEXT,
-    document_type TEXT,
-    classification_confidence INTEGER DEFAULT 0,
-    uploaded_by TEXT,
-    uploaded_by_role TEXT,
-    status TEXT DEFAULT 'Classified',
-    visibility TEXT DEFAULT 'public',
-    extracted_data TEXT,
-    insights TEXT,
-    investigation_notes TEXT,
-    flagged INTEGER DEFAULT 0,
-    uploaded_at TEXT DEFAULT (datetime('now'))
-);
-
-CREATE TABLE IF NOT EXISTS customer_feedback_per_stage (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    claim_id TEXT,
-    claim_number TEXT,
-    stage_number INTEGER,
-    stage_name TEXT,
-    sentiment TEXT,
-    comment TEXT,
-    submitted_at TEXT DEFAULT (datetime('now'))
-);
-
-CREATE TABLE IF NOT EXISTS claim_sentiment_tracker (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    tracker_id TEXT UNIQUE,
-    claim_id TEXT,
-    claim_number TEXT,
-    policyholder_name TEXT,
-    current_sentiment TEXT,
-    sentiment_score REAL,
-    sentiment_trend TEXT,
-    last_interaction_date TEXT,
-    escalation_risk TEXT,
-    satisfaction_rating REAL,
-    nps_score INTEGER,
-    notes TEXT,
-    assigned_adjuster TEXT,
-    created_at TEXT DEFAULT (datetime('now')),
-    updated_at TEXT DEFAULT (datetime('now'))
-);
-
-CREATE TABLE IF NOT EXISTS communication_history (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    communication_id TEXT UNIQUE,
-    claim_id TEXT,
-    claim_number TEXT,
-    policyholder_name TEXT,
-    communication_type TEXT,
-    direction TEXT,
-    subject TEXT,
-    summary TEXT,
-    sentiment_detected TEXT,
-    handled_by TEXT,
-    response_time_minutes INTEGER,
-    resolution_status TEXT,
-    follow_up_required INTEGER DEFAULT 0,
-    follow_up_date TEXT,
-    attachments TEXT,
-    communication_date TEXT DEFAULT (datetime('now'))
-);
-
-CREATE TABLE IF NOT EXISTS segmentation_result_output (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    claim_id TEXT,
-    severity TEXT,
-    complexity TEXT,
-    stp_score INTEGER,
-    recommended_path TEXT,
-    created_at TEXT DEFAULT (datetime('now'))
-);
-
-CREATE TABLE IF NOT EXISTS stp_classification (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    stp_id TEXT,
-    claim_id TEXT,
-    readiness INTEGER DEFAULT 0,
-    fraud_ambiguity TEXT DEFAULT 'Low',
-    subrogation TEXT DEFAULT 'Low',
-    vis INTEGER DEFAULT 0,
-    stp_category TEXT DEFAULT 'Manual Review',
-    created_at TEXT DEFAULT (datetime('now'))
-);
-
-CREATE TABLE IF NOT EXISTS intake_validation_result_output (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    validation_id TEXT,
-    claim_id TEXT,
-    completeness_score INTEGER,
-    coverage_status TEXT,
-    fraud_risk TEXT,
-    result TEXT,
-    created_at TEXT DEFAULT (datetime('now'))
-);
-
-CREATE TABLE IF NOT EXISTS policyholder_actions (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    claim_id TEXT,
-    claim_number TEXT,
-    action_type TEXT,
-    action_label TEXT,
-    details TEXT,
-    stage_at_action INTEGER,
-    performed_by TEXT DEFAULT 'Policyholder',
-    timestamp TEXT DEFAULT (datetime('now'))
-);
-"""
-
-
-MANDATORY_FIELDS = [
-    ("loss_type", "Type of Loss", "loss_details", 1, 1,
-     "What type of loss occurred (e.g. water damage, fire, theft)?", "text", None, 1),
-    ("cause_of_loss", "Cause of Loss", "loss_details", 1, 1,
-     "What caused the loss?", "text", None, 2),
-    ("date_of_loss", "Date of Loss", "loss_details", 1, 1,
-     "On what date did the loss occur?", "date", None, 3),
-    ("time_of_loss", "Time of Loss", "loss_details", 1, 1,
-     "Approximately what time did the loss occur?", "time", None, 4),
-    ("area_affected", "Area Affected", "loss_details", 1, 1,
-     "Which room or area was affected?", "text", None, 5),
-    ("occupancy_at_loss", "Occupancy at Time of Loss", "loss_details", 1, 1,
-     "Was the property occupied at the time of the loss?", "boolean", None, 6),
-    ("sudden_vs_gradual", "Sudden or Gradual", "loss_details", 1, 1,
-     "Did this happen suddenly or develop gradually over time?", "select",
-     '["Sudden", "Gradual"]', 7),
-    ("severity", "Severity", "loss_details", 1, 1,
-     "How severe would you say the damage is — minor, moderate, or severe?", "select",
-     '["Low", "Medium", "High", "Critical"]', 8),
-    ("insured_address", "Insured Property Address", "policy_details", 1, 0,
-     "What is the address of the insured property?", "text", None, 9),
-    ("policy_number", "Policy Number", "policy_details", 1, 0,
-     "What is your policy number?", "text", None, 10),
-]
-
-
-def init_db():
-    conn = get_db_connection()
-    try:
-        cur = conn.cursor()
-        cur.executescript(SCHEMA_SQL)
-
-        # Seed mandatory fields
-        for row in MANDATORY_FIELDS:
-            cur.execute(
-                """
-                INSERT OR IGNORE INTO fnol_mandatory_fields (
-                    field_name, field_label, field_category, is_required,
-                    can_be_inferred, inference_question, input_type,
-                    input_options, display_order
-                ) VALUES (?,?,?,?,?,?,?,?,?)
-                """,
-                row,
-            )
-
-        # Seed sample policy
-        cur.execute("SELECT COUNT(*) FROM policy_details WHERE policy_id = 'POL-1001'")
-        if cur.fetchone()[0] == 0:
-            cur.execute(
-                """
-                INSERT INTO policy_details (policy_id, status, coverage_type, deductible, "limit")
-                VALUES ('POL-1001', 'Active', 'Homeowners', 1000, 250000)
-                """
-            )
-        cur.execute("SELECT COUNT(*) FROM policy_details WHERE policy_id = 'POL-1002'")
-        if cur.fetchone()[0] == 0:
-            cur.execute(
-                """
-                INSERT INTO policy_details (policy_id, status, coverage_type, deductible, "limit")
-                VALUES ('POL-1002', 'Active', 'Auto', 500, 50000)
-                """
-            )
-
-        # Seed sample claim
-        cur.execute("SELECT COUNT(*) FROM claims WHERE claim_number = 'CLM-2026-1001'")
-        if cur.fetchone()[0] == 0:
-            cur.execute(
-                """
-                INSERT INTO claims (
-                    claim_number, policyholder_name, policy_number, loss_type,
-                    short_description, severity, complexity, estimated_cost,
-                    coverage, ai_confidence, status, location, date_of_loss
-                ) VALUES (
-                    'CLM-2026-1001', 'John Doe', 'POL-1001', 'Water Damage',
-                    'Burst pipe in kitchen caused flooding', 'Medium', 'Low', 8500,
-                    1, 85, 'Open', '123 Main St, Springfield', '2026-05-20'
-                )
-                """
-            )
-            claim_id = cur.lastrowid
-
-            cur.execute("SELECT COUNT(*) FROM claims_master WHERE claim_number = 'CLM-2026-1001'")
-            if cur.fetchone()[0] == 0:
-                cur.execute(
-                    """
-                    INSERT INTO claims_master (
-                        claim_number, customer_name, policy_number, policy_type,
-                        loss_date, coverage_limit, deductible, claim_status
-                    ) VALUES (
-                        'CLM-2026-1001', 'John Doe', 'POL-1001', 'Homeowners',
-                        '2026-05-20', 250000, 1000, 'Open'
-                    )
-                    """
-                )
-
-            cur.execute("SELECT COUNT(*) FROM claim_journey_master WHERE claim_number = 'CLM-2026-1001'")
-            if cur.fetchone()[0] == 0:
-                cur.execute(
-                    """
-                    INSERT INTO claim_journey_master (
-                        claim_id, claim_number, current_stage, current_stage_name,
-                        sub_status, overall_sla_status
-                    ) VALUES (?, 'CLM-2026-1001', 1, 'Claim Initiated', 'Under Review', 'on_track')
-                    """,
-                    (claim_id,),
-                )
-
-        conn.commit()
-    finally:
-        conn.close()
-
-
-if __name__ == "__main__":
-    init_db()
-    print("Database initialized at:", os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..", "data", "policyholder.db"))
+nothing got inserted
