@@ -339,6 +339,53 @@ but these were expected tool calls
 | `verify_coverage` | Evaluates if loss type is covered |
 
 
+this is my router.py
+"""
+policy_coverage_router.py
+──────────────────────────
+Tool / Endpoint map:
+  get_policy_details   GET  /api/policy_coverage/policy/{policy_id}
+  verify_coverage      POST /api/policy_coverage/verify/{claim_id}
+"""
+
+import logging
+from fastapi import APIRouter
+
+from policy_coverage_mcp import handler
+
+log = logging.getLogger(__name__)
+
+router = APIRouter()
+
+
+@router.get(
+    "/api/policy_coverage/policy/{policy_id}",
+    operation_id="get_policy_details",
+    summary="Read policy_details for a policy",
+    tags=["PolicyCoverage"],
+)
+def get_policy_details(policy_id: str):
+    """Return the raw policy_details record for a given policy_id."""
+    record = handler.get_policy_details(policy_id)
+    if not record:
+        return {"status": "not_found", "policy_id": policy_id}
+    return record
+
+
+@router.post(
+    "/api/policy_coverage/verify/{claim_id}",
+    operation_id="verify_coverage",
+    summary="Verify whether a claim's loss is covered by the linked policy",
+    tags=["PolicyCoverage"],
+)
+def verify_coverage(claim_id: str):
+    """
+    Compare the claim's loss_type/cause against the policy's coverage_type,
+    deductible, limit, and exclusions.  Returns a coverage verdict and net
+    payable amount, and persists the result to coverage_verification_results.
+    """
+    return handler.verify_coverage(claim_id)
+
 
 
 
