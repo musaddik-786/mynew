@@ -1,482 +1,344 @@
-THESE ARE THE DATA FROM GUIDEWIRE 
-{
-  "found": true,
-  "policy": {
-    "gw_policy_id": "pc:Szq_QxhKKXcBR0LiuFhA3",
-    "policy_number": "9802322834",
-    "status": "Unknown",
-    "effective_date": "2025-07-16T04:01:00.000Z",
-    "expiration_date": "2026-07-16T04:01:00.000Z",
-    "coverage_types": [],
-    "insured_name": "Hexa Tester",
-    "account_number": "8897503787",
-    "raw": {
-      "count": 1,
-      "data": [
-        {
-          "attributes": {
-            "accountNumber": "8897503787",
-            "effectiveDate": "2025-07-16T04:01:00.000Z",
-            "expirationDate": "2026-07-16T04:01:00.000Z",
-            "insuredName": "Hexa Tester",
-            "policyAddress": "2850 S. Delaware St.\nSan Mateo, CA 94403",
-            "policyId": "pc:Szq_QxhKKXcBR0LiuFhA3",
-            "policyNumber": "9802322834",
-            "producerOfRecordName": "Armstrong and Company",
-            "producerOfServiceName": "Armstrong and Company",
-            "product": {
-              "displayName": "Manual Products",
-              "id": "Manual"
-            }
-          },
-          "links": {
-            "self": {
-              "href": "/policy/v1/policies/pc:Szq_QxhKKXcBR0LiuFhA3",
-              "methods": [
-                "get"
-              ]
-            }
-          }
-        }
-      ],
-      "links": {
-        "first": {
-          "href": "/policy/v1/search/policies",
-          "methods": [
-            "post"
-          ]
-        },
-        "self": {
-          "href": "/policy/v1/search/policies",
-          "methods": [
-            "post"
-          ]
-        }
-      }
-    }
-  },
-  "error": null,
-  "raw_gw_response": {
-    "count": 1,
-    "data": [
-      {
-        "attributes": {
-          "accountNumber": "8897503787",
-          "effectiveDate": "2025-07-16T04:01:00.000Z",
-          "expirationDate": "2026-07-16T04:01:00.000Z",
-          "insuredName": "Hexa Tester",
-          "policyAddress": "2850 S. Delaware St.\nSan Mateo, CA 94403",
-          "policyId": "pc:Szq_QxhKKXcBR0LiuFhA3",
-          "policyNumber": "9802322834",
-          "producerOfRecordName": "Armstrong and Company",
-          "producerOfServiceName": "Armstrong and Company",
-          "product": {
-            "displayName": "Manual Products",
-            "id": "Manual"
-          }
-        },
-        "links": {
-          "self": {
-            "href": "/policy/v1/policies/pc:Szq_QxhKKXcBR0LiuFhA3",
-            "methods": [
-              "get"
-            ]
-          }
-        }
-      }
-    ],
-    "links": {
-      "first": {
-        "href": "/policy/v1/search/policies",
-        "methods": [
-          "post"
-        ]
-      },
-      "self": {
-        "href": "/policy/v1/search/policies",
-        "methods": [
-          "post"
-        ]
-      }
-    }
-  }
-}
+Jarvis@JarvisPhase2:~/Musaddique$ curl -s -N -X POST http://localhost:8807/chat \
+  -H "Content-Type: application/json" \
+  -d '{"message": "Verify that policy POL-1001 covers water damage from a burst pipe for claim CLM-2026-1001."}' \
+  --max-time 90
+data: [Tool: verify_coverage] Starting...
 
-and below one
-{
-  "found": true,
-  "policy_id": "pc:Szq_QxhKKXcBR0LiuFhA3",
-  "coverage_detail": {
-    "data": {
-      "attributes": {
-        "account": {
-          "displayName": "8897503787",
-          "id": "pc:SAhcY7tJbL3kUwjz0TRHv",
-          "type": "Account",
-          "uri": "/account/v1/accounts/pc:SAhcY7tJbL3kUwjz0TRHv"
-        },
-        "baseState": {
-          "code": "CA",
-          "name": "California"
-        },
-        "createdDate": "2026-06-12T10:15:18.654Z",
-        "depositReleased": false,
-        "id": "pc:Szq_QxhKKXcBR0LiuFhA3",
-        "issueDate": "2026-06-12",
-        "mostRecentTerm": true,
-        "nextRenewalCheckDate": "2026-04-17",
-        "organization": {
-          "displayName": "Armstrong and Company",
-          "id": "pc:1",
-          "type": "Organization",
-          "uri": "/admin/v1/organizations/pc:1"
-        },
-        "organizationOfService": {
-          "displayName": "Armstrong and Company",
-          "id": "pc:1",
-          "type": "Organization",
-          "uri": "/admin/v1/organizations/pc:1"
-        },
-        "periodEnd": "2026-07-16T04:01:00.000Z",
-        "periodStart": "2025-07-16T04:01:00.000Z",
-        "policyAddress": {
-          "addressLine1": "2850 S. Delaware St.",
-          "addressType": {
-            "code": "business",
-            "name": "Business"
-          },
-          "city": "San Mateo",
-          "country": "US",
-          "displayName": "2850 S. Delaware St., San Mateo, CA 94403",
-          "id": "3424",
-          "postalCode": "94403",
-          "primaryNamedInsuredAddress": {
-            "displayName": "2850 S. Delaware St., San Mateo, CA 94403",
-            "id": "pc:S7yuaLb4cG6S9egiAM2kc"
-          },
-          "state": {
-            "code": "CA",
-            "name": "California"
-          }
-        },
-        "policyNumber": "9802322834",
-        "preferredCoverageCurrency": {
-          "code": "usd",
-          "name": "USD"
-        },
-        "preferredSettlementCurrency": {
-          "code": "usd",
-          "name": "USD"
-        },
-        "primaryInsured": {
-          "displayName": "Hexa Tester",
-          "id": "pc:SMg7tp2tyuLkLOBS1XYYa",
-          "type": "PolicyContact",
-          "uri": "/policy/v1/policies/pc:Szq_QxhKKXcBR0LiuFhA3/contacts/pc:SMg7tp2tyuLkLOBS1XYYa"
-        },
-        "primaryLocation": {
-          "displayName": "1: 2850 S. Delaware St., San Mateo, CA",
-          "id": "4233",
-          "type": "PolicyLocation",
-          "uri": "/policy/v1/policies/pc:Szq_QxhKKXcBR0LiuFhA3/locations/4233"
-        },
-        "producerCode": {
-          "code": "100-002541",
-          "displayName": "100-002541",
-          "id": "pc:6",
-          "type": "ProducerCode",
-          "uri": "/admin/v1/producer-codes/pc:6"
-        },
-        "producerCodeOfService": {
-          "code": "100-002541",
-          "displayName": "100-002541",
-          "id": "pc:6",
-          "type": "ProducerCode",
-          "uri": "/admin/v1/producer-codes/pc:6"
-        },
-        "product": {
-          "displayName": "Homeowners Product",
-          "id": "HomeownersProduct"
-        },
-        "rateAsOfDate": "2026-06-12T10:15:18.220Z",
-        "taxesAndSurcharges": {
-          "amount": "0.00",
-          "currency": "usd"
-        },
-        "termNumber": 1,
-        "termType": {
-          "code": "Annual",
-          "name": "Annual"
-        },
-        "totalCost": {
-          "amount": "1768.13",
-          "currency": "usd"
-        },
-        "totalPremium": {
-          "amount": "1768.13",
-          "currency": "usd"
-        },
-        "uwCompany": {
-          "code": {
-            "code": "default",
-            "name": "Default"
-          },
-          "displayName": "Default",
-          "id": "apd:1"
-        }
-      },
-      "checksum": "7f0f1d2f0900d2a09802f1db4f2e018e",
-      "links": {
-        "activities": {
-          "href": "/policy/v1/policies/pc:Szq_QxhKKXcBR0LiuFhA3/activities",
-          "methods": [
-            "get",
-            "post"
-          ]
-        },
-        "activity-assignees": {
-          "href": "/policy/v1/policies/pc:Szq_QxhKKXcBR0LiuFhA3/activity-assignees",
-          "methods": [
-            "get"
-          ]
-        },
-        "activity-patterns": {
-          "href": "/policy/v1/policies/pc:Szq_QxhKKXcBR0LiuFhA3/activity-patterns",
-          "methods": [
-            "get"
-          ]
-        },
-        "additional-named-insureds": {
-          "href": "/policy/v1/policies/pc:Szq_QxhKKXcBR0LiuFhA3/additional-named-insureds",
-          "methods": [
-            "get"
-          ]
-        },
-        "audits": {
-          "href": "/policy/v1/policies/pc:Szq_QxhKKXcBR0LiuFhA3/audits",
-          "methods": [
-            "get"
-          ]
-        },
-        "cancel": {
-          "href": "/policy/v1/policies/pc:Szq_QxhKKXcBR0LiuFhA3/cancel",
-          "methods": [
-            "post"
-          ]
-        },
-        "change": {
-          "href": "/policy/v1/policies/pc:Szq_QxhKKXcBR0LiuFhA3/change",
-          "methods": [
-            "post"
-          ]
-        },
-        "clear-prerenewal-direction": {
-          "href": "/policy/v1/policies/pc:Szq_QxhKKXcBR0LiuFhA3/clear-prerenewal-direction",
-          "methods": [
-            "post"
-          ]
-        },
-        "coinsurance-agreements": {
-          "href": "/policy/v1/policies/pc:Szq_QxhKKXcBR0LiuFhA3/coinsurance-agreements",
-          "methods": [
-            "get"
-          ]
-        },
-        "compare-jobs": {
-          "href": "/policy/v1/policies/pc:Szq_QxhKKXcBR0LiuFhA3/compare-jobs",
-          "methods": [
-            "post"
-          ]
-        },
-        "contacts": {
-          "href": "/policy/v1/policies/pc:Szq_QxhKKXcBR0LiuFhA3/contacts",
-          "methods": [
-            "get"
-          ]
-        },
-        "contingencies": {
-          "href": "/policy/v1/policies/pc:Szq_QxhKKXcBR0LiuFhA3/contingencies",
-          "methods": [
-            "get",
-            "post"
-          ]
-        },
-        "copy-submission": {
-          "href": "/policy/v1/policies/pc:Szq_QxhKKXcBR0LiuFhA3/copy-submission",
-          "methods": [
-            "post"
-          ]
-        },
-        "costs": {
-          "href": "/policy/v1/policies/pc:Szq_QxhKKXcBR0LiuFhA3/costs",
-          "methods": [
-            "get"
-          ]
-        },
-        "do-not-destroy": {
-          "href": "/policy/v1/policies/pc:Szq_QxhKKXcBR0LiuFhA3/do-not-destroy",
-          "methods": [
-            "post"
-          ]
-        },
-        "documents": {
-          "href": "/policy/v1/policies/pc:Szq_QxhKKXcBR0LiuFhA3/documents",
-          "methods": [
-            "get",
-            "post"
-          ]
-        },
-        "forms": {
-          "href": "/policy/v1/policies/pc:Szq_QxhKKXcBR0LiuFhA3/forms",
-          "methods": [
-            "get"
-          ]
-        },
-        "history-events": {
-          "href": "/policy/v1/policies/pc:Szq_QxhKKXcBR0LiuFhA3/history-events",
-          "methods": [
-            "get"
-          ]
-        },
-        "jobs": {
-          "href": "/policy/v1/policies/pc:Szq_QxhKKXcBR0LiuFhA3/jobs",
-          "methods": [
-            "get"
-          ]
-        },
-        "lines": {
-          "href": "/policy/v1/policies/pc:Szq_QxhKKXcBR0LiuFhA3/lines",
-          "methods": [
-            "get"
-          ]
-        },
-        "locations": {
-          "href": "/policy/v1/policies/pc:Szq_QxhKKXcBR0LiuFhA3/locations",
-          "methods": [
-            "get"
-          ]
-        },
-        "loss-history": {
-          "href": "/policy/v1/policies/pc:Szq_QxhKKXcBR0LiuFhA3/loss-history",
-          "methods": [
-            "get",
-            "patch"
-          ]
-        },
-        "modifiers": {
-          "href": "/policy/v1/policies/pc:Szq_QxhKKXcBR0LiuFhA3/modifiers",
-          "methods": [
-            "get"
-          ]
-        },
-        "notes": {
-          "href": "/policy/v1/policies/pc:Szq_QxhKKXcBR0LiuFhA3/notes",
-          "methods": [
-            "get",
-            "post"
-          ]
-        },
-        "payment-info": {
-          "href": "/policy/v1/policies/pc:Szq_QxhKKXcBR0LiuFhA3/payment-info",
-          "methods": [
-            "get"
-          ]
-        },
-        "policy-sections": {
-          "href": "/policy/v1/policies/pc:Szq_QxhKKXcBR0LiuFhA3/policy-sections",
-          "methods": [
-            "get"
-          ]
-        },
-        "prior-policies": {
-          "href": "/policy/v1/policies/pc:Szq_QxhKKXcBR0LiuFhA3/prior-policies",
-          "methods": [
-            "get",
-            "post"
-          ]
-        },
-        "questions": {
-          "href": "/policy/v1/policies/pc:Szq_QxhKKXcBR0LiuFhA3/questions",
-          "methods": [
-            "get"
-          ]
-        },
-        "rate-capping-groups": {
-          "href": "/policy/v1/policies/pc:Szq_QxhKKXcBR0LiuFhA3/rate-capping-groups",
-          "methods": [
-            "get"
-          ]
-        },
-        "reinsurables": {
-          "href": "/policy/v1/policies/pc:Szq_QxhKKXcBR0LiuFhA3/reinsurables",
-          "methods": [
-            "get"
-          ]
-        },
-        "renew": {
-          "href": "/policy/v1/policies/pc:Szq_QxhKKXcBR0LiuFhA3/renew",
-          "methods": [
-            "post"
-          ]
-        },
-        "rewrite-account": {
-          "href": "/policy/v1/policies/pc:Szq_QxhKKXcBR0LiuFhA3/rewrite-account",
-          "methods": [
-            "post"
-          ]
-        },
-        "self": {
-          "href": "/policy/v1/policies/pc:Szq_QxhKKXcBR0LiuFhA3",
-          "methods": [
-            "get"
-          ]
-        },
-        "set-do-not-archive": {
-          "href": "/policy/v1/policies/pc:Szq_QxhKKXcBR0LiuFhA3/set-do-not-archive",
-          "methods": [
-            "post"
-          ]
-        },
-        "set-prerenewal-direction": {
-          "href": "/policy/v1/policies/pc:Szq_QxhKKXcBR0LiuFhA3/set-prerenewal-direction",
-          "methods": [
-            "post"
-          ]
-        },
-        "towers": {
-          "href": "/policy/v1/policies/pc:Szq_QxhKKXcBR0LiuFhA3/towers",
-          "methods": [
-            "get"
-          ]
-        },
-        "uw-issues": {
-          "href": "/policy/v1/policies/pc:Szq_QxhKKXcBR0LiuFhA3/uw-issues",
-          "methods": [
-            "get"
-          ]
-        },
-        "uw-referral-reasons": {
-          "href": "/policy/v1/policies/pc:Szq_QxhKKXcBR0LiuFhA3/uw-referral-reasons",
-          "methods": [
-            "get",
-            "post"
-          ]
-        }
-      }
-    }
-  },
-  "error": null
-}
+data: [Tool: verify_coverage] Done
 
-i HAVE BEEN TOLD TO FIND BELOW Attributes DATA FROM GUIDEWIRE, basically not as it is but these onces
-{
-  "id": 1,
-  "policy_id": "POL-1001",
-  "status": "Active",
-  "coverage_type": "Homeowners",
-  "deductible": 1000,
-  "coverage_limit": 250000,
-  "created_at": "2026-06-16T14:44:41.091089",
-  "exclusions": "Flood Damage,Earthquake,Wear and Tear,Intentional Damage"
-}
+data: Coverage
+
+data:  Result
+
+data: :
+
+
+data: -
+
+data:  Your
+
+data:  claim
+
+data:  (
+
+data: CL
+
+data: M
+
+data: -
+
+data: 202
+
+data: 6
+
+data: -
+
+data: 100
+
+data: 1
+
+data: )
+
+data:  for
+
+data:  water
+
+data:  damage
+
+data:  from
+
+data:  a
+
+data:  burst
+
+data:  pipe
+
+data:  under
+
+data:  policy
+
+data:  POL
+
+data: -
+
+data: 100
+
+data: 1
+
+data:  (
+
+data: Home
+
+data: owners
+
+data: )
+
+data:  is
+
+data:  Covered
+
+data: .
+
+
+
+data: Details
+
+data: :
+
+
+data: -
+
+data:  No
+
+data:  exclusions
+
+data:  apply
+
+data: .
+
+data:  The
+
+data:  cause
+
+data:  of
+
+data:  loss
+
+data:  (
+
+data: burst
+
+data:  pipe
+
+data: )
+
+data:  does
+
+data:  not
+
+data:  fall
+
+data:  under
+
+data:  policy
+
+data:  exclusions
+
+data:  such
+
+data:  as
+
+data:  Flood
+
+data:  Damage
+
+data: ,
+
+data:  Earth
+
+data: quake
+
+data: ,
+
+data:  Wear
+
+data:  and
+
+data:  Tear
+
+data: ,
+
+data:  or
+
+data:  Intent
+
+data: ional
+
+data:  Damage
+
+data: .
+
+
+data: -
+
+data:  Ded
+
+data: uct
+
+data: ible
+
+data: :
+
+data:  $
+
+data: 1
+
+data: ,
+
+data: 000
+
+data:  applies
+
+data:  to
+
+data:  your
+
+data:  claim
+
+data: .
+
+
+data: -
+
+data:  Net
+
+data:  Pay
+
+data: able
+
+data:  Amount
+
+data: :
+
+data:  $
+
+data: 7
+
+data: ,
+
+data: 500
+
+data:  will
+
+data:  be
+
+data:  paid
+
+data: ,
+
+data:  which
+
+data:  is
+
+data:  your
+
+data:  claimed
+
+data:  amount
+
+data:  ($
+
+data: 8
+
+data: ,
+
+data: 500
+
+data: )
+
+data:  minus
+
+data:  the
+
+data:  deductible
+
+data: .
+
+
+
+data: Recommended
+
+data:  Next
+
+data:  Steps
+
+data: :
+
+
+data: -
+
+data:  Please
+
+data:  provide
+
+data:  any
+
+data:  supporting
+
+data:  documentation
+
+data:  (
+
+data: photos
+
+data: ,
+
+data:  invoices
+
+data: ,
+
+data:  repair
+
+data:  estimates
+
+data: )
+
+data:  if
+
+data:  not
+
+data:  already
+
+data:  submitted
+
+data: .
+
+
+data: -
+
+data:  Our
+
+data:  claims
+
+data:  team
+
+data:  will
+
+data:  reach
+
+data:  out
+
+data:  for
+
+data:  final
+
+data:  settlement
+
+data:  and
+
+data:  payment
+
+data:  dis
+
+data: bur
+
+data: sement
+
+data: .
+
+
+
+data: End
+
+Jarvis@JarvisPhase2:~/Musaddique$ 
+but these were expected tool calls
+
+| Expected tools called | What it confirms |
+|---|---|
+| `get_policy_details` | Checks policy status, coverage_type, limits |
+| `verify_coverage` | Evaluates if loss type is covered |
+
+
+
+
 
