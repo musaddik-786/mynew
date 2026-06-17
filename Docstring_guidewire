@@ -1,4 +1,107 @@
-there was some column name mismatch so i changed the column names 
+POST
+/api/policy_coverage/verify/{claim_id}
+Verify whether a claim's loss is covered by the linked policy
+
+Compare the claim's loss_type/cause against the policy's coverage_type, deductible, limit, and exclusions. Returns a coverage verdict and net payable amount, and persists the result to coverage_verification_results.
+
+Parameters
+Cancel
+Name	Description
+claim_id *
+string
+(path)
+CLM-2026-1001
+Execute
+Clear
+Responses
+Curl
+
+curl -X 'POST' \
+  'http://localhost:8800/api/v1/policy_coverage/api/policy_coverage/verify/CLM-2026-1001' \
+  -H 'accept: application/json' \
+  -d ''
+Request URL
+http://localhost:8800/api/v1/policy_coverage/api/policy_coverage/verify/CLM-2026-1001
+Server response
+Code	Details
+200	
+Response body
+Download
+{
+  "error": "No policy_id or policy_number on claim",
+  "claim": {
+    "id": 2,
+    "claim_number": "CLM-2026-1001",
+    "policyholder_name": "John Doe",
+    "policy_number": "POL-1001",
+    "loss_type": "Water Damage",
+    "short_description": "Burst pipe in kitchen caused flooding",
+    "ai_generated_summary": null,
+    "detected_cause": null,
+    "severity": "Medium",
+    "estimated_cost": "8500",
+    "coverage": true,
+    "ai_confidence": 85,
+    "status": "Open",
+    "image_urls": [],
+    "location": "123 Main St, Springfield",
+    "assigned_adjuster": null,
+    "assigned_vendor": null,
+    "filed_at": "2026-06-16T14:44:41.091089",
+    "date_of_loss": "2026-05-20",
+    "complexity": "Low",
+    "police_report_number": null
+  }
+}
+
+
+this is my handler.py 
+"""
+handler.py — Policy Coverage Verification (local-DB)
+──────────────────────────────────────────────────────
+Verifies whether a claim's loss type/cause falls within the policy's
+coverage terms, applies deductible and limits, and identifies exclusions.
+"""
+
+import json
+import logging
+import os
+import sys
+from datetime import datetime
+
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "common"))
+
+from db import get_db_connection, row_to_dict  # noqa: E402
+from dotenv import load_dotenv, find_dotenv
+from openai import AzureOpenAI
+
+load_dotenv(find_dotenv())
+
+log = logging.getLogger(__name__)
+
+AZURE_OPENAI_ENDPOINT = os.environ.get("AZURE_OPENAI_ENDPOINT", "")
+AZURE_OPENAI_API_KEY = os.environ.get("AZURE_OPENAI_API_KEY", "")
+AZURE_OPENAI_API_VERSION = os.environ.get("AZURE_OPENAI_API_VERSION", "2025-11-13")
+AZURE_OPENAI_CHAT_DEPLOYMENT = os.environ.get("AZURE_OPENAI_CHAT_DEPLOYMENT", "gpt-5.1")
+
+
+def _get_openai_client() -> AzureOpenAI:
+    return AzureOpenAI(
+        api_key=AZURE_OPENAI_API_KEY,
+        api_version=AZURE_OPENAI_API_VERSION,
+        azure_endpoint=AZURE_OPENAI_ENDPOINT,
+    )
+
+
+def get_policy_details(policy_id: str) -> dict:
+    conn = get_db_connection()
+    try:
+        cur = conn.cursor()
+        cur.execute("SELECT * FROM policy_details WHERE policy_id = %s", (policy_id,))
+        return row_to_dict(cur.fetchone())
+    finally:
+        conn.close()
+
 
 def verify_coverage(claim_id: str) -> dict:
     conn = get_db_connection()
@@ -10,7 +113,9 @@ def verify_coverage(claim_id: str) -> dict:
         if not claim:
             return {"error": f"claim_id {claim_id} not found"}
 
-        policy_id = claim.get("policy_id") or claim.get("policy_number")
+        # policy_id = claim.get("policy_id") or claim.get("policy_number")
+        policy_id = claim.get("policy_id")
+
         if not policy_id:
             return {"error": "No policy_id or policy_number on claim", "claim": claim}
 
@@ -18,7 +123,8 @@ def verify_coverage(claim_id: str) -> dict:
             # "SELECT * FROM policy_details WHERE policy_id = %s OR policy_number = %s",
             "SELECT * FROM policy_details WHERE policy_id = %s",
             
-            (policy_id, policy_id),
+            # (policy_id, policy_id),
+            (policy_id,),
         )
         policy = row_to_dict(cur.fetchone())
         if not policy:
@@ -123,115 +229,5 @@ def verify_coverage(claim_id: str) -> dict:
         **llm_result,
     }
 
-but still getting that error on swagger and here 
-        
-  @app.on_event("startup")
-INFO:     Started server process [20093]
-INFO:     Waiting for application startup.
-INFO:     Application startup complete.
-INFO:     Uvicorn running on http://0.0.0.0:8800 (Press CTRL+C to quit)
-INFO:     127.0.0.1:40318 - "GET /api/v1/policy_coverage/docs HTTP/1.1" 200 OK
-INFO:     127.0.0.1:40318 - "GET /api/v1/policy_coverage/openapi.json HTTP/1.1" 200 OK
-INFO:     127.0.0.1:40318 - "POST /api/v1/policy_coverage/api/policy_coverage/verify/CLM-2026-1001 HTTP/1.1" 500 Internal Server Error
-ERROR:    Exception in ASGI application
-Traceback (most recent call last):
-  File "/home/Jarvis/Musaddique/Jarvis_claims_agents_v2/PolicyholderAgents/venv/lib/python3.11/site-packages/uvicorn/protocols/http/h11_impl.py", line 415, in run_asgi
-    result = await app(  # type: ignore[func-returns-value]
-             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "/home/Jarvis/Musaddique/Jarvis_claims_agents_v2/PolicyholderAgents/venv/lib/python3.11/site-packages/uvicorn/middleware/proxy_headers.py", line 62, in __call__
-    return await self.app(scope, receive, send)
-           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "/home/Jarvis/Musaddique/Jarvis_claims_agents_v2/PolicyholderAgents/venv/lib/python3.11/site-packages/fastapi/applications.py", line 1162, in __call__
-    await super().__call__(scope, receive, send)
-  File "/home/Jarvis/Musaddique/Jarvis_claims_agents_v2/PolicyholderAgents/venv/lib/python3.11/site-packages/starlette/applications.py", line 90, in __call__
-    await self.middleware_stack(scope, receive, send)
-  File "/home/Jarvis/Musaddique/Jarvis_claims_agents_v2/PolicyholderAgents/venv/lib/python3.11/site-packages/starlette/middleware/errors.py", line 186, in __call__
-    raise exc
-  File "/home/Jarvis/Musaddique/Jarvis_claims_agents_v2/PolicyholderAgents/venv/lib/python3.11/site-packages/starlette/middleware/errors.py", line 164, in __call__
-    await self.app(scope, receive, _send)
-  File "/home/Jarvis/Musaddique/Jarvis_claims_agents_v2/PolicyholderAgents/venv/lib/python3.11/site-packages/starlette/middleware/cors.py", line 96, in __call__
-    await self.simple_response(scope, receive, send, request_headers=headers)
-  File "/home/Jarvis/Musaddique/Jarvis_claims_agents_v2/PolicyholderAgents/venv/lib/python3.11/site-packages/starlette/middleware/cors.py", line 154, in simple_response
-    await self.app(scope, receive, send)
-  File "/home/Jarvis/Musaddique/Jarvis_claims_agents_v2/PolicyholderAgents/venv/lib/python3.11/site-packages/starlette/middleware/exceptions.py", line 63, in __call__
-    await wrap_app_handling_exceptions(self.app, conn)(scope, receive, send)
-  File "/home/Jarvis/Musaddique/Jarvis_claims_agents_v2/PolicyholderAgents/venv/lib/python3.11/site-packages/starlette/_exception_handler.py", line 53, in wrapped_app
-    raise exc
-  File "/home/Jarvis/Musaddique/Jarvis_claims_agents_v2/PolicyholderAgents/venv/lib/python3.11/site-packages/starlette/_exception_handler.py", line 42, in wrapped_app
-    await app(scope, receive, sender)
-  File "/home/Jarvis/Musaddique/Jarvis_claims_agents_v2/PolicyholderAgents/venv/lib/python3.11/site-packages/fastapi/middleware/asyncexitstack.py", line 18, in __call__
-    await self.app(scope, receive, send)
-  File "/home/Jarvis/Musaddique/Jarvis_claims_agents_v2/PolicyholderAgents/venv/lib/python3.11/site-packages/starlette/routing.py", line 660, in __call__
-    await self.middleware_stack(scope, receive, send)
-  File "/home/Jarvis/Musaddique/Jarvis_claims_agents_v2/PolicyholderAgents/venv/lib/python3.11/site-packages/starlette/routing.py", line 680, in app
-    await route.handle(scope, receive, send)
-  File "/home/Jarvis/Musaddique/Jarvis_claims_agents_v2/PolicyholderAgents/venv/lib/python3.11/site-packages/starlette/routing.py", line 448, in handle
-    await self.app(scope, receive, send)
-  File "/home/Jarvis/Musaddique/Jarvis_claims_agents_v2/PolicyholderAgents/venv/lib/python3.11/site-packages/fastapi/applications.py", line 1162, in __call__
-    await super().__call__(scope, receive, send)
-  File "/home/Jarvis/Musaddique/Jarvis_claims_agents_v2/PolicyholderAgents/venv/lib/python3.11/site-packages/starlette/applications.py", line 90, in __call__
-    await self.middleware_stack(scope, receive, send)
-  File "/home/Jarvis/Musaddique/Jarvis_claims_agents_v2/PolicyholderAgents/venv/lib/python3.11/site-packages/starlette/middleware/errors.py", line 186, in __call__
-    raise exc
-  File "/home/Jarvis/Musaddique/Jarvis_claims_agents_v2/PolicyholderAgents/venv/lib/python3.11/site-packages/starlette/middleware/errors.py", line 164, in __call__
-    await self.app(scope, receive, _send)
-  File "/home/Jarvis/Musaddique/Jarvis_claims_agents_v2/PolicyholderAgents/venv/lib/python3.11/site-packages/starlette/middleware/cors.py", line 96, in __call__
-    await self.simple_response(scope, receive, send, request_headers=headers)
-  File "/home/Jarvis/Musaddique/Jarvis_claims_agents_v2/PolicyholderAgents/venv/lib/python3.11/site-packages/starlette/middleware/cors.py", line 154, in simple_response
-    await self.app(scope, receive, send)
-  File "/home/Jarvis/Musaddique/Jarvis_claims_agents_v2/PolicyholderAgents/venv/lib/python3.11/site-packages/starlette/middleware/exceptions.py", line 63, in __call__
-    await wrap_app_handling_exceptions(self.app, conn)(scope, receive, send)
-  File "/home/Jarvis/Musaddique/Jarvis_claims_agents_v2/PolicyholderAgents/venv/lib/python3.11/site-packages/starlette/_exception_handler.py", line 53, in wrapped_app
-    raise exc
-  File "/home/Jarvis/Musaddique/Jarvis_claims_agents_v2/PolicyholderAgents/venv/lib/python3.11/site-packages/starlette/_exception_handler.py", line 42, in wrapped_app
-    await app(scope, receive, sender)
-  File "/home/Jarvis/Musaddique/Jarvis_claims_agents_v2/PolicyholderAgents/venv/lib/python3.11/site-packages/fastapi/middleware/asyncexitstack.py", line 18, in __call__
-    await self.app(scope, receive, send)
-  File "/home/Jarvis/Musaddique/Jarvis_claims_agents_v2/PolicyholderAgents/venv/lib/python3.11/site-packages/starlette/routing.py", line 660, in __call__
-    await self.middleware_stack(scope, receive, send)
-  File "/home/Jarvis/Musaddique/Jarvis_claims_agents_v2/PolicyholderAgents/venv/lib/python3.11/site-packages/starlette/routing.py", line 680, in app
-    await route.handle(scope, receive, send)
-  File "/home/Jarvis/Musaddique/Jarvis_claims_agents_v2/PolicyholderAgents/venv/lib/python3.11/site-packages/fastapi/routing.py", line 1609, in handle
-    await self.original_router.handle(scope, receive, send)
-  File "/home/Jarvis/Musaddique/Jarvis_claims_agents_v2/PolicyholderAgents/venv/lib/python3.11/site-packages/fastapi/routing.py", line 2047, in handle
-    await included_router._handle_selected(scope, receive, send)
-  File "/home/Jarvis/Musaddique/Jarvis_claims_agents_v2/PolicyholderAgents/venv/lib/python3.11/site-packages/fastapi/routing.py", line 1629, in _handle_selected
-    await original_route.handle(scope, receive, send)
-  File "/home/Jarvis/Musaddique/Jarvis_claims_agents_v2/PolicyholderAgents/venv/lib/python3.11/site-packages/fastapi/routing.py", line 1218, in handle
-    await app(scope, receive, send)
-  File "/home/Jarvis/Musaddique/Jarvis_claims_agents_v2/PolicyholderAgents/venv/lib/python3.11/site-packages/fastapi/routing.py", line 143, in app
-    await wrap_app_handling_exceptions(app, request)(scope, receive, send)
-  File "/home/Jarvis/Musaddique/Jarvis_claims_agents_v2/PolicyholderAgents/venv/lib/python3.11/site-packages/starlette/_exception_handler.py", line 53, in wrapped_app
-    raise exc
-  File "/home/Jarvis/Musaddique/Jarvis_claims_agents_v2/PolicyholderAgents/venv/lib/python3.11/site-packages/starlette/_exception_handler.py", line 42, in wrapped_app
-    await app(scope, receive, sender)
-  File "/home/Jarvis/Musaddique/Jarvis_claims_agents_v2/PolicyholderAgents/venv/lib/python3.11/site-packages/fastapi/routing.py", line 129, in app
-    response = await f(request)
-               ^^^^^^^^^^^^^^^^
-  File "/home/Jarvis/Musaddique/Jarvis_claims_agents_v2/PolicyholderAgents/venv/lib/python3.11/site-packages/fastapi/routing.py", line 683, in app
-    raw_response = await run_endpoint_function(
-                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "/home/Jarvis/Musaddique/Jarvis_claims_agents_v2/PolicyholderAgents/venv/lib/python3.11/site-packages/fastapi/routing.py", line 339, in run_endpoint_function
-    return await run_in_threadpool(dependant.call, **values)
-           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "/home/Jarvis/Musaddique/Jarvis_claims_agents_v2/PolicyholderAgents/venv/lib/python3.11/site-packages/starlette/concurrency.py", line 34, in run_in_threadpool
-    return await anyio.to_thread.run_sync(func)
-           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "/home/Jarvis/Musaddique/Jarvis_claims_agents_v2/PolicyholderAgents/venv/lib/python3.11/site-packages/anyio/to_thread.py", line 63, in run_sync
-    return await get_async_backend().run_sync_in_worker_thread(
-           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "/home/Jarvis/Musaddique/Jarvis_claims_agents_v2/PolicyholderAgents/venv/lib/python3.11/site-packages/anyio/_backends/_asyncio.py", line 2592, in run_sync_in_worker_thread
-    return await future
-           ^^^^^^^^^^^^
-  File "/home/Jarvis/Musaddique/Jarvis_claims_agents_v2/PolicyholderAgents/venv/lib/python3.11/site-packages/anyio/_backends/_asyncio.py", line 1029, in run
-    result = context.run(func, *args)
-             ^^^^^^^^^^^^^^^^^^^^^^^^
-  File "/home/Jarvis/Musaddique/Jarvis_claims_agents_v2/PolicyholderAgents/MCP/policy_coverage_router.py", line 45, in verify_coverage
-    return handler.verify_coverage(claim_id)
-           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "/home/Jarvis/Musaddique/Jarvis_claims_agents_v2/PolicyholderAgents/MCP/policy_coverage_mcp/handler.py", line 62, in verify_coverage
-    cur.execute(
-  File "/home/Jarvis/Musaddique/Jarvis_claims_agents_v2/PolicyholderAgents/venv/lib/python3.11/site-packages/psycopg2/extras.py", line 236, in execute
-    return super().execute(query, vars)
-           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-TypeError: not all arguments converted during string formatting
+
+lets go one by one
