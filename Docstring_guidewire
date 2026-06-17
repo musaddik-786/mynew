@@ -1,3 +1,4 @@
+swagger
 POST
 /api/policy_coverage/verify/{claim_id}
 Verify whether a claim's loss is covered by the linked policy
@@ -41,7 +42,6 @@ Download
   "net_payable": 0,
   "coverage_notes": "The estimated loss amount is $0.00, which suggests no actual loss has been claimed. Further investigation is needed to determine if there is a valid claim and if any payment is warranted."
 }
-
 
 handler.py
 """
@@ -101,8 +101,8 @@ def verify_coverage(claim_id: str) -> dict:
         if not claim:
             return {"error": f"claim_id {claim_id} not found"}
 
-        policy_id = claim.get("policy_id") or claim.get("policy_number")
-        # policy_id = claim.get("policy_number")
+        # policy_id = claim.get("policy_id") or claim.get("policy_number")
+        policy_id = claim.get("policy_number")
         print("Debug policy id ", policy_id)
 
         if not policy_id:
@@ -218,7 +218,6 @@ def verify_coverage(claim_id: str) -> dict:
         **llm_result,
     }
 
-
 terminal error
 (venv) Jarvis@JarvisPhase2:~/Musaddique/Jarvis_claims_agents_v2/PolicyholderAgents/MCP$ python3 main.py 
 /home/Jarvis/Musaddique/Jarvis_claims_agents_v2/PolicyholderAgents/MCP/main.py:240: DeprecationWarning: 
@@ -228,15 +227,15 @@ terminal error
         [FastAPI docs for Lifespan Events](https://fastapi.tiangolo.com/advanced/events/).
         
   @app.on_event("startup")
-INFO:     Started server process [22236]
+INFO:     Started server process [22729]
 INFO:     Waiting for application startup.
 INFO:     Application startup complete.
 INFO:     Uvicorn running on http://0.0.0.0:8800 (Press CTRL+C to quit)
-INFO:     127.0.0.1:58966 - "GET /api/v1/policy_coverage/docs HTTP/1.1" 200 OK
-INFO:     127.0.0.1:58966 - "GET /api/v1/policy_coverage/openapi.json HTTP/1.1" 200 OK
+INFO:     127.0.0.1:33842 - "GET /api/v1/policy_coverage/docs HTTP/1.1" 200 OK
+INFO:     127.0.0.1:33842 - "GET /api/v1/policy_coverage/openapi.json HTTP/1.1" 200 OK
 Debug policy id  POL-1001
 Could not write coverage_verification_results: relation "coverage_verification_results" does not exist
 LINE 2:             INSERT INTO coverage_verification_results
                                 ^
 
-INFO:     127.0.0.1:58966 - "POST /api/v1/policy_coverage/api/policy_coverage/verify/CLM-2026-1001 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:33842 - "POST /api/v1/policy_coverage/api/policy_coverage/verify/CLM-2026-1001 HTTP/1.1" 200 OK
