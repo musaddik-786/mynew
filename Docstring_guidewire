@@ -1,4 +1,3 @@
-swagger
 POST
 /api/policy_coverage/verify/{claim_id}
 Verify whether a claim's loss is covered by the linked policy
@@ -34,191 +33,16 @@ Download
   "coverage_type": "Homeowners",
   "coverage_limit": 250000,
   "deductible": 1000,
-  "loss_amount": 0,
+  "loss_amount": 8500,
   "exclusions": [],
-  "coverage_verdict": "Needs Investigation",
+  "coverage_verdict": "Covered",
   "exclusion_triggered": false,
   "exclusion_details": "",
-  "net_payable": 0,
-  "coverage_notes": "The estimated loss amount is $0.00, which suggests no actual loss has been claimed. Further investigation is needed to determine if there is a valid claim and if any payment is warranted."
+  "net_payable": 7500,
+  "coverage_notes": "The claim is for water damage under a homeowners policy with no exclusions listed. The estimated loss amount is $8,500, which is below the policy limit of $250,000. After applying the $1,000 deductible, the net payable is $7,500."
 }
 
-handler.py
-"""
-handler.py — Policy Coverage Verification (local-DB)
-──────────────────────────────────────────────────────
-Verifies whether a claim's loss type/cause falls within the policy's
-coverage terms, applies deductible and limits, and identifies exclusions.
-"""
-
-import json
-import logging
-import os
-import sys
-from datetime import datetime
-
-sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "common"))
-
-from db import get_db_connection, row_to_dict  # noqa: E402
-from dotenv import load_dotenv, find_dotenv
-from openai import AzureOpenAI
-
-load_dotenv(find_dotenv())
-
-log = logging.getLogger(__name__)
-
-AZURE_OPENAI_ENDPOINT = os.environ.get("AZURE_OPENAI_ENDPOINT", "")
-AZURE_OPENAI_API_KEY = os.environ.get("AZURE_OPENAI_API_KEY", "")
-AZURE_OPENAI_API_VERSION = os.environ.get("AZURE_OPENAI_API_VERSION", "2025-11-13")
-AZURE_OPENAI_CHAT_DEPLOYMENT = os.environ.get("AZURE_OPENAI_CHAT_DEPLOYMENT", "gpt-5.1")
-
-
-def _get_openai_client() -> AzureOpenAI:
-    return AzureOpenAI(
-        api_key=AZURE_OPENAI_API_KEY,
-        api_version=AZURE_OPENAI_API_VERSION,
-        azure_endpoint=AZURE_OPENAI_ENDPOINT,
-    )
-
-
-def get_policy_details(policy_id: str) -> dict:
-    conn = get_db_connection()
-    try:
-        cur = conn.cursor()
-        cur.execute("SELECT * FROM policy_details WHERE policy_id = %s", (policy_id,))
-        return row_to_dict(cur.fetchone())
-    finally:
-        conn.close()
-
-
-def verify_coverage(claim_id: str) -> dict:
-    conn = get_db_connection()
-    try:
-        cur = conn.cursor()
-        # cur.execute("SELECT * FROM claims WHERE claim_id = %s", (claim_id,))
-        cur.execute("SELECT * FROM claims WHERE claim_number = %s", (claim_id,))
-        claim = row_to_dict(cur.fetchone())
-        if not claim:
-            return {"error": f"claim_id {claim_id} not found"}
-
-        # policy_id = claim.get("policy_id") or claim.get("policy_number")
-        policy_id = claim.get("policy_number")
-        print("Debug policy id ", policy_id)
-
-        if not policy_id:
-            return {"error": "No policy_id or policy_number on claim", "claim": claim}
-
-        cur.execute(
-            # "SELECT * FROM policy_details WHERE policy_id = %s OR policy_number = %s",
-            "SELECT * FROM policy_details WHERE policy_id = %s",
-            
-            # (policy_id, policy_id),
-            (policy_id,),
-        )
-        policy = row_to_dict(cur.fetchone())
-        if not policy:
-            return {"error": f"policy {policy_id} not found in policy_details", "claim": claim}
-
-    finally:
-        conn.close()
-
-    loss_type = claim.get("loss_type", "")
-    cause_of_loss = claim.get("cause_of_loss", "")
-    coverage_type = policy.get("coverage_type", "")
-    coverage_limit = float(policy.get("coverage_limit") or policy.get("policy_limit") or 0)
-    deductible = float(policy.get("deductible") or 0)
-    exclusions_raw = policy.get("exclusions") or ""
-    exclusions = (
-        json.loads(exclusions_raw) if isinstance(exclusions_raw, str) and exclusions_raw.startswith("[")
-        else [x.strip() for x in exclusions_raw.split(",") if x.strip()]
-    )
-    loss_amount = float(claim.get("loss_amount") or claim.get("estimated_loss_amount") or 0)
-
-    try:
-        client = _get_openai_client()
-        prompt = (
-            "You are a policy coverage analyst. Determine whether the claim is covered. "
-            "Respond with JSON: "
-            '{"coverage_verdict": "Covered|Partially Covered|Not Covered|Needs Investigation", '
-            '"exclusion_triggered": true/false, '
-            '"exclusion_details": "...", '
-            '"net_payable": <number>, '
-            '"coverage_notes": "..."}.\n\n'
-            f"Policy Coverage Type: {coverage_type}\n"
-            f"Policy Limit: {coverage_limit}\n"
-            f"Deductible: {deductible}\n"
-            f"Policy Exclusions: {exclusions}\n"
-            f"Claim Loss Type: {loss_type}\n"
-            f"Cause of Loss: {cause_of_loss}\n"
-            f"Estimated Loss Amount: {loss_amount}"
-        )
-        response = client.chat.completions.create(
-            model=AZURE_OPENAI_CHAT_DEPLOYMENT,
-            messages=[{"role": "user", "content": prompt}],
-            temperature=0.0,
-            response_format={"type": "json_object"},
-        )
-        llm_result = json.loads(response.choices[0].message.content)
-    except Exception as e:
-        log.warning("LLM coverage check failed: %s", e)
-        net_payable = max(0.0, loss_amount - deductible)
-        if coverage_limit:
-            net_payable = min(net_payable, coverage_limit)
-        llm_result = {
-            "coverage_verdict": "Needs Investigation",
-            "exclusion_triggered": False,
-            "exclusion_details": "",
-            "net_payable": net_payable,
-            "coverage_notes": "Automated LLM check failed; manual review needed",
-        }
-
-    conn2 = get_db_connection()
-    try:
-        cur2 = conn2.cursor()
-        cur2.execute(
-            """
-            INSERT INTO coverage_verification_results
-              (claim_id, policy_id, coverage_verdict, exclusion_triggered,
-               exclusion_details, net_payable, coverage_notes, verified_at)
-            VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
-            ON CONFLICT (claim_id) DO UPDATE SET
-              coverage_verdict = EXCLUDED.coverage_verdict,
-              exclusion_triggered = EXCLUDED.exclusion_triggered,
-              exclusion_details = EXCLUDED.exclusion_details,
-              net_payable = EXCLUDED.net_payable,
-              coverage_notes = EXCLUDED.coverage_notes,
-              verified_at = EXCLUDED.verified_at
-            """,
-            (
-                claim_id,
-                str(policy_id),
-                llm_result.get("coverage_verdict"),
-                llm_result.get("exclusion_triggered", False),
-                llm_result.get("exclusion_details"),
-                llm_result.get("net_payable"),
-                llm_result.get("coverage_notes"),
-                datetime.utcnow().isoformat(),
-            ),
-        )
-        conn2.commit()
-    except Exception as e:
-        conn2.rollback()
-        log.warning("Could not write coverage_verification_results: %s", e)
-    finally:
-        conn2.close()
-
-    return {
-        "claim_id": claim_id,
-        "policy_id": str(policy_id),
-        "coverage_type": coverage_type,
-        "coverage_limit": coverage_limit,
-        "deductible": deductible,
-        "loss_amount": loss_amount,
-        "exclusions": exclusions,
-        **llm_result,
-    }
-
-terminal error
+here i just added water damage manually in the table thats why i think this worked but what about exclusions ? what should i add and in which table it is also in terminal i am getting this error
 (venv) Jarvis@JarvisPhase2:~/Musaddique/Jarvis_claims_agents_v2/PolicyholderAgents/MCP$ python3 main.py 
 /home/Jarvis/Musaddique/Jarvis_claims_agents_v2/PolicyholderAgents/MCP/main.py:240: DeprecationWarning: 
         on_event is deprecated, use lifespan event handlers instead.
@@ -227,15 +51,16 @@ terminal error
         [FastAPI docs for Lifespan Events](https://fastapi.tiangolo.com/advanced/events/).
         
   @app.on_event("startup")
-INFO:     Started server process [22729]
+INFO:     Started server process [23264]
 INFO:     Waiting for application startup.
 INFO:     Application startup complete.
 INFO:     Uvicorn running on http://0.0.0.0:8800 (Press CTRL+C to quit)
-INFO:     127.0.0.1:33842 - "GET /api/v1/policy_coverage/docs HTTP/1.1" 200 OK
-INFO:     127.0.0.1:33842 - "GET /api/v1/policy_coverage/openapi.json HTTP/1.1" 200 OK
+INFO:     127.0.0.1:40880 - "GET /api/v1/policy_coverage/docs HTTP/1.1" 200 OK
+INFO:     127.0.0.1:40880 - "GET /api/v1/policy_coverage/openapi.json HTTP/1.1" 200 OK
 Debug policy id  POL-1001
 Could not write coverage_verification_results: relation "coverage_verification_results" does not exist
 LINE 2:             INSERT INTO coverage_verification_results
                                 ^
 
-INFO:     127.0.0.1:33842 - "POST /api/v1/policy_coverage/api/policy_coverage/verify/CLM-2026-1001 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:40880 - "POST /api/v1/policy_coverage/api/policy_coverage/verify/CLM-2026-1001 HTTP/1.1" 200 OK
+
