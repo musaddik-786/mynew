@@ -1,357 +1,407 @@
-Jarvis@JarvisPhase2:~/Musaddique$ curl -s -N -X POST http://localhost:8807/chat \
-  -H "Content-Type: application/json" \
-  -d '{"message": "Verify that policy POL-1001 covers water damage from a burst pipe for claim CLM-2026-1001."}' \
-  --max-time 90
-data: [Tool: verify_coverage] Starting...
-
-data: [Tool: verify_coverage] Done
-
-data: Coverage
-
-data:  Result
-
-data: :
-
-
-data: -
-
-data:  Your
-
-data:  claim
-
-data:  (
-
-data: CL
-
-data: M
-
-data: -
-
-data: 202
-
-data: 6
-
-data: -
-
-data: 100
-
-data: 1
-
-data: )
-
-data:  for
-
-data:  water
-
-data:  damage
-
-data:  from
-
-data:  a
-
-data:  burst
-
-data:  pipe
-
-data:  under
-
-data:  policy
-
-data:  POL
-
-data: -
-
-data: 100
-
-data: 1
-
-data:  (
-
-data: Home
-
-data: owners
-
-data: )
-
-data:  is
-
-data:  Covered
-
-data: .
-
-
-
-data: Details
-
-data: :
-
-
-data: -
-
-data:  No
-
-data:  exclusions
-
-data:  apply
-
-data: .
-
-data:  The
-
-data:  cause
-
-data:  of
-
-data:  loss
-
-data:  (
-
-data: burst
-
-data:  pipe
-
-data: )
-
-data:  does
-
-data:  not
-
-data:  fall
-
-data:  under
-
-data:  policy
-
-data:  exclusions
-
-data:  such
-
-data:  as
-
-data:  Flood
-
-data:  Damage
-
-data: ,
-
-data:  Earth
-
-data: quake
-
-data: ,
-
-data:  Wear
-
-data:  and
-
-data:  Tear
-
-data: ,
-
-data:  or
-
-data:  Intent
-
-data: ional
-
-data:  Damage
-
-data: .
-
-
-data: -
-
-data:  Ded
-
-data: uct
-
-data: ible
-
-data: :
-
-data:  $
-
-data: 1
-
-data: ,
-
-data: 000
-
-data:  applies
-
-data:  to
-
-data:  your
-
-data:  claim
-
-data: .
-
-
-data: -
-
-data:  Net
-
-data:  Pay
-
-data: able
-
-data:  Amount
-
-data: :
-
-data:  $
-
-data: 7
-
-data: ,
-
-data: 500
-
-data:  will
-
-data:  be
-
-data:  paid
-
-data: ,
-
-data:  which
-
-data:  is
-
-data:  your
-
-data:  claimed
-
-data:  amount
-
-data:  ($
-
-data: 8
-
-data: ,
-
-data: 500
-
-data: )
-
-data:  minus
-
-data:  the
-
-data:  deductible
-
-data: .
-
-
-
-data: Recommended
-
-data:  Next
-
-data:  Steps
-
-data: :
-
-
-data: -
-
-data:  Please
-
-data:  provide
-
-data:  any
-
-data:  supporting
-
-data:  documentation
-
-data:  (
-
-data: photos
-
-data: ,
-
-data:  invoices
-
-data: ,
-
-data:  repair
-
-data:  estimates
-
-data: )
-
-data:  if
-
-data:  not
-
-data:  already
-
-data:  submitted
-
-data: .
-
-
-data: -
-
-data:  Our
-
-data:  claims
-
-data:  team
-
-data:  will
-
-data:  reach
-
-data:  out
-
-data:  for
-
-data:  final
-
-data:  settlement
-
-data:  and
-
-data:  payment
-
-data:  dis
-
-data: bur
-
-data: sement
-
-data: .
-
-
-
-data: End
-
-Jarvis@JarvisPhase2:~/Musaddique$ 
-but these were expected tool calls
-
-| Expected tools called | What it confirms |
-|---|---|
-| `get_policy_details` | Checks policy status, coverage_type, limits |
-| `verify_coverage` | Evaluates if loss type is covered |
-
-
-this is my router.py
+Communication Agent 
+server.py
 """
-policy_coverage_router.py
-──────────────────────────
+server.py — Communication Agent
+─────────────────────────────────
+LangGraph agent that auto-drafts status-change notifications for
+policyholders using sentiment data, claim status, and communication history.
+
+Port: 8809
+MCP : http://localhost:8800/api/v1/communication/mcp
+
+Run:
+    py -3 server.py
+"""
+
+import json
+import logging
+import os
+import sys
+import time
+import traceback
+from datetime import datetime, timedelta
+from typing import Annotated, TypedDict
+
+import uvicorn
+from dotenv import load_dotenv, find_dotenv
+from fastapi import FastAPI, Request
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import StreamingResponse
+from langchain_core.messages import AIMessage, SystemMessage
+from langchain_mcp_adapters.client import MultiServerMCPClient
+from langchain_openai.chat_models import AzureChatOpenAI
+from langgraph.graph import END, START, StateGraph
+from langgraph.graph.message import add_messages
+from langgraph.prebuilt import ToolNode
+
+load_dotenv(find_dotenv())
+
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s | %(levelname)-8s | %(name)s | %(message)s",
+    stream=sys.stdout,
+    force=True,
+)
+logger = logging.getLogger("communication_agent")
+
+PHOENIX_API_KEY = os.getenv("PHOENIX_API_KEY", "")
+PHOENIX_ENDPOINT = os.getenv("PHOENIX_ENDPOINT", "")
+MCP_URL = os.getenv("MCP_URL", "http://localhost:8800/api/v1/communication/mcp")
+AGENT_PORT = int(os.getenv("AGENT_PORT", "8809"))
+
+config_mcp_server = {
+    "communication_mcp": {
+        "url": MCP_URL,
+        "transport": "streamable_http",
+        "timeout": timedelta(seconds=120),
+        "sse_read_timeout": timedelta(seconds=600),
+    }
+}
+
+app = FastAPI(title="Communication Agent")
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+
+class State(TypedDict):
+    messages: Annotated[list, add_messages]
+
+
+def router(state: State):
+    last = state["messages"][-1]
+    if isinstance(last, AIMessage) and getattr(last, "tool_calls", None):
+        return "tools"
+    if isinstance(last, AIMessage) and last.content:
+        if "Continue" in last.content:
+            return "tools"
+        if "End" in last.content:
+            return "End"
+    return "End"
+
+
+_FALLBACK_PROMPT = """
+You are the Communication Agent for an insurance claims platform,
+assisting a Policyholder.
+
+Given a claim_number, your workflow is:
+
+1. Call draft_status_notification with the claim_number. This will:
+   - Retrieve the claim's current status and the policyholder's sentiment.
+   - Review recent communication history.
+   - Generate an empathetic, channel-appropriate notification draft.
+   - Save the draft to communication_history with status='Draft'.
+
+2. Present the drafted notification to the user:
+   - Show the subject line, message body, and recommended channel.
+   - Explain the tone chosen based on the policyholder's sentiment.
+   - Mention the recommended next action.
+
+When you have completed the task, end your response with "End".
+"""
+
+
+def load_prompt() -> str:
+    if not PHOENIX_ENDPOINT:
+        raise RuntimeError("Phoenix not configured")
+    from phoenix.client import Client
+    client = Client(base_url=PHOENIX_ENDPOINT, api_key=PHOENIX_API_KEY)
+    prompt = client.prompts.get(name="communication_agent", label="production")
+    prompt_set = prompt._template["messages"]
+    system_msg = next(
+        (item["content"][0]["text"] for item in prompt_set if item.get("role") == "system"), None
+    )
+    if not system_msg:
+        raise ValueError("System prompt is empty or missing in Phoenix")
+    return system_msg
+
+
+def create_graph(model, tools, prompt):
+    graph_builder = StateGraph(State)
+    llm_with_tools = model.bind_tools(tools)
+
+    async def agent_node(state: State):
+        all_messages = [SystemMessage(content=prompt)] + state["messages"]
+        message = await llm_with_tools.ainvoke(all_messages)
+        return {"messages": [message]}
+
+    graph_builder.add_node("agent", agent_node)
+    graph_builder.add_node("tools", ToolNode(tools=tools))
+    graph_builder.add_edge(START, "agent")
+    graph_builder.add_conditional_edges("agent", router, {"tools": "tools", "End": END})
+    graph_builder.add_edge("tools", "agent")
+    return graph_builder.compile()
+
+
+async def get_tools():
+    client = MultiServerMCPClient(config_mcp_server)
+    tools = await client.get_tools()
+    logger.info("Tools loaded from MCP: %s", [t.name for t in tools])
+    return tools
+
+
+async def stream_graph(graph, initial_state, config):
+    async for event in graph.astream_events(initial_state, config=config, version="v2"):
+        kind = event.get("event", "")
+        if kind == "on_chat_model_stream":
+            chunk = event["data"].get("chunk")
+            if chunk and hasattr(chunk, "content") and chunk.content:
+                yield f"data: {chunk.content}\n\n"
+        elif kind == "on_tool_start":
+            yield f"data: [Tool: {event.get('name', 'unknown_tool')}] Starting...\n\n"
+        elif kind == "on_tool_end":
+            yield f"data: [Tool: {event.get('name', 'unknown_tool')}] Done\n\n"
+
+
+@app.post("/chat")
+async def chat_stream(request: Request):
+    load_dotenv(find_dotenv())
+    tools = await get_tools()
+
+    model = AzureChatOpenAI(
+        api_key=os.getenv("AZURE_OPENAI_API_KEY"),
+        api_version=os.getenv("AZURE_OPENAI_API_VERSION"),
+        azure_deployment=os.getenv("AZURE_OPENAI_CHAT_DEPLOYMENT"),
+        azure_endpoint=os.getenv("AZURE_OPENAI_ENDPOINT"),
+    )
+
+    try:
+        system_prompt = load_prompt()
+    except Exception as e:
+        logger.warning("Phoenix prompt load failed (%s) — using fallback prompt", e)
+        system_prompt = _FALLBACK_PROMPT
+
+    body = await request.json()
+    user_message = body.get("message", "Draft a status update notification")
+    graph = create_graph(model=model, tools=tools, prompt=system_prompt)
+
+    async def generate():
+        start = time.time()
+        last_event_at = start
+        last_tool = None
+        try:
+            async for event in stream_graph(
+                graph=graph,
+                initial_state={"messages": [user_message]},
+                config={"recursion_limit": 250},
+            ):
+                last_event_at = time.time()
+                if isinstance(event, str) and event.startswith("data: [Tool:"):
+                    try:
+                        last_tool = event.split("[Tool:", 1)[1].split("]", 1)[0]
+                    except Exception:
+                        pass
+                yield event
+        except BaseException as e:
+            elapsed = time.time() - start
+            since_last = time.time() - last_event_at
+            err = {
+                "exception_class": type(e).__name__,
+                "message": str(e),
+                "elapsed_total_seconds": round(elapsed, 2),
+                "seconds_since_last_event": round(since_last, 2),
+                "last_tool_invoked": last_tool,
+                "traceback": traceback.format_exc(),
+                "timestamp_utc": datetime.utcnow().isoformat(),
+            }
+            logger.error("AGENT_ERROR %s", json.dumps(err, default=str))
+            try:
+                yield f"data: [AGENT_ERROR] {json.dumps(err, default=str)}\n\n"
+            except Exception:
+                pass
+            import asyncio
+            if isinstance(e, asyncio.CancelledError):
+                raise
+
+    return StreamingResponse(generate(), media_type="text/event-stream")
+
+
+@app.get("/health")
+async def health():
+    return {"status": "healthy", "agent": "communication_agent"}
+
+
+if __name__ == "__main__":
+    uvicorn.run(app, host="0.0.0.0", port=AGENT_PORT)
+
+
+communication_mcp
+handler.py
+"""
+handler.py — Communication
+───────────────────────────
+Auto-drafts status-change notifications for policyholders using claim
+status, sentiment data, and communication history.  Writes drafted
+messages to communication_history.
+"""
+
+import json
+import logging
+import os
+import sys
+from datetime import datetime
+
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "common"))
+
+from db import get_db_connection, row_to_dict  # noqa: E402
+from dotenv import load_dotenv, find_dotenv
+from openai import AzureOpenAI
+
+load_dotenv(find_dotenv())
+
+log = logging.getLogger(__name__)
+
+AZURE_OPENAI_ENDPOINT = os.environ.get("AZURE_OPENAI_ENDPOINT", "")
+AZURE_OPENAI_API_KEY = os.environ.get("AZURE_OPENAI_API_KEY", "")
+AZURE_OPENAI_API_VERSION = os.environ.get("AZURE_OPENAI_API_VERSION", "2025-11-13")
+AZURE_OPENAI_CHAT_DEPLOYMENT = os.environ.get("AZURE_OPENAI_CHAT_DEPLOYMENT", "gpt-5.1")
+
+
+def _get_openai_client() -> AzureOpenAI:
+    return AzureOpenAI(
+        api_key=AZURE_OPENAI_API_KEY,
+        api_version=AZURE_OPENAI_API_VERSION,
+        azure_endpoint=AZURE_OPENAI_ENDPOINT,
+    )
+
+
+def get_communication_history(claim_number: str) -> list:
+    conn = get_db_connection()
+    try:
+        cur = conn.cursor()
+        cur.execute(
+            "SELECT * FROM communication_history WHERE claim_number = %s ORDER BY communication_date DESC",
+            (claim_number,),
+        )
+        return row_to_dict(cur.fetchall()) or []
+    finally:
+        conn.close()
+
+
+def draft_status_notification(claim_number: str) -> dict:
+    conn = get_db_connection()
+    try:
+        cur = conn.cursor()
+
+        cur.execute(
+            "SELECT * FROM claims WHERE claim_number = %s", (claim_number,)
+        )
+        claim = row_to_dict(cur.fetchone())
+        if not claim:
+            return {"error": f"claim_number {claim_number} not found"}
+
+        cur.execute(
+            "SELECT * FROM communication_history WHERE claim_number = %s ORDER BY communication_date DESC LIMIT 5",
+            (claim_number,),
+        )
+        history = row_to_dict(cur.fetchall()) or []
+
+        sentiment_data = None
+        try:
+            cur.execute(
+                "SELECT * FROM claim_sentiment_tracker WHERE claim_number = %s ORDER BY tracked_at DESC LIMIT 1",
+                (claim_number,),
+            )
+            sentiment_data = row_to_dict(cur.fetchone())
+        except Exception:
+            pass
+
+    finally:
+        conn.close()
+
+    sentiment_label = (sentiment_data or {}).get("sentiment_label", "Neutral")
+    claim_status = claim.get("status", "In Progress")
+    claimant_name = claim.get("claimant_name") or claim.get("policy_holder_name") or "Valued Policyholder"
+
+    recent_messages = [h.get("message_text") or h.get("message_body", "") for h in history[:3]]
+
+    try:
+        client = _get_openai_client()
+        prompt = (
+            "You are an insurance claims communication specialist. "
+            "Draft a professional, empathetic status-update notification for the policyholder. "
+            "Respond with JSON: "
+            '{"subject": "...", "message_body": "...", "channel": "Email|SMS|Portal", '
+            '"tone": "Empathetic|Informational|Urgent", "next_action": "..."}.\n\n'
+            f"Claimant: {claimant_name}\n"
+            f"Claim Number: {claim_number}\n"
+            f"Current Status: {claim_status}\n"
+            f"Loss Type: {claim.get('loss_type', 'Unknown')}\n"
+            f"Policyholder Sentiment: {sentiment_label}\n"
+            f"Recent Communication Summaries: {recent_messages}"
+        )
+        response = client.chat.completions.create(
+            model=AZURE_OPENAI_CHAT_DEPLOYMENT,
+            messages=[{"role": "user", "content": prompt}],
+            temperature=0.3,
+            response_format={"type": "json_object"},
+        )
+        draft = json.loads(response.choices[0].message.content)
+    except Exception as e:
+        log.warning("LLM notification draft failed: %s", e)
+        draft = {
+            "subject": f"Update on Your Claim {claim_number}",
+            "message_body": f"Dear {claimant_name}, your claim {claim_number} is currently {claim_status}. We will keep you updated.",
+            "channel": "Email",
+            "tone": "Informational",
+            "next_action": "No further action required at this time",
+        }
+
+    conn2 = get_db_connection()
+    try:
+        cur2 = conn2.cursor()
+        cur2.execute(
+            """
+            INSERT INTO communication_history
+              (claim_number, communication_date, channel, subject,
+               message_body, direction, status, drafted_by)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+            """,
+            (
+                claim_number,
+                datetime.utcnow().isoformat(),
+                draft.get("channel", "Email"),
+                draft.get("subject"),
+                draft.get("message_body"),
+                "Outbound",
+                "Draft",
+                "CommunicationAgent",
+            ),
+        )
+        conn2.commit()
+    except Exception as e:
+        conn2.rollback()
+        log.warning("Could not write communication_history: %s", e)
+    finally:
+        conn2.close()
+
+    return {
+        "claim_number": claim_number,
+        "claim_status": claim_status,
+        "policyholder_sentiment": sentiment_label,
+        "drafted_notification": draft,
+    }
+
+
+
+communication_router.py
+"""
+communication_router.py
+────────────────────────
 Tool / Endpoint map:
-  get_policy_details   GET  /api/policy_coverage/policy/{policy_id}
-  verify_coverage      POST /api/policy_coverage/verify/{claim_id}
+  get_communication_history    GET  /api/communication/history/{claim_number}
+  draft_status_notification    POST /api/communication/draft/{claim_number}
 """
 
 import logging
 from fastapi import APIRouter
 
-from policy_coverage_mcp import handler
+from communication_mcp import handler
 
 log = logging.getLogger(__name__)
 
@@ -359,33 +409,294 @@ router = APIRouter()
 
 
 @router.get(
-    "/api/policy_coverage/policy/{policy_id}",
-    operation_id="get_policy_details",
-    summary="Read policy_details for a policy",
-    tags=["PolicyCoverage"],
+    "/api/communication/history/{claim_number}",
+    operation_id="get_communication_history",
+    summary="Read communication_history for a claim",
+    tags=["Communication"],
 )
-def get_policy_details(policy_id: str):
-    """Return the raw policy_details record for a given policy_id."""
-    record = handler.get_policy_details(policy_id)
-    if not record:
-        return {"status": "not_found", "policy_id": policy_id}
-    return record
+def get_communication_history(claim_number: str):
+    """Return all communication history records for a given claim number."""
+    records = handler.get_communication_history(claim_number)
+    return {"claim_number": claim_number, "communication_history": records}
 
 
 @router.post(
-    "/api/policy_coverage/verify/{claim_id}",
-    operation_id="verify_coverage",
-    summary="Verify whether a claim's loss is covered by the linked policy",
-    tags=["PolicyCoverage"],
+    "/api/communication/draft/{claim_number}",
+    operation_id="draft_status_notification",
+    summary="Auto-draft a status-change notification for the policyholder",
+    tags=["Communication"],
 )
-def verify_coverage(claim_id: str):
+def draft_status_notification(claim_number: str):
     """
-    Compare the claim's loss_type/cause against the policy's coverage_type,
-    deductible, limit, and exclusions.  Returns a coverage verdict and net
-    payable amount, and persists the result to coverage_verification_results.
+    Use the claim's current status, sentiment, and communication history to
+    generate an empathetic, channel-appropriate notification draft and save it
+    to communication_history with status='Draft'.
     """
-    return handler.verify_coverage(claim_id)
+    return handler.draft_status_notification(claim_number)
+
+main.py
+"""
+main.py
+───────
+MCP server entry point for the Policyholder Agents platform — hosts 9
+agent MCP sub-apps on a single FastAPI app (port 8800), backed by a local
+SQLite database.
+
+Registered sub-apps:
+  /api/v1/voice_text_intake   — Voice/Text Intake (FNOL)              [FULL]
+  /api/v1/duplicate_check     — Duplicate Claim Check                  [FULL]
+  /api/v1/segmentation         — Claim Segmentation / STP              [FULL]
+  /api/v1/claim_status          — Claim Status ("Follow My Claim")      [FULL]
+  /api/v1/document_submission   — Document Submission & Classification [FULL]
+  /api/v1/feedback               — Feedback / Sentiment Tracking         [FULL]
+  /api/v1/policy_coverage         — Policy Coverage Verification        [PLACEHOLDER]
+  /api/v1/claim_readiness          — Claim Readiness                     [PLACEHOLDER]
+  /api/v1/communication             — Communication                       [PLACEHOLDER]
+
+Run:
+    py -3 main.py
+"""
+
+import os
+import sys
+
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "common"))
+
+from dotenv import load_dotenv, find_dotenv
+load_dotenv(find_dotenv())
+
+from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi_mcp import FastApiMCP
+
+from init_db import init_db
+
+from voice_text_intake_router import router as voice_text_intake_router
+from duplicate_check_router import router as duplicate_check_router
+from segmentation_router import router as segmentation_router
+from claim_status_router import router as claim_status_router
+from document_submission_router import router as document_submission_router
+from feedback_router import router as feedback_router
+from policy_coverage_router import router as policy_coverage_router
+from claim_readiness_router import router as claim_readiness_router
+from communication_router import router as communication_router
+
+import uvicorn
 
 
+app = FastAPI(docs_url="/docs", title="Jarvis Policyholder Agents MCP Server")
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 
+def _make_cors_app(title: str, description: str = "") -> FastAPI:
+    sub = FastAPI(title=title, description=description)
+    sub.add_middleware(
+        CORSMiddleware,
+        allow_origins=["*"],
+        allow_methods=["*"],
+        allow_headers=["*"],
+    )
+    return sub
+
+
+# ── Sub-app: voice_text_intake (FULL) ─────────────────────────────────────────
+
+voice_intake_app = _make_cors_app(
+    title="voice_text_intake_agent_mcps",
+    description="MCP tools for FNOL Voice/Text Intake: field extraction, "
+                 "submission management, and audit logging.",
+)
+voice_intake_app.include_router(voice_text_intake_router)
+FastApiMCP(
+    voice_intake_app,
+    include_operations=[
+        "create_fnol_submission",
+        "get_fnol_submission",
+        "get_fnol_by_policy",
+        "update_fnol_submission",
+        "submit_fnol",
+        "get_mandatory_fields",
+        "save_voice_text_extraction",
+        "get_voice_text_extractions",
+        "save_ai_inferences",
+        "log_question_answer",
+        "get_question_log",
+        "save_field_attribution",
+        "extract_fnol_fields_from_text",
+        "transcribe_audio",
+    ],
+).mount_http()
+app.mount("/api/v1/voice_text_intake", voice_intake_app)
+
+
+# ── Sub-app: duplicate_check (FULL) ───────────────────────────────────────────
+
+duplicate_check_app = _make_cors_app(
+    title="duplicate_claim_check_agent_mcps",
+    description="MCP tools for checking duplicate FNOL/claim submissions.",
+)
+duplicate_check_app.include_router(duplicate_check_router)
+FastApiMCP(
+    duplicate_check_app,
+    include_operations=[
+        "check_duplicate_claim",
+        "get_recent_claims_for_policy",
+    ],
+).mount_http()
+app.mount("/api/v1/duplicate_check", duplicate_check_app)
+
+
+# ── Sub-app: segmentation (FULL) ──────────────────────────────────────────────
+
+segmentation_app = _make_cors_app(
+    title="claim_segmentation_agent_mcps",
+    description="MCP tools for STP scoring and claim segmentation.",
+)
+segmentation_app.include_router(segmentation_router)
+FastApiMCP(
+    segmentation_app,
+    include_operations=[
+        "get_claim_for_segmentation",
+        "compute_stp_score",
+        "get_segmentation_result",
+        "get_stp_classification",
+    ],
+).mount_http()
+app.mount("/api/v1/segmentation", segmentation_app)
+
+
+# ── Sub-app: claim_status (FULL) ──────────────────────────────────────────────
+
+claim_status_app = _make_cors_app(
+    title="claim_status_agent_mcps",
+    description="MCP tools for claim journey tracking ('Follow My Claim').",
+)
+claim_status_app.include_router(claim_status_router)
+FastApiMCP(
+    claim_status_app,
+    include_operations=[
+        "get_claim_journey",
+        "get_claim_status_summary",
+        "advance_claim_stage",
+        "log_policyholder_action",
+        "get_policyholder_actions",
+    ],
+).mount_http()
+app.mount("/api/v1/claim_status", claim_status_app)
+
+
+# ── Sub-app: document_submission (FULL) ───────────────────────────────────────
+
+document_submission_app = _make_cors_app(
+    title="document_submission_agent_mcps",
+    description="MCP tools for uploading and classifying claim documents.",
+)
+document_submission_app.include_router(document_submission_router)
+FastApiMCP(
+    document_submission_app,
+    include_operations=[
+        "upload_document",
+        "classify_document_type",
+        "get_claim_documents",
+        "get_document",
+    ],
+).mount_http()
+app.mount("/api/v1/document_submission", document_submission_app)
+
+
+# ── Sub-app: feedback (FULL) ───────────────────────────────────────────────────
+
+feedback_app = _make_cors_app(
+    title="feedback_agent_mcps",
+    description="MCP tools for policyholder feedback and sentiment tracking.",
+)
+feedback_app.include_router(feedback_router)
+FastApiMCP(
+    feedback_app,
+    include_operations=[
+        "write_customer_feedback",
+        "get_customer_feedback",
+        "update_sentiment_tracker",
+        "get_sentiment_tracker",
+    ],
+).mount_http()
+app.mount("/api/v1/feedback", feedback_app)
+
+
+# ── Sub-app: policy_coverage (PLACEHOLDER) ────────────────────────────────────
+
+policy_coverage_app = _make_cors_app(
+    title="policy_coverage_agent_mcps",
+    description="[PLACEHOLDER] MCP tools for local policy coverage verification.",
+)
+policy_coverage_app.include_router(policy_coverage_router)
+FastApiMCP(
+    policy_coverage_app,
+    include_operations=["get_policy_details_stub","get_policy_details","verify_coverage"],
+).mount_http()
+app.mount("/api/v1/policy_coverage", policy_coverage_app)
+
+
+# ── Sub-app: claim_readiness (PLACEHOLDER) ────────────────────────────────────
+
+claim_readiness_app = _make_cors_app(
+    title="claim_readiness_agent_mcps",
+    description="[PLACEHOLDER] MCP tools for claim readiness / completeness validation.",
+)
+claim_readiness_app.include_router(claim_readiness_router)
+FastApiMCP(
+    claim_readiness_app,
+    include_operations=["get_intake_validation_result_stub"],
+).mount_http()
+app.mount("/api/v1/claim_readiness", claim_readiness_app)
+
+
+# ── Sub-app: communication (PLACEHOLDER) ──────────────────────────────────────
+
+communication_app = _make_cors_app(
+    title="communication_agent_mcps",
+    description="[PLACEHOLDER] MCP tools for policyholder communication history.",
+)
+communication_app.include_router(communication_router)
+FastApiMCP(
+    communication_app,
+    include_operations=["get_communication_history_stub"],
+).mount_http()
+app.mount("/api/v1/communication", communication_app)
+
+
+# ── Health ────────────────────────────────────────────────────────────────────
+
+@app.on_event("startup")
+def _startup():
+    init_db()
+
+
+@app.get("/health")
+def health():
+    return {
+        "status": "healthy",
+        "service": "jarvis_policyholder_agents_mcp",
+        "sub_apps": [
+            "voice_text_intake",
+            "duplicate_check",
+            "segmentation",
+            "claim_status",
+            "document_submission",
+            "feedback",
+            "policy_coverage",
+            "claim_readiness",
+            "communication",
+        ],
+    }
+
+
+if __name__ == "__main__":
+    uvicorn.run(app, host="0.0.0.0", port=8800)
