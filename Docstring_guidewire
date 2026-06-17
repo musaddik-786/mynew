@@ -28,34 +28,22 @@ Code	Details
 Response body
 Download
 {
-  "error": "No policy_id or policy_number on claim",
-  "claim": {
-    "id": 2,
-    "claim_number": "CLM-2026-1001",
-    "policyholder_name": "John Doe",
-    "policy_number": "POL-1001",
-    "loss_type": "Water Damage",
-    "short_description": "Burst pipe in kitchen caused flooding",
-    "ai_generated_summary": null,
-    "detected_cause": null,
-    "severity": "Medium",
-    "estimated_cost": "8500",
-    "coverage": true,
-    "ai_confidence": 85,
-    "status": "Open",
-    "image_urls": [],
-    "location": "123 Main St, Springfield",
-    "assigned_adjuster": null,
-    "assigned_vendor": null,
-    "filed_at": "2026-06-16T14:44:41.091089",
-    "date_of_loss": "2026-05-20",
-    "complexity": "Low",
-    "police_report_number": null
-  }
+  "claim_id": "CLM-2026-1001",
+  "policy_id": "POL-1001",
+  "coverage_type": "Homeowners",
+  "coverage_limit": 250000,
+  "deductible": 1000,
+  "loss_amount": 0,
+  "exclusions": [],
+  "coverage_verdict": "Needs Investigation",
+  "exclusion_triggered": false,
+  "exclusion_details": "",
+  "net_payable": 0,
+  "coverage_notes": "The estimated loss amount is $0.00, which suggests no actual loss has been claimed. Further investigation is needed to determine if there is a valid claim and if any payment is warranted."
 }
 
 
-this is my handler.py 
+handler.py
 """
 handler.py — Policy Coverage Verification (local-DB)
 ──────────────────────────────────────────────────────
@@ -113,8 +101,9 @@ def verify_coverage(claim_id: str) -> dict:
         if not claim:
             return {"error": f"claim_id {claim_id} not found"}
 
-        # policy_id = claim.get("policy_id") or claim.get("policy_number")
-        policy_id = claim.get("policy_id")
+        policy_id = claim.get("policy_id") or claim.get("policy_number")
+        # policy_id = claim.get("policy_number")
+        print("Debug policy id ", policy_id)
 
         if not policy_id:
             return {"error": "No policy_id or policy_number on claim", "claim": claim}
@@ -230,4 +219,24 @@ def verify_coverage(claim_id: str) -> dict:
     }
 
 
-lets go one by one
+terminal error
+(venv) Jarvis@JarvisPhase2:~/Musaddique/Jarvis_claims_agents_v2/PolicyholderAgents/MCP$ python3 main.py 
+/home/Jarvis/Musaddique/Jarvis_claims_agents_v2/PolicyholderAgents/MCP/main.py:240: DeprecationWarning: 
+        on_event is deprecated, use lifespan event handlers instead.
+
+        Read more about it in the
+        [FastAPI docs for Lifespan Events](https://fastapi.tiangolo.com/advanced/events/).
+        
+  @app.on_event("startup")
+INFO:     Started server process [22236]
+INFO:     Waiting for application startup.
+INFO:     Application startup complete.
+INFO:     Uvicorn running on http://0.0.0.0:8800 (Press CTRL+C to quit)
+INFO:     127.0.0.1:58966 - "GET /api/v1/policy_coverage/docs HTTP/1.1" 200 OK
+INFO:     127.0.0.1:58966 - "GET /api/v1/policy_coverage/openapi.json HTTP/1.1" 200 OK
+Debug policy id  POL-1001
+Could not write coverage_verification_results: relation "coverage_verification_results" does not exist
+LINE 2:             INSERT INTO coverage_verification_results
+                                ^
+
+INFO:     127.0.0.1:58966 - "POST /api/v1/policy_coverage/api/policy_coverage/verify/CLM-2026-1001 HTTP/1.1" 200 OK
