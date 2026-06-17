@@ -1,30 +1,418 @@
-curl -s -N -X POST http://localhost:8808/chat \
-  -H "Content-Type: application/json" \
-  -d '{"message": "For claim CLM-2026-1001: I am really frustrated. It has been 3 days and I haven't heard anything from anyone. My kitchen is still flooded. What is going on with my claim?"}' \
-  --max-time 90
+Jarvis@JarvisPhase2:~/Musaddique$ curl -s -N -X POST http://localhost:8809/chat \
+ -H "Content-Type: application/json" \
+ -d '{"message":"For claim CLM-2026-1001: I am really frustrated. It has been 3 days and I haven't heard anything from anyone. My kitchen is still flooded. What is going on with my claim?"}' \
+ --max-time 90
+> 
+
+it is only giving this greatr then sign but when i am tryinh this 
+Jarvis@JarvisPhase2:~/Musaddique$ curl -s -N -X POST http://localhost:8809/chat  -H "Content-Type: application/json"  -d '{"message":"Draft a status update notification for claim CLM-2026-1001"}'  --max-time 90
+data: Here
+
+data:  is
+
+data:  the
+
+data:  drafted
+
+data:  notification
+
+data:  for
+
+data:  claim
+
+data:  CL
+
+data: M
+
+data: -
+
+data: 202
+
+data: 6
+
+data: -
+
+data: 100
+
+data: 1
+
+data: :
 
 
-| Expected tools called | What it confirms |
-|---|---|
-| `get_claim_details` | Loads claim status |
-| `get_communication_history` | Checks prior comms |
-| `log_communication` | Saves this interaction |
-| `update_sentiment_tracker` | Records frustrated/negative sentiment |
 
-**Expected response:** Empathetic acknowledgement, status update for CLM-2026-1001, escalation flag raised if sentiment is critical, promise of callback or next step.
+data: Subject
 
----
+data: :
 
-**Test 2 — Check communication history**
-```bash
-curl -s -N -X POST http://localhost:8808/chat \
-  -H "Content-Type: application/json" \
-  -d '{"message": "Show me all communications logged for claim CLM-2026-1001."}' \
-  --max-time 60
-```
+data:  Update
 
-| Expected tools called | What it confirms |
-|---|---|
-| `get_communication_history` | Returns all logged comms for the claim |
+data:  on
 
-**Expected response:** List of logged communications with dates, types, and summaries.
+data:  Your
+
+data:  Insurance
+
+data:  Claim
+
+data:  CL
+
+data: M
+
+data: -
+
+data: 202
+
+data: 6
+
+data: -
+
+data: 100
+
+data: 1
+
+data: 
+
+
+
+data: Message
+
+data:  Body
+
+data: :
+
+
+data: Dear
+
+data:  Policy
+
+data: holder
+
+data: ,
+
+
+
+data: We
+
+data:  wanted
+
+data:  to
+
+data:  update
+
+data:  you
+
+data:  regarding
+
+data:  your
+
+data:  recent
+
+data:  insurance
+
+data:  claim
+
+data:  (
+
+data: CL
+
+data: M
+
+data: -
+
+data: 202
+
+data: 6
+
+data: -
+
+data: 100
+
+data: 1
+
+data: ).
+
+data:  At
+
+data:  this
+
+data:  time
+
+data: ,
+
+data:  your
+
+data:  claim
+
+data:  is
+
+data:  progressing
+
+data:  through
+
+data:  our
+
+data:  evaluation
+
+data:  process
+
+data: .
+
+data:  We
+
+data:  appreciate
+
+data:  your
+
+data:  patience
+
+data:  and
+
+data:  understand
+
+data:  that
+
+data:  waiting
+
+data:  can
+
+data:  be
+
+data:  stressful
+
+data: .
+
+data:  Please
+
+data:  know
+
+data:  we
+
+data:  are
+
+data:  working
+
+data:  diligently
+
+data:  to
+
+data:  ensure
+
+data:  your
+
+data:  claim
+
+data:  is
+
+data:  handled
+
+data:  as
+
+data:  efficiently
+
+data:  as
+
+data:  possible
+
+data: .
+
+data:  If
+
+data:  you
+
+data:  have
+
+data:  questions
+
+data:  or
+
+data:  need
+
+data:  more
+
+data:  information
+
+data: ,
+
+data:  our
+
+data:  support
+
+data:  team
+
+data:  is
+
+data:  here
+
+data:  to
+
+data:  assist
+
+data:  you
+
+data: .
+
+
+
+data: Recommended
+
+data:  Channel
+
+data: :
+
+data:  Email
+
+data: 
+
+
+
+data: Tone
+
+data:  Explanation
+
+data: :
+
+
+data: The
+
+data:  tone
+
+data:  is
+
+data:  empat
+
+data: hetic
+
+data:  and
+
+data:  reassuring
+
+data: ,
+
+data:  reflecting
+
+data:  a
+
+data:  neutral
+
+data:  sentiment
+
+data:  observed
+
+data:  in
+
+data:  your
+
+data:  previous
+
+data:  communications
+
+data: .
+
+data:  We
+
+data:  aim
+
+data:  to
+
+data:  keep
+
+data:  you
+
+data:  informed
+
+data:  while
+
+data:  acknowledging
+
+data:  any
+
+data:  anxiety
+
+data:  that
+
+data:  may
+
+data:  arise
+
+data:  from
+
+data:  waiting
+
+data: .
+
+
+
+data: Recommended
+
+data:  Next
+
+data:  Action
+
+data: :
+
+
+data: Please
+
+data:  monitor
+
+data:  your
+
+data:  email
+
+data:  for
+
+data:  further
+
+data:  updates
+
+data: ,
+
+data:  or
+
+data:  feel
+
+data:  free
+
+data:  to
+
+data:  contact
+
+data:  our
+
+data:  support
+
+data:  team
+
+data:  if
+
+data:  you
+
+data:  have
+
+data:  urgent
+
+data:  questions
+
+data:  or
+
+data:  new
+
+data:  information
+
+data:  to
+
+data:  share
+
+data:  about
+
+data:  your
+
+data:  claim
+
+data: .
+
+
+
+data: End
+
+Jarvis@JarvisPhase2:~/Musaddique$ 
