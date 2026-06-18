@@ -1,12 +1,4 @@
 this is how communcation agent should work
-### P-8 · CommunicationAgent · Port 8808
-
-**Purpose:** Handle inbound policyholder inquiries and log all communications.
-
-```powershell
-cd PolicyholderAgents
-py -3 CommunicationAgent/server.py
-```
 
 **Test 1 — Policyholder inquiry**
 ```bash
@@ -16,6 +8,8 @@ curl -s -N -X POST http://localhost:8808/chat \
   --max-time 90
 ```
 
+
+
 | Expected tools called | What it confirms |
 |---|---|
 | `get_claim_details` | Loads claim status |
@@ -23,6 +17,24 @@ curl -s -N -X POST http://localhost:8808/chat \
 below two are not present I think they are storing data in the table thats it so i need you to think on it and implement it 
 | `log_communication` | Saves this interaction |
 | `update_sentiment_tracker` | Records frustrated/negative sentiment |
+
+**Expected response:** Empathetic acknowledgement, status update for CLM-2026-1001, escalation flag raised if sentiment is critical, promise of callback or next step.
+
+---
+
+**Test 2 — Check communication history**
+```bash
+curl -s -N -X POST http://localhost:8808/chat \
+  -H "Content-Type: application/json" \
+  -d '{"message": "Show me all communications logged for claim CLM-2026-1001."}' \
+  --max-time 60
+```
+
+| Expected tools called | What it confirms |
+|---|---|
+| `get_communication_history` | Returns all logged comms for the claim |
+
+**Expected response:** List of logged communications with dates, types, and summaries.
 
 
 below is my current code 
