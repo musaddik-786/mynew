@@ -1,30 +1,15 @@
-Following the previous video, where we created the data model, we can now continue with the first User Story.
-👉 [Pause – show User Story document]
-This User Story includes the requirements related to the first PCF file, which defines components such as menus, panel sets for the vehicle list view, helper classes, display keys, coding standards, and the test plan. It also lists the files that were created or modified.
-👉 [Pause – highlight sections of the document]
-At the beginning, the first screen looks like this.
-👉 [Pause – show initial UI mock/screen]
-Once we execute the first User Story, we can see in PolicyCenter that the corresponding PCF file has been generated, including this code.
-👉 [Pause – switch to Guidewire Studio / PCF code]
-After completing the first screen with menus and list view, we move on to the next User Story: Device Enrollment.
-👉 [Pause – show next Markdown file]
-In this Markdown document, you can see the detailed definition of the PCF files, including the automatic device enrollment functionality.
-👉 [Pause – scroll through Markdown content]
-After executing this file using AI with Claude Code, we can open the generated components in PolicyCenter and review the source code.
-👉 [Pause – switch to generated code in Studio]
-From here, you can also verify the display keys, webhook integrations, test plan, and component details.
-👉 [Pause – highlight each section briefly]
-Next, we continue with another document where a popup component is generated along with helper classes.
-👉 [Pause – show popup Markdown definition]
-For this demo, I will copy and paste the generated PCF popup. This includes text elements and helper classes that support the popup logic.
-👉 [Pause – show popup code, then UI result]
-Again, you can see display keys, standards, test plan, and the list of affected files.
-👉 [Pause – show file list / diff]
-We then proceed with the remaining User Stories, which follow a similar implementation pattern, including PCF files, classes, integrations, and test definitions.
-👉 [Pause – quick scroll across remaining docs]
-This consistent structure is part of the design approach, allowing Claude Code to efficiently generate and support the solution.
-👉 [Pause – brief emphasis]
-Finally, if we go into PolicyCenter and open a policy with telematics enabled, we can see the fully implemented screens, including the popup and all related components.
-👉 [Pause – show final working UI]
-And that concludes this demo.
-👉 [Pause – end screen]
+so the below script is like intro video which shows a word document on screen which has overview etc different parts so create script for below,.
+
+today I’ll give you a quick overview of our US Telematics PoC within the SDLC using Integration Architecture.
+First, a quick introduction:
+A car telematics device is a small hardware component that plugs into the vehicle’s OBD-II port. It allows us to capture real-time data like location, vehicle health, and driving behavior.
+Now, why is this important?
+This data enables smarter underwriting decisions. For example, we can apply discounts, renewal strategies, and risk analysis based on actual driving patterns instead of assumptions.
+From a delivery perspective, we structured this PoC using a clear SDLC approach, supported by Integration Architecture, ensuring smooth connectivity between systems and real-time data flow.
+To improve collaboration and efficiency, we are working with two formats:
+
+A Word document, which provides a structured, formal overview and business-friendly documentation.
+And Markdown files, which are lightweight, version-controlled, and ideal for tools like Claude Code, enabling faster updates and better integration with development workflows.
+In this PoC, we defined 7 high-level requirements, each supported by screens and integrations that demonstrate the end-to-end solution.
+Finally, to simplify implementation and validation, we separated the solution into 7 individual User Stories, allowing independent development, testing, and faster iteration.
+In summary, this approach improves efficiency, traceability, and alignment between business and technical teams.
