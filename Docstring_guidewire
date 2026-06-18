@@ -1,17 +1,30 @@
-In this video, I will walk you through the implementation of the Telematics User Story, integrated with SDLC AI in our PolicyCenter environment.
-
-To begin, I’ll show you the telematics documentation. This was generated from a Word document, and as you can see, it has been divided into seven separate markdown documents. 
-Each document represents an individual User Story, allowing for better organization and modular implementation.
-
-In addition, the Datamodel Specific Driven Design includes data model definition. If we open the documents, you can see it is written in Markdown format, which contains the full technical specification required for implementation.
-
-The Datamodel document, we have the data model, which defines all the entities involved in the telematics solution. Each entity includes detailed implementation guidance, such as attributes, relationships, and request definitions needed for development.
-
-These documents also provide the end-to-end implementation details for the solution, including the list of entities that must be created.
-
-Once the Datamodel MD is executed in our IA Agent, we move into Guidewire Studio to implement the solution. As you can see, the source code has been successfully generated for each entity definition, as well as for typelists.
-
-For example, here we have the Telematics Enrollment Status typelist, which has been generated along with the corresponding source code.
-
-With this, we complete the first step of the process, which is the creation of the database model.
-
+Following the previous video, where we created the data model, we can now continue with the first User Story.
+👉 [Pause – show User Story document]
+This User Story includes the requirements related to the first PCF file, which defines components such as menus, panel sets for the vehicle list view, helper classes, display keys, coding standards, and the test plan. It also lists the files that were created or modified.
+👉 [Pause – highlight sections of the document]
+At the beginning, the first screen looks like this.
+👉 [Pause – show initial UI mock/screen]
+Once we execute the first User Story, we can see in PolicyCenter that the corresponding PCF file has been generated, including this code.
+👉 [Pause – switch to Guidewire Studio / PCF code]
+After completing the first screen with menus and list view, we move on to the next User Story: Device Enrollment.
+👉 [Pause – show next Markdown file]
+In this Markdown document, you can see the detailed definition of the PCF files, including the automatic device enrollment functionality.
+👉 [Pause – scroll through Markdown content]
+After executing this file using AI with Claude Code, we can open the generated components in PolicyCenter and review the source code.
+👉 [Pause – switch to generated code in Studio]
+From here, you can also verify the display keys, webhook integrations, test plan, and component details.
+👉 [Pause – highlight each section briefly]
+Next, we continue with another document where a popup component is generated along with helper classes.
+👉 [Pause – show popup Markdown definition]
+For this demo, I will copy and paste the generated PCF popup. This includes text elements and helper classes that support the popup logic.
+👉 [Pause – show popup code, then UI result]
+Again, you can see display keys, standards, test plan, and the list of affected files.
+👉 [Pause – show file list / diff]
+We then proceed with the remaining User Stories, which follow a similar implementation pattern, including PCF files, classes, integrations, and test definitions.
+👉 [Pause – quick scroll across remaining docs]
+This consistent structure is part of the design approach, allowing Claude Code to efficiently generate and support the solution.
+👉 [Pause – brief emphasis]
+Finally, if we go into PolicyCenter and open a policy with telematics enabled, we can see the fully implemented screens, including the popup and all related components.
+👉 [Pause – show final working UI]
+And that concludes this demo.
+👉 [Pause – end screen]
