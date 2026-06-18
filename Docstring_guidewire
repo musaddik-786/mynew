@@ -1,369 +1,128 @@
-this is how communcation agent should work
-
-**Test 1 — Policyholder inquiry**
-```bash
-curl -s -N -X POST http://localhost:8808/chat \
-  -H "Content-Type: application/json" \
-  -d '{"message": "For claim CLM-2026-1001: I am really frustrated. It has been 3 days and I haven't heard anything from anyone. My kitchen is still flooded. What is going on with my claim?"}' \
-  --max-time 90
-```
-
-
-
-| Expected tools called | What it confirms |
-|---|---|
-| `get_claim_details` | Loads claim status |
-| `get_communication_history` | Checks prior comms |
-below two are not present I think they are storing data in the table thats it so i need you to think on it and implement it 
-| `log_communication` | Saves this interaction |
-| `update_sentiment_tracker` | Records frustrated/negative sentiment |
-
-**Expected response:** Empathetic acknowledgement, status update for CLM-2026-1001, escalation flag raised if sentiment is critical, promise of callback or next step.
-
----
-
-**Test 2 — Check communication history**
-```bash
-curl -s -N -X POST http://localhost:8808/chat \
-  -H "Content-Type: application/json" \
-  -d '{"message": "Show me all communications logged for claim CLM-2026-1001."}' \
-  --max-time 60
-```
-
-| Expected tools called | What it confirms |
-|---|---|
-| `get_communication_history` | Returns all logged comms for the claim |
-
-**Expected response:** List of logged communications with dates, types, and summaries.
-
-
-below is my current code 
-main.py
 """
-main.py
-───────
-MCP server entry point for the Policyholder Agents platform — hosts 9
-agent MCP sub-apps on a single FastAPI app (port 8800), backed by a local
-SQLite database.
+feedback_router.py
+─────────────────────
+FastAPI routes for the Feedback / Sentiment Tracking MCP.
 
-Registered sub-apps:
-  /api/v1/voice_text_intake   — Voice/Text Intake (FNOL)              [FULL]
-  /api/v1/duplicate_check     — Duplicate Claim Check                  [FULL]
-  /api/v1/segmentation         — Claim Segmentation / STP              [FULL]
-  /api/v1/claim_status          — Claim Status ("Follow My Claim")      [FULL]
-  /api/v1/document_submission   — Document Submission & Classification [FULL]
-  /api/v1/feedback               — Feedback / Sentiment Tracking         [FULL]
-  /api/v1/policy_coverage         — Policy Coverage Verification        [PLACEHOLDER]
-  /api/v1/claim_readiness          — Claim Readiness                     [PLACEHOLDER]
-  /api/v1/communication             — Communication                       [PLACEHOLDER]
-
-Run:
-    py -3 main.py
-"""
-
-import os
-import sys
-from dotenv import load_dotenv
-sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "common"))
-
-from dotenv import load_dotenv, find_dotenv
-load_dotenv(find_dotenv())
-
-from fastapi import FastAPI
-from fastapi.middleware.cors import CORSMiddleware
-from fastapi_mcp import FastApiMCP
-
-from init_db import init_db
-
-from voice_text_intake_router import router as voice_text_intake_router
-from duplicate_check_router import router as duplicate_check_router
-from segmentation_router import router as segmentation_router
-from claim_status_router import router as claim_status_router
-from document_submission_router import router as document_submission_router
-from feedback_router import router as feedback_router
-from policy_coverage_router import router as policy_coverage_router
-from claim_readiness_router import router as claim_readiness_router
-from communication_router import router as communication_router
-
-import uvicorn
-
-
-app = FastAPI(docs_url="/docs", title="Jarvis Policyholder Agents MCP Server")
-
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
-
-
-def _make_cors_app(title: str, description: str = "") -> FastAPI:
-    sub = FastAPI(title=title, description=description)
-    sub.add_middleware(
-        CORSMiddleware,
-        allow_origins=["*"],
-        allow_methods=["*"],
-        allow_headers=["*"],
-    )
-    return sub
-
-
-# ── Sub-app: voice_text_intake (FULL) ─────────────────────────────────────────
-
-voice_intake_app = _make_cors_app(
-    title="voice_text_intake_agent_mcps",
-    description="MCP tools for FNOL Voice/Text Intake: field extraction, "
-                 "submission management, and audit logging.",
-)
-voice_intake_app.include_router(voice_text_intake_router)
-FastApiMCP(
-    voice_intake_app,
-    include_operations=[
-        "create_fnol_submission",
-        "get_fnol_submission",
-        "get_fnol_by_policy",
-        "update_fnol_submission",
-        "submit_fnol",
-        "get_mandatory_fields",
-        "save_voice_text_extraction",
-        "get_voice_text_extractions",
-        "save_ai_inferences",
-        "log_question_answer",
-        "get_question_log",
-        "save_field_attribution",
-        "extract_fnol_fields_from_text",
-        "transcribe_audio",
-    ],
-).mount_http()
-app.mount("/api/v1/voice_text_intake", voice_intake_app)
-
-
-# ── Sub-app: duplicate_check (FULL) ───────────────────────────────────────────
-
-duplicate_check_app = _make_cors_app(
-    title="duplicate_claim_check_agent_mcps",
-    description="MCP tools for checking duplicate FNOL/claim submissions.",
-)
-duplicate_check_app.include_router(duplicate_check_router)
-FastApiMCP(
-    duplicate_check_app,
-    include_operations=[
-        "check_duplicate_claim",
-        "get_recent_claims_for_policy",
-    ],
-).mount_http()
-app.mount("/api/v1/duplicate_check", duplicate_check_app)
-
-
-# ── Sub-app: segmentation (FULL) ──────────────────────────────────────────────
-
-segmentation_app = _make_cors_app(
-    title="claim_segmentation_agent_mcps",
-    description="MCP tools for STP scoring and claim segmentation.",
-)
-segmentation_app.include_router(segmentation_router)
-FastApiMCP(
-    segmentation_app,
-    include_operations=[
-        "get_claim_for_segmentation",
-        "compute_stp_score",
-        "get_segmentation_result",
-        "get_stp_classification",
-    ],
-).mount_http()
-app.mount("/api/v1/segmentation", segmentation_app)
-
-
-# ── Sub-app: claim_status (FULL) ──────────────────────────────────────────────
-
-claim_status_app = _make_cors_app(
-    title="claim_status_agent_mcps",
-    description="MCP tools for claim journey tracking ('Follow My Claim').",
-)
-claim_status_app.include_router(claim_status_router)
-FastApiMCP(
-    claim_status_app,
-    include_operations=[
-        "get_claim_journey",
-        "get_claim_status_summary",
-        "advance_claim_stage",
-        "log_policyholder_action",
-        "get_policyholder_actions",
-    ],
-).mount_http()
-app.mount("/api/v1/claim_status", claim_status_app)
-
-
-# ── Sub-app: document_submission (FULL) ───────────────────────────────────────
-
-document_submission_app = _make_cors_app(
-    title="document_submission_agent_mcps",
-    description="MCP tools for uploading and classifying claim documents.",
-)
-document_submission_app.include_router(document_submission_router)
-FastApiMCP(
-    document_submission_app,
-    include_operations=[
-        "upload_document",
-        "classify_document_type",
-        "get_claim_documents",
-        "get_document",
-    ],
-).mount_http()
-app.mount("/api/v1/document_submission", document_submission_app)
-
-
-# ── Sub-app: feedback (FULL) ───────────────────────────────────────────────────
-
-feedback_app = _make_cors_app(
-    title="feedback_agent_mcps",
-    description="MCP tools for policyholder feedback and sentiment tracking.",
-)
-feedback_app.include_router(feedback_router)
-FastApiMCP(
-    feedback_app,
-    include_operations=[
-        "write_customer_feedback",
-        "get_customer_feedback",
-        "update_sentiment_tracker",
-        "get_sentiment_tracker",
-    ],
-).mount_http()
-app.mount("/api/v1/feedback", feedback_app)
-
-
-# ── Sub-app: policy_coverage (PLACEHOLDER) ────────────────────────────────────
-
-policy_coverage_app = _make_cors_app(
-    title="policy_coverage_agent_mcps",
-    description="[PLACEHOLDER] MCP tools for local policy coverage verification.",
-)
-policy_coverage_app.include_router(policy_coverage_router)
-FastApiMCP(
-    policy_coverage_app,
-    include_operations=["get_policy_details_stub","get_policy_details","verify_coverage"],
-).mount_http()
-app.mount("/api/v1/policy_coverage", policy_coverage_app)
-
-
-# ── Sub-app: claim_readiness (PLACEHOLDER) ────────────────────────────────────
-
-claim_readiness_app = _make_cors_app(
-    title="claim_readiness_agent_mcps",
-    description="[PLACEHOLDER] MCP tools for claim readiness / completeness validation.",
-)
-claim_readiness_app.include_router(claim_readiness_router)
-FastApiMCP(
-    claim_readiness_app,
-    include_operations=["get_intake_validation_result_stub"],
-).mount_http()
-app.mount("/api/v1/claim_readiness", claim_readiness_app)
-
-
-# ── Sub-app: communication (PLACEHOLDER) ──────────────────────────────────────
-
-communication_app = _make_cors_app(
-    title="communication_agent_mcps",
-    description="[PLACEHOLDER] MCP tools for policyholder communication history.",
-)
-communication_app.include_router(communication_router)
-FastApiMCP(
-    communication_app,
-    include_operations=["get_communication_history_stub","draft_status_notification","get_communication_history"],
-).mount_http()
-app.mount("/api/v1/communication", communication_app)
-
-
-# ── Health ────────────────────────────────────────────────────────────────────
-
-@app.on_event("startup")
-def _startup():
-    init_db()
-
-
-@app.get("/health")
-def health():
-    return {
-        "status": "healthy",
-        "service": "jarvis_policyholder_agents_mcp",
-        "sub_apps": [
-            "voice_text_intake",
-            "duplicate_check",
-            "segmentation",
-            "claim_status",
-            "document_submission",
-            "feedback",
-            "policy_coverage",
-            "claim_readiness",
-            "communication",
-        ],
-    }
-
-
-if __name__ == "__main__":
-    uvicorn.run(app, host="0.0.0.0", port=8800)
-
-
-
-
-Communication router.py
-"""
-communication_router.py
-────────────────────────
 Tool / Endpoint map:
-  get_communication_history    GET  /api/communication/history/{claim_number}
-  draft_status_notification    POST /api/communication/draft/{claim_number}
+  write_customer_feedback   POST /api/feedback/write
+  get_customer_feedback      GET  /api/feedback/claim/{claim_number}
+  update_sentiment_tracker    POST /api/feedback/sentiment/update
+  get_sentiment_tracker        GET  /api/feedback/sentiment/{claim_number}
 """
 
 import logging
-from fastapi import APIRouter
+from fastapi import APIRouter, HTTPException
 
-from communication_mcp import handler
+from feedback_mcp.models import WriteCustomerFeedbackRequest, UpdateSentimentTrackerRequest
+from feedback_mcp import handler
 
 log = logging.getLogger(__name__)
 
 router = APIRouter()
 
 
-@router.get(
-    "/api/communication/history/{claim_number}",
-    operation_id="get_communication_history",
-    summary="Read communication_history for a claim",
-    tags=["Communication"],
+@router.post(
+    "/api/feedback/write",
+    operation_id="write_customer_feedback",
+    summary="Record policyholder feedback for a claim stage with sentiment analysis",
+    tags=["Feedback"],
 )
-def get_communication_history(claim_number: str):
-    """Return all communication history records for a given claim number."""
-    records = handler.get_communication_history(claim_number)
-    return {"claim_number": claim_number, "communication_history": records}
+def write_customer_feedback(req: WriteCustomerFeedbackRequest):
+    """
+    Uses an LLM to classify the sentiment of the comment ("Positive",
+    "Neutral", or "Negative") plus a 0-100 sentiment_score, inserts a row
+    into customer_feedback_per_stage, then recomputes the aggregate
+    claim_sentiment_tracker. Returns {feedback, sentiment_tracker}.
+    """
+    try:
+        return handler.write_customer_feedback(
+            req.claim_id, req.claim_number, req.stage_number, req.stage_name, req.comment
+        )
+    except Exception as e:
+        log.exception("write_customer_feedback error")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get(
+    "/api/feedback/claim/{claim_number}",
+    operation_id="get_customer_feedback",
+    summary="Get all stage feedback for a claim",
+    tags=["Feedback"],
+)
+def get_customer_feedback(claim_number: str):
+    """
+    Returns all customer_feedback_per_stage rows for the given
+    claim_number, ordered by submission time.
+    """
+    return handler.get_customer_feedback(claim_number)
 
 
 @router.post(
-    "/api/communication/draft/{claim_number}",
-    operation_id="draft_status_notification",
-    summary="Auto-draft a status-change notification for the policyholder",
-    tags=["Communication"],
+    "/api/feedback/sentiment/update",
+    operation_id="update_sentiment_tracker",
+    summary="Recompute the aggregate sentiment tracker for a claim",
+    tags=["Feedback"],
 )
-def draft_status_notification(claim_number: str):
+def update_sentiment_tracker(req: UpdateSentimentTrackerRequest):
     """
-    Use the claim's current status, sentiment, and communication history to
-    generate an empathetic, channel-appropriate notification draft and save it
-    to communication_history with status='Draft'.
+    Recomputes the average sentiment score, trend (Improving/Declining/
+    Stable based on the last two feedback entries), and escalation_risk
+    (High if avg<40, Medium if avg<70, else Low) from all
+    customer_feedback_per_stage rows for the claim, then upserts the
+    claim_sentiment_tracker row.
     """
-    return handler.draft_status_notification(claim_number)
+    try:
+        result = handler.update_sentiment_tracker(req.claim_number, req.policyholder_name)
+        if result is None:
+            raise HTTPException(status_code=404, detail="No feedback found for this claim")
+        return result
+    except HTTPException:
+        raise
+    except Exception as e:
+        log.exception("update_sentiment_tracker error")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get(
+    "/api/feedback/sentiment/{claim_number}",
+    operation_id="get_sentiment_tracker",
+    summary="Get the sentiment tracker for a claim",
+    tags=["Feedback"],
+)
+def get_sentiment_tracker(claim_number: str):
+    """
+    Returns the claim_sentiment_tracker row for the given claim_number,
+    including current_sentiment, sentiment_score, sentiment_trend, and
+    escalation_risk.
+    """
+    record = handler.get_sentiment_tracker(claim_number)
+    if not record:
+        raise HTTPException(status_code=404, detail=f"No sentiment tracker for {claim_number}")
+    return record
+
+Jarvis@JarvisPhase2:~/Musaddique$ curl http://localhost:8800/health
+{"status":"healthy","service":
+Jarvis@JarvisPhase2:~/Musaddique$ 
 
 
 
-# def load_claim_status(claim_number: str):
-#     claim = handler.get_claims_data()
-    
+_v2/PolicyholderAgents/CommunicationAgent$ ^C
+(venv) Jarvis@JarvisPhase2:~/Musaddique/Jarvis_claims_agents_v2/PolicyholderAgents/CommunicationAgent$ python3 server.py 
+INFO:     Started server process [13906]
+INFO:     Waiting for application startup.
+INFO:     Application startup complete.
+INFO:     Uvicorn running on http://0.0.0.0:8809 (Press CTRL+C to quit)
 
 
+(venv) Jarvis@JarvisPhase2:~/Musaddique/Jarvis_claims_agents_v2/PolicyholderAgents/FeedbackAgent$ ^C
+(venv) Jarvis@JarvisPhase2:~/Musaddique/Jarvis_claims_agents_v2/PolicyholderAgents/FeedbackAgent$ python3 server.py 
+INFO:     Started server process [13873]
+INFO:     Waiting for application startup.
+INFO:     Application startup complete.
+INFO:     Uvicorn running on http://0.0.0.0:8806 (Press CTRL+C to q
 
 
-Communication Agent 
-server.py
+communication agent server.py
 """
 server.py — Communication Agent
 ─────────────────────────────────
@@ -419,7 +178,11 @@ config_mcp_server = {
         "transport": "streamable_http",
         "timeout": timedelta(seconds=120),
         "sse_read_timeout": timedelta(seconds=600),
-    }
+    },
+    "feedback_mcp": {
+       "url": "http://localhost:8806/api/v1/feedback/mcp",
+       "transport": "streamable_http",
+   }
 }
 
 app = FastAPI(title="Communication Agent")
@@ -594,832 +357,246 @@ if __name__ == "__main__":
     uvicorn.run(app, host="0.0.0.0", port=AGENT_PORT)
 
 
-communcicatopn mcp 
-handler.py
+feedback agent server.py
 """
-handler.py — Communication
-───────────────────────────
-Auto-drafts status-change notifications for policyholders using claim
-status, sentiment data, and communication history.  Writes drafted
-messages to communication_history.
+server.py — Feedback Agent
+─────────────────────────────
+LangGraph agent that records policyholder feedback for a claim stage,
+classifies sentiment, and responds empathetically based on escalation risk.
+
+Port: 8806
+MCP : http://localhost:8800/api/v1/feedback/mcp
+
+Run:
+    py -3 server.py
 """
+
 import json
 import logging
 import os
 import sys
-from datetime import datetime
+import time
+import traceback
+from datetime import datetime, timedelta
+from typing import Annotated, TypedDict
 
-sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "common"))
-
-from db import get_db_connection, row_to_dict  # noqa: E402
+import uvicorn
 from dotenv import load_dotenv, find_dotenv
-from openai import AzureOpenAI
+from fastapi import FastAPI, Request
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import StreamingResponse
+from langchain_core.messages import AIMessage, SystemMessage
+from langchain_mcp_adapters.client import MultiServerMCPClient
+from langchain_openai.chat_models import AzureChatOpenAI
+from langgraph.graph import END, START, StateGraph
+from langgraph.graph.message import add_messages
+from langgraph.prebuilt import ToolNode
 
 load_dotenv(find_dotenv())
 
-log = logging.getLogger(__name__)
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s | %(levelname)-8s | %(name)s | %(message)s",
+    stream=sys.stdout,
+    force=True,
+)
+logger = logging.getLogger("feedback_agent")
 
-AZURE_OPENAI_ENDPOINT = os.environ.get("AZURE_OPENAI_ENDPOINT", "")
-AZURE_OPENAI_API_KEY = os.environ.get("AZURE_OPENAI_API_KEY", "")
-AZURE_OPENAI_API_VERSION = os.environ.get("AZURE_OPENAI_API_VERSION", "2025-11-13")
-AZURE_OPENAI_CHAT_DEPLOYMENT = os.environ.get("AZURE_OPENAI_CHAT_DEPLOYMENT", "gpt-5.1")
+PHOENIX_API_KEY = os.getenv("PHOENIX_API_KEY", "")
+PHOENIX_ENDPOINT = os.getenv("PHOENIX_ENDPOINT", "")
+MCP_URL = os.getenv("MCP_URL", "http://localhost:8800/api/v1/feedback/mcp")
+AGENT_PORT = int(os.getenv("AGENT_PORT", "8806"))
+
+config_mcp_server = {
+    "feedback_mcp": {
+        "url": MCP_URL,
+        "transport": "streamable_http",
+        "timeout": timedelta(seconds=120),
+        "sse_read_timeout": timedelta(seconds=600),
+    }
+}
+
+app = FastAPI(title="Feedback Agent")
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 
-def _get_openai_client() -> AzureOpenAI:
-    return AzureOpenAI(
-        api_key=AZURE_OPENAI_API_KEY,
-        api_version=AZURE_OPENAI_API_VERSION,
-        azure_endpoint=AZURE_OPENAI_ENDPOINT,
+class State(TypedDict):
+    messages: Annotated[list, add_messages]
+
+
+def router(state: State):
+    last = state["messages"][-1]
+    if isinstance(last, AIMessage) and getattr(last, "tool_calls", None):
+        return "tools"
+    if isinstance(last, AIMessage) and last.content:
+        if "Continue" in last.content:
+            return "tools"
+        if "End" in last.content:
+            return "End"
+    return "End"
+
+
+_FALLBACK_PROMPT = """
+You are the Feedback Agent for an insurance claims platform.
+
+When a policyholder gives feedback about a claim stage:
+
+1. Identify claim_id, claim_number, stage_number, stage_name, and the
+   comment text.
+2. Call write_customer_feedback with these values. This classifies the
+   sentiment, stores the feedback, and recomputes the sentiment tracker.
+3. Look at the returned sentiment_tracker.escalation_risk:
+   - If "High" or "Medium": empathetically acknowledge the policyholder's
+     concerns and let them know their case may receive extra attention
+     from the team.
+   - If "Low": thank them warmly for their feedback.
+
+You can also use get_customer_feedback or get_sentiment_tracker to review
+prior feedback for a claim.
+
+Be warm, empathetic, and concise. When you have completed the task, end
+your response with "End".
+"""
+
+
+def load_prompt() -> str:
+    if not PHOENIX_ENDPOINT:
+        raise RuntimeError("Phoenix not configured")
+    from phoenix.client import Client
+    client = Client(base_url=PHOENIX_ENDPOINT, api_key=PHOENIX_API_KEY)
+    prompt = client.prompts.get(name="feedback_agent", label="production")
+    prompt_set = prompt._template["messages"]
+    system_msg = next(
+        (item["content"][0]["text"] for item in prompt_set if item.get("role") == "system"),
+        None,
+    )
+    if not system_msg:
+        raise ValueError("System prompt is empty or missing in Phoenix")
+    return system_msg
+
+
+def create_graph(model, tools, prompt):
+    graph_builder = StateGraph(State)
+    llm_with_tools = model.bind_tools(tools)
+
+    async def agent_node(state: State):
+        messages = state["messages"]
+        all_messages = [SystemMessage(content=prompt)] + messages
+        message = await llm_with_tools.ainvoke(all_messages)
+        return {"messages": [message]}
+
+    graph_builder.add_node("agent", agent_node)
+    graph_builder.add_node("tools", ToolNode(tools=tools))
+    graph_builder.add_edge(START, "agent")
+    graph_builder.add_conditional_edges("agent", router, {"tools": "tools", "End": END})
+    graph_builder.add_edge("tools", "agent")
+    return graph_builder.compile()
+
+
+async def get_tools():
+    client = MultiServerMCPClient(config_mcp_server)
+    tools = await client.get_tools()
+    logger.info("Tools loaded from MCP: %s", [t.name for t in tools])
+    return tools
+
+
+async def stream_graph(graph, initial_state, config):
+    async for event in graph.astream_events(initial_state, config=config, version="v2"):
+        kind = event.get("event", "")
+
+        if kind == "on_chat_model_stream":
+            chunk = event["data"].get("chunk")
+            if chunk and hasattr(chunk, "content") and chunk.content:
+                yield f"data: {chunk.content}\n\n"
+
+        elif kind == "on_tool_start":
+            tool_name = event.get("name", "unknown_tool")
+            yield f"data: [Tool: {tool_name}] Starting...\n\n"
+
+        elif kind == "on_tool_end":
+            tool_name = event.get("name", "unknown_tool")
+            yield f"data: [Tool: {tool_name}] Done\n\n"
+
+
+@app.post("/chat")
+async def chat_stream(request: Request):
+    load_dotenv(find_dotenv())
+
+    tools = await get_tools()
+
+    model = AzureChatOpenAI(
+        api_key=os.getenv("AZURE_OPENAI_API_KEY"),
+        api_version=os.getenv("AZURE_OPENAI_API_VERSION"),
+        azure_deployment=os.getenv("AZURE_OPENAI_CHAT_DEPLOYMENT"),
+        azure_endpoint=os.getenv("AZURE_OPENAI_ENDPOINT"),
     )
 
-
-def get_communication_history(claim_number: str) -> list:
-    conn = get_db_connection()
     try:
-        cur = conn.cursor()
-        cur.execute(
-            "SELECT * FROM communication_history WHERE claim_number = %s ORDER BY communication_date DESC",
-            (claim_number,),
-        )
-        return row_to_dict(cur.fetchall()) or []
-    finally:
-        conn.close()
+        system_prompt = load_prompt()
+    except Exception as e:
+        logger.warning("Phoenix prompt load failed (%s) — using fallback prompt", e)
+        system_prompt = _FALLBACK_PROMPT
 
+    body = await request.json()
+    user_message = body.get("message", "I'd like to leave feedback about my claim")
 
-def draft_status_notification(claim_number: str) -> dict:
-    conn = get_db_connection()
-    try:
-        cur = conn.cursor()
+    graph = create_graph(model=model, tools=tools, prompt=system_prompt)
 
-        cur.execute(
-            "SELECT * FROM claims WHERE claim_number = %s", (claim_number,)
-        )
-        claim = row_to_dict(cur.fetchone())
-        if not claim:
-            return {"error": f"claim_number {claim_number} not found"}
-
-        cur.execute(
-            "SELECT * FROM communication_history WHERE claim_number = %s ORDER BY communication_date DESC LIMIT 5",
-            (claim_number,),
-        )
-        history = row_to_dict(cur.fetchall()) or []
-
-        sentiment_data = None
+    async def generate():
+        start = time.time()
+        last_event_at = start
+        last_tool = None
         try:
-            cur.execute(
-                # "SELECT * FROM claim_sentiment_tracker WHERE claim_number = %s ORDER BY tracked_at DESC LIMIT 1",
-                "SELECT * FROM claim_sentiment_tracker WHERE claim_number = %s ORDER BY updated_at DESC LIMIT 1",
-                (claim_number,),
-            )
-            sentiment_data = row_to_dict(cur.fetchone())
-        except Exception:
-            pass
+            async for event in stream_graph(
+                graph=graph,
+                initial_state={"messages": [user_message]},
+                config={"recursion_limit": 250},
+            ):
+                last_event_at = time.time()
+                if isinstance(event, str) and event.startswith("data: [Tool:"):
+                    try:
+                        last_tool = event.split("[Tool:", 1)[1].split("]", 1)[0]
+                    except Exception:
+                        pass
+                yield event
+        except BaseException as e:
+            elapsed = time.time() - start
+            since_last = time.time() - last_event_at
+            err = {
+                "exception_class": type(e).__name__,
+                "message": str(e),
+                "elapsed_total_seconds": round(elapsed, 2),
+                "seconds_since_last_event": round(since_last, 2),
+                "last_tool_invoked": last_tool,
+                "traceback": traceback.format_exc(),
+                "timestamp_utc": datetime.utcnow().isoformat(),
+            }
+            logger.error("AGENT_ERROR %s", json.dumps(err, default=str))
+            try:
+                yield f"data: [AGENT_ERROR] {json.dumps(err, default=str)}\n\n"
+            except Exception:
+                pass
+            import asyncio
+            if isinstance(e, asyncio.CancelledError):
+                raise
 
-    finally:
-        conn.close()
-
-    # sentiment_label = (sentiment_data or {}).get("sentiment_label", "Neutral")
-    sentiment_label = (sentiment_data or {}).get("current_sentiment", "Neutral")
-    claim_status = claim.get("status", "In Progress")
-    claimant_name = claim.get("claimant_name") or claim.get("policy_holder_name") or "Valued Policyholder" or "policyholder_name"
-
-    # recent_messages = [h.get("message_text") or h.get("message_body", "") for h in history[:3]]
-    recent_messages = [h.get("message_text") or h.get("message_body", "") or h.get("summary") for h in history[:3]]
-
-    try:
-        client = _get_openai_client()
-        prompt = (
-            "You are an insurance claims communication specialist. "
-            "Draft a professional, empathetic status-update notification for the policyholder. "
-            "Respond with JSON: "
-            '{"subject": "...", "message_body": "...", "channel": "Email|SMS|Portal", '
-            '"tone": "Empathetic|Informational|Urgent", "next_action": "..."}.\n\n'
-            f"Claimant: {claimant_name}\n"
-            f"Claim Number: {claim_number}\n"
-            f"Current Status: {claim_status}\n"
-            f"Loss Type: {claim.get('loss_type', 'Unknown')}\n"
-            f"Policyholder Sentiment: {sentiment_label}\n"
-            f"Recent Communication Summaries: {recent_messages}"
-        )
-        response = client.chat.completions.create(
-            model=AZURE_OPENAI_CHAT_DEPLOYMENT,
-            messages=[{"role": "user", "content": prompt}],
-            temperature=0.3,
-            response_format={"type": "json_object"},
-        )
-        draft = json.loads(response.choices[0].message.content)
-    except Exception as e:
-        log.warning("LLM notification draft failed: %s", e)
-        draft = {
-            "subject": f"Update on Your Claim {claim_number}",
-            "message_body": f"Dear {claimant_name}, your claim {claim_number} is currently {claim_status}. We will keep you updated.",
-            "channel": "Email",
-            "tone": "Informational",
-            "next_action": "No further action required at this time",
-        }
-
-    conn2 = get_db_connection()
-    try:
-        cur2 = conn2.cursor()
-        cur2.execute(
-            """
-            INSERT INTO communication_history
-              (claim_number, communication_date, channel, subject,
-               message_body, direction, status, drafted_by)
-            VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
-            """,
-            (
-                claim_number,
-                datetime.utcnow().isoformat(),
-                draft.get("channel", "Email"),
-                draft.get("subject"),
-                draft.get("message_body"),
-                "Outbound",
-                "Draft",
-                "CommunicationAgent",
-            ),
-        )
-        conn2.commit()
-    except Exception as e:
-        conn2.rollback()
-        log.warning("Could not write communication_history: %s", e)
-    finally:
-        conn2.close()
-
-    return {
-        "claim_number": claim_number,
-        "claim_status": claim_status,
-        "policyholder_sentiment": sentiment_label,
-        "drafted_notification": draft,
-    }
+    return StreamingResponse(generate(), media_type="text/event-stream")
 
 
-init_db.py
-"""
-init_db.py
-──────────
-Creates all PostgreSQL tables for the Policyholder Agents platform and seeds
-reference/sample data. Safe to re-run (idempotent).
-
-Run:
-    py -3 MCP/common/init_db.py
-"""
-
-import os
-import sys
-
-sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-
-from db import get_db_connection  # noqa: E402
-
-SCHEMA_SQL = """
-CREATE TABLE IF NOT EXISTS claims (
-    id SERIAL PRIMARY KEY,
-    claim_number TEXT UNIQUE,
-    policyholder_name TEXT,
-    policy_number TEXT,
-    loss_type TEXT,
-    short_description TEXT,
-    ai_generated_summary TEXT,
-    detected_cause TEXT,
-    severity TEXT,
-    complexity TEXT,
-    estimated_cost REAL,
-    coverage INTEGER DEFAULT 1,
-    ai_confidence INTEGER,
-    status TEXT DEFAULT 'Open',
-    location TEXT,
-    assigned_adjuster TEXT,
-    assigned_vendor TEXT,
-    date_of_loss TEXT,
-    filed_at TIMESTAMP DEFAULT NOW()
-);
-
-CREATE TABLE IF NOT EXISTS claims_master (
-    id SERIAL PRIMARY KEY,
-    claim_number TEXT UNIQUE,
-    customer_name TEXT,
-    policy_number TEXT,
-    policy_type TEXT,
-    loss_date TEXT,
-    coverage_limit REAL,
-    deductible REAL,
-    claim_status TEXT
-);
-
-CREATE TABLE IF NOT EXISTS claim_journey_master (
-    id SERIAL PRIMARY KEY,
-    claim_id INTEGER,
-    claim_number TEXT,
-    current_stage INTEGER DEFAULT 1,
-    current_stage_name TEXT DEFAULT 'Claim Initiated',
-    sub_status TEXT DEFAULT 'Under Review',
-    journey_start_date TIMESTAMP DEFAULT NOW(),
-    last_stage_change_date TIMESTAMP DEFAULT NOW(),
-    expected_completion_date TEXT,
-    overall_sla_status TEXT DEFAULT 'on_track',
-    total_days_in_journey INTEGER DEFAULT 0
-);
-
-CREATE TABLE IF NOT EXISTS stage_time_sla_tracking (
-    id SERIAL PRIMARY KEY,
-    claim_id INTEGER,
-    claim_number TEXT,
-    stage_number INTEGER,
-    stage_name TEXT,
-    entered_at TIMESTAMP DEFAULT NOW(),
-    exited_at TIMESTAMP,
-    sla_days INTEGER,
-    sla_status TEXT
-);
-
-CREATE TABLE IF NOT EXISTS policy_details (
-    id SERIAL PRIMARY KEY,
-    policy_id TEXT,
-    status TEXT DEFAULT 'Active',
-    coverage_type TEXT,
-    deductible REAL,
-    coverage_limit REAL,
-    created_at TIMESTAMP DEFAULT NOW()
-);
-
-CREATE TABLE IF NOT EXISTS fnol_submissions (
-    id SERIAL PRIMARY KEY,
-    fnol_number TEXT UNIQUE,
-    policy_number TEXT,
-    insured_name TEXT,
-    insured_address TEXT,
-    policy_effective_date TEXT,
-    policy_expiration_date TEXT,
-    loss_type TEXT,
-    loss_type_source TEXT,
-    cause_of_loss TEXT,
-    cause_of_loss_source TEXT,
-    date_of_loss TEXT,
-    date_of_loss_source TEXT,
-    time_of_loss TEXT,
-    time_of_loss_source TEXT,
-    area_affected TEXT,
-    area_affected_source TEXT,
-    occupancy_at_loss INTEGER,
-    occupancy_at_loss_source TEXT,
-    sudden_vs_gradual TEXT,
-    emotional_context TEXT,
-    severity TEXT,
-    urgency_indicator TEXT,
-    voice_transcript TEXT,
-    text_input TEXT,
-    overall_confidence INTEGER,
-    confidence_notes TEXT,
-    status TEXT DEFAULT 'draft',
-    created_at TIMESTAMP DEFAULT NOW(),
-    updated_at TIMESTAMP DEFAULT NOW(),
-    submitted_at TIMESTAMP
-);
-
-CREATE TABLE IF NOT EXISTS fnol_mandatory_fields (
-    id SERIAL PRIMARY KEY,
-    field_name TEXT UNIQUE,
-    field_label TEXT,
-    field_category TEXT,
-    is_required INTEGER DEFAULT 1,
-    can_be_inferred INTEGER DEFAULT 1,
-    inference_question TEXT,
-    input_type TEXT DEFAULT 'text',
-    input_options TEXT,
-    display_order INTEGER DEFAULT 0
-);
-
-CREATE TABLE IF NOT EXISTS fnol_ai_inferences (
-    id SERIAL PRIMARY KEY,
-    fnol_id INTEGER,
-    field_name TEXT,
-    inferred_value TEXT,
-    confidence INTEGER,
-    source TEXT,
-    source_details TEXT,
-    customer_confirmed INTEGER DEFAULT 0,
-    customer_edited_value TEXT,
-    inferred_at TIMESTAMP DEFAULT NOW()
-);
-
-CREATE TABLE IF NOT EXISTS fnol_voice_text_extraction (
-    id SERIAL PRIMARY KEY,
-    fnol_id INTEGER,
-    input_type TEXT,
-    raw_input TEXT,
-    transcribed_text TEXT,
-    extracted_loss_type TEXT,
-    extracted_cause TEXT,
-    extracted_area TEXT,
-    extracted_temporal TEXT,
-    sudden_gradual_signal TEXT,
-    emotional_context TEXT,
-    extraction_confidence INTEGER,
-    created_at TIMESTAMP DEFAULT NOW()
-);
-
-CREATE TABLE IF NOT EXISTS fnol_mandatory_question_log (
-    id SERIAL PRIMARY KEY,
-    fnol_id INTEGER,
-    question_text TEXT,
-    field_name TEXT,
-    answer_text TEXT,
-    answer_type TEXT,
-    was_skipped INTEGER DEFAULT 0,
-    question_order INTEGER DEFAULT 0,
-    asked_at TIMESTAMP DEFAULT NOW(),
-    answered_at TIMESTAMP
-);
-
-CREATE TABLE IF NOT EXISTS fnol_field_attribution (
-    id SERIAL PRIMARY KEY,
-    fnol_id INTEGER,
-    field_name TEXT,
-    field_label TEXT,
-    field_value TEXT,
-    source TEXT,
-    confidence INTEGER,
-    was_edited INTEGER DEFAULT 0,
-    was_confirmed INTEGER DEFAULT 0,
-    original_value TEXT,
-    edited_value TEXT,
-    created_at TIMESTAMP DEFAULT NOW(),
-    confirmed_at TIMESTAMP
-);
-
-CREATE TABLE IF NOT EXISTS documents (
-    id SERIAL PRIMARY KEY,
-    document_id TEXT UNIQUE,
-    claim_id TEXT,
-    file_name TEXT,
-    file_url TEXT,
-    file_size INTEGER,
-    content_type TEXT,
-    document_type TEXT,
-    classification_confidence INTEGER DEFAULT 0,
-    uploaded_by TEXT,
-    uploaded_by_role TEXT,
-    status TEXT DEFAULT 'Classified',
-    visibility TEXT DEFAULT 'public',
-    extracted_data TEXT,
-    insights TEXT,
-    investigation_notes TEXT,
-    flagged INTEGER DEFAULT 0,
-    uploaded_at TIMESTAMP DEFAULT NOW()
-);
-
-CREATE TABLE IF NOT EXISTS customer_feedback_per_stage (
-    id SERIAL PRIMARY KEY,
-    claim_id TEXT,
-    claim_number TEXT,
-    stage_number INTEGER,
-    stage_name TEXT,
-    sentiment TEXT,
-    comment TEXT,
-    submitted_at TIMESTAMP DEFAULT NOW()
-);
-
-CREATE TABLE IF NOT EXISTS claim_sentiment_tracker (
-    id SERIAL PRIMARY KEY,
-    tracker_id TEXT UNIQUE,
-    claim_id TEXT,
-    claim_number TEXT,
-    policyholder_name TEXT,
-    current_sentiment TEXT,
-    sentiment_score REAL,
-    sentiment_trend TEXT,
-    last_interaction_date TEXT,
-    escalation_risk TEXT,
-    satisfaction_rating REAL,
-    nps_score INTEGER,
-    notes TEXT,
-    assigned_adjuster TEXT,
-    created_at TIMESTAMP DEFAULT NOW(),
-    updated_at TIMESTAMP DEFAULT NOW()
-);
-
-CREATE TABLE IF NOT EXISTS communication_history (
-    id SERIAL PRIMARY KEY,
-    communication_id TEXT UNIQUE,
-    claim_id TEXT,
-    claim_number TEXT,
-    policyholder_name TEXT,
-    communication_type TEXT,
-    direction TEXT,
-    subject TEXT,
-    summary TEXT,
-    sentiment_detected TEXT,
-    handled_by TEXT,
-    response_time_minutes INTEGER,
-    resolution_status TEXT,
-    follow_up_required INTEGER DEFAULT 0,
-    follow_up_date TEXT,
-    attachments TEXT,
-    communication_date TIMESTAMP DEFAULT NOW()
-);
-
-CREATE TABLE IF NOT EXISTS segmentation_result_output (
-    id SERIAL PRIMARY KEY,
-    claim_id TEXT,
-    severity TEXT,
-    complexity TEXT,
-    stp_score INTEGER,
-    recommended_path TEXT,
-    created_at TIMESTAMP DEFAULT NOW()
-);
-
-CREATE TABLE IF NOT EXISTS stp_classification (
-    id SERIAL PRIMARY KEY,
-    stp_id TEXT,
-    claim_id TEXT,
-    readiness INTEGER DEFAULT 0,
-    fraud_ambiguity TEXT DEFAULT 'Low',
-    subrogation TEXT DEFAULT 'Low',
-    vis INTEGER DEFAULT 0,
-    stp_category TEXT DEFAULT 'Manual Review',
-    created_at TIMESTAMP DEFAULT NOW()
-);
-
-CREATE TABLE IF NOT EXISTS intake_validation_result_output (
-    id SERIAL PRIMARY KEY,
-    validation_id TEXT,
-    claim_id TEXT,
-    completeness_score INTEGER,
-    coverage_status TEXT,
-    fraud_risk TEXT,
-    result TEXT,
-    created_at TIMESTAMP DEFAULT NOW()
-);
-
-CREATE TABLE IF NOT EXISTS policyholder_actions (
-    id SERIAL PRIMARY KEY,
-    claim_id TEXT,
-    claim_number TEXT,
-    action_type TEXT,
-    action_label TEXT,
-    details TEXT,
-    stage_at_action INTEGER,
-    performed_by TEXT DEFAULT 'Policyholder',
-    timestamp TIMESTAMP DEFAULT NOW()
-);
-"""
-
-
-MANDATORY_FIELDS = [
-    ("loss_type", "Type of Loss", "loss_details", 1, 1,
-     "What type of loss occurred (e.g. water damage, fire, theft)?", "text", None, 1),
-    ("cause_of_loss", "Cause of Loss", "loss_details", 1, 1,
-     "What caused the loss?", "text", None, 2),
-    ("date_of_loss", "Date of Loss", "loss_details", 1, 1,
-     "On what date did the loss occur?", "date", None, 3),
-    ("time_of_loss", "Time of Loss", "loss_details", 1, 1,
-     "Approximately what time did the loss occur?", "time", None, 4),
-    ("area_affected", "Area Affected", "loss_details", 1, 1,
-     "Which room or area was affected?", "text", None, 5),
-    ("occupancy_at_loss", "Occupancy at Time of Loss", "loss_details", 1, 1,
-     "Was the property occupied at the time of the loss?", "boolean", None, 6),
-    ("sudden_vs_gradual", "Sudden or Gradual", "loss_details", 1, 1,
-     "Did this happen suddenly or develop gradually over time?", "select",
-     '["Sudden", "Gradual"]', 7),
-    ("severity", "Severity", "loss_details", 1, 1,
-     "How severe would you say the damage is — minor, moderate, or severe?", "select",
-     '["Low", "Medium", "High", "Critical"]', 8),
-    ("insured_address", "Insured Property Address", "policy_details", 1, 0,
-     "What is the address of the insured property?", "text", None, 9),
-    ("policy_number", "Policy Number", "policy_details", 1, 0,
-     "What is your policy number?", "text", None, 10),
-]
-
-
-def init_db():
-    conn = get_db_connection()
-    try:
-        cur = conn.cursor()
-
-        # Execute schema (CREATE TABLE IF NOT EXISTS is idempotent)
-        cur.execute(SCHEMA_SQL)
-
-        # Column migrations — safely add columns that may be missing from
-        # tables created by an earlier schema version.
-        migrations = [
-            "ALTER TABLE claims ADD COLUMN IF NOT EXISTS complexity TEXT",
-            "ALTER TABLE claims ADD COLUMN IF NOT EXISTS ai_generated_summary TEXT",
-            "ALTER TABLE claims ADD COLUMN IF NOT EXISTS detected_cause TEXT",
-            "ALTER TABLE claims ADD COLUMN IF NOT EXISTS assigned_adjuster TEXT",
-            "ALTER TABLE claims ADD COLUMN IF NOT EXISTS assigned_vendor TEXT",
-            "ALTER TABLE claims ADD COLUMN IF NOT EXISTS police_report_number TEXT",
-            "ALTER TABLE claim_journey_master ADD COLUMN IF NOT EXISTS sub_status TEXT DEFAULT 'Under Review'",
-            "ALTER TABLE claim_journey_master ADD COLUMN IF NOT EXISTS overall_sla_status TEXT DEFAULT 'on_track'",
-        ]
-        for m in migrations:
-            cur.execute(m)
-
-        # Seed mandatory fields
-        for row in MANDATORY_FIELDS:
-            cur.execute(
-                """
-                INSERT INTO fnol_mandatory_fields (
-                    field_name, field_label, field_category, is_required,
-                    can_be_inferred, inference_question, input_type,
-                    input_options, display_order
-                ) VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s)
-                ON CONFLICT (field_name) DO NOTHING
-                """,
-                row,
-            )
-
-        # Seed sample policy
-        cur.execute(
-            """
-            INSERT INTO policy_details (policy_id, status, coverage_type, deductible, coverage_limit)
-            VALUES ('POL-1001', 'Active', 'Homeowners', 1000, 250000)
-            ON CONFLICT DO NOTHING
-            """
-        )
-        cur.execute(
-            """
-            INSERT INTO policy_details (policy_id, status, coverage_type, deductible, coverage_limit)
-            VALUES ('POL-1002', 'Active', 'Auto', 500, 50000)
-            ON CONFLICT DO NOTHING
-            """
-        )
-
-        # Seed sample claim
-        cur.execute("SELECT COUNT(*) FROM claims WHERE claim_number = 'CLM-2026-1001'")
-        count = cur.fetchone()["count"]
-        if count == 0:
-            cur.execute(
-                """
-                INSERT INTO claims (
-                    claim_number, policyholder_name, policy_number, loss_type,
-                    short_description, severity, complexity, estimated_cost,
-                    coverage, ai_confidence, status, location, date_of_loss
-                ) VALUES (
-                    'CLM-2026-1001', 'John Doe', 'POL-1001', 'Water Damage',
-                    'Burst pipe in kitchen caused flooding', 'Medium', 'Low', 8500,
-                    TRUE, 85, 'Open', '123 Main St, Springfield', '2026-05-20'
-                ) RETURNING id
-                """
-            )
-            claim_id = cur.fetchone()["id"]
-
-            cur.execute(
-                """
-                INSERT INTO claims_master (
-                    claim_number, customer_name, policy_number, policy_type,
-                    loss_date, coverage_limit, deductible, claim_status
-                ) VALUES (
-                    'CLM-2026-1001', 'John Doe', 'POL-1001', 'Homeowners',
-                    '2026-05-20', 250000, 1000, 'Open'
-                ) ON CONFLICT (claim_number) DO NOTHING
-                """
-            )
-
-            cur.execute("SELECT COUNT(*) FROM claim_journey_master WHERE claim_number = 'CLM-2026-1001'")
-            if cur.fetchone()["count"] == 0:
-                cur.execute(
-                    """
-                    INSERT INTO claim_journey_master (
-                        claim_id, claim_number, current_stage, current_stage_name,
-                        sub_status, overall_sla_status
-                    ) VALUES (%s, 'CLM-2026-1001', 1, 'Claim Initiated', 'Under Review', 'on_track')
-                    """,
-                    (claim_id,),
-                )
-
-        conn.commit()
-    except Exception:
-        conn.rollback()
-        raise
-    finally:
-        conn.close()
+@app.get("/health")
+async def health():
+    return {"status": "healthy", "agent": "feedback_agent"}
 
 
 if __name__ == "__main__":
-    init_db()
-    print("Database initialized on Azure PostgreSQL.")
+    uvicorn.run(app, host="0.0.0.0", port=AGENT_PORT)
 
-and also below one i have run 
 
-from db import get_db_connection
-conn = get_db_connection()
-try:
-   cur = conn.cursor()
-   # Add exclusions column if missing
-   cur.execute("""
-       ALTER TABLE policy_details
-       ADD COLUMN IF NOT EXISTS exclusions TEXT;
-   """)
-   # Seed exclusions for sample policy
-   cur.execute("""
-       UPDATE policy_details
-       SET exclusions = 'Flood Damage,Earthquake,Wear and Tear,Intentional Damage'
-       WHERE policy_id = 'POL-1001';
-   """)
-   # Create coverage verification results table
-   cur.execute("""
-       CREATE TABLE IF NOT EXISTS coverage_verification_results (
-           id SERIAL PRIMARY KEY,
-           claim_id TEXT UNIQUE,
-           policy_id TEXT,
-           coverage_verdict TEXT,
-           exclusion_triggered BOOLEAN DEFAULT FALSE,
-           exclusion_details TEXT,
-           net_payable REAL,
-           coverage_notes TEXT,
-           verified_at TIMESTAMP DEFAULT NOW()
-       );
-   """)
-   conn.commit()
-   print("Successfully applied policy coverage schema updates.")
-except Exception as e:
-   conn.rollback()
-   print("Error:", e)
-finally:
-   conn.close()
 
-
-
-from db import get_db_connection
-
-conn = get_db_connection()
-
-try:
-
-    cur = conn.cursor()
-
-    sample_records = [
-
-        (
-
-            "COMM-001",
-
-            "2",
-
-            "CLM-2026-1001",
-
-            "John Doe",
-
-            "Email",
-
-            "Outbound",
-
-            "Claim Acknowledgement",
-
-            "We have received your claim and assigned it for review.",
-
-            "Neutral",
-
-            "System",
-
-            5,
-
-            "Resolved",
-
-            False,
-
-            None,
-
-            None,
-
-        ),
-
-        (
-
-            "COMM-002",
-
-            "2",
-
-            "CLM-2026-1001",
-
-            "John Doe",
-
-            "Phone",
-
-            "Inbound",
-
-            "Customer Follow Up",
-
-            "Customer requested an update on claim progress.",
-
-            "Concerned",
-
-            "Agent Smith",
-
-            15,
-
-            "Resolved",
-
-            False,
-
-            None,
-
-            None,
-
-        ),
-
-        (
-
-            "COMM-003",
-
-            "2",
-
-            "CLM-2026-1001",
-
-            "John Doe",
-
-            "Email",
-
-            "Outbound",
-
-            "Document Request",
-
-            "Please upload photos and repair estimates for the damaged property.",
-
-            "Neutral",
-
-            "Claims Team",
-
-            10,
-
-            "Pending",
-
-            True,
-
-            "2026-06-20",
-
-            None,
-
-        ),
-
-    ]
-
-    for record in sample_records:
-
-        cur.execute(
-
-            """
-
-            INSERT INTO communication_history (
-
-                communication_id,
-
-                claim_id,
-
-                claim_number,
-
-                policyholder_name,
-
-                communication_type,
-
-                direction,
-
-                subject,
-
-                summary,
-
-                sentiment_detected,
-
-                handled_by,
-
-                response_time_minutes,
-
-                resolution_status,
-
-                follow_up_required,
-
-                follow_up_date,
-
-                attachments
-
-            )
-
-            VALUES (
-
-                %s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s
-
-            )
-
-            ON CONFLICT (communication_id) DO NOTHING
-
-            """,
-
-            record,
-
-        )
-
-    conn.commit()
-
-    print("communication_history populated successfully")
-
-except Exception as e:
-
-    conn.rollback()
-
-    print("ERROR:", e)
-
-finally:
-
-    conn.close()
- 
