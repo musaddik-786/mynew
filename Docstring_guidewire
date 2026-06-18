@@ -1,8 +1,17 @@
-now as you have all the code that i shared with you i want you to explain me in detail what are these doing 
-draft_status_notification
-get_communication_history
-get_sentiment_tracker
-update_sentiment_tracker
-write_customer_feedback
+In this video, I will walk you through the implementation of the Telematics User Story, integrated with SDLC AI in our PolicyCenter environment.
 
-if you dont ahve any of these codes let me know i will share you so that you can explain
+To begin, I’ll show you the telematics documentation. This was generated from a Word document, and as you can see, it has been divided into seven separate markdown documents. 
+Each document represents an individual User Story, allowing for better organization and modular implementation.
+
+In addition, the Datamodel Specific Driven Design includes data model definition. If we open the documents, you can see it is written in Markdown format, which contains the full technical specification required for implementation.
+
+The Datamodel document, we have the data model, which defines all the entities involved in the telematics solution. Each entity includes detailed implementation guidance, such as attributes, relationships, and request definitions needed for development.
+
+These documents also provide the end-to-end implementation details for the solution, including the list of entities that must be created.
+
+Once the Datamodel MD is executed in our IA Agent, we move into Guidewire Studio to implement the solution. As you can see, the source code has been successfully generated for each entity definition, as well as for typelists.
+
+For example, here we have the Telematics Enrollment Status typelist, which has been generated along with the corresponding source code.
+
+With this, we complete the first step of the process, which is the creation of the database model.
+
