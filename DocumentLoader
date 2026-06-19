@@ -1,356 +1,215 @@
-file_router.py
+Jarvis@JarvisPhase2:~/Musaddique$ curl -X POST http://localhost:8800/api/v1/policy_coverage/gw_search_policy \
+-H "Content-Type: application/json" \
+-d '{
+ "policy_number":"9802322834"
+}'
+{"found":true,"policy":{"gw_policy_id":"pc:Szq_QxhKKXcBR0LiuFhA3","policy_number":"9802322834","status":"Unknown","effective_date":"2025-07-16T04:01:00.000Z","expiration_date":"2026-07-16T04:01:00.000Z","coverage_types":[],"insured_name":"Hexa Tester","account_number":"8897503787","raw":{"count":1,"data":[{"attributes":{"accountNumber":"8897503787","effectiveDate":"2025-07-16T04:01:00.000Z","expirationDate":"2026-07-16T04:01:00.000Z","insuredName":"Hexa Tester","policyAddress":"2850 S. Delaware St.\nSan Mateo, CA 94403","policyId":"pc:Szq_QxhKKXcBR0LiuFhA3","policyNumber":"9802322834","producerOfRecordName":"Armstrong and Company","producerOfServiceName":"Armstrong and Company","product":{"displayName":"Manual Products","id":"Manual"}},"links":{"self":{"href":"/policy/v1/policies/pc:Szq_QxhKKXcBR0LiuFhA3","methods":["get"]}}}],"links":{"first":{"href":"/policy/v1/search/policies","methods":["post"]},"self":{"href":"/policy/v1/search/policies","methods":["post"]}}}},"error":null,"raw_gw_response":{"count":1,"data":[{"attributes":{"accountNumber":"8897503787","effectiveDate":"2025-07-16T04:01:00.000Z","expirationDate":"2026-07-16T04:01:00.000Z","insuredName":"Hexa Tester","policyAddress":"2850 S. Delaware St.\nSan Mateo, CA 94403","policyId":"pc:Szq_QxhKKXcBR0LiuFhA3","policyNumber":"9802322834","producerOfRecordName":"Armstrong and Company","producerOfServiceName":"Armstrong and Company","product":{"displayName":"Manual Products","id":"Manual"}},"links":{"self":{"href":"/policy/v1/policies/pc:Szq_QxhKKXcBR0LiuFhA3","methods":["get"]}}}],"links":{"first":{"href":"/policy/v1/search/policies","methods":["post"]},"self":{"href":"/policy/v1/search/policies",Jarvis@JarvisPhase2:~/Musaddique$ curl -X POST http://localhost:8800/api/v1/policy_coverage/policy/9802322834 \ge/policy/9802322834 \
+-H "Content-Type: application/json" \
+-d '{
+ "policy_number":"9802322834"
+}'
+{"detail":"Not Found"}Jarvis@JarvisPhase2:~/Musaddique$ 
+
+this is my router
+# """
+# policy_coverage_router.py
+# ──────────────────────────
+# Tool / Endpoint map:
+#   get_policy_details   GET  /api/policy_coverage/policy/{policy_id}
+#   verify_coverage      POST /api/policy_coverage/verify/{claim_id}
+# """
+
+# import logging
+# from fastapi import APIRouter
+
+# from policy_coverage_mcp import handler
+
+# from policy_coverage_mcp.models import (
+#     GwSearchPolicyRequest,
+#     GwReportLossRequest,
+#     # SaveCoverageVerificationRequest,
+#     # SaveLocalPolicyRequest,
+#     # UpdateClaimCoverageRequest,
+#     # VerifyCoverageRequest,
+# )
+# # from policy_coverage_mcp import coverage_handler
+
+
+# log = logging.getLogger(__name__)
+
+# router = APIRouter()
+
+
+# @router.get(
+#     "/api/policy_coverage/policy/{policy_id}",
+#     operation_id="get_policy_details",
+#     summary="Read policy_details for a policy",
+#     tags=["PolicyCoverage"],
+# )
+# def get_policy_details(policy_id: str):
+#     """Return the raw policy_details record for a given policy_id."""
+#     record = handler.get_policy_details(policy_id)
+#     if not record:
+#         return {"status": "not_found", "policy_id": policy_id}
+#     return record
 
 
 
+# @router.post(
+#     "/api/policy_coverage/verify/{claim_id}",
+#     operation_id="verify_coverage",
+#     summary="Verify whether a claim's loss is covered by the linked policy",
+#     tags=["PolicyCoverage"],
+# )
+# def verify_coverage(claim_id: str):
+#     """
+#     Compare the claim's loss_type/cause against the policy's coverage_type,
+#     deductible, limit, and exclusions.  Returns a coverage verdict and net
+#     payable amount, and persists the result to coverage_verification_results.
+#     """
+#     return handler.verify_coverage(claim_id)
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+"""
+policy_coverage_router.py
+──────────────────────────
+Tool / Endpoint map:
+  get_policy_details   GET  /api/policy_coverage/policy/{policy_id}
+  verify_coverage      POST /api/policy_coverage/verify/{claim_id}
+"""
+
+import logging
 from fastapi import APIRouter
-from fastapi.responses import JSONResponse
-from pydantic import BaseModel
-# from handler import extract_sanction_status
-import traceback
-import sys
+
+from policy_coverage_mcp import handler
+
+from policy_coverage_mcp.models import (
+    GwSearchPolicyRequest,
+    GwReportLossRequest,
+    SavePolicyDetailsRequest
+    # SaveCoverageVerificationRequest,
+    # SaveLocalPolicyRequest,
+    # UpdateClaimCoverageRequest,
+    # VerifyCoverageRequest,
+)
+# from policy_coverage_mcp import coverage_handler
 
 
-from fastapi import APIRouter
-from fastapi.responses import JSONResponse
-from pydantic import BaseModel
-from handler import process_sanction_and_eligibility
+log = logging.getLogger(__name__)
 
 router = APIRouter()
 
 
-class LicensingSanctionMCPRequest(BaseModel):
-    jsonrpc: str
-    id: int
-    result: dict
+@router.get(
+    "/api/policy_coverage/policy/{policy_id}",
+    operation_id="get_policy_details",
+    summary="Read policy_details for a policy",
+    tags=["PolicyCoverage"],
+)
+# def get_policy_details(policy_id: str):
+#     """Return the raw policy_details record for a given policy_id."""
+#     record = handler.get_policy_details(policy_id)
+#     if not record:
+#         return {"status": "not_found", "policy_id": policy_id}
+#     return record
+
+def gw_get_policy_coverages(req: GwSearchPolicyRequest):
+    """
+    Fetches the detailed policy record from Guidewire PolicyCenter,
+    including all lines of business and coverage clauses.
+    First searches by policy number, then fetches the full policy record.
+    """
+    result = handler.gw_get_policy_coverages(req.policy_number)
+    return result
+
 
 
 @router.post(
-    "/Licensing_&_Sanction_Checker_MCP",
-    operation_id="Licensing_&_Sanction_Checker_MCP"
+    "/gw_search_policy",
+    operation_id="gw_search_policy",
+    summary="Search Guidewire PolicyCenter for a policy by policy number",
 )
-async def licensing_sanction_checker_mcp(request: LicensingSanctionMCPRequest):
-
-    decision = process_sanction_and_eligibility(request.result)
-
-    return JSONResponse(
-        content={
-            "jsonrpc": request.jsonrpc,
-            "id": request.id,
-            "result": decision
-        },
-        status_code=200
-    )
-
-
-handler.py
-
-
-# from service import _require_env, _parse_blob_url
-from sqlmodel import Session, select
-from models import RefEligibilityCheck ,  AgentSubmissionIntake, AgentEligibility
-from db import get_engine
-from datetime import datetime
-from zoneinfo import ZoneInfo
-
-
-def process_sanction_and_eligibility(mcp_result: dict) -> dict:
+def gw_search_policy(req: GwSearchPolicyRequest):
     """
-    1. Extract is_Sanctioned (NO DEFAULTS)
-    2. Decide Eligible / Not Eligible
-    3. Fetch rule from ref_eligibility_check
-    4. Fetch latest reference_number from agent_submission_intake
-    5. Insert into agent_eligibility
-    6. Return combined response
+    Looks up a policy in Guidewire PolicyCenter using the policy number.
+    Returns found=True with the policy details if the policy exists,
+    or found=False with an error message if it does not.
+    Use this before any coverage verification to confirm the policyholder exists.
     """
-
-    # ---------- VALIDATION ----------
-    if not isinstance(mcp_result, dict):
-        return {
-            "status": False,
-            "error": "Invalid MCP result format (expected dict)"
-        }
-
-    results = mcp_result.get("results")
-    if not isinstance(results, list) or not results:
-        return {
-            "status": False,
-            "error": "'results' missing or empty in MCP response"
-        }
-
-    record = results[0]
-
-    if "is_Sanctioned" not in record:
-        return {
-            "status": False,
-            "error": "'is_Sanctioned' field missing in MCP response"
-        }
-
-    is_sanctioned = record["is_Sanctioned"]
-
-    if not isinstance(is_sanctioned, bool):
-        return {
-            "status": False,
-            "error": "'is_Sanctioned' must be boolean"
-        }
-
-    # ---------- DECISION ----------
-    eligibility_status = "Not Eligible" if is_sanctioned else "Eligible"
-
-    # ---------- DB FETCH ----------
-    engine = get_engine()
-    with Session(engine) as session:
-
-
-        # ---------- FETCH LATEST reference_number ----------
-        latest_ref_stmt = (
-            select(AgentSubmissionIntake)
-            .order_by(AgentSubmissionIntake.id.desc())
-        )
-        latest_submission = session.exec(latest_ref_stmt).first()
-
-        if not latest_submission or not latest_submission.reference_number:
-            return {
-                "status": False,
-                "error": "No reference_number found in agent_submission_intake"
-            }
-
-        reference_number = latest_submission.reference_number
+    result = handler.gw_search_policy(req.policy_number)
+    return result
 
 
 
-        stmt = select(RefEligibilityCheck).where(
-            RefEligibilityCheck.eligibility_status == eligibility_status
-        )
-        row = session.exec(stmt).first()
-
-        if not row:
-            return {
-                "status": False,
-                "error": f"No row found for Eligibility Status = '{eligibility_status}'"
-            }
-
-        try: 
-            # now = datetime.now()
-
-            # formatted_datetime = now.strftime("%d%m%Y %I:%M:%S %p")
-            # now_ist = datetime.now(ZoneInfo("Asia/Kolkata"))
-            india_tz = ZoneInfo("Asia/Kolkata")
-            current_time_ist = datetime.now(india_tz)
-            formatted_time = current_time_ist.strftime('%Y-%m-%d %H:%M:%S')
-            # formatted_datetime = now_ist.strftime("%d%m%Y %I:%M:%S %p")
-        
-        except Exception as e:
-            return{
-            "status" : False,
-            "error": f"Error generating date and time: {e}"
-            }
-
-
-        agent_row = AgentEligibility(
-           reference_number=reference_number,
-           eligibility_status=row.eligibility_status,
-           reason_summary=row.reason_summary,
-           line_of_business=row.line_of_business,
-           location_risk_zone=row.location_risk_zone,
-           business_type=row.business_type,
-           licensing_and_sanction_check=row.licensing_and_sanction_check,
-           source_of_check=row.source_of_check,
-           approval_flag = row.approval_flag,
-           eligibility_check_date_time= formatted_time
-        )
-
-        session.add(agent_row)
-        session.commit()
-        session.refresh(agent_row)
-
-
-
-        # ---------- RESPONSE ----------
-        return {
-            "status": True,
-            "reference_number" : reference_number,
-            "eligibility_status": row.eligibility_status,
-            "reason_summary": row.reason_summary,
-            "line_of_business": row.line_of_business,
-            "location_risk_zone": row.location_risk_zone,
-            "business_type": row.business_type,
-            "licensing_and_sanction_check": row.licensing_and_sanction_check,
-            "source_of_check": row.source_of_check,
-            "approval_flag": row.approval_flag,
-            "eligibility_check_date_time": formatted_time
-        }
-
-
-main.py
-
-
-
-from fastapi import FastAPI
-from fastapi.middleware.cors import CORSMiddleware
-from fastapi_mcp import FastApiMCP
-import uvicorn
-
-from file_router import router as file_router
-
-
-def apply_cors(app: FastAPI):
-    app.add_middleware(
-        CORSMiddleware,
-        allow_origins=["*"],
-        allow_methods=["*"],
-        allow_headers=["*"],
-    )
-
-
-def create_sub_app(title: str, description: str, version: str = "0.1.0") -> FastAPI:
-    sub = FastAPI(title=title, description=description, version=version)
-    apply_cors(sub)
-    return sub
-
-
-app = FastAPI()
-apply_cors(app)
-
-file_app = create_sub_app(
-    title="Licensing & Sanction Checker MCP",
-    description="Receives JSON blob URL from Data Extraction Agent and compares extracted name with local sanctions CSV."
+@router.post(
+    "/api/policy_coverage/verify/{claim_id}",
+    operation_id="verify_coverage",
+    summary="Verify whether a claim's loss is covered by the linked policy",
+    tags=["PolicyCoverage"],
 )
-file_app.include_router(file_router)
-
-# Expose ONLY this operation id via MCP HTTP (client will use transport='http')
-FastApiMCP(file_app, include_operations=["Licensing_&_Sanction_Checker_MCP"]).mount_http()
-
-# Mount the sub-app under this prefix (keep as-is per your request)
-app.mount("/api/v1/eligibility_agent", file_app)
-
-
-if __name__ == "__main__":
-    uvicorn.run(app, host="0.0.0.0", port=8601)
+def verify_coverage(claim_id: str):
+    """
+    Compare the claim's loss_type/cause against the policy's coverage_type,
+    deductible, limit, and exclusions.  Returns a coverage verdict and net
+    payable amount, and persists the result to coverage_verification_results.
+    """
+    return handler.verify_coverage(claim_id)
 
 
 
-db.py
+@router.post(
 
-import os
-from sqlmodel import create_engine
-from sqlalchemy.pool import NullPool
-from dotenv import load_dotenv
+    "/save_policy_details",
 
-load_dotenv()
+    operation_id="save_policy_details",
 
+    summary="Fetch policy from Guidewire and save locally",
 
-def get_engine():
-    return create_engine(
-        f"postgresql+psycopg://{os.getenv('PGUSER')}:{os.getenv('PGPASSWORD')}"
-        f"@{os.getenv('PGHOST')}:{os.getenv('PGPORT', '5432')}/{os.getenv('PGDATABASE')}",
-        poolclass=NullPool,
-        echo=False
+)
+
+def save_policy_details(req: SavePolicyDetailsRequest):
+
+    return handler.save_policy_details(
+
+        req.policy_number
+
     )
-
-
-models.py
-
-from sqlmodel import SQLModel, Field
-from sqlalchemy import Column, String, Boolean
-from typing import Optional
-
-
-
-# from typing import Optional
-from datetime import datetime
-from sqlalchemy import Column, TIMESTAMP
-# from sqlmodel import SQLModel, Field
-
-
-
-class RefEligibilityCheck(SQLModel, table=True):
-    __tablename__ = "ref_eligibility_check"
-
-
-    id: Optional[int] = Field(default=None, primary_key = True)
-    
-    reason_summary: Optional[str] = Field(
-        sa_column=Column("reason_summary", String)
-    )
-
-    line_of_business: Optional[str] = Field(
-        sa_column=Column("line_of_business", String)
-    )
-
-    location_risk_zone: Optional[str] = Field(
-        sa_column=Column("location_risk_zone", String)
-    )
-
-    business_type: Optional[str] = Field(
-        sa_column=Column("business_type", String)
-    )
-
-    licensing_and_sanction_check: Optional[str] = Field(
-        sa_column=Column("licensing_sanction_check", String)
-    )
-
-    source_of_check: Optional[str] = Field(
-        sa_column=Column("source_of_check", String)
-    )
-
-    eligibility_status: Optional[str] = Field(
-        sa_column=Column("eligibility_status", String)
-    )
-
-    approval_flag: Optional[bool] = Field(
-        sa_column=Column("approval_flag", Boolean)
-    )
-
-class AgentSubmissionIntake(SQLModel, table=True):
-    __tablename__ = "agent_submission_intake"
-
-    id:Optional[int] = Field(default=None, primary_key=True)
-
-    reference_number: Optional[str] = Field(default=None)
-
-
-class AgentEligibility(SQLModel, table=True):
-    __tablename__="agent_eligibility"
-
-    id: Optional [int] = Field(default = None, primary_key = True)
-
-    reference_number: Optional[str] = Field(
-    sa_column=Column("reference_number", String)
-    )
-
-    eligibility_status: Optional[str] = Field(
-        sa_column=Column("eligibility_status", String)
-    )  
-
-    reason_summary: Optional[str] = Field(
-        sa_column=Column("reason_summary", String)
-    )
-
-    line_of_business: Optional[str] = Field(
-       sa_column=Column("line_of_business", String)
-   )
-
-    location_risk_zone: Optional[str] = Field(
-       sa_column=Column("location_risk_zone", String)
-   )
-
-    business_type: Optional[str] = Field(
-       sa_column=Column("business_type", String)
-   )   
  
-    licensing_and_sanction_check: Optional[str] = Field(
-       sa_column=Column("licensing_sanction_check", String)
-   )
+@router.get(
 
-    source_of_check: Optional[str] = Field(
-       sa_column=Column("source_of_check", String)
-   )
+    "/get_policy_details/{policy_id}",
 
-    approval_flag: Optional[bool] = Field(
-       sa_column=Column("approval_flag", Boolean)
-   )
+    operation_id="get_policy_details",
 
-    eligibility_check_date_time : Optional[datetime] = Field(
-    default=None,
-    sa_column=Column("eligibility_check_date_time", TIMESTAMP)
-   )
+    summary="Read policy details from local table",
+
+)
+
+def get_policy_details(policy_id: str):
+
+    return handler.get_policy_details(policy_id)
+ 
