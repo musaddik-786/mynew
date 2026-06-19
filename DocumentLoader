@@ -1,73 +1,13 @@
-Jarvis@JarvisPhase2:~/Musaddique$ curl -X POST http://localhost:8800/api/v1/policy_coverage/gw_search_policy \
--H "Content-Type: application/json" \
--d '{
- "policy_number":"9802322834"
-}'
-{"found":true,"policy":{"gw_policy_id":"pc:Szq_QxhKKXcBR0LiuFhA3","policy_number":"9802322834","status":"Unknown","effective_date":"2025-07-16T04:01:00.000Z","expiration_date":"2026-07-16T04:01:00.000Z","coverage_types":[],"insured_name":"Hexa Tester","account_number":"8897503787","raw":{"count":1,"data":[{"attributes":{"accountNumber":"8897503787","effectiveDate":"2025-07-16T04:01:00.000Z","expirationDate":"2026-07-16T04:01:00.000Z","insuredName":"Hexa Tester","policyAddress":"2850 S. Delaware St.\nSan Mateo, CA 94403","policyId":"pc:Szq_QxhKKXcBR0LiuFhA3","policyNumber":"9802322834","producerOfRecordName":"Armstrong and Company","producerOfServiceName":"Armstrong and Company","product":{"displayName":"Manual Products","id":"Manual"}},"links":{"self":{"href":"/policy/v1/policies/pc:Szq_QxhKKXcBR0LiuFhA3","methods":["get"]}}}],"links":{"first":{"href":"/policy/v1/search/policies","methods":["post"]},"self":{"href":"/policy/v1/search/policies","methods":["post"]}}}},"error":null,"raw_gw_response":{"count":1,"data":[{"attributes":{"accountNumber":"8897503787","effectiveDate":"2025-07-16T04:01:00.000Z","expirationDate":"2026-07-16T04:01:00.000Z","insuredName":"Hexa Tester","policyAddress":"2850 S. Delaware St.\nSan Mateo, CA 94403","policyId":"pc:Szq_QxhKKXcBR0LiuFhA3","policyNumber":"9802322834","producerOfRecordName":"Armstrong and Company","producerOfServiceName":"Armstrong and Company","product":{"displayName":"Manual Products","id":"Manual"}},"links":{"self":{"href":"/policy/v1/policies/pc:Szq_QxhKKXcBR0LiuFhA3","methods":["get"]}}}],"links":{"first":{"href":"/policy/v1/search/policies","methods":["post"]},"self":{"href":"/policy/v1/search/policies",Jarvis@JarvisPhase2:~/Musaddique$ curl -X POST http://localhost:8800/api/v1/policy_coverage/policy/9802322834 \ge/policy/9802322834 \
--H "Content-Type: application/json" \
--d '{
- "policy_number":"9802322834"
-}'
-{"detail":"Not Found"}Jarvis@JarvisPhase2:~/Musaddique$ 
-
-this is my router
+now my router is correct right?
 
 
 
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-"""
-policy_coverage_router.py
-──────────────────────────
-Tool / Endpoint map:
-  get_policy_details   GET  /api/policy_coverage/policy/{policy_id}
-  verify_coverage      POST /api/policy_coverage/verify/{claim_id}
-"""
-
-import logging
-from fastapi import APIRouter
-
-from policy_coverage_mcp import handler
-
-from policy_coverage_mcp.models import (
-    GwSearchPolicyRequest,
-    GwReportLossRequest,
-    SavePolicyDetailsRequest
-    # SaveCoverageVerificationRequest,
-    # SaveLocalPolicyRequest,
-    # UpdateClaimCoverageRequest,
-    # VerifyCoverageRequest,
+@router.post(
+   "/gw_get_policy_coverages",
+   operation_id="gw_get_policy_coverages",
+   summary="Fetch policy coverage details from Guidewire",
 )
-# from policy_coverage_mcp import coverage_handler
-
-
-log = logging.getLogger(__name__)
-
-router = APIRouter()
-
-
-@router.get(
-    "/api/policy_coverage/policy/{policy_id}",
-    operation_id="get_policy_details",
-    summary="Read policy_details for a policy",
-    tags=["PolicyCoverage"],
-)
-
 def gw_get_policy_coverages(req: GwSearchPolicyRequest):
     """
     Fetches the detailed policy record from Guidewire PolicyCenter,
@@ -143,4 +83,6 @@ def save_policy_details(req: SavePolicyDetailsRequest):
 def get_policy_details(policy_id: str):
 
     return handler.get_policy_details(policy_id)
- 
+
+
+now tell me how to test using curl again from start
