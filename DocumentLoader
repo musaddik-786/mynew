@@ -1,254 +1,122 @@
-"""
-server.py — Policy Coverage Verification Agent (local-DB)
-───────────────────────────────────────────────────────────
-LangGraph agent that verifies whether a claim's reported loss falls within
-the linked policy's coverage terms, deductible, limit, and exclusions.
+still nothing
+(venv) Jarvis@JarvisPhase2:~/Musaddique/Jarvis_claims_agents_v2/PolicyholderAgents/PolicyCoverageVerificationAgent$ python3 server.py 
+INFO:     Started server process [29173]
+INFO:     Waiting for application startup.
+INFO:     Application startup complete.
+INFO:     Uvicorn running on http://0.0.0.0:8807 (Press CTRL+C to quit)
+2026-06-19 10:17:39,652 | INFO     | httpx | HTTP Request: POST http://localhost:8800/api/v1/policy_coverage/mcp "HTTP/1.1 200 OK"
+2026-06-19 10:17:39,652 | INFO     | mcp.client.streamable_http | Received session ID: a49d644ecd754160abc9265da3bf3789
+2026-06-19 10:17:39,653 | INFO     | mcp.client.streamable_http | Negotiated protocol version: 2025-11-25
+2026-06-19 10:17:39,658 | INFO     | httpx | HTTP Request: POST http://localhost:8800/api/v1/policy_coverage/mcp "HTTP/1.1 202 Accepted"
+2026-06-19 10:17:39,665 | INFO     | httpx | HTTP Request: POST http://localhost:8800/api/v1/policy_coverage/mcp "HTTP/1.1 200 OK"
+2026-06-19 10:17:39,668 | INFO     | httpx | HTTP Request: DELETE http://localhost:8800/api/v1/policy_coverage/mcp "HTTP/1.1 200 OK"
+2026-06-19 10:17:39,669 | INFO     | policy_coverage_agent | Tools loaded from MCP: ['verify_coverage', 'get_policy_details']
+2026-06-19 10:17:40,076 | WARNING  | policy_coverage_agent | Phoenix prompt load failed (Phoenix not configured) — using fallback prompt
+INFO:     127.0.0.1:33648 - "POST /chat HTTP/1.1" 200 OK
+2026-06-19 10:17:40,727 | INFO     | httpx | HTTP Request: POST https://agenticinsuranceopenai.openai.azure.com/openai/deployments/gpt-4.1-jarvis/chat/completions?api-version=2025-01-01-preview "HTTP/1.1 200 OK"
+2026-06-19 10:17:59,408 | INFO     | httpx | HTTP Request: POST http://localhost:8800/api/v1/policy_coverage/mcp "HTTP/1.1 200 OK"
+2026-06-19 10:17:59,408 | INFO     | mcp.client.streamable_http | Received session ID: 0138a7afc14546f38fb60275e830b34b
+2026-06-19 10:17:59,409 | INFO     | mcp.client.streamable_http | Negotiated protocol version: 2025-11-25
+2026-06-19 10:17:59,412 | INFO     | httpx | HTTP Request: POST http://localhost:8800/api/v1/policy_coverage/mcp "HTTP/1.1 202 Accepted"
+2026-06-19 10:17:59,418 | INFO     | httpx | HTTP Request: POST http://localhost:8800/api/v1/policy_coverage/mcp "HTTP/1.1 200 OK"
+2026-06-19 10:17:59,421 | INFO     | httpx | HTTP Request: DELETE http://localhost:8800/api/v1/policy_coverage/mcp "HTTP/1.1 200 OK"
+2026-06-19 10:17:59,422 | INFO     | policy_coverage_agent | Tools loaded from MCP: ['verify_coverage', 'get_policy_details']
+2026-06-19 10:17:59,483 | WARNING  | policy_coverage_agent | Phoenix prompt load failed (Phoenix not configured) — using fallback prompt
+INFO:     127.0.0.1:49360 - "POST /chat HTTP/1.1" 200 OK
+2026-06-19 10:18:00,152 | INFO     | httpx | HTTP Request: POST https://agenticinsuranceopenai.openai.azure.com/openai/deployments/gpt-4.1-jarvis/chat/completions?api-version=2025-01-01-preview "HTTP/1.1 200 OK"
 
-Port: 8807
-MCP : http://localhost:8800/api/v1/policy_coverage/mcp
+Jarvis@JarvisPhase2:~/Musaddique$ curl -X POST http://localhost:8807/chat -H "Content-Type: application/json" -d '{"message":"hello"}'
+data: Hello
 
-Run:
-    py -3 server.py
-"""
+data: !
 
-import json
-import logging
-import os
-import sys
-import time
-import traceback
-from datetime import datetime, timedelta
-from typing import Annotated, TypedDict
+data:  How
 
-import uvicorn
-from dotenv import load_dotenv, find_dotenv
-from fastapi import FastAPI, Request
-from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import StreamingResponse
-from langchain_core.messages import AIMessage, SystemMessage
-from langchain_mcp_adapters.client import MultiServerMCPClient
-from langchain_openai.chat_models import AzureChatOpenAI
-from langgraph.graph import END, START, StateGraph
-from langgraph.graph.message import add_messages
-from langgraph.prebuilt import ToolNode
+data:  can
 
-load_dotenv(find_dotenv())
+data:  I
 
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s | %(levelname)-8s | %(name)s | %(message)s",
-    stream=sys.stdout,
-    force=True,
-)
-logger = logging.getLogger("policy_coverage_agent")
+data:  assist
 
-PHOENIX_API_KEY = os.getenv("PHOENIX_API_KEY", "")
-PHOENIX_ENDPOINT = os.getenv("PHOENIX_ENDPOINT", "")
-MCP_URL = os.getenv("MCP_URL", "http://localhost:8800/api/v1/policy_coverage/mcp")
-AGENT_PORT = int(os.getenv("AGENT_PORT", "8807"))
+data:  you
 
-config_mcp_server = {
-    "policy_coverage_mcp": {
-        "url": MCP_URL,
-        "transport": "streamable_http",
-        "timeout": timedelta(seconds=120),
-        "sse_read_timeout": timedelta(seconds=600),
-    }
-}
+data:  with
 
-app = FastAPI(title="Policy Coverage Verification Agent")
+data:  policy
 
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
+data:  coverage
 
+data:  verification
 
-class State(TypedDict):
-    messages: Annotated[list, add_messages]
+data:  today
 
+data: ?
 
-def router(state: State):
-    last = state["messages"][-1]
-    if isinstance(last, AIMessage) and getattr(last, "tool_calls", None):
-        return "tools"
-    if isinstance(last, AIMessage) and last.content:
-        if "Continue" in last.content:
-            return "tools"
-        if "End" in last.content:
-            return "End"
-    return "End"
+data:  If
 
+data:  you
 
-# _FALLBACK_PROMPT = """
-# You are the Policy Coverage Verification Agent for an insurance claims
-# platform, assisting a Policyholder.
+data: ’d
 
-# Given a claim_id, your workflow is:
+data:  like
 
-# 1. Call verify_coverage with the claim_id. This will:
-#    - Look up the claim's loss_type and cause_of_loss.
-#    - Look up the linked policy's coverage_type, deductible, limit, and exclusions.
-#    - Use an LLM to determine the coverage verdict.
-#    - Compute net_payable after deductible and limit.
-#    - Persist the result to coverage_verification_results.
+data:  me
 
-# 2. Explain to the policyholder:
-#    - Whether their loss is Covered / Partially Covered / Not Covered.
-#    - Any exclusions triggered and why.
-#    - The deductible that applies and the net payable amount.
-#    - Recommended next steps.
+data:  to
 
-# When you have completed the task, end your response with "End".
-# """
+data:  verify
 
+data:  the
 
-_FALLBACK_PROMPT = """
-You are the Policy Coverage Verification Agent.
-When a user asks to verify coverage:
-1. Determine the claim number.
-2. Retrieve the claim information.
-3. Extract the policy number from the claim.
-4. Call gw_search_policy using the policy number.
-5. If policy exists:
-  call gw_get_policy_coverages.
-6. Call save_policy_details to persist
-  policy information locally.
-7. Call get_policy_details to confirm
-  policy information is available.
-8. Call verify_coverage with the claim id.
-9. Explain:
-  - Coverage verdict
-  - Coverage limit
-  - Deductible
-  - Exclusions
-  - Net payable amount
-End your response with "End".
-"""
+data:  coverage
 
+data:  on
 
-def load_prompt() -> str:
-    if not PHOENIX_ENDPOINT:
-        raise RuntimeError("Phoenix not configured")
-    from phoenix.client import Client
-    client = Client(base_url=PHOENIX_ENDPOINT, api_key=PHOENIX_API_KEY)
-    prompt = client.prompts.get(name="policy_coverage_agent", label="production")
-    prompt_set = prompt._template["messages"]
-    system_msg = next(
-        (item["content"][0]["text"] for item in prompt_set if item.get("role") == "system"), None
-    )
-    if not system_msg:
-        raise ValueError("System prompt is empty or missing in Phoenix")
-    return system_msg
+data:  a
 
+data:  claim
 
-def create_graph(model, tools, prompt):
-    graph_builder = StateGraph(State)
-    llm_with_tools = model.bind_tools(tools)
+data: ,
 
-    async def agent_node(state: State):
-        all_messages = [SystemMessage(content=prompt)] + state["messages"]
-        message = await llm_with_tools.ainvoke(all_messages)
-        return {"messages": [message]}
+data:  please
 
-    graph_builder.add_node("agent", agent_node)
-    graph_builder.add_node("tools", ToolNode(tools=tools))
-    graph_builder.add_edge(START, "agent")
-    graph_builder.add_conditional_edges("agent", router, {"tools": "tools", "End": END})
-    graph_builder.add_edge("tools", "agent")
-    return graph_builder.compile()
+data:  provide
 
+data:  the
 
-async def get_tools():
-    client = MultiServerMCPClient(config_mcp_server)
-    tools = await client.get_tools()
-    logger.info("Tools loaded from MCP: %s", [t.name for t in tools])
-    return tools
+data:  claim
 
+data:  number
 
-async def stream_graph(graph, initial_state, config):
-    async for event in graph.astream_events(initial_state, config=config, version="v2"):
-        kind = event.get("event", "")
-        if kind == "on_chat_model_stream":
-            chunk = event["data"].get("chunk")
-            if chunk and hasattr(chunk, "content") and chunk.content:
-                yield f"data: {chunk.content}\n\n"
-        elif kind == "on_tool_start":
-            yield f"data: [Tool: {event.get('name', 'unknown_tool')}] Starting...\n\n"
-        elif kind == "on_tool_end":
-            yield f"data: [Tool: {event.get('name', 'unknown_tool')}] Done\n\n"
+data:  or
 
+data:  relevant
 
-@app.post("/chat")
-async def chat_stream(request: Request):
-    load_dotenv(find_dotenv())
-    tools = await get_tools()
+data:  details
 
-    model = AzureChatOpenAI(
-        api_key=os.getenv("AZURE_OPENAI_API_KEY"),
-        api_version=os.getenv("AZURE_OPENAI_API_VERSION"),
-        azure_deployment=os.getenv("AZURE_OPENAI_CHAT_DEPLOYMENT"),
-        azure_endpoint=os.getenv("AZURE_OPENAI_ENDPOINT"),
-    )
+data: .
 
-    try:
-        system_prompt = load_prompt()
-    except Exception as e:
-        logger.warning("Phoenix prompt load failed (%s) — using fallback prompt", e)
-        system_prompt = _FALLBACK_PROMPT
+Jarvis@JarvisPhase2:~/Musaddique$ (venv) Jarvis@JarvisPhase2:~/Musaddique/Jarvis_claims_agents_v2/PolicyholderAgents/MCP$ cler
+bash: cler: command not found
+(venv) Jarvis@JarvisPhase2:~/Musaddique/Jarvis_claims_agents_v2/PolicyholderAgents/MCP$ python3 main.py 
+/home/Jarvis/Musaddique/Jarvis_claims_agents_v2/PolicyholderAgents/MCP/main.py:240: DeprecationWarning: 
+        on_event is deprecated, use lifespan event handlers instead.
 
-    body = await request.json()
-    user_message = body.get("message", "Verify policy coverage for this claim")
-    graph = create_graph(model=model, tools=tools, prompt=system_prompt)
-
-    async def generate():
-        start = time.time()
-        last_event_at = start
-        last_tool = None
-        try:
-            async for event in stream_graph(
-                graph=graph,
-                initial_state={"messages": [user_message]},
-                config={"recursion_limit": 250},
-            ):
-                last_event_at = time.time()
-                if isinstance(event, str) and event.startswith("data: [Tool:"):
-                    try:
-                        last_tool = event.split("[Tool:", 1)[1].split("]", 1)[0]
-                    except Exception:
-                        pass
-                yield event
-        except BaseException as e:
-            elapsed = time.time() - start
-            since_last = time.time() - last_event_at
-            err = {
-                "exception_class": type(e).__name__,
-                "message": str(e),
-                "elapsed_total_seconds": round(elapsed, 2),
-                "seconds_since_last_event": round(since_last, 2),
-                "last_tool_invoked": last_tool,
-                "traceback": traceback.format_exc(),
-                "timestamp_utc": datetime.utcnow().isoformat(),
-            }
-            logger.error("AGENT_ERROR %s", json.dumps(err, default=str))
-            try:
-                yield f"data: [AGENT_ERROR] {json.dumps(err, default=str)}\n\n"
-            except Exception:
-                pass
-            import asyncio
-            if isinstance(e, asyncio.CancelledError):
-                raise
-
-    return StreamingResponse(generate(), media_type="text/event-stream")
-
-
-@app.get("/health")
-async def health():
-    return {"status": "healthy", "agent": "policy_coverage_agent"}
-
-
-if __name__ == "__main__":
-    uvicorn.run(app, host="0.0.0.0", port=AGENT_PORT)
+        Read more about it in the
+        [FastAPI docs for Lifespan Events](https://fastapi.tiangolo.com/advanced/events/).
+        
+  @app.on_event("startup")
+INFO:     Started server process [29136]
+INFO:     Waiting for application startup.
+INFO:     Application startup complete.
+INFO:     Uvicorn running on http://0.0.0.0:8800 (Press CTRL+C to quit)
+INFO:     127.0.0.1:42710 - "POST /api/v1/policy_coverage/mcp HTTP/1.1" 200 OK
+INFO:     127.0.0.1:42710 - "POST /api/v1/policy_coverage/mcp HTTP/1.1" 202 Accepted
+INFO:     127.0.0.1:42722 - "POST /api/v1/policy_coverage/mcp HTTP/1.1" 200 OK
+INFO:     127.0.0.1:42722 - "DELETE /api/v1/policy_coverage/mcp HTTP/1.1" 200 OK
+INFO:     127.0.0.1:42712 - "GET /api/v1/policy_coverage/mcp HTTP/1.1" 200 OK
+INFO:     127.0.0.1:39170 - "POST /api/v1/policy_coverage/mcp HTTP/1.1" 200 OK
+INFO:     127.0.0.1:39170 - "POST /api/v1/policy_coverage/mcp HTTP/1.1" 202 Accepted
+INFO:     127.0.0.1:39190 - "POST /api/v1/policy_coverage/mcp HTTP/1.1" 200 OK
+INFO:     127.0.0.1:39190 - "DELETE /api/v1/policy_coverage/mcp HTTP/1.1" 200 OK
+INFO:     127.0.0.1:39180 - "GET /api/v1/policy_coverage/mcp HTTP/1.1" 200 OK
