@@ -1,11 +1,285 @@
-Jarvis@JarvisPhase2:~/Musaddique$ curl -X POST http://localhost:8800/api/v1/policy_coverage/save_policy_details \details \
--H "Content-Type: application/json" \
--d '{
- "policy_number":"9802322834"
-}'
-{"saved":true,"policy_id":"9802322834","coverage_type":"Homeowners","deductible":1000,"coverage_limit":250000,"exclusions":"Flood Damage,Earthquake"}Jarvis@JarvisPhase2:~/Musaddique$ 
+Jarvis@JarvisPhase2:~/Musaddique$ curl -s -N -X POST http://localhost:8807/chat -H "Content-Type: application/json" -d '{"message":"Verify coverage for claim CLM-2026-1001"}'
+data: [Tool: verify_coverage] Starting...
 
-in the table but status is unknown man 
-Jarvis@JarvisPhase2:~/Musaddique$ curl http://localhost:8800/api/v1/policy_coverage/get_policy_details/9802322834802322834
- 
-{"id":93,"policy_id":"9802322834","status":"Unknown","coverage_type":"Homeowners","deductible":1000.0,"coverage_limit":250000.0,"created_at":"2026-06-19T08:36:26.605747","exclusions":"Flood Damage,Earthquake"}Jarvis@JarvisPhase2:~/Musaddique$ 
+data: [Tool: verify_coverage] Done
+
+data: [Tool: get_policy_details] Starting...
+
+data: [Tool: verify_coverage] Starting...
+
+data: [Tool: get_policy_details] Done
+
+data: [Tool: verify_coverage] Done
+
+data: Coverage
+
+data:  for
+
+data:  claim
+
+data:  CL
+
+data: M
+
+data: -
+
+data: 202
+
+data: 6
+
+data: -
+
+data: 100
+
+data: 1
+
+data:  under
+
+data:  policy
+
+data:  
+
+data: 980
+
+data: 232
+
+data: 283
+
+data: 4
+
+data:  has
+
+data:  been
+
+data:  verified
+
+data: :
+
+
+
+data: -
+
+data:  Coverage
+
+data:  verdict
+
+data: :
+
+data:  Covered
+
+data: 
+
+
+data: -
+
+data:  Coverage
+
+data:  limit
+
+data: :
+
+data:  $
+
+data: 250
+
+data: ,
+
+data: 000
+
+data: 
+
+
+data: -
+
+data:  Ded
+
+data: uct
+
+data: ible
+
+data: :
+
+data:  $
+
+data: 1
+
+data: ,
+
+data: 000
+
+data: 
+
+
+data: -
+
+data:  Ex
+
+data: clusions
+
+data: :
+
+data:  Flood
+
+data:  Damage
+
+data: ,
+
+data:  Earth
+
+data: quake
+
+data: 
+
+
+data: -
+
+data:  Net
+
+data:  payable
+
+data:  amount
+
+data: :
+
+data:  $
+
+data: 7
+
+data: ,
+
+data: 500
+
+data: 
+
+
+
+data: Explanation
+
+data: :
+
+
+data: The
+
+data:  cause
+
+data:  of
+
+data:  loss
+
+data:  is
+
+data:  water
+
+data:  damage
+
+data:  (
+
+data: not
+
+data:  caused
+
+data:  by
+
+data:  flood
+
+data:  or
+
+data:  earthquake
+
+data: ).
+
+data:  These
+
+data:  are
+
+data:  specifically
+
+data:  excluded
+
+data: ,
+
+data:  but
+
+data:  since
+
+data:  the
+
+data:  exclusion
+
+data:  is
+
+data:  not
+
+data:  triggered
+
+data: ,
+
+data:  the
+
+data:  claim
+
+data:  is
+
+data:  covered
+
+data:  under
+
+data:  your
+
+data:  Home
+
+data: owners
+
+data:  policy
+
+data: ,
+
+data:  subject
+
+data:  to
+
+data:  a
+
+data:  $
+
+data: 1
+
+data: ,
+
+data: 000
+
+data:  deductible
+
+data: .
+
+data:  The
+
+data:  net
+
+data:  payable
+
+data:  after
+
+data:  deductible
+
+data:  is
+
+data:  $
+
+data: 7
+
+data: ,
+
+data: 500
+
+data: .
+
+
+
+data: End
+
+data: .
+
+Jarvis@JarvisPhase2:~/Musaddique$ 
+
+I think for end to end it did not worked as expected
