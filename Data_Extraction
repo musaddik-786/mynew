@@ -1,5 +1,4 @@
 
-
 """
 handler.py — Policy Coverage Verification (local-DB)
 ──────────────────────────────────────────────────────
@@ -269,14 +268,59 @@ def save_policy_details(policy_number: str) -> dict:
    if not search_result["found"]:
        return search_result
    policy = search_result["policy"]
+
+   gw_policy_id = policy.get("gw_policy_id")
+   effective_date = policy.get("effective_date")
+   expiration_date = policy.get("expiration_date")
+   insured_name = policy.get("insured_name")
+   account_number = policy.get("account_number")
+   policy_address = (
+    policy.get("raw", {})
+    .get("data", [{}])[0]
+    .get("attributes", {})
+    .get("policyAddress")
+    )
+
    gw_policy_id = policy["gw_policy_id"]
    coverage_result = gw_get_policy_coverages(policy_number)
-   if not coverage_result.get("found"):
+
+   attrs = (
+   coverage_result
+   .get("coverage_detail", {})
+   .get("data", {})
+   .get("attributes", {})
+)
+
+state = attrs.get("baseState", {}).get("name")
+term_type = attrs.get("termType", {}).get("name")
+premium_amount = (
+   attrs.get("totalPremium", {})
+   .get("amount")
+)
+currency = (
+   attrs.get("preferredCoverageCurrency", {})
+   .get("code")
+)
+city = (
+   attrs.get("policyAddress", {})
+   .get("city")
+)
+country = (
+   attrs.get("policyAddress", {})
+   .get("country")
+)
+postal_code = (
+   attrs.get("policyAddress", {})
+   .get("postalCode")
+)
+
+
+if not coverage_result.get("found"):
         status = "Unknown"
-   else:
+else:
         status = "Active"
 
-   product_name = (
+product_name = (
        coverage_result
        .get("coverage_detail", {})
        .get("data", {})
@@ -284,46 +328,107 @@ def save_policy_details(policy_number: str) -> dict:
        .get("product", {})
        .get("displayName", "Unknown")
    )
-   coverage_type = (
+coverage_type = (
        "Homeowners"
        if "Homeowners" in product_name
        else product_name
    )
 #    status = policy.get("status") or "Active"
-   deductible = 1000
-   coverage_limit = 250000
-   exclusions = "Flood Damage,Earthquake"
-   conn = get_db_connection()
-   try:
+deductible = 1000
+coverage_limit = 250000
+exclusions = "Flood Damage,Earthquake"
+conn = get_db_connection()
+try:
        cur = conn.cursor()
        cur.execute(
-           """
-           INSERT INTO policy_details
-           (
-               policy_id,
-               status,
-               coverage_type,
-               deductible,
-               coverage_limit,
-               exclusions
-           )
-           VALUES
+        #    """
+        #    INSERT INTO policy_details
+        #    (
+        #        policy_id,
+        #        status,
+        #        coverage_type,
+        #        deductible,
+        #        coverage_limit,
+        #        exclusions
+        #    )
+        #    VALUES
+        #    (%s,%s,%s,%s,%s,%s)
+        #    ON CONFLICT (policy_id)
+        #    DO UPDATE SET
+        #        status = EXCLUDED.status,
+        #        coverage_type = EXCLUDED.coverage_type,
+        #        deductible = EXCLUDED.deductible,
+        #        coverage_limit = EXCLUDED.coverage_limit,
+        #        exclusions = EXCLUDED.exclusions
+        #    """,
+        """
+        INSERT INTO policy_details
+(
+   policy_id,
+   gw_policy_id,
+   status,
+   coverage_type,
+   deductible,
+   coverage_limit,
+   exclusions,
+   effective_date,
+   expiration_date,
+   insured_name,
+   account_number,
+   policy_address,
+   state,
+   term_type,
+   premium_amount,
+   currency,
+   city,
+   country,
+   postal_code
+)
+#    VALUES
            (%s,%s,%s,%s,%s,%s)
            ON CONFLICT (policy_id)
            DO UPDATE SET
-               status = EXCLUDED.status,
-               coverage_type = EXCLUDED.coverage_type,
-               deductible = EXCLUDED.deductible,
-               coverage_limit = EXCLUDED.coverage_limit,
-               exclusions = EXCLUDED.exclusions
-           """,
+gw_policy_id = EXCLUDED.gw_policy_id,
+effective_date = EXCLUDED.effective_date,
+expiration_date = EXCLUDED.expiration_date,
+insured_name = EXCLUDED.insured_name,
+account_number = EXCLUDED.account_number,
+policy_address = EXCLUDED.policy_address,
+state = EXCLUDED.state,
+term_type = EXCLUDED.term_type,
+premium_amount = EXCLUDED.premium_amount,
+currency = EXCLUDED.currency,
+city = EXCLUDED.city,
+country = EXCLUDED.country,
+postal_code = EXCLUDED.postal_code
+
+        """,
            (
+            #    policy_number,
+            #    status,
+            #    coverage_type,
+            #    deductible,
+            #    coverage_limit,
+            #    exclusions,
                policy_number,
-               status,
-               coverage_type,
-               deductible,
-               coverage_limit,
-               exclusions,
+   gw_policy_id,
+   status,
+   coverage_type,
+   deductible,
+   coverage_limit,
+   exclusions,
+   effective_date,
+   expiration_date,
+   insured_name,
+   account_number,
+   policy_address,
+   state,
+   term_type,
+   premium_amount,
+   currency,
+   city,
+   country,
+   postal_code,
            ),
        )
        conn.commit()
@@ -335,7 +440,7 @@ def save_policy_details(policy_number: str) -> dict:
            "coverage_limit": coverage_limit,
            "exclusions": exclusions,
        }
-   finally:
+finally:
        conn.close()
 
 
@@ -356,3 +461,4 @@ def get_policy_details(policy_id: str) -> dict:
        return row_to_dict(row)
    finally:
        conn.close()
+i think there is some issue return outside funciton something like that also check indednations
