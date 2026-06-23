@@ -1,803 +1,589 @@
-(venv) Jarvis@JarvisPhase2:~/Musaddique/Jarvis_claims_agents_v2/PolicyholderAgents/MCP$ python3 main.py 
-/home/Jarvis/Musaddique/Jarvis_claims_agents_v2/PolicyholderAgents/MCP/main.py:240: DeprecationWarning: 
-        on_event is deprecated, use lifespan event handlers instead.
-
-        Read more about it in the
-        [FastAPI docs for Lifespan Events](https://fastapi.tiangolo.com/advanced/events/).
-        
-  @app.on_event("startup")
-INFO:     Started server process [28690]
-INFO:     Waiting for application startup.
-INFO:     Application startup complete.
-INFO:     Uvicorn running on http://0.0.0.0:8800 (Press CTRL+C to quit)
-INFO:     127.0.0.1:36362 - "POST /api/v1/communication/mcp HTTP/1.1" 200 OK
-INFO:     127.0.0.1:36372 - "POST /api/v1/feedback/mcp HTTP/1.1" 200 OK
-INFO:     127.0.0.1:36362 - "POST /api/v1/communication/mcp HTTP/1.1" 202 Accepted
-INFO:     127.0.0.1:36372 - "POST /api/v1/feedback/mcp HTTP/1.1" 202 Accepted
-INFO:     127.0.0.1:36386 - "POST /api/v1/communication/mcp HTTP/1.1" 200 OK
-INFO:     127.0.0.1:36402 - "POST /api/v1/feedback/mcp HTTP/1.1" 200 OK
-INFO:     127.0.0.1:36402 - "DELETE /api/v1/feedback/mcp HTTP/1.1" 200 OK
-INFO:     127.0.0.1:36386 - "DELETE /api/v1/communication/mcp HTTP/1.1" 200 OK
-INFO:     127.0.0.1:36378 - "GET /api/v1/communication/mcp HTTP/1.1" 200 OK
-INFO:     127.0.0.1:49894 - "POST /api/v1/communication/mcp HTTP/1.1" 200 OK
-INFO:     127.0.0.1:49898 - "POST /api/v1/feedback/mcp HTTP/1.1" 200 OK
-INFO:     127.0.0.1:49906 - "POST /api/v1/communication/mcp HTTP/1.1" 200 OK
-INFO:     127.0.0.1:49912 - "POST /api/v1/feedback/mcp HTTP/1.1" 200 OK
-INFO:     127.0.0.1:49898 - "POST /api/v1/feedback/mcp HTTP/1.1" 202 Accepted
-INFO:     127.0.0.1:49894 - "POST /api/v1/communication/mcp HTTP/1.1" 202 Accepted
-INFO:     127.0.0.1:49906 - "POST /api/v1/communication/mcp HTTP/1.1" 202 Accepted
-INFO:     127.0.0.1:49912 - "POST /api/v1/feedback/mcp HTTP/1.1" 202 Accepted
-INFO:     127.0.0.1:49960 - "POST /api/v1/feedback/mcp HTTP/1.1" 200 OK
-INFO:     127.0.0.1:49980 - "POST /api/v1/communication/mcp HTTP/1.1" 200 OK
-INFO:     127.0.0.1:49960 - "POST /api/v1/feedback/mcp HTTP/1.1" 200 OK
-INFO:     127.0.0.1:49980 - "POST /api/v1/communication/mcp HTTP/1.1" 200 OK
-INFO:     127.0.0.1:49960 - "DELETE /api/v1/feedback/mcp HTTP/1.1" 200 OK
-INFO:     127.0.0.1:49926 - "GET /api/v1/feedback/mcp HTTP/1.1" 200 OK
-INFO:     127.0.0.1:49980 - "DELETE /api/v1/communication/mcp HTTP/1.1" 200 OK
-write_customer_feedback error
-Traceback (most recent call last):
-  File "/home/Jarvis/Musaddique/Jarvis_claims_agents_v2/PolicyholderAgents/MCP/feedback_router.py", line 38, in write_customer_feedback
-    return handler.write_customer_feedback(
-           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "/home/Jarvis/Musaddique/Jarvis_claims_agents_v2/PolicyholderAgents/MCP/feedback_mcp/handler.py", line 70, in write_customer_feedback
-    cur.execute(
-  File "/home/Jarvis/Musaddique/Jarvis_claims_agents_v2/PolicyholderAgents/venv/lib/python3.11/site-packages/psycopg2/extras.py", line 236, in execute
-    return super().execute(query, vars)
-           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-psycopg2.errors.InvalidTextRepresentation: invalid input syntax for type integer: "CLM-2026-1001"
-LINE 4:             ) VALUES ('CLM-2026-1001','CLM-2026-1001',0,'Pol...
-                              ^
-
-Error calling write_customer_feedback
-Traceback (most recent call last):
-  File "/home/Jarvis/Musaddique/Jarvis_claims_agents_v2/PolicyholderAgents/venv/lib/python3.11/site-packages/fastapi_mcp/server.py", line 559, in _execute_api_tool
-    raise Exception(
-Exception: Error calling write_customer_feedback. Status code: 500. Response: {"detail":"invalid input syntax for type integer: \"CLM-2026-1001\"\nLINE 4:             ) VALUES ('CLM-2026-1001','CLM-2026-1001',0,'Pol...\n                              ^\n"}
-INFO:     127.0.0.1:49984 - "POST /api/v1/feedback/mcp HTTP/1.1" 200 OK
-INFO:     127.0.0.1:49984 - "DELETE /api/v1/feedback/mcp HTTP/1.1" 200 OK
-INFO:     127.0.0.1:49956 - "GET /api/v1/feedback/mcp HTTP/1.1" 200 OK
-Could not write communication_history: column "channel" of relation "communication_history" does not exist
-LINE 3:               (claim_number, communication_date, channel, su...
-                                                         ^
-
-INFO:     127.0.0.1:49966 - "POST /api/v1/communication/mcp HTTP/1.1" 200 OK
-INFO:     127.0.0.1:49966 - "POST /api/v1/communication/mcp HTTP/1.1" 200 OK
-INFO:     127.0.0.1:49966 - "DELETE /api/v1/communication/mcp HTTP/1.1" 200 OK
-INFO:     127.0.0.1:49938 - "GET /api/v1/communication/mcp HTTP/1.1" 200 OK
-INFO:     127.0.0.1:49990 - "POST /api/v1/feedback/mcp HTTP/1.1" 200 OK
-INFO:     127.0.0.1:49990 - "POST /api/v1/feedback/mcp HTTP/1.1" 202 Accepted
-INFO:     127.0.0.1:50000 - "POST /api/v1/feedback/mcp HTTP/1.1" 200 OK
-INFO:     127.0.0.1:50000 - "POST /api/v1/feedback/mcp HTTP/1.1" 200 OK
-INFO:     127.0.0.1:50000 - "DELETE /api/v1/feedback/mcp HTTP/1.1" 200 OK
-INFO:     127.0.0.1:49998 - "GET /api/v1/feedback/mcp HTTP/1.1" 200 OK
-
-
-
-(venv) Jarvis@JarvisPhase2:~/Musaddique/Jarvis_claims_agents_v2/PolicyholderAgents/CommunicationAgent$ python3 server.py 
-INFO:     Started server process [28868]
-INFO:     Waiting for application startup.
-INFO:     Application startup complete.
-INFO:     Uvicorn running on http://0.0.0.0:8809 (Press CTRL+C to quit)
-2026-06-23 11:19:11,554 | INFO     | httpx | HTTP Request: POST http://localhost:8800/api/v1/communication/mcp "HTTP/1.1 200 OK"
-2026-06-23 11:19:11,554 | INFO     | mcp.client.streamable_http | Received session ID: ee098370dc8346afbb8c53bda2990188
-2026-06-23 11:19:11,555 | INFO     | mcp.client.streamable_http | Negotiated protocol version: 2025-11-25
-2026-06-23 11:19:11,556 | INFO     | httpx | HTTP Request: POST http://localhost:8800/api/v1/feedback/mcp "HTTP/1.1 200 OK"
-2026-06-23 11:19:11,556 | INFO     | mcp.client.streamable_http | Received session ID: 7daba9e5333140f9b9224d9054597a68
-2026-06-23 11:19:11,556 | INFO     | mcp.client.streamable_http | Negotiated protocol version: 2025-11-25
-2026-06-23 11:19:11,561 | INFO     | httpx | HTTP Request: POST http://localhost:8800/api/v1/communication/mcp "HTTP/1.1 202 Accepted"
-2026-06-23 11:19:11,563 | INFO     | httpx | HTTP Request: POST http://localhost:8800/api/v1/feedback/mcp "HTTP/1.1 202 Accepted"
-2026-06-23 11:19:11,572 | INFO     | httpx | HTTP Request: POST http://localhost:8800/api/v1/communication/mcp "HTTP/1.1 200 OK"
-2026-06-23 11:19:11,573 | INFO     | httpx | HTTP Request: POST http://localhost:8800/api/v1/feedback/mcp "HTTP/1.1 200 OK"
-2026-06-23 11:19:11,576 | INFO     | httpx | HTTP Request: DELETE http://localhost:8800/api/v1/feedback/mcp "HTTP/1.1 200 OK"
-2026-06-23 11:19:11,577 | INFO     | httpx | HTTP Request: DELETE http://localhost:8800/api/v1/communication/mcp "HTTP/1.1 200 OK"
-2026-06-23 11:19:11,579 | INFO     | communication_agent | Tools loaded from MCP: ['get_communication_history', 'draft_status_notification', 'write_customer_feedback', 'get_customer_feedback', 'update_sentiment_tracker', 'get_sentiment_tracker']
-2026-06-23 11:19:11,969 | WARNING  | communication_agent | Phoenix prompt load failed (Phoenix not configured) — using fallback prompt
-INFO:     127.0.0.1:35534 - "POST /chat HTTP/1.1" 200 OK
-2026-06-23 11:19:14,894 | INFO     | httpx | HTTP Request: POST https://agenticinsuranceopenai.openai.azure.com/openai/deployments/gpt-4.1-jarvis/chat/completions?api-version=2025-01-01-preview "HTTP/1.1 200 OK"
-2026-06-23 11:19:15,137 | INFO     | httpx | HTTP Request: POST http://localhost:8800/api/v1/communication/mcp "HTTP/1.1 200 OK"
-2026-06-23 11:19:15,137 | INFO     | mcp.client.streamable_http | Received session ID: 2d5f16c342f748bfa79c476242be5187
-2026-06-23 11:19:15,138 | INFO     | httpx | HTTP Request: POST http://localhost:8800/api/v1/feedback/mcp "HTTP/1.1 200 OK"
-2026-06-23 11:19:15,138 | INFO     | mcp.client.streamable_http | Received session ID: a0fa240e3dbe4bf29d1e6502d1ce523e
-2026-06-23 11:19:15,138 | INFO     | mcp.client.streamable_http | Negotiated protocol version: 2025-11-25
-2026-06-23 11:19:15,138 | INFO     | mcp.client.streamable_http | Negotiated protocol version: 2025-11-25
-2026-06-23 11:19:15,140 | INFO     | httpx | HTTP Request: POST http://localhost:8800/api/v1/communication/mcp "HTTP/1.1 200 OK"
-2026-06-23 11:19:15,141 | INFO     | mcp.client.streamable_http | Received session ID: 51a9cd6a91c44e3b9585662479101df9
-2026-06-23 11:19:15,141 | INFO     | mcp.client.streamable_http | Negotiated protocol version: 2025-11-25
-2026-06-23 11:19:15,141 | INFO     | httpx | HTTP Request: POST http://localhost:8800/api/v1/feedback/mcp "HTTP/1.1 200 OK"
-2026-06-23 11:19:15,141 | INFO     | mcp.client.streamable_http | Received session ID: f1863eeb8f1b4e46b28fe9354b89948f
-2026-06-23 11:19:15,142 | INFO     | mcp.client.streamable_http | Negotiated protocol version: 2025-11-25
-2026-06-23 11:19:15,145 | INFO     | httpx | HTTP Request: POST http://localhost:8800/api/v1/feedback/mcp "HTTP/1.1 202 Accepted"
-2026-06-23 11:19:15,145 | INFO     | httpx | HTTP Request: POST http://localhost:8800/api/v1/communication/mcp "HTTP/1.1 202 Accepted"
-2026-06-23 11:19:15,150 | INFO     | httpx | HTTP Request: POST http://localhost:8800/api/v1/communication/mcp "HTTP/1.1 202 Accepted"
-2026-06-23 11:19:15,151 | INFO     | httpx | HTTP Request: POST http://localhost:8800/api/v1/feedback/mcp "HTTP/1.1 202 Accepted"
-2026-06-23 11:19:15,283 | INFO     | httpx | HTTP Request: POST http://localhost:8800/api/v1/feedback/mcp "HTTP/1.1 200 OK"
-2026-06-23 11:19:15,286 | INFO     | httpx | HTTP Request: POST http://localhost:8800/api/v1/communication/mcp "HTTP/1.1 200 OK"
-2026-06-23 11:19:15,290 | INFO     | httpx | HTTP Request: POST http://localhost:8800/api/v1/feedback/mcp "HTTP/1.1 200 OK"
-2026-06-23 11:19:15,293 | INFO     | httpx | HTTP Request: POST http://localhost:8800/api/v1/communication/mcp "HTTP/1.1 200 OK"
-2026-06-23 11:19:15,295 | INFO     | httpx | HTTP Request: DELETE http://localhost:8800/api/v1/feedback/mcp "HTTP/1.1 200 OK"
-2026-06-23 11:19:15,297 | INFO     | httpx | HTTP Request: DELETE http://localhost:8800/api/v1/communication/mcp "HTTP/1.1 200 OK"
-2026-06-23 11:19:16,597 | INFO     | httpx | HTTP Request: POST http://localhost:8800/api/v1/feedback/mcp "HTTP/1.1 200 OK"
-2026-06-23 11:19:16,599 | INFO     | httpx | HTTP Request: DELETE http://localhost:8800/api/v1/feedback/mcp "HTTP/1.1 200 OK"
-2026-06-23 11:19:18,868 | INFO     | httpx | HTTP Request: POST http://localhost:8800/api/v1/communication/mcp "HTTP/1.1 200 OK"
-2026-06-23 11:19:18,871 | INFO     | httpx | HTTP Request: POST http://localhost:8800/api/v1/communication/mcp "HTTP/1.1 200 OK"
-2026-06-23 11:19:18,873 | INFO     | httpx | HTTP Request: DELETE http://localhost:8800/api/v1/communication/mcp "HTTP/1.1 200 OK"
-2026-06-23 11:19:19,994 | INFO     | httpx | HTTP Request: POST https://agenticinsuranceopenai.openai.azure.com/openai/deployments/gpt-4.1-jarvis/chat/completions?api-version=2025-01-01-preview "HTTP/1.1 200 OK"
-2026-06-23 11:19:20,228 | INFO     | httpx | HTTP Request: POST http://localhost:8800/api/v1/feedback/mcp "HTTP/1.1 200 OK"
-2026-06-23 11:19:20,228 | INFO     | mcp.client.streamable_http | Received session ID: d48f329931e541a38830f2c5ce9c49e8
-2026-06-23 11:19:20,228 | INFO     | mcp.client.streamable_http | Negotiated protocol version: 2025-11-25
-2026-06-23 11:19:20,231 | INFO     | httpx | HTTP Request: POST http://localhost:8800/api/v1/feedback/mcp "HTTP/1.1 202 Accepted"
-2026-06-23 11:19:20,383 | INFO     | httpx | HTTP Request: POST http://localhost:8800/api/v1/feedback/mcp "HTTP/1.1 200 OK"
-2026-06-23 11:19:20,386 | INFO     | httpx | HTTP Request: POST http://localhost:8800/api/v1/feedback/mcp "HTTP/1.1 200 OK"
-2026-06-23 11:19:20,388 | INFO     | httpx | HTTP Request: DELETE http://localhost:8800/api/v1/feedback/mcp "HTTP/1.1 200 OK"
-2026-06-23 11:19:21,725 | INFO     | httpx | HTTP Request: POST https://agenticinsuranceopenai.openai.azure.com/openai/deployments/gpt-4.1-jarvis/chat/completions?api-version=2025-01-01-preview "HTTP/1.1 200 OK"
-Jarvis@JarvisPhase2:~/Musaddique$ curl -s -N -X POST http://localhost:8809/chat   -H "Content-Type: application/json"   -d '{"message": "Forclaim CLM-2026-1001: I am happy for my claim"}'   --max-time 90
-data: [Tool: draft_status_notification] Starting...
-
-data: [Tool: get_communication_history] Starting...
-
-data: [Tool: get_sentiment_tracker] Starting...
-
-data: [Tool: write_customer_feedback] Starting...
-
-data: [Tool: get_sentiment_tracker] Done
-
-data: [Tool: get_communication_history] Done
-
-data: [Tool: write_customer_feedback] Done
-
-data: [Tool: draft_status_notification] Done
-
-data: [Tool: update_sentiment_tracker] Starting...
-
-data: [Tool: update_sentiment_tracker] Done
-
-data: Here
-
-data: ’s
-
-data:  a
-
-data:  summary
-
-data:  of
-
-data:  your
-
-data:  claim
-
-data:  details
-
-data: ,
-
-data:  sentiment
-
-data: ,
-
-data:  and
-
-data:  a
-
-data:  drafted
-
-data:  notification
-
-data: :
-
-
-
-data: Claim
-
-data:  Details
-
-data: 
-
-
-data: -
-
-data:  Claim
-
-data:  Number
-
-data: :
-
-data:  CL
-
-data: M
-
-data: -
-
-data: 202
-
-data: 6
-
-data: -
-
-data: 100
-
-data: 1
-
-data: 
-
-
-data: -
-
-data:  Current
-
-data:  Status
-
-data: :
-
-data:  Open
-
-data: 
-
-
-data: -
-
-data:  Recent
-
-data:  Inter
-
-data: actions
-
-data: :
-
-
-data:  
-
-data:  -
-
-data:  Claim
-
-data:  acknowledged
-
-data:  and
-
-data:  assigned
-
-data:  for
-
-data:  review
-
-data:  (
-
-data: neutral
-
-data: ).
-
-
-data:  
-
-data:  -
-
-data:  Follow
-
-data: -up
-
-data:  by
-
-data:  phone
-
-data:  requesting
-
-data:  progress
-
-data:  update
-
-data:  (
-
-data: conc
-
-data: ern
-
-data: ed
-
-data: ).
-
-
-data:  
-
-data:  -
-
-data:  Request
-
-data:  for
-
-data:  additional
-
-data:  documents
-
-data:  sent
-
-data:  (
-
-data: neutral
-
-data: ).
-
-
-
-data: Sent
-
-data: iment
-
-data:  Information
-
-data: 
-
-
-data: -
-
-data:  Most
-
-data:  recent
-
-data:  system
-
-data:  assessment
-
-data: :
-
-data:  “
-
-data: Negative
-
-data: ”
-
-data:  (
-
-data: Score
-
-data: :
-
-data:  
-
-data: 40
-
-data: ,
-
-data:  Stable
-
-data:  trend
-
-data: ,
-
-data:  Medium
-
-data:  escalation
-
-data:  risk
-
-data: ).
-
-
-data: -
-
-data:  Your
-
-data:  latest
-
-data:  feedback
-
-data:  (“
-
-data: I
-
-data:  am
-
-data:  happy
-
-data:  for
-
-data:  my
-
-data:  claim
-
-data: ”)
-
-data:  appears
-
-data:  positive
-
-data:  and
-
-data:  will
-
-data:  be
-
-data:  considered
-
-data:  to
-
-data:  enhance
-
-data:  your
-
-data:  sentiment
-
-data:  profile
-
-data: .
-
-
-
-data: Draft
-
-data: ed
-
-data:  Notification
-
-data: 
-
-
-data: Subject
-
-data: :
-
-data:  Update
-
-data:  on
-
-data:  Your
-
-data:  Water
-
-data:  Damage
-
-data:  Claim
-
-data:  (
-
-data: CL
-
-data: M
-
-data: -
-
-data: 202
-
-data: 6
-
-data: -
-
-data: 100
-
-data: 1
-
-data: )
-
-
-data: Message
-
-data: :
-
-
-data: Dear
-
-data:  Val
-
-data: ued
-
-data:  Policy
-
-data: holder
-
-data: ,
-
-
-
-data: We
-
-data:  understand
-
-data:  how
-
-data:  important
-
-data:  it
-
-data:  is
-
-data:  for
-
-data:  you
-
-data:  to
-
-data:  receive
-
-data:  timely
-
-data:  updates
-
-data:  regarding
-
-data:  your
-
-data:  water
-
-data:  damage
-
-data:  claim
-
-data:  (
-
-data: CL
-
-data: M
-
-data: -
-
-data: 202
-
-data: 6
-
-data: -
-
-data: 100
-
-data: 1
-
-data: ).
-
-data:  Our
-
-data:  team
-
-data:  is
-
-data:  actively
-
-data:  reviewing
-
-data:  the
-
-data:  information
-
-data:  you
-
-data:  have
-
-data:  provided
-
-data: ,
-
-data:  including
-
-data:  any
-
-data:  photos
-
-data:  and
-
-data:  repair
-
-data:  estimates
-
-data: .
-
-data:  We
-
-data:  sincerely
-
-data:  apologize
-
-data:  for
-
-data:  any
-
-data:  frustration
-
-data:  or
-
-data:  inconvenience
-
-data:  you
-
-data:  may
-
-data:  be
-
-data:  experiencing
-
-data:  during
-
-data:  this
-
-data:  process
-
-data: .
-
-data:  Please
-
-data:  know
-
-data:  that
-
-data:  we
-
-data:  are
-
-data:  committed
-
-data:  to
-
-data:  resolving
-
-data:  your
-
-data:  claim
-
-data:  as
-
-data:  quickly
-
-data:  and
-
-data:  efficiently
-
-data:  as
-
-data:  possible
-
-data: .
-
-
-
-data: If
-
-data:  you
-
-data:  have
-
-data:  any
-
-data:  additional
-
-data:  documents
-
-data:  or
-
-data:  questions
-
-data: ,
-
-data:  please
-
-data:  do
-
-data:  not
-
-data:  hesitate
-
-data:  to
-
-data:  reach
-
-data:  out
-
-data: .
-
-data:  We
-
-data:  appreciate
-
-data:  your
-
-data:  patience
-
-data:  and
-
-data:  will
-
-data:  keep
-
-data:  you
-
-data:  informed
-
-data:  of
-
-data:  any
-
-data:  significant
-
-data:  developments
-
-data: .
-
-
-
-data: Thank
-
-data:  you
-
-data:  for
-
-data:  allowing
-
-data:  us
-
-data:  to
-
-data:  assist
-
-data:  you
-
-data:  during
-
-data:  this
-
-data:  challenging
-
-data:  time
-
-data: .
-
-
-
-data: —
-
-
-data: If
-
-data:  you
-
-data:  have
-
-data:  further
-
-data:  feedback
-
-data:  or
-
-data:  questions
-
-data: ,
-
-data:  let
-
-data:  us
-
-data:  know
-
-data:  and
-
-data:  we
-
-data: ’ll
-
-data:  be
-
-data:  glad
-
-data:  to
-
-data:  assist
-
-data: !
-
-Jarvis@JarvisPhase2:~/Musaddique$ 
-
-
-
-(venv) Jarvis@JarvisPhase2:~/Musaddique/Jarvis_claims_agents_v2/PolicyholderAgents/FeedbackAgent$ python3 server.py 
-INFO:     Started server process [28837]
-INFO:     Waiting for application startup.
-INFO:     Application startup complete.
-INFO:     Uvicorn running on http://0.0.0.0:8806 (Press CTRL+C to quit)
-
-
-
-
-
-
-
-
-
-
-
-
+this is my feedback handler.py
+"""
+handler.py — Feedback / Sentiment Tracking
+─────────────────────────────────────────────
+Records per-stage customer feedback with LLM sentiment classification,
+and maintains an aggregate claim_sentiment_tracker row.
+"""
+
+import json
+import logging
+import os
+import sys
+from typing import Optional
+
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "common"))
+
+from db import get_db_connection, row_to_dict  # noqa: E402
+from dotenv import load_dotenv, find_dotenv
+from openai import AzureOpenAI
+
+load_dotenv(find_dotenv())
+
+log = logging.getLogger(__name__)
+
+AZURE_OPENAI_ENDPOINT = os.environ.get("AZURE_OPENAI_ENDPOINT", "")
+AZURE_OPENAI_API_KEY = os.environ.get("AZURE_OPENAI_API_KEY", "")
+AZURE_OPENAI_API_VERSION = os.environ.get("AZURE_OPENAI_API_VERSION", "2025-11-13")
+AZURE_OPENAI_CHAT_DEPLOYMENT = os.environ.get("AZURE_OPENAI_CHAT_DEPLOYMENT", "gpt-5.1")
+
+
+def _get_openai_client() -> AzureOpenAI:
+    return AzureOpenAI(
+        api_key=AZURE_OPENAI_API_KEY,
+        api_version=AZURE_OPENAI_API_VERSION,
+        azure_endpoint=AZURE_OPENAI_ENDPOINT,
+    )
+
+
+def _classify_sentiment(comment: str) -> dict:
+    try:
+        client = _get_openai_client()
+        prompt = (
+            "Classify the sentiment of this insurance claim policyholder feedback "
+            "comment. Return JSON: "
+            '{"sentiment": "Positive"|"Neutral"|"Negative", "sentiment_score": 0-100}.\n\n'
+            f"Comment: {comment}"
+        )
+        response = client.chat.completions.create(
+            model=AZURE_OPENAI_CHAT_DEPLOYMENT,
+            messages=[{"role": "user", "content": prompt}],
+            temperature=0.0,
+            response_format={"type": "json_object"},
+        )
+        result = json.loads(response.choices[0].message.content)
+        return {
+            "sentiment": result.get("sentiment", "Neutral"),
+            "sentiment_score": result.get("sentiment_score", 50),
+        }
+    except Exception as e:
+        log.warning("sentiment classification failed: %s", e)
+        return {"sentiment": "Neutral", "sentiment_score": 50}
+
+
+def write_customer_feedback(claim_id: str, claim_number: str, stage_number: int,
+                             stage_name: str, comment: str) -> dict:
+    classification = _classify_sentiment(comment)
+
+    conn = get_db_connection()
+    try:
+        cur = conn.cursor()
+        cur.execute(
+            """
+            INSERT INTO customer_feedback_per_stage (
+                claim_id, claim_number, stage_number, stage_name, sentiment, comment, submitted_at
+            ) VALUES (%s,%s,%s,%s,%s,%s,NOW())
+            RETURNING *
+            """,
+            (claim_id, claim_number, stage_number, stage_name, classification["sentiment"], comment),
+        )
+        feedback_row = row_to_dict(cur.fetchone())
+        conn.commit()
+    except Exception:
+        conn.rollback()
+        raise
+    finally:
+        conn.close()
+
+    feedback_row["sentiment_score"] = classification["sentiment_score"]
+
+    tracker = update_sentiment_tracker(claim_number)
+    return {"feedback": feedback_row, "sentiment_tracker": tracker}
+
+
+def get_customer_feedback(claim_number: str) -> list:
+    conn = get_db_connection()
+    try:
+        cur = conn.cursor()
+        cur.execute(
+            "SELECT * FROM customer_feedback_per_stage WHERE claim_number = %s ORDER BY submitted_at",
+            (claim_number,),
+        )
+        return row_to_dict(cur.fetchall())
+    finally:
+        conn.close()
+
+
+_SENTIMENT_LABEL_SCORE = {"Positive": 80, "Neutral": 50, "Negative": 20}
+
+
+def update_sentiment_tracker(claim_number: str, policyholder_name: Optional[str] = None) -> dict:
+    conn = get_db_connection()
+    try:
+        cur = conn.cursor()
+        cur.execute(
+            "SELECT * FROM customer_feedback_per_stage WHERE claim_number = %s ORDER BY submitted_at",
+            (claim_number,),
+        )
+        rows = row_to_dict(cur.fetchall())
+
+        if not rows:
+            return None
+
+        scores = [_SENTIMENT_LABEL_SCORE.get(r.get("sentiment"), 50) for r in rows]
+        avg_score = sum(scores) / len(scores)
+
+        if len(scores) >= 2:
+            if scores[-1] > scores[-2]:
+                trend = "Improving"
+            elif scores[-1] < scores[-2]:
+                trend = "Declining"
+            else:
+                trend = "Stable"
+        else:
+            trend = "Stable"
+
+        if avg_score < 40:
+            escalation_risk = "High"
+        elif avg_score < 70:
+            escalation_risk = "Medium"
+        else:
+            escalation_risk = "Low"
+
+        current_sentiment = rows[-1].get("sentiment")
+        last_interaction_date = rows[-1].get("submitted_at")
+
+        claim_id = None
+        cur.execute("SELECT id FROM claims WHERE claim_number = %s", (claim_number,))
+        claim_row = cur.fetchone()
+        if claim_row:
+            claim_id = claim_row["id"]
+
+        if not policyholder_name:
+            cur.execute("SELECT policyholder_name FROM claims WHERE claim_number = %s", (claim_number,))
+            ph_row = cur.fetchone()
+            policyholder_name = ph_row["policyholder_name"] if ph_row else None
+
+        tracker_id = f"SENT-{claim_number}"
+
+        cur.execute("SELECT id FROM claim_sentiment_tracker WHERE tracker_id = %s", (tracker_id,))
+        existing = cur.fetchone()
+
+        if existing:
+            cur.execute(
+                """
+                UPDATE claim_sentiment_tracker SET
+                    current_sentiment = %s, sentiment_score = %s, sentiment_trend = %s,
+                    last_interaction_date = %s, escalation_risk = %s, policyholder_name = %s,
+                    updated_at = NOW()
+                WHERE tracker_id = %s
+                """,
+                (current_sentiment, avg_score, trend, last_interaction_date, escalation_risk,
+                 policyholder_name, tracker_id),
+            )
+        else:
+            cur.execute(
+                """
+                INSERT INTO claim_sentiment_tracker (
+                    tracker_id, claim_id, claim_number, policyholder_name, current_sentiment,
+                    sentiment_score, sentiment_trend, last_interaction_date, escalation_risk,
+                    created_at, updated_at
+                ) VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,NOW(),NOW())
+                """,
+                (tracker_id, claim_id, claim_number, policyholder_name, current_sentiment,
+                 avg_score, trend, last_interaction_date, escalation_risk),
+            )
+
+        conn.commit()
+        cur.execute("SELECT * FROM claim_sentiment_tracker WHERE tracker_id = %s", (tracker_id,))
+        return row_to_dict(cur.fetchone())
+    except Exception:
+        conn.rollback()
+        raise
+    finally:
+        conn.close()
+
+
+def get_sentiment_tracker(claim_number: str) -> dict:
+    conn = get_db_connection()
+    try:
+        cur = conn.cursor()
+        cur.execute("SELECT * FROM claim_sentiment_tracker WHERE claim_number = %s", (claim_number,))
+        return row_to_dict(cur.fetchone())
+    finally:
+        conn.close()
+
+
+models.py
+from pydantic import BaseModel
+from typing import Optional
+
+
+class WriteCustomerFeedbackRequest(BaseModel):
+    claim_id: str
+    claim_number: str
+    stage_number: int
+    stage_name: str
+    comment: str
+
+
+class UpdateSentimentTrackerRequest(BaseModel):
+    claim_number: str
+    policyholder_name: Optional[str] = None
+
+
+feedback router.py
+"""
+feedback_router.py
+─────────────────────
+FastAPI routes for the Feedback / Sentiment Tracking MCP.
+
+Tool / Endpoint map:
+  write_customer_feedback   POST /api/feedback/write
+  get_customer_feedback      GET  /api/feedback/claim/{claim_number}
+  update_sentiment_tracker    POST /api/feedback/sentiment/update
+  get_sentiment_tracker        GET  /api/feedback/sentiment/{claim_number}
+"""
+
+import logging
+from fastapi import APIRouter, HTTPException
+
+from feedback_mcp.models import WriteCustomerFeedbackRequest, UpdateSentimentTrackerRequest
+from feedback_mcp import handler
+
+log = logging.getLogger(__name__)
+
+router = APIRouter()
+
+
+@router.post(
+    "/api/feedback/write",
+    operation_id="write_customer_feedback",
+    summary="Record policyholder feedback for a claim stage with sentiment analysis",
+    tags=["Feedback"],
+)
+def write_customer_feedback(req: WriteCustomerFeedbackRequest):
+    """
+    Uses an LLM to classify the sentiment of the comment ("Positive",
+    "Neutral", or "Negative") plus a 0-100 sentiment_score, inserts a row
+    into customer_feedback_per_stage, then recomputes the aggregate
+    claim_sentiment_tracker. Returns {feedback, sentiment_tracker}.
+    """
+    try:
+        return handler.write_customer_feedback(
+            req.claim_id, req.claim_number, req.stage_number, req.stage_name, req.comment
+        )
+    except Exception as e:
+        log.exception("write_customer_feedback error")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get(
+    "/api/feedback/claim/{claim_number}",
+    operation_id="get_customer_feedback",
+    summary="Get all stage feedback for a claim",
+    tags=["Feedback"],
+)
+def get_customer_feedback(claim_number: str):
+    """
+    Returns all customer_feedback_per_stage rows for the given
+    claim_number, ordered by submission time.
+    """
+    return handler.get_customer_feedback(claim_number)
+
+
+@router.post(
+    "/api/feedback/sentiment/update",
+    operation_id="update_sentiment_tracker",
+    summary="Recompute the aggregate sentiment tracker for a claim",
+    tags=["Feedback"],
+)
+def update_sentiment_tracker(req: UpdateSentimentTrackerRequest):
+    """
+    Recomputes the average sentiment score, trend (Improving/Declining/
+    Stable based on the last two feedback entries), and escalation_risk
+    (High if avg<40, Medium if avg<70, else Low) from all
+    customer_feedback_per_stage rows for the claim, then upserts the
+    claim_sentiment_tracker row.
+    """
+    try:
+        result = handler.update_sentiment_tracker(req.claim_number, req.policyholder_name)
+        if result is None:
+            raise HTTPException(status_code=404, detail="No feedback found for this claim")
+        return result
+    except HTTPException:
+        raise
+    except Exception as e:
+        log.exception("update_sentiment_tracker error")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get(
+    "/api/feedback/sentiment/{claim_number}",
+    operation_id="get_sentiment_tracker",
+    summary="Get the sentiment tracker for a claim",
+    tags=["Feedback"],
+)
+def get_sentiment_tracker(claim_number: str):
+    """
+    Returns the claim_sentiment_tracker row for the given claim_number,
+    including current_sentiment, sentiment_score, sentiment_trend, and
+    escalation_risk.
+    """
+    record = handler.get_sentiment_tracker(claim_number)
+    if not record:
+        raise HTTPException(status_code=404, detail=f"No sentiment tracker for {claim_number}")
+    return record
+
+main;py
+
+# ── Sub-app: feedback (FULL) ───────────────────────────────────────────────────
+
+feedback_app = _make_cors_app(
+    title="feedback_agent_mcps",
+    description="MCP tools for policyholder feedback and sentiment tracking.",
+)
+feedback_app.include_router(feedback_router)
+FastApiMCP(
+    feedback_app,
+    include_operations=[
+        "write_customer_feedback",
+        "get_customer_feedback",
+        "update_sentiment_tracker",
+        "get_sentiment_tracker",
+    ],
+).mount_http()
+app.mount("/api/v1/feedback", feedback_app)
+
+"""
+server.py — Feedback Agent
+─────────────────────────────
+LangGraph agent that records policyholder feedback for a claim stage,
+classifies sentiment, and responds empathetically based on escalation risk.
+
+Port: 8806
+MCP : http://localhost:8800/api/v1/feedback/mcp
+
+Run:
+    py -3 server.py
+"""
+
+import json
+import logging
+import os
+import sys
+import time
+import traceback
+from datetime import datetime, timedelta
+from typing import Annotated, TypedDict
+
+import uvicorn
+from dotenv import load_dotenv, find_dotenv
+from fastapi import FastAPI, Request
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import StreamingResponse
+from langchain_core.messages import AIMessage, SystemMessage
+from langchain_mcp_adapters.client import MultiServerMCPClient
+from langchain_openai.chat_models import AzureChatOpenAI
+from langgraph.graph import END, START, StateGraph
+from langgraph.graph.message import add_messages
+from langgraph.prebuilt import ToolNode
+
+load_dotenv(find_dotenv())
+
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s | %(levelname)-8s | %(name)s | %(message)s",
+    stream=sys.stdout,
+    force=True,
+)
+logger = logging.getLogger("feedback_agent")
+
+PHOENIX_API_KEY = os.getenv("PHOENIX_API_KEY", "")
+PHOENIX_ENDPOINT = os.getenv("PHOENIX_ENDPOINT", "")
+MCP_URL = os.getenv("MCP_URL", "http://localhost:8800/api/v1/feedback/mcp")
+AGENT_PORT = int(os.getenv("AGENT_PORT", "8806"))
+
+config_mcp_server = {
+    "feedback_mcp": {
+        "url": MCP_URL,
+        "transport": "streamable_http",
+        "timeout": timedelta(seconds=120),
+        "sse_read_timeout": timedelta(seconds=600),
+    }
+}
+
+app = FastAPI(title="Feedback Agent")
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+
+class State(TypedDict):
+    messages: Annotated[list, add_messages]
+
+
+def router(state: State):
+    last = state["messages"][-1]
+    if isinstance(last, AIMessage) and getattr(last, "tool_calls", None):
+        return "tools"
+    if isinstance(last, AIMessage) and last.content:
+        if "Continue" in last.content:
+            return "tools"
+        if "End" in last.content:
+            return "End"
+    return "End"
+
+
+_FALLBACK_PROMPT = """
+You are the Feedback Agent for an insurance claims platform.
+
+When a policyholder gives feedback about a claim stage:
+
+1. Identify claim_id, claim_number, stage_number, stage_name, and the
+   comment text.
+2. Call write_customer_feedback with these values. This classifies the
+   sentiment, stores the feedback, and recomputes the sentiment tracker.
+3. Look at the returned sentiment_tracker.escalation_risk:
+   - If "High" or "Medium": empathetically acknowledge the policyholder's
+     concerns and let them know their case may receive extra attention
+     from the team.
+   - If "Low": thank them warmly for their feedback.
+
+You can also use get_customer_feedback or get_sentiment_tracker to review
+prior feedback for a claim.
+
+Be warm, empathetic, and concise. When you have completed the task, end
+your response with "End".
+"""
+
+
+def load_prompt() -> str:
+    if not PHOENIX_ENDPOINT:
+        raise RuntimeError("Phoenix not configured")
+    from phoenix.client import Client
+    client = Client(base_url=PHOENIX_ENDPOINT, api_key=PHOENIX_API_KEY)
+    prompt = client.prompts.get(name="feedback_agent", label="production")
+    prompt_set = prompt._template["messages"]
+    system_msg = next(
+        (item["content"][0]["text"] for item in prompt_set if item.get("role") == "system"),
+        None,
+    )
+    if not system_msg:
+        raise ValueError("System prompt is empty or missing in Phoenix")
+    return system_msg
+
+
+def create_graph(model, tools, prompt):
+    graph_builder = StateGraph(State)
+    llm_with_tools = model.bind_tools(tools)
+
+    async def agent_node(state: State):
+        messages = state["messages"]
+        all_messages = [SystemMessage(content=prompt)] + messages
+        message = await llm_with_tools.ainvoke(all_messages)
+        return {"messages": [message]}
+
+    graph_builder.add_node("agent", agent_node)
+    graph_builder.add_node("tools", ToolNode(tools=tools))
+    graph_builder.add_edge(START, "agent")
+    graph_builder.add_conditional_edges("agent", router, {"tools": "tools", "End": END})
+    graph_builder.add_edge("tools", "agent")
+    return graph_builder.compile()
+
+
+async def get_tools():
+    client = MultiServerMCPClient(config_mcp_server)
+    tools = await client.get_tools()
+    logger.info("Tools loaded from MCP: %s", [t.name for t in tools])
+    return tools
+
+
+async def stream_graph(graph, initial_state, config):
+    async for event in graph.astream_events(initial_state, config=config, version="v2"):
+        kind = event.get("event", "")
+
+        if kind == "on_chat_model_stream":
+            chunk = event["data"].get("chunk")
+            if chunk and hasattr(chunk, "content") and chunk.content:
+                yield f"data: {chunk.content}\n\n"
+
+        elif kind == "on_tool_start":
+            tool_name = event.get("name", "unknown_tool")
+            yield f"data: [Tool: {tool_name}] Starting...\n\n"
+
+        elif kind == "on_tool_end":
+            tool_name = event.get("name", "unknown_tool")
+            yield f"data: [Tool: {tool_name}] Done\n\n"
+
+
+@app.post("/chat")
+async def chat_stream(request: Request):
+    load_dotenv(find_dotenv())
+
+    tools = await get_tools()
+
+    model = AzureChatOpenAI(
+        api_key=os.getenv("AZURE_OPENAI_API_KEY"),
+        api_version=os.getenv("AZURE_OPENAI_API_VERSION"),
+        azure_deployment=os.getenv("AZURE_OPENAI_CHAT_DEPLOYMENT"),
+        azure_endpoint=os.getenv("AZURE_OPENAI_ENDPOINT"),
+    )
+
+    try:
+        system_prompt = load_prompt()
+    except Exception as e:
+        logger.warning("Phoenix prompt load failed (%s) — using fallback prompt", e)
+        system_prompt = _FALLBACK_PROMPT
+
+    body = await request.json()
+    user_message = body.get("message", "I'd like to leave feedback about my claim")
+
+    graph = create_graph(model=model, tools=tools, prompt=system_prompt)
+
+    async def generate():
+        start = time.time()
+        last_event_at = start
+        last_tool = None
+        try:
+            async for event in stream_graph(
+                graph=graph,
+                initial_state={"messages": [user_message]},
+                config={"recursion_limit": 250},
+            ):
+                last_event_at = time.time()
+                if isinstance(event, str) and event.startswith("data: [Tool:"):
+                    try:
+                        last_tool = event.split("[Tool:", 1)[1].split("]", 1)[0]
+                    except Exception:
+                        pass
+                yield event
+        except BaseException as e:
+            elapsed = time.time() - start
+            since_last = time.time() - last_event_at
+            err = {
+                "exception_class": type(e).__name__,
+                "message": str(e),
+                "elapsed_total_seconds": round(elapsed, 2),
+                "seconds_since_last_event": round(since_last, 2),
+                "last_tool_invoked": last_tool,
+                "traceback": traceback.format_exc(),
+                "timestamp_utc": datetime.utcnow().isoformat(),
+            }
+            logger.error("AGENT_ERROR %s", json.dumps(err, default=str))
+            try:
+                yield f"data: [AGENT_ERROR] {json.dumps(err, default=str)}\n\n"
+            except Exception:
+                pass
+            import asyncio
+            if isinstance(e, asyncio.CancelledError):
+                raise
+
+    return StreamingResponse(generate(), media_type="text/event-stream")
+
+
+@app.get("/health")
+async def health():
+    return {"status": "healthy", "agent": "feedback_agent"}
+
+
+if __name__ == "__main__":
+    uvicorn.run(app, host="0.0.0.0", port=AGENT_PORT)
 
 
 
