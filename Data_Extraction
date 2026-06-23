@@ -1,126 +1,484 @@
-now communication agent is giving error
+this is my communication agent i need complete working of it like which data it is taking from where , populating what data, which tool is doing what in sequence and in detail 
+router.py
 
-(vnev) JarvisClaims@JarvisClaims:~/Ramakrishna/Jarvis_claims_agents_v2/PolicyholderAgents/CommunicationAgent
-hon3 server.py               t p
-INFO:     Started server process [8523]
-INFO:     Waiting for application startup.
-INFO:     Application startup complete.
-INFO:     Uvicorn running on http://0.0.0.0:8809 (Press CTRL+C to quit)
-2026-06-23 08:34:03,852 | INFO     | httpx | HTTP Request: POST http://localhost:8800/api/v1/communication/mcp "HTTP/1.1 200 OK"
-2026-06-23 08:34:03,852 | INFO     | mcp.client.streamable_http | Received session ID: 41d8de0061d644c8bdc588a071724651
-2026-06-23 08:34:03,853 | INFO     | mcp.client.streamable_http | Negotiated protocol version: 2025-11-25
-2026-06-23 08:34:03,854 | INFO     | httpx | HTTP Request: POST http://localhost:8800/api/v1/feedback/mcp "HTTP/1.1 200 OK"
-2026-06-23 08:34:03,854 | INFO     | mcp.client.streamable_http | Received session ID: 5f37fb3f1abb4e16b54998daba92f6ae
-2026-06-23 08:34:03,854 | INFO     | mcp.client.streamable_http | Negotiated protocol version: 2025-11-25
-2026-06-23 08:34:03,859 | INFO     | httpx | HTTP Request: POST http://localhost:8800/api/v1/communication/mcp "HTTP/1.1 202 Accepted"
-2026-06-23 08:34:03,860 | INFO     | httpx | HTTP Request: POST http://localhost:8800/api/v1/feedback/mcp "HTTP/1.1 202 Accepted"
-2026-06-23 08:34:03,869 | INFO     | httpx | HTTP Request: POST http://localhost:8800/api/v1/communication/mcp "HTTP/1.1 200 OK"
-2026-06-23 08:34:03,870 | INFO     | httpx | HTTP Request: POST http://localhost:8800/api/v1/feedback/mcp "HTTP/1.1 200 OK"
-2026-06-23 08:34:03,873 | INFO     | httpx | HTTP Request: DELETE http://localhost:8800/api/v1/communication/mcp "HTTP/1.1 200 OK"
-2026-06-23 08:34:03,874 | INFO     | httpx | HTTP Request: DELETE http://localhost:8800/api/v1/feedback/mcp "HTTP/1.1 200 OK"
-2026-06-23 08:34:03,876 | INFO     | communication_agent | Tools loaded from MCP: ['get_communication_history', 'draft_status_notification', 'write_customer_feedback', 'get_customer_feedback', 'update_sentiment_tracker', 'get_sentiment_tracker']
-2026-06-23 08:34:04,296 | WARNING  | communication_agent | Phoenix prompt load failed (Phoenix not configured) — using fallback prompt
-INFO:     127.0.0.1:54126 - "POST /chat HTTP/1.1" 500 Internal Server Error
-ERROR:    Exception in ASGI application
-Traceback (most recent call last):
-  File "/home/JarvisClaims/Ramakrishna/Jarvis_claims_agents_v2/PolicyholderAgents/vnev/lib/python3.11/site-packages/uvicorn/protocols/http/h11_impl.py", line 415, in run_asgi
-    result = await app(  # type: ignore[func-returns-value]
-             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "/home/JarvisClaims/Ramakrishna/Jarvis_claims_agents_v2/PolicyholderAgents/vnev/lib/python3.11/site-packages/uvicorn/middleware/proxy_headers.py", line 62, in __call__
-    return await self.app(scope, receive, send)
-           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "/home/JarvisClaims/Ramakrishna/Jarvis_claims_agents_v2/PolicyholderAgents/vnev/lib/python3.11/site-packages/fastapi/applications.py", line 1163, in __call__
-    await super().__call__(scope, receive, send)
-  File "/home/JarvisClaims/Ramakrishna/Jarvis_claims_agents_v2/PolicyholderAgents/vnev/lib/python3.11/site-packages/starlette/applications.py", line 90, in __call__
-    await self.middleware_stack(scope, receive, send)
-  File "/home/JarvisClaims/Ramakrishna/Jarvis_claims_agents_v2/PolicyholderAgents/vnev/lib/python3.11/site-packages/starlette/middleware/errors.py", line 186, in __call__
-    raise exc
-  File "/home/JarvisClaims/Ramakrishna/Jarvis_claims_agents_v2/PolicyholderAgents/vnev/lib/python3.11/site-packages/starlette/middleware/errors.py", line 164, in __call__
-    await self.app(scope, receive, _send)
-  File "/home/JarvisClaims/Ramakrishna/Jarvis_claims_agents_v2/PolicyholderAgents/vnev/lib/python3.11/site-packages/starlette/middleware/cors.py", line 88, in __call__
-    await self.app(scope, receive, send)
-  File "/home/JarvisClaims/Ramakrishna/Jarvis_claims_agents_v2/PolicyholderAgents/vnev/lib/python3.11/site-packages/starlette/middleware/exceptions.py", line 63, in __call__
-    await wrap_app_handling_exceptions(self.app, conn)(scope, receive, send)
-  File "/home/JarvisClaims/Ramakrishna/Jarvis_claims_agents_v2/PolicyholderAgents/vnev/lib/python3.11/site-packages/starlette/_exception_handler.py", line 53, in wrapped_app
-    raise exc
-  File "/home/JarvisClaims/Ramakrishna/Jarvis_claims_agents_v2/PolicyholderAgents/vnev/lib/python3.11/site-packages/starlette/_exception_handler.py", line 42, in wrapped_app
-    await app(scope, receive, sender)
-  File "/home/JarvisClaims/Ramakrishna/Jarvis_claims_agents_v2/PolicyholderAgents/vnev/lib/python3.11/site-packages/fastapi/middleware/asyncexitstack.py", line 18, in __call__
-    await self.app(scope, receive, send)
-  File "/home/JarvisClaims/Ramakrishna/Jarvis_claims_agents_v2/PolicyholderAgents/vnev/lib/python3.11/site-packages/starlette/routing.py", line 660, in __call__
-    await self.middleware_stack(scope, receive, send)
-  File "/home/JarvisClaims/Ramakrishna/Jarvis_claims_agents_v2/PolicyholderAgents/vnev/lib/python3.11/site-packages/fastapi/routing.py", line 2531, in app
-    await route.handle(scope, receive, send)
-  File "/home/JarvisClaims/Ramakrishna/Jarvis_claims_agents_v2/PolicyholderAgents/vnev/lib/python3.11/site-packages/fastapi/routing.py", line 1241, in handle
-    await super().handle(scope, receive, send)
-  File "/home/JarvisClaims/Ramakrishna/Jarvis_claims_agents_v2/PolicyholderAgents/vnev/lib/python3.11/site-packages/starlette/routing.py", line 276, in handle
-    await self.app(scope, receive, send)
-  File "/home/JarvisClaims/Ramakrishna/Jarvis_claims_agents_v2/PolicyholderAgents/vnev/lib/python3.11/site-packages/fastapi/routing.py", line 150, in app
-    await wrap_app_handling_exceptions(app, request)(scope, receive, send)
-  File "/home/JarvisClaims/Ramakrishna/Jarvis_claims_agents_v2/PolicyholderAgents/vnev/lib/python3.11/site-packages/starlette/_exception_handler.py", line 53, in wrapped_app
-    raise exc
-  File "/home/JarvisClaims/Ramakrishna/Jarvis_claims_agents_v2/PolicyholderAgents/vnev/lib/python3.11/site-packages/starlette/_exception_handler.py", line 42, in wrapped_app
-    await app(scope, receive, sender)
-  File "/home/JarvisClaims/Ramakrishna/Jarvis_claims_agents_v2/PolicyholderAgents/vnev/lib/python3.11/site-packages/fastapi/routing.py", line 136, in app
-    response = await f(request)
-               ^^^^^^^^^^^^^^^^
-  File "/home/JarvisClaims/Ramakrishna/Jarvis_claims_agents_v2/PolicyholderAgents/vnev/lib/python3.11/site-packages/fastapi/routing.py", line 690, in app
-    raw_response = await run_endpoint_function(
-                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "/home/JarvisClaims/Ramakrishna/Jarvis_claims_agents_v2/PolicyholderAgents/vnev/lib/python3.11/site-packages/fastapi/routing.py", line 344, in run_endpoint_function
-    return await dependant.call(**values)
-           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "/home/JarvisClaims/Ramakrishna/Jarvis_claims_agents_v2/PolicyholderAgents/CommunicationAgent/server.py", line 431, in chat_stream
+"""
+communication_router.py
+────────────────────────
+Tool / Endpoint map:
+  get_communication_history    GET  /api/communication/history/{claim_number}
+  draft_status_notification    POST /api/communication/draft/{claim_number}
+"""
+
+import logging
+from fastapi import APIRouter
+
+from communication_mcp import handler
+
+log = logging.getLogger(__name__)
+
+router = APIRouter()
+
+
+@router.get(
+    "/api/communication/history/{claim_number}",
+    operation_id="get_communication_history",
+    summary="Read communication_history for a claim",
+    tags=["Communication"],
+)
+def get_communication_history(claim_number: str):
+    """Return all communication history records for a given claim number."""
+    records = handler.get_communication_history(claim_number)
+    return {"claim_number": claim_number, "communication_history": records}
+
+
+@router.post(
+    "/api/communication/draft/{claim_number}",
+    operation_id="draft_status_notification",
+    summary="Auto-draft a status-change notification for the policyholder",
+    tags=["Communication"],
+)
+def draft_status_notification(claim_number: str):
+    """
+    Use the claim's current status, sentiment, and communication history to
+    generate an empathetic, channel-appropriate notification draft and save it
+    to communication_history with status='Draft'.
+    """
+    return handler.draft_status_notification(claim_number)
+
+
+
+# def load_claim_status(claim_number: str):
+#     claim = handler.get_claims_data()
+    
+
+main.py
+
+
+communication_app = _make_cors_app(
+    title="communication_agent_mcps",
+    description="[PLACEHOLDER] MCP tools for policyholder communication history.",
+)
+communication_app.include_router(communication_router)
+FastApiMCP(
+    communication_app,
+    include_operations=["get_communication_history_stub","draft_status_notification","get_communication_history","update_sentiment_tracker"],
+).mount_http()
+app.mount("/api/v1/communication", communication_app)
+
+
+communication_mcp 
+handler.py
+
+
+"""
+handler.py — Communication
+───────────────────────────
+Auto-drafts status-change notifications for policyholders using claim
+status, sentiment data, and communication history.  Writes drafted
+messages to communication_history.
+"""
+import json
+import logging
+import os
+import sys
+from datetime import datetime
+
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "common"))
+
+from db import get_db_connection, row_to_dict  # noqa: E402
+from dotenv import load_dotenv, find_dotenv
+from openai import AzureOpenAI
+
+load_dotenv(find_dotenv())
+
+log = logging.getLogger(__name__)
+
+AZURE_OPENAI_ENDPOINT = os.environ.get("AZURE_OPENAI_ENDPOINT", "")
+AZURE_OPENAI_API_KEY = os.environ.get("AZURE_OPENAI_API_KEY", "")
+AZURE_OPENAI_API_VERSION = os.environ.get("AZURE_OPENAI_API_VERSION", "2025-11-13")
+AZURE_OPENAI_CHAT_DEPLOYMENT = os.environ.get("AZURE_OPENAI_CHAT_DEPLOYMENT", "gpt-5.1")
+
+
+def _get_openai_client() -> AzureOpenAI:
+    return AzureOpenAI(
+        api_key=AZURE_OPENAI_API_KEY,
+        api_version=AZURE_OPENAI_API_VERSION,
+        azure_endpoint=AZURE_OPENAI_ENDPOINT,
+    )
+
+
+def get_communication_history(claim_number: str) -> list:
+    conn = get_db_connection()
+    try:
+        cur = conn.cursor()
+        cur.execute(
+            "SELECT * FROM communication_history WHERE claim_number = %s ORDER BY communication_date DESC",
+            (claim_number,),
+        )
+        return row_to_dict(cur.fetchall()) or []
+    finally:
+        conn.close()
+
+
+def draft_status_notification(claim_number: str) -> dict:
+    conn = get_db_connection()
+    try:
+        cur = conn.cursor()
+
+        cur.execute(
+            "SELECT * FROM claims WHERE claim_number = %s", (claim_number,)
+        )
+        claim = row_to_dict(cur.fetchone())
+        if not claim:
+            return {"error": f"claim_number {claim_number} not found"}
+
+        cur.execute(
+            "SELECT * FROM communication_history WHERE claim_number = %s ORDER BY communication_date DESC LIMIT 5",
+            (claim_number,),
+        )
+        history = row_to_dict(cur.fetchall()) or []
+
+        sentiment_data = None
+        try:
+            cur.execute(
+                # "SELECT * FROM claim_sentiment_tracker WHERE claim_number = %s ORDER BY tracked_at DESC LIMIT 1",
+                "SELECT * FROM claim_sentiment_tracker WHERE claim_number = %s ORDER BY updated_at DESC LIMIT 1",
+                (claim_number,),
+            )
+            sentiment_data = row_to_dict(cur.fetchone())
+        except Exception:
+            pass
+
+    finally:
+        conn.close()
+
+    # sentiment_label = (sentiment_data or {}).get("sentiment_label", "Neutral")
+    sentiment_label = (sentiment_data or {}).get("current_sentiment", "Neutral")
+    claim_status = claim.get("status", "In Progress")
+    claimant_name = claim.get("claimant_name") or claim.get("policy_holder_name") or "Valued Policyholder" or "policyholder_name"
+
+    # recent_messages = [h.get("message_text") or h.get("message_body", "") for h in history[:3]]
+    recent_messages = [h.get("message_text") or h.get("message_body", "") or h.get("summary") for h in history[:3]]
+
+    try:
+        client = _get_openai_client()
+        prompt = (
+            "You are an insurance claims communication specialist. "
+            "Draft a professional, empathetic status-update notification for the policyholder. "
+            "Respond with JSON: "
+            '{"subject": "...", "message_body": "...", "channel": "Email|SMS|Portal", '
+            '"tone": "Empathetic|Informational|Urgent", "next_action": "..."}.\n\n'
+            f"Claimant: {claimant_name}\n"
+            f"Claim Number: {claim_number}\n"
+            f"Current Status: {claim_status}\n"
+            f"Loss Type: {claim.get('loss_type', 'Unknown')}\n"
+            f"Policyholder Sentiment: {sentiment_label}\n"
+            f"Recent Communication Summaries: {recent_messages}"
+        )
+        response = client.chat.completions.create(
+            model=AZURE_OPENAI_CHAT_DEPLOYMENT,
+            messages=[{"role": "user", "content": prompt}],
+            temperature=0.3,
+            response_format={"type": "json_object"},
+        )
+        draft = json.loads(response.choices[0].message.content)
+    except Exception as e:
+        log.warning("LLM notification draft failed: %s", e)
+        draft = {
+            "subject": f"Update on Your Claim {claim_number}",
+            "message_body": f"Dear {claimant_name}, your claim {claim_number} is currently {claim_status}. We will keep you updated.",
+            "channel": "Email",
+            "tone": "Informational",
+            "next_action": "No further action required at this time",
+        }
+
+    conn2 = get_db_connection()
+    try:
+        cur2 = conn2.cursor()
+        cur2.execute(
+            """
+            INSERT INTO communication_history
+              (claim_number, communication_date, channel, subject,
+               message_body, direction, status, drafted_by)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+            """,
+            (
+                claim_number,
+                datetime.utcnow().isoformat(),
+                draft.get("channel", "Email"),
+                draft.get("subject"),
+                draft.get("message_body"),
+                "Outbound",
+                "Draft",
+                "CommunicationAgent",
+            ),
+        )
+        conn2.commit()
+    except Exception as e:
+        conn2.rollback()
+        log.warning("Could not write communication_history: %s", e)
+    finally:
+        conn2.close()
+
+    return {
+        "claim_number": claim_number,
+        "claim_status": claim_status,
+        "policyholder_sentiment": sentiment_label,
+        "drafted_notification": draft,
+    }
+
+
+"""
+server.py — Communication Agent
+─────────────────────────────────
+LangGraph agent that auto-drafts status-change notifications for
+policyholders using sentiment data, claim status, and communication history.
+
+Port: 8809
+MCP : http://localhost:8800/api/v1/communication/mcp
+
+Run:
+    py -3 server.py
+"""
+
+import json
+import logging
+import os
+import sys
+import time
+import traceback
+from datetime import datetime, timedelta
+from typing import Annotated, TypedDict
+
+import uvicorn
+from dotenv import load_dotenv, find_dotenv
+from fastapi import FastAPI, Request
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import StreamingResponse
+from langchain_core.messages import AIMessage, SystemMessage
+from langchain_mcp_adapters.client import MultiServerMCPClient
+from langchain_openai.chat_models import AzureChatOpenAI
+from langgraph.graph import END, START, StateGraph
+from langgraph.graph.message import add_messages
+from langgraph.prebuilt import ToolNode
+
+load_dotenv(find_dotenv())
+
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s | %(levelname)-8s | %(name)s | %(message)s",
+    stream=sys.stdout,
+    force=True,
+)
+logger = logging.getLogger("communication_agent")
+
+PHOENIX_API_KEY = os.getenv("PHOENIX_API_KEY", "")
+PHOENIX_ENDPOINT = os.getenv("PHOENIX_ENDPOINT", "")
+MCP_URL = os.getenv("MCP_URL", "http://localhost:8800/api/v1/communication/mcp")
+AGENT_PORT = int(os.getenv("AGENT_PORT", "8809"))
+
+config_mcp_server = {
+    "communication_mcp": {
+        "url": MCP_URL,
+        "transport": "streamable_http",
+        "timeout": timedelta(seconds=120),
+        "sse_read_timeout": timedelta(seconds=600),
+    },
+    "feedback_mcp": {
+       "url": "http://localhost:8800/api/v1/feedback/mcp",
+       "transport": "streamable_http",
+   }
+}
+
+app = FastAPI(title="Communication Agent")
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+
+class State(TypedDict):
+    messages: Annotated[list, add_messages]
+
+
+def router(state: State):
+    last = state["messages"][-1]
+    if isinstance(last, AIMessage) and getattr(last, "tool_calls", None):
+        return "tools"
+    if isinstance(last, AIMessage) and last.content:
+        if "Continue" in last.content:
+            return "tools"
+        if "End" in last.content:
+            return "End"
+    return "End"
+
+
+# _FALLBACK_PROMPT = """
+# You are the Communication Agent for an insurance claims platform,
+# assisting a Policyholder.
+
+# Given a claim_number, your workflow is:
+
+# 1. Call draft_status_notification with the claim_number. This will:
+#    - Retrieve the claim's current status and the policyholder's sentiment.
+#    - Review recent communication history.
+#    - Generate an empathetic, channel-appropriate notification draft.
+#    - Save the draft to communication_history with status='Draft'.
+
+# 2. Present the drafted notification to the user:
+#    - Show the subject line, message body, and recommended channel.
+#    - Explain the tone chosen based on the policyholder's sentiment.
+#    - Mention the recommended next action.
+
+# When you have completed the task, end your response with "End".
+# """
+
+_FALLBACK_PROMPT = """"
+Given a policyholder inquiry:
+1. Extract claim_number.
+2.Call draft_status_notification
+3. Call get_communication_history.
+4. Call log_communication.
+5. If sentiment information is unavailable and the customer message
+contains emotional language, call update_sentiment_tracker.
+6. Draft a response explaining:
+  - current claim status
+  - previous communications
+  - sentiment assessment
+7. Call draft_status_notification.
+8. Present:
+  - claim details
+  - sentiment information
+  - drafted notification
+9. End.
+"""
+
+
+def load_prompt() -> str:
+    if not PHOENIX_ENDPOINT:
+        raise RuntimeError("Phoenix not configured")
+    from phoenix.client import Client
+    client = Client(base_url=PHOENIX_ENDPOINT, api_key=PHOENIX_API_KEY)
+    prompt = client.prompts.get(name="communication_agent", label="production")
+    prompt_set = prompt._template["messages"]
+    system_msg = next(
+        (item["content"][0]["text"] for item in prompt_set if item.get("role") == "system"), None
+    )
+    if not system_msg:
+        raise ValueError("System prompt is empty or missing in Phoenix")
+    return system_msg
+
+
+def create_graph(model, tools, prompt):
+    graph_builder = StateGraph(State)
+    llm_with_tools = model.bind_tools(tools)
+
+    async def agent_node(state: State):
+        all_messages = [SystemMessage(content=prompt)] + state["messages"]
+        message = await llm_with_tools.ainvoke(all_messages)
+        return {"messages": [message]}
+
+    graph_builder.add_node("agent", agent_node)
+    graph_builder.add_node("tools", ToolNode(tools=tools))
+    graph_builder.add_edge(START, "agent")
+    graph_builder.add_conditional_edges("agent", router, {"tools": "tools", "End": END})
+    graph_builder.add_edge("tools", "agent")
+    return graph_builder.compile()
+
+
+async def get_tools():
+    client = MultiServerMCPClient(config_mcp_server)
+    tools = await client.get_tools()
+    logger.info("Tools loaded from MCP: %s", [t.name for t in tools])
+    return tools
+
+
+async def stream_graph(graph, initial_state, config):
+    async for event in graph.astream_events(initial_state, config=config, version="v2"):
+        kind = event.get("event", "")
+        if kind == "on_chat_model_stream":
+            chunk = event["data"].get("chunk")
+            if chunk and hasattr(chunk, "content") and chunk.content:
+                yield f"data: {chunk.content}\n\n"
+        elif kind == "on_tool_start":
+            yield f"data: [Tool: {event.get('name', 'unknown_tool')}] Starting...\n\n"
+        elif kind == "on_tool_end":
+            yield f"data: [Tool: {event.get('name', 'unknown_tool')}] Done\n\n"
+
+
+@app.post("/chat")
+async def chat_stream(request: Request):
+    load_dotenv(find_dotenv())
+    tools = await get_tools()
+
+    model = AzureChatOpenAI(
+        api_key=os.getenv("AZURE_OPENAI_API_KEY"),
+        api_version=os.getenv("AZURE_OPENAI_API_VERSION"),
+        azure_deployment=os.getenv("AZURE_OPENAI_CHAT_DEPLOYMENT"),
+        azure_endpoint=os.getenv("AZURE_OPENAI_ENDPOINT"),
+    )
+
+    try:
+        system_prompt = load_prompt()
+    except Exception as e:
+        logger.warning("Phoenix prompt load failed (%s) — using fallback prompt", e)
+        system_prompt = _FALLBACK_PROMPT
+
     body = await request.json()
-           ^^^^^^^^^^^^^^^^^^^^
-  File "/home/JarvisClaims/Ramakrishna/Jarvis_claims_agents_v2/PolicyholderAgents/vnev/lib/python3.11/site-packages/starlette/requests.py", line 265, in json
-    self._json = json.loads(body)
-                 ^^^^^^^^^^^^^^^^
-  File "/usr/lib/python3.11/json/__init__.py", line 346, in loads
-    return _default_decoder.decode(s)
-           ^^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "/usr/lib/python3.11/json/decoder.py", line 337, in decode
-    obj, end = self.raw_decode(s, idx=_w(s, 0).end())
-               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "/usr/lib/python3.11/json/decoder.py", line 353, in raw_decode
-    obj, end = self.scan_once(s, idx)
-               ^^^^^^^^^^^^^^^^^^^^^^
-json.decoder.JSONDecodeError: Invalid control character at: line 1 column 17 (char 16)
+    user_message = body.get("message", "Draft a status update notification")
+    graph = create_graph(model=model, tools=tools, prompt=system_prompt)
+
+    async def generate():
+        start = time.time()
+        last_event_at = start
+        last_tool = None
+        try:
+            async for event in stream_graph(
+                graph=graph,
+                initial_state={"messages": [user_message]},
+                config={"recursion_limit": 250},
+            ):
+                last_event_at = time.time()
+                if isinstance(event, str) and event.startswith("data: [Tool:"):
+                    try:
+                        last_tool = event.split("[Tool:", 1)[1].split("]", 1)[0]
+                    except Exception:
+                        pass
+                yield event
+        except BaseException as e:
+            elapsed = time.time() - start
+            since_last = time.time() - last_event_at
+            err = {
+                "exception_class": type(e).__name__,
+                "message": str(e),
+                "elapsed_total_seconds": round(elapsed, 2),
+                "seconds_since_last_event": round(since_last, 2),
+                "last_tool_invoked": last_tool,
+                "traceback": traceback.format_exc(),
+                "timestamp_utc": datetime.utcnow().isoformat(),
+            }
+            logger.error("AGENT_ERROR %s", json.dumps(err, default=str))
+            try:
+                yield f"data: [AGENT_ERROR] {json.dumps(err, default=str)}\n\n"
+            except Exception:
+                pass
+            import asyncio
+            if isinstance(e, asyncio.CancelledError):
+                raise
+
+    return StreamingResponse(generate(), media_type="text/event-stream")
 
 
-
-(vnev) JarvisClaims@JarvisClaims:~/Ramakrishna/Jarvis_claims_agents_v2/PolicyholderAgents/MCP$ python3 main.py 
-/home/JarvisClaims/Ramakrishna/Jarvis_claims_agents_v2/PolicyholderAgents/MCP/main.py:267: DeprecationWarning: 
-        on_event is deprecated, use lifespan event handlers instead.
-
-        Read more about it in the
-        [FastAPI docs for Lifespan Events](https://fastapi.tiangolo.com/advanced/events/).
-        
-  @app.on_event("startup")
-INFO:     Started server process [8399]
-INFO:     Waiting for application startup.
-INFO:     Application startup complete.
-INFO:     Uvicorn running on http://0.0.0.0:8800 (Press CTRL+C to quit)
-INFO:     127.0.0.1:49366 - "POST /api/v1/communication/mcp HTTP/1.1" 200 OK
-INFO:     127.0.0.1:49376 - "POST /api/v1/feedback/mcp HTTP/1.1" 200 OK
-INFO:     127.0.0.1:49366 - "POST /api/v1/communication/mcp HTTP/1.1" 202 Accepted
-INFO:     127.0.0.1:49376 - "POST /api/v1/feedback/mcp HTTP/1.1" 202 Accepted
-INFO:     127.0.0.1:49398 - "POST /api/v1/communication/mcp HTTP/1.1" 200 OK
-INFO:     127.0.0.1:49400 - "POST /api/v1/feedback/mcp HTTP/1.1" 200 OK
-INFO:     127.0.0.1:49398 - "DELETE /api/v1/communication/mcp HTTP/1.1" 200 OK
-INFO:     127.0.0.1:49400 - "DELETE /api/v1/feedback/mcp HTTP/1.1" 200 OK
-INFO:     127.0.0.1:49388 - "GET /api/v1/feedback/mcp HTTP/1.1" 200 OK
+@app.get("/health")
+async def health():
+    return {"status": "healthy", "agent": "communication_agent"}
 
 
+if __name__ == "__main__":
+    uvicorn.run(app, host="0.0.0.0", port=AGENT_PORT)
 
 
-
-data: End
-
-JarvisClaims@JarvisClaims:~/Ramakrishna$ ^C
-JarvisClaims@JarvisClaims:~/Ramakrishna$ ^C
-JarvisClaims@JarvisClaims:~/Ramakrishna$ ^C
-JarvisClaims@JarvisClaims:~/Ramakrishna$ curl -s -N -X POST http://localhost:8809/chat   -H "Content-Type: application/json"   -d '{"message": "For
- claim CLM-2026-1001: I am really frustrated. It has been 3 days and I have not heard anything from anyone. My kitchen is still flooded. Wha
-t is going on with my claim?"}'   --max-time 90
-Internal Server ErrorJarvisClaims@JarvisClaims:~/Ramakrishna$ 
