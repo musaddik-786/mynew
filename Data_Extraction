@@ -1,411 +1,126 @@
-(venv) Jarvis@JarvisPhase2:~/Musaddique/Jarvis_claims_agents_v2/PolicyholderAgents/PolicyCoverageVerificationAgent$ python3 server.py 
-INFO:     Started server process [19934]
+now communication agent is giving error
+
+(vnev) JarvisClaims@JarvisClaims:~/Ramakrishna/Jarvis_claims_agents_v2/PolicyholderAgents/CommunicationAgent
+hon3 server.py               t p
+INFO:     Started server process [8523]
 INFO:     Waiting for application startup.
 INFO:     Application startup complete.
-INFO:     Uvicorn running on http://0.0.0.0:8807 (Press CTRL+C to quit)
-2026-06-23 07:56:31,281 | INFO     | httpx | HTTP Request: POST http://localhost:8800/api/v1/policy_coverage/mcp "HTTP/1.1 200 OK"
-2026-06-23 07:56:31,281 | INFO     | mcp.client.streamable_http | Received session ID: 43f89926eba84c0cb398fad487c28b1d
-2026-06-23 07:56:31,282 | INFO     | mcp.client.streamable_http | Negotiated protocol version: 2025-11-25
-2026-06-23 07:56:31,285 | INFO     | httpx | HTTP Request: POST http://localhost:8800/api/v1/policy_coverage/mcp "HTTP/1.1 202 Accepted"
-2026-06-23 07:56:31,290 | INFO     | httpx | HTTP Request: POST http://localhost:8800/api/v1/policy_coverage/mcp "HTTP/1.1 200 OK"
-2026-06-23 07:56:31,293 | INFO     | httpx | HTTP Request: DELETE http://localhost:8800/api/v1/policy_coverage/mcp "HTTP/1.1 200 OK"
-2026-06-23 07:56:31,294 | INFO     | policy_coverage_agent | Tools loaded from MCP: ['gw_get_policy_coverages', 'gw_search_policy', 'verify_coverage', 'save_policy_details', 'get_policy_details']
-2026-06-23 07:56:31,681 | WARNING  | policy_coverage_agent | Phoenix prompt load failed (Phoenix not configured) — using fallback prompt
-INFO:     127.0.0.1:53818 - "POST /chat HTTP/1.1" 200 OK
-2026-06-23 07:56:32,254 | INFO     | httpx | HTTP Request: POST https://agenticinsuranceopenai.openai.azure.com/openai/deployments/gpt-4.1-jarvis/chat/completions?api-version=2025-01-01-preview "HTTP/1.1 200 OK"
-2026-06-23 07:56:32,381 | INFO     | httpx | HTTP Request: POST http://localhost:8800/api/v1/policy_coverage/mcp "HTTP/1.1 200 OK"
-2026-06-23 07:56:32,382 | INFO     | mcp.client.streamable_http | Received session ID: ec64e5d6301c42ce86347e383eda9e67
-2026-06-23 07:56:32,382 | INFO     | mcp.client.streamable_http | Negotiated protocol version: 2025-11-25
-2026-06-23 07:56:32,385 | INFO     | httpx | HTTP Request: POST http://localhost:8800/api/v1/policy_coverage/mcp "HTTP/1.1 202 Accepted"
-2026-06-23 07:56:32,509 | INFO     | httpx | HTTP Request: POST http://localhost:8800/api/v1/policy_coverage/mcp "HTTP/1.1 200 OK"
-2026-06-23 07:56:32,513 | INFO     | httpx | HTTP Request: POST http://localhost:8800/api/v1/policy_coverage/mcp "HTTP/1.1 200 OK"
-2026-06-23 07:56:32,515 | INFO     | httpx | HTTP Request: DELETE http://localhost:8800/api/v1/policy_coverage/mcp "HTTP/1.1 200 OK"
-2026-06-23 07:56:33,167 | INFO     | httpx | HTTP Request: POST https://agenticinsuranceopenai.openai.azure.com/openai/deployments/gpt-4.1-jarvis/chat/completions?api-version=2025-01-01-preview "HTTP/1.1 200 OK"
-2026-06-23 07:56:33,384 | INFO     | httpx | HTTP Request: POST http://localhost:8800/api/v1/policy_coverage/mcp "HTTP/1.1 200 OK"
-2026-06-23 07:56:33,384 | INFO     | mcp.client.streamable_http | Received session ID: 9da7fd21d81e47269dc7a08b57f23b4e
-2026-06-23 07:56:33,385 | INFO     | mcp.client.streamable_http | Negotiated protocol version: 2025-11-25
-2026-06-23 07:56:33,386 | INFO     | httpx | HTTP Request: POST http://localhost:8800/api/v1/policy_coverage/mcp "HTTP/1.1 200 OK"
-2026-06-23 07:56:33,386 | INFO     | mcp.client.streamable_http | Received session ID: 0f43a96712544891a448f393e1447eb8
-2026-06-23 07:56:33,386 | INFO     | mcp.client.streamable_http | Negotiated protocol version: 2025-11-25
-2026-06-23 07:56:33,388 | INFO     | httpx | HTTP Request: POST http://localhost:8800/api/v1/policy_coverage/mcp "HTTP/1.1 202 Accepted"
-2026-06-23 07:56:33,391 | INFO     | httpx | HTTP Request: POST http://localhost:8800/api/v1/policy_coverage/mcp "HTTP/1.1 202 Accepted"
-2026-06-23 07:56:33,632 | INFO     | httpx | HTTP Request: POST http://localhost:8800/api/v1/policy_coverage/mcp "HTTP/1.1 200 OK"
-2026-06-23 07:56:33,636 | INFO     | httpx | HTTP Request: POST http://localhost:8800/api/v1/policy_coverage/mcp "HTTP/1.1 200 OK"
-2026-06-23 07:56:33,638 | INFO     | httpx | HTTP Request: DELETE http://localhost:8800/api/v1/policy_coverage/mcp "HTTP/1.1 200 OK"
-2026-06-23 07:56:34,003 | INFO     | httpx | HTTP Request: POST http://localhost:8800/api/v1/policy_coverage/mcp "HTTP/1.1 200 OK"
-2026-06-23 07:56:34,007 | INFO     | httpx | HTTP Request: POST http://localhost:8800/api/v1/policy_coverage/mcp "HTTP/1.1 200 OK"
-2026-06-23 07:56:34,009 | INFO     | httpx | HTTP Request: DELETE http://localhost:8800/api/v1/policy_coverage/mcp "HTTP/1.1 200 OK"
-2026-06-23 07:56:34,686 | INFO     | httpx | HTTP Request: POST https://agenticinsuranceopenai.openai.azure.com/openai/deployments/gpt-4.1-jarvis/chat/completions?api-version=2025-01-01-preview "HTTP/1.1 200 OK"
-2026-06-23 07:56:34,791 | INFO     | httpx | HTTP Request: POST http://localhost:8800/api/v1/policy_coverage/mcp "HTTP/1.1 200 OK"
-2026-06-23 07:56:34,791 | INFO     | mcp.client.streamable_http | Received session ID: 8c5485868ba44c4b833d00ebc4eb304c
-2026-06-23 07:56:34,792 | INFO     | mcp.client.streamable_http | Negotiated protocol version: 2025-11-25
-2026-06-23 07:56:34,793 | INFO     | httpx | HTTP Request: POST http://localhost:8800/api/v1/policy_coverage/mcp "HTTP/1.1 200 OK"
-2026-06-23 07:56:34,793 | INFO     | mcp.client.streamable_http | Received session ID: 032c8399ca9f48cfbaf7fee0d2be4d79
-2026-06-23 07:56:34,793 | INFO     | mcp.client.streamable_http | Negotiated protocol version: 2025-11-25
-2026-06-23 07:56:34,795 | INFO     | httpx | HTTP Request: POST http://localhost:8800/api/v1/policy_coverage/mcp "HTTP/1.1 202 Accepted"
-2026-06-23 07:56:34,798 | INFO     | httpx | HTTP Request: POST http://localhost:8800/api/v1/policy_coverage/mcp "HTTP/1.1 202 Accepted"
-2026-06-23 07:56:34,810 | INFO     | httpx | HTTP Request: POST http://localhost:8800/api/v1/policy_coverage/mcp "HTTP/1.1 200 OK"
-2026-06-23 07:56:34,812 | INFO     | httpx | HTTP Request: DELETE http://localhost:8800/api/v1/policy_coverage/mcp "HTTP/1.1 200 OK"
-2026-06-23 07:56:35,098 | INFO     | httpx | HTTP Request: POST http://localhost:8800/api/v1/policy_coverage/mcp "HTTP/1.1 200 OK"
-2026-06-23 07:56:35,101 | INFO     | httpx | HTTP Request: POST http://localhost:8800/api/v1/policy_coverage/mcp "HTTP/1.1 200 OK"
-2026-06-23 07:56:35,103 | INFO     | httpx | HTTP Request: DELETE http://localhost:8800/api/v1/policy_coverage/mcp "HTTP/1.1 200 OK"
-2026-06-23 07:56:35,967 | INFO     | httpx | HTTP Request: POST https://agenticinsuranceopenai.openai.azure.com/openai/deployments/gpt-4.1-jarvis/chat/completions?api-version=2025-01-01-preview "HTTP/1.1 200 OK"
-2026-06-23 07:56:36,188 | INFO     | httpx | HTTP Request: POST http://localhost:8800/api/v1/policy_coverage/mcp "HTTP/1.1 200 OK"
-2026-06-23 07:56:36,188 | INFO     | mcp.client.streamable_http | Received session ID: 60cfd0ecc78944218e47cf07604b97ea
-2026-06-23 07:56:36,189 | INFO     | mcp.client.streamable_http | Negotiated protocol version: 2025-11-25
-2026-06-23 07:56:36,191 | INFO     | httpx | HTTP Request: POST http://localhost:8800/api/v1/policy_coverage/mcp "HTTP/1.1 202 Accepted"
-2026-06-23 07:56:38,856 | INFO     | httpx | HTTP Request: POST http://localhost:8800/api/v1/policy_coverage/mcp "HTTP/1.1 200 OK"
-2026-06-23 07:56:38,859 | INFO     | httpx | HTTP Request: POST http://localhost:8800/api/v1/policy_coverage/mcp "HTTP/1.1 200 OK"
-2026-06-23 07:56:38,861 | INFO     | httpx | HTTP Request: DELETE http://localhost:8800/api/v1/policy_coverage/mcp "HTTP/1.1 200 OK"
-2026-06-23 07:56:39,343 | INFO     | httpx | HTTP Request: POST https://agenticinsuranceopenai.openai.azure.com/openai/deployments/gpt-4.1-jarvis/chat/completions?api-version=2025-01-01-preview "HTTP/1.1 200 OK"
-^CINFO:     Shutting down
-INFO:     Waiting for application shutdown.
-INFO:     Application shutdown complete.
-INFO:     Finished server process [19934]
-^C
-(venv) Jarvis@JarvisPhase2:~/Musaddique/Jarvis_claims_agents_v2/PolicyholderAgents/PolicyCoverageVerificationAgent$ ^C
-(venv) Jarvis@JarvisPhase2:~/Musaddique/Jarvis_claims_agents_v2/PolicyholderAgents/PolicyCoverageVerificationAgent$ ^C
-(venv) Jarvis@JarvisPhase2:~/Musaddique/Jarvis_claims_agents_v2/PolicyholderAgents/PolicyCoverageVerificationAgent$ 
+INFO:     Uvicorn running on http://0.0.0.0:8809 (Press CTRL+C to quit)
+2026-06-23 08:34:03,852 | INFO     | httpx | HTTP Request: POST http://localhost:8800/api/v1/communication/mcp "HTTP/1.1 200 OK"
+2026-06-23 08:34:03,852 | INFO     | mcp.client.streamable_http | Received session ID: 41d8de0061d644c8bdc588a071724651
+2026-06-23 08:34:03,853 | INFO     | mcp.client.streamable_http | Negotiated protocol version: 2025-11-25
+2026-06-23 08:34:03,854 | INFO     | httpx | HTTP Request: POST http://localhost:8800/api/v1/feedback/mcp "HTTP/1.1 200 OK"
+2026-06-23 08:34:03,854 | INFO     | mcp.client.streamable_http | Received session ID: 5f37fb3f1abb4e16b54998daba92f6ae
+2026-06-23 08:34:03,854 | INFO     | mcp.client.streamable_http | Negotiated protocol version: 2025-11-25
+2026-06-23 08:34:03,859 | INFO     | httpx | HTTP Request: POST http://localhost:8800/api/v1/communication/mcp "HTTP/1.1 202 Accepted"
+2026-06-23 08:34:03,860 | INFO     | httpx | HTTP Request: POST http://localhost:8800/api/v1/feedback/mcp "HTTP/1.1 202 Accepted"
+2026-06-23 08:34:03,869 | INFO     | httpx | HTTP Request: POST http://localhost:8800/api/v1/communication/mcp "HTTP/1.1 200 OK"
+2026-06-23 08:34:03,870 | INFO     | httpx | HTTP Request: POST http://localhost:8800/api/v1/feedback/mcp "HTTP/1.1 200 OK"
+2026-06-23 08:34:03,873 | INFO     | httpx | HTTP Request: DELETE http://localhost:8800/api/v1/communication/mcp "HTTP/1.1 200 OK"
+2026-06-23 08:34:03,874 | INFO     | httpx | HTTP Request: DELETE http://localhost:8800/api/v1/feedback/mcp "HTTP/1.1 200 OK"
+2026-06-23 08:34:03,876 | INFO     | communication_agent | Tools loaded from MCP: ['get_communication_history', 'draft_status_notification', 'write_customer_feedback', 'get_customer_feedback', 'update_sentiment_tracker', 'get_sentiment_tracker']
+2026-06-23 08:34:04,296 | WARNING  | communication_agent | Phoenix prompt load failed (Phoenix not configured) — using fallback prompt
+INFO:     127.0.0.1:54126 - "POST /chat HTTP/1.1" 500 Internal Server Error
+ERROR:    Exception in ASGI application
+Traceback (most recent call last):
+  File "/home/JarvisClaims/Ramakrishna/Jarvis_claims_agents_v2/PolicyholderAgents/vnev/lib/python3.11/site-packages/uvicorn/protocols/http/h11_impl.py", line 415, in run_asgi
+    result = await app(  # type: ignore[func-returns-value]
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/JarvisClaims/Ramakrishna/Jarvis_claims_agents_v2/PolicyholderAgents/vnev/lib/python3.11/site-packages/uvicorn/middleware/proxy_headers.py", line 62, in __call__
+    return await self.app(scope, receive, send)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/JarvisClaims/Ramakrishna/Jarvis_claims_agents_v2/PolicyholderAgents/vnev/lib/python3.11/site-packages/fastapi/applications.py", line 1163, in __call__
+    await super().__call__(scope, receive, send)
+  File "/home/JarvisClaims/Ramakrishna/Jarvis_claims_agents_v2/PolicyholderAgents/vnev/lib/python3.11/site-packages/starlette/applications.py", line 90, in __call__
+    await self.middleware_stack(scope, receive, send)
+  File "/home/JarvisClaims/Ramakrishna/Jarvis_claims_agents_v2/PolicyholderAgents/vnev/lib/python3.11/site-packages/starlette/middleware/errors.py", line 186, in __call__
+    raise exc
+  File "/home/JarvisClaims/Ramakrishna/Jarvis_claims_agents_v2/PolicyholderAgents/vnev/lib/python3.11/site-packages/starlette/middleware/errors.py", line 164, in __call__
+    await self.app(scope, receive, _send)
+  File "/home/JarvisClaims/Ramakrishna/Jarvis_claims_agents_v2/PolicyholderAgents/vnev/lib/python3.11/site-packages/starlette/middleware/cors.py", line 88, in __call__
+    await self.app(scope, receive, send)
+  File "/home/JarvisClaims/Ramakrishna/Jarvis_claims_agents_v2/PolicyholderAgents/vnev/lib/python3.11/site-packages/starlette/middleware/exceptions.py", line 63, in __call__
+    await wrap_app_handling_exceptions(self.app, conn)(scope, receive, send)
+  File "/home/JarvisClaims/Ramakrishna/Jarvis_claims_agents_v2/PolicyholderAgents/vnev/lib/python3.11/site-packages/starlette/_exception_handler.py", line 53, in wrapped_app
+    raise exc
+  File "/home/JarvisClaims/Ramakrishna/Jarvis_claims_agents_v2/PolicyholderAgents/vnev/lib/python3.11/site-packages/starlette/_exception_handler.py", line 42, in wrapped_app
+    await app(scope, receive, sender)
+  File "/home/JarvisClaims/Ramakrishna/Jarvis_claims_agents_v2/PolicyholderAgents/vnev/lib/python3.11/site-packages/fastapi/middleware/asyncexitstack.py", line 18, in __call__
+    await self.app(scope, receive, send)
+  File "/home/JarvisClaims/Ramakrishna/Jarvis_claims_agents_v2/PolicyholderAgents/vnev/lib/python3.11/site-packages/starlette/routing.py", line 660, in __call__
+    await self.middleware_stack(scope, receive, send)
+  File "/home/JarvisClaims/Ramakrishna/Jarvis_claims_agents_v2/PolicyholderAgents/vnev/lib/python3.11/site-packages/fastapi/routing.py", line 2531, in app
+    await route.handle(scope, receive, send)
+  File "/home/JarvisClaims/Ramakrishna/Jarvis_claims_agents_v2/PolicyholderAgents/vnev/lib/python3.11/site-packages/fastapi/routing.py", line 1241, in handle
+    await super().handle(scope, receive, send)
+  File "/home/JarvisClaims/Ramakrishna/Jarvis_claims_agents_v2/PolicyholderAgents/vnev/lib/python3.11/site-packages/starlette/routing.py", line 276, in handle
+    await self.app(scope, receive, send)
+  File "/home/JarvisClaims/Ramakrishna/Jarvis_claims_agents_v2/PolicyholderAgents/vnev/lib/python3.11/site-packages/fastapi/routing.py", line 150, in app
+    await wrap_app_handling_exceptions(app, request)(scope, receive, send)
+  File "/home/JarvisClaims/Ramakrishna/Jarvis_claims_agents_v2/PolicyholderAgents/vnev/lib/python3.11/site-packages/starlette/_exception_handler.py", line 53, in wrapped_app
+    raise exc
+  File "/home/JarvisClaims/Ramakrishna/Jarvis_claims_agents_v2/PolicyholderAgents/vnev/lib/python3.11/site-packages/starlette/_exception_handler.py", line 42, in wrapped_app
+    await app(scope, receive, sender)
+  File "/home/JarvisClaims/Ramakrishna/Jarvis_claims_agents_v2/PolicyholderAgents/vnev/lib/python3.11/site-packages/fastapi/routing.py", line 136, in app
+    response = await f(request)
+               ^^^^^^^^^^^^^^^^
+  File "/home/JarvisClaims/Ramakrishna/Jarvis_claims_agents_v2/PolicyholderAgents/vnev/lib/python3.11/site-packages/fastapi/routing.py", line 690, in app
+    raw_response = await run_endpoint_function(
+                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/JarvisClaims/Ramakrishna/Jarvis_claims_agents_v2/PolicyholderAgents/vnev/lib/python3.11/site-packages/fastapi/routing.py", line 344, in run_endpoint_function
+    return await dependant.call(**values)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/JarvisClaims/Ramakrishna/Jarvis_claims_agents_v2/PolicyholderAgents/CommunicationAgent/server.py", line 431, in chat_stream
+    body = await request.json()
+           ^^^^^^^^^^^^^^^^^^^^
+  File "/home/JarvisClaims/Ramakrishna/Jarvis_claims_agents_v2/PolicyholderAgents/vnev/lib/python3.11/site-packages/starlette/requests.py", line 265, in json
+    self._json = json.loads(body)
+                 ^^^^^^^^^^^^^^^^
+  File "/usr/lib/python3.11/json/__init__.py", line 346, in loads
+    return _default_decoder.decode(s)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/lib/python3.11/json/decoder.py", line 337, in decode
+    obj, end = self.raw_decode(s, idx=_w(s, 0).end())
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/lib/python3.11/json/decoder.py", line 353, in raw_decode
+    obj, end = self.scan_once(s, idx)
+               ^^^^^^^^^^^^^^^^^^^^^^
+json.decoder.JSONDecodeError: Invalid control character at: line 1 column 17 (char 16)
 
 
+
+(vnev) JarvisClaims@JarvisClaims:~/Ramakrishna/Jarvis_claims_agents_v2/PolicyholderAgents/MCP$ python3 main.py 
+/home/JarvisClaims/Ramakrishna/Jarvis_claims_agents_v2/PolicyholderAgents/MCP/main.py:267: DeprecationWarning: 
+        on_event is deprecated, use lifespan event handlers instead.
 
         Read more about it in the
         [FastAPI docs for Lifespan Events](https://fastapi.tiangolo.com/advanced/events/).
         
   @app.on_event("startup")
-INFO:     Started server process [19899]
+INFO:     Started server process [8399]
 INFO:     Waiting for application startup.
 INFO:     Application startup complete.
 INFO:     Uvicorn running on http://0.0.0.0:8800 (Press CTRL+C to quit)
-INFO:     127.0.0.1:55120 - "POST /api/v1/policy_coverage/mcp HTTP/1.1" 200 OK
-INFO:     127.0.0.1:55120 - "POST /api/v1/policy_coverage/mcp HTTP/1.1" 202 Accepted
-INFO:     127.0.0.1:55142 - "POST /api/v1/policy_coverage/mcp HTTP/1.1" 200 OK
-INFO:     127.0.0.1:55142 - "DELETE /api/v1/policy_coverage/mcp HTTP/1.1" 200 OK
-INFO:     127.0.0.1:55134 - "GET /api/v1/policy_coverage/mcp HTTP/1.1" 200 OK
-INFO:     127.0.0.1:55156 - "POST /api/v1/policy_coverage/mcp HTTP/1.1" 200 OK
-INFO:     127.0.0.1:55156 - "POST /api/v1/policy_coverage/mcp HTTP/1.1" 202 Accepted
-Debug policy id  5837683365
-INFO:     127.0.0.1:55174 - "POST /api/v1/policy_coverage/mcp HTTP/1.1" 200 OK
-INFO:     127.0.0.1:55174 - "POST /api/v1/policy_coverage/mcp HTTP/1.1" 200 OK
-INFO:     127.0.0.1:55174 - "DELETE /api/v1/policy_coverage/mcp HTTP/1.1" 200 OK
-INFO:     127.0.0.1:55164 - "GET /api/v1/policy_coverage/mcp HTTP/1.1" 200 OK
-INFO:     127.0.0.1:55184 - "POST /api/v1/policy_coverage/mcp HTTP/1.1" 200 OK
-INFO:     127.0.0.1:55200 - "POST /api/v1/policy_coverage/mcp HTTP/1.1" 200 OK
-INFO:     127.0.0.1:55184 - "POST /api/v1/policy_coverage/mcp HTTP/1.1" 202 Accepted
-INFO:     127.0.0.1:55200 - "POST /api/v1/policy_coverage/mcp HTTP/1.1" 202 Accepted
-INFO:     127.0.0.1:55236 - "POST /api/v1/policy_coverage/mcp HTTP/1.1" 200 OK
-INFO:     127.0.0.1:55236 - "POST /api/v1/policy_coverage/mcp HTTP/1.1" 200 OK
-INFO:     127.0.0.1:55236 - "DELETE /api/v1/policy_coverage/mcp HTTP/1.1" 200 OK
-INFO:     127.0.0.1:55216 - "GET /api/v1/policy_coverage/mcp HTTP/1.1" 200 OK
-INFO:     127.0.0.1:55246 - "POST /api/v1/policy_coverage/mcp HTTP/1.1" 200 OK
-INFO:     127.0.0.1:55246 - "POST /api/v1/policy_coverage/mcp HTTP/1.1" 200 OK
-INFO:     127.0.0.1:55246 - "DELETE /api/v1/policy_coverage/mcp HTTP/1.1" 200 OK
-INFO:     127.0.0.1:55222 - "GET /api/v1/policy_coverage/mcp HTTP/1.1" 200 OK
-INFO:     127.0.0.1:51064 - "POST /api/v1/policy_coverage/mcp HTTP/1.1" 200 OK
-INFO:     127.0.0.1:51080 - "POST /api/v1/policy_coverage/mcp HTTP/1.1" 200 OK
-INFO:     127.0.0.1:51064 - "POST /api/v1/policy_coverage/mcp HTTP/1.1" 202 Accepted
-INFO:     127.0.0.1:51080 - "POST /api/v1/policy_coverage/mcp HTTP/1.1" 202 Accepted
-Error calling get_policy_details
-Traceback (most recent call last):
-  File "/home/Jarvis/Musaddique/Jarvis_claims_agents_v2/PolicyholderAgents/venv/lib/python3.11/site-packages/fastapi_mcp/server.py", line 559, in _execute_api_tool
-    raise Exception(
-Exception: Error calling get_policy_details. Status code: 500. Response: Internal Server Error
-INFO:     127.0.0.1:51128 - "POST /api/v1/policy_coverage/mcp HTTP/1.1" 200 OK
-INFO:     127.0.0.1:51128 - "DELETE /api/v1/policy_coverage/mcp HTTP/1.1" 200 OK
-INFO:     127.0.0.1:51110 - "GET /api/v1/policy_coverage/mcp HTTP/1.1" 200 OK
-INFO:     127.0.0.1:51112 - "POST /api/v1/policy_coverage/mcp HTTP/1.1" 200 OK
-INFO:     127.0.0.1:51112 - "POST /api/v1/policy_coverage/mcp HTTP/1.1" 200 OK
-INFO:     127.0.0.1:51112 - "DELETE /api/v1/policy_coverage/mcp HTTP/1.1" 200 OK
-INFO:     127.0.0.1:51096 - "GET /api/v1/policy_coverage/mcp HTTP/1.1" 200 OK
-INFO:     127.0.0.1:51130 - "POST /api/v1/policy_coverage/mcp HTTP/1.1" 200 OK
-INFO:     127.0.0.1:51130 - "POST /api/v1/policy_coverage/mcp HTTP/1.1" 202 Accepted
-Debug policy id  5837683365
-INFO:     127.0.0.1:51154 - "POST /api/v1/policy_coverage/mcp HTTP/1.1" 200 OK
-INFO:     127.0.0.1:51154 - "POST /api/v1/policy_coverage/mcp HTTP/1.1" 200 OK
-INFO:     127.0.0.1:51154 - "DELETE /api/v1/policy_coverage/mcp HTTP/1.1" 200 OK
-INFO:     127.0.0.1:51138 - "GET /api/v1/policy_coverage/mcp HTTP/1.1" 200 OK
-^CINFO:     Shutting down
-INFO:     Waiting for application shutdown.
-INFO:     Application shutdown complete.
-INFO:     Finished server process [19899]
-^C
-(venv) Jarvis@JarvisPhase2:~/Musaddique/Jarvis_claims_agents_v2/PolicyholderAgents/MCP$ ^C
-(venv) Jarvis@JarvisPhase2:~/Musaddique/Jarvis_claims_agents_v2/PolicyholderAgents/MCP$ ^C
-(venv) Jarvis@JarvisPhase2:~/Musaddique/Jarvis_claims_agents_v2/PolicyholderAgents/MCP$ ^C
-(venv) Jarvis@JarvisPhase2:~/Musaddique/Jarvis_claims_agents_v2/PolicyholderAgents/MCP$ arvis@JarvisPhase2:~/Musaddique$ ^C
-Jarvis@JarvisPhase2:~/Musaddique$ curl -s -N -X POST http://localhost:8807/chat -H "Content-Type: application/json" -d '{"message":"Verify coverage for claim CLM-2026-1001"}'
-data: [Tool: verify_coverage] Starting...
+INFO:     127.0.0.1:49366 - "POST /api/v1/communication/mcp HTTP/1.1" 200 OK
+INFO:     127.0.0.1:49376 - "POST /api/v1/feedback/mcp HTTP/1.1" 200 OK
+INFO:     127.0.0.1:49366 - "POST /api/v1/communication/mcp HTTP/1.1" 202 Accepted
+INFO:     127.0.0.1:49376 - "POST /api/v1/feedback/mcp HTTP/1.1" 202 Accepted
+INFO:     127.0.0.1:49398 - "POST /api/v1/communication/mcp HTTP/1.1" 200 OK
+INFO:     127.0.0.1:49400 - "POST /api/v1/feedback/mcp HTTP/1.1" 200 OK
+INFO:     127.0.0.1:49398 - "DELETE /api/v1/communication/mcp HTTP/1.1" 200 OK
+INFO:     127.0.0.1:49400 - "DELETE /api/v1/feedback/mcp HTTP/1.1" 200 OK
+INFO:     127.0.0.1:49388 - "GET /api/v1/feedback/mcp HTTP/1.1" 200 OK
 
-data: [Tool: verify_coverage] Done
 
-data: [Tool: gw_search_policy] Starting...
-
-data: [Tool: save_policy_details] Starting...
-
-data: [Tool: gw_search_policy] Done
-
-data: [Tool: save_policy_details] Done
-
-data: [Tool: gw_get_policy_coverages] Starting...
-
-data: [Tool: get_policy_details] Starting...
-
-data: [Tool: get_policy_details] Done
-
-data: [Tool: gw_get_policy_coverages] Done
-
-data: [Tool: verify_coverage] Starting...
-
-data: [Tool: verify_coverage] Done
-
-data: Coverage
-
-data:  verification
-
-data:  for
-
-data:  claim
-
-data:  CL
-
-data: M
-
-data: -
-
-data: 202
-
-data: 6
-
-data: -
-
-data: 100
-
-data: 1
-
-data: :
-
-
-
-data: -
-
-data:  Coverage
-
-data:  verdict
-
-data: :
-
-data:  Covered
-
-data: 
-
-
-data: -
-
-data:  Coverage
-
-data:  limit
-
-data: :
-
-data:  $
-
-data: 250
-
-data: ,
-
-data: 000
-
-data: 
-
-
-data: -
-
-data:  Ded
-
-data: uct
-
-data: ible
-
-data: :
-
-data:  $
-
-data: 1
-
-data: ,
-
-data: 000
-
-data: 
-
-
-data: -
-
-data:  Ex
-
-data: clusions
-
-data: :
-
-data:  Flood
-
-data:  Damage
-
-data: ,
-
-data:  Earth
-
-data: quake
-
-data: 
-
-
-data: -
-
-data:  Net
-
-data:  payable
-
-data:  amount
-
-data: :
-
-data:  $
-
-data: 7
-
-data: ,
-
-data: 500
-
-data: 
-
-
-
-data: Explanation
-
-data: :
-
-
-data: Water
-
-data:  damage
-
-data:  from
-
-data:  a
-
-data:  burst
-
-data:  pipe
-
-data:  is
-
-data:  covered
-
-data:  under
-
-data:  this
-
-data:  Home
-
-data: owners
-
-data:  policy
-
-data: .
-
-data:  The
-
-data:  exclusions
-
-data:  for
-
-data:  flood
-
-data:  and
-
-data:  earthquake
-
-data:  do
-
-data:  not
-
-data:  apply
-
-data:  in
-
-data:  this
-
-data:  case
-
-data: .
-
-data:  The
-
-data:  estimated
-
-data:  loss
-
-data:  of
-
-data:  $
-
-data: 8
-
-data: ,
-
-data: 500
-
-data:  exceeds
-
-data:  the
-
-data:  $
-
-data: 1
-
-data: ,
-
-data: 000
-
-data:  deductible
-
-data: ,
-
-data:  so
-
-data:  the
-
-data:  net
-
-data:  payable
-
-data:  to
-
-data:  the
-
-data:  policy
-
-data: holder
-
-data:  is
-
-data:  $
-
-data: 7
-
-data: ,
-
-data: 500
-
-data: .
 
 
 
 data: End
 
-Jarvis@JarvisPhase2:~/Musaddique$ 
-
-
-here it is working fine>?? the get policy details issue?
+JarvisClaims@JarvisClaims:~/Ramakrishna$ ^C
+JarvisClaims@JarvisClaims:~/Ramakrishna$ ^C
+JarvisClaims@JarvisClaims:~/Ramakrishna$ ^C
+JarvisClaims@JarvisClaims:~/Ramakrishna$ curl -s -N -X POST http://localhost:8809/chat   -H "Content-Type: application/json"   -d '{"message": "For
+ claim CLM-2026-1001: I am really frustrated. It has been 3 days and I have not heard anything from anyone. My kitchen is still flooded. Wha
+t is going on with my claim?"}'   --max-time 90
+Internal Server ErrorJarvisClaims@JarvisClaims:~/Ramakrishna$ 
