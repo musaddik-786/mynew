@@ -1,484 +1,516 @@
-this is my communication agent i need complete working of it like which data it is taking from where , populating what data, which tool is doing what in sequence and in detail 
-router.py
+Good. I can see the entire flow now. Let me explain it exactly as your code executes.
 
-"""
-communication_router.py
-────────────────────────
-Tool / Endpoint map:
-  get_communication_history    GET  /api/communication/history/{claim_number}
-  draft_status_notification    POST /api/communication/draft/{claim_number}
-"""
+Communication Agent Architecture
 
-import logging
-from fastapi import APIRouter
+You have 3 layers:
 
-from communication_mcp import handler
+User
+  ↓
+Communication Agent (8809)
+  ↓
+MCP Server (8800)
+  ↓
+Communication MCP Handler
+  ↓
+PostgreSQL Tables
 
-log = logging.getLogger(__name__)
+⸻
 
-router = APIRouter()
+Step 1: User sends message
 
+Example:
 
-@router.get(
-    "/api/communication/history/{claim_number}",
-    operation_id="get_communication_history",
-    summary="Read communication_history for a claim",
-    tags=["Communication"],
-)
-def get_communication_history(claim_number: str):
-    """Return all communication history records for a given claim number."""
-    records = handler.get_communication_history(claim_number)
-    return {"claim_number": claim_number, "communication_history": records}
+For claim CLM-2026-1001:
+I am really frustrated.
+It has been 3 days and I have not heard anything.
+What is going on with my claim?
 
-
-@router.post(
-    "/api/communication/draft/{claim_number}",
-    operation_id="draft_status_notification",
-    summary="Auto-draft a status-change notification for the policyholder",
-    tags=["Communication"],
-)
-def draft_status_notification(claim_number: str):
-    """
-    Use the claim's current status, sentiment, and communication history to
-    generate an empathetic, channel-appropriate notification draft and save it
-    to communication_history with status='Draft'.
-    """
-    return handler.draft_status_notification(claim_number)
-
-
-
-# def load_claim_status(claim_number: str):
-#     claim = handler.get_claims_data()
-    
-
-main.py
-
-
-communication_app = _make_cors_app(
-    title="communication_agent_mcps",
-    description="[PLACEHOLDER] MCP tools for policyholder communication history.",
-)
-communication_app.include_router(communication_router)
-FastApiMCP(
-    communication_app,
-    include_operations=["get_communication_history_stub","draft_status_notification","get_communication_history","update_sentiment_tracker"],
-).mount_http()
-app.mount("/api/v1/communication", communication_app)
-
-
-communication_mcp 
-handler.py
-
-
-"""
-handler.py — Communication
-───────────────────────────
-Auto-drafts status-change notifications for policyholders using claim
-status, sentiment data, and communication history.  Writes drafted
-messages to communication_history.
-"""
-import json
-import logging
-import os
-import sys
-from datetime import datetime
-
-sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "common"))
-
-from db import get_db_connection, row_to_dict  # noqa: E402
-from dotenv import load_dotenv, find_dotenv
-from openai import AzureOpenAI
-
-load_dotenv(find_dotenv())
-
-log = logging.getLogger(__name__)
-
-AZURE_OPENAI_ENDPOINT = os.environ.get("AZURE_OPENAI_ENDPOINT", "")
-AZURE_OPENAI_API_KEY = os.environ.get("AZURE_OPENAI_API_KEY", "")
-AZURE_OPENAI_API_VERSION = os.environ.get("AZURE_OPENAI_API_VERSION", "2025-11-13")
-AZURE_OPENAI_CHAT_DEPLOYMENT = os.environ.get("AZURE_OPENAI_CHAT_DEPLOYMENT", "gpt-5.1")
-
-
-def _get_openai_client() -> AzureOpenAI:
-    return AzureOpenAI(
-        api_key=AZURE_OPENAI_API_KEY,
-        api_version=AZURE_OPENAI_API_VERSION,
-        azure_endpoint=AZURE_OPENAI_ENDPOINT,
-    )
-
-
-def get_communication_history(claim_number: str) -> list:
-    conn = get_db_connection()
-    try:
-        cur = conn.cursor()
-        cur.execute(
-            "SELECT * FROM communication_history WHERE claim_number = %s ORDER BY communication_date DESC",
-            (claim_number,),
-        )
-        return row_to_dict(cur.fetchall()) or []
-    finally:
-        conn.close()
-
-
-def draft_status_notification(claim_number: str) -> dict:
-    conn = get_db_connection()
-    try:
-        cur = conn.cursor()
-
-        cur.execute(
-            "SELECT * FROM claims WHERE claim_number = %s", (claim_number,)
-        )
-        claim = row_to_dict(cur.fetchone())
-        if not claim:
-            return {"error": f"claim_number {claim_number} not found"}
-
-        cur.execute(
-            "SELECT * FROM communication_history WHERE claim_number = %s ORDER BY communication_date DESC LIMIT 5",
-            (claim_number,),
-        )
-        history = row_to_dict(cur.fetchall()) or []
-
-        sentiment_data = None
-        try:
-            cur.execute(
-                # "SELECT * FROM claim_sentiment_tracker WHERE claim_number = %s ORDER BY tracked_at DESC LIMIT 1",
-                "SELECT * FROM claim_sentiment_tracker WHERE claim_number = %s ORDER BY updated_at DESC LIMIT 1",
-                (claim_number,),
-            )
-            sentiment_data = row_to_dict(cur.fetchone())
-        except Exception:
-            pass
-
-    finally:
-        conn.close()
-
-    # sentiment_label = (sentiment_data or {}).get("sentiment_label", "Neutral")
-    sentiment_label = (sentiment_data or {}).get("current_sentiment", "Neutral")
-    claim_status = claim.get("status", "In Progress")
-    claimant_name = claim.get("claimant_name") or claim.get("policy_holder_name") or "Valued Policyholder" or "policyholder_name"
-
-    # recent_messages = [h.get("message_text") or h.get("message_body", "") for h in history[:3]]
-    recent_messages = [h.get("message_text") or h.get("message_body", "") or h.get("summary") for h in history[:3]]
-
-    try:
-        client = _get_openai_client()
-        prompt = (
-            "You are an insurance claims communication specialist. "
-            "Draft a professional, empathetic status-update notification for the policyholder. "
-            "Respond with JSON: "
-            '{"subject": "...", "message_body": "...", "channel": "Email|SMS|Portal", '
-            '"tone": "Empathetic|Informational|Urgent", "next_action": "..."}.\n\n'
-            f"Claimant: {claimant_name}\n"
-            f"Claim Number: {claim_number}\n"
-            f"Current Status: {claim_status}\n"
-            f"Loss Type: {claim.get('loss_type', 'Unknown')}\n"
-            f"Policyholder Sentiment: {sentiment_label}\n"
-            f"Recent Communication Summaries: {recent_messages}"
-        )
-        response = client.chat.completions.create(
-            model=AZURE_OPENAI_CHAT_DEPLOYMENT,
-            messages=[{"role": "user", "content": prompt}],
-            temperature=0.3,
-            response_format={"type": "json_object"},
-        )
-        draft = json.loads(response.choices[0].message.content)
-    except Exception as e:
-        log.warning("LLM notification draft failed: %s", e)
-        draft = {
-            "subject": f"Update on Your Claim {claim_number}",
-            "message_body": f"Dear {claimant_name}, your claim {claim_number} is currently {claim_status}. We will keep you updated.",
-            "channel": "Email",
-            "tone": "Informational",
-            "next_action": "No further action required at this time",
-        }
-
-    conn2 = get_db_connection()
-    try:
-        cur2 = conn2.cursor()
-        cur2.execute(
-            """
-            INSERT INTO communication_history
-              (claim_number, communication_date, channel, subject,
-               message_body, direction, status, drafted_by)
-            VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
-            """,
-            (
-                claim_number,
-                datetime.utcnow().isoformat(),
-                draft.get("channel", "Email"),
-                draft.get("subject"),
-                draft.get("message_body"),
-                "Outbound",
-                "Draft",
-                "CommunicationAgent",
-            ),
-        )
-        conn2.commit()
-    except Exception as e:
-        conn2.rollback()
-        log.warning("Could not write communication_history: %s", e)
-    finally:
-        conn2.close()
-
-    return {
-        "claim_number": claim_number,
-        "claim_status": claim_status,
-        "policyholder_sentiment": sentiment_label,
-        "drafted_notification": draft,
-    }
-
-
-"""
-server.py — Communication Agent
-─────────────────────────────────
-LangGraph agent that auto-drafts status-change notifications for
-policyholders using sentiment data, claim status, and communication history.
-
-Port: 8809
-MCP : http://localhost:8800/api/v1/communication/mcp
-
-Run:
-    py -3 server.py
-"""
-
-import json
-import logging
-import os
-import sys
-import time
-import traceback
-from datetime import datetime, timedelta
-from typing import Annotated, TypedDict
-
-import uvicorn
-from dotenv import load_dotenv, find_dotenv
-from fastapi import FastAPI, Request
-from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import StreamingResponse
-from langchain_core.messages import AIMessage, SystemMessage
-from langchain_mcp_adapters.client import MultiServerMCPClient
-from langchain_openai.chat_models import AzureChatOpenAI
-from langgraph.graph import END, START, StateGraph
-from langgraph.graph.message import add_messages
-from langgraph.prebuilt import ToolNode
-
-load_dotenv(find_dotenv())
-
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s | %(levelname)-8s | %(name)s | %(message)s",
-    stream=sys.stdout,
-    force=True,
-)
-logger = logging.getLogger("communication_agent")
-
-PHOENIX_API_KEY = os.getenv("PHOENIX_API_KEY", "")
-PHOENIX_ENDPOINT = os.getenv("PHOENIX_ENDPOINT", "")
-MCP_URL = os.getenv("MCP_URL", "http://localhost:8800/api/v1/communication/mcp")
-AGENT_PORT = int(os.getenv("AGENT_PORT", "8809"))
-
-config_mcp_server = {
-    "communication_mcp": {
-        "url": MCP_URL,
-        "transport": "streamable_http",
-        "timeout": timedelta(seconds=120),
-        "sse_read_timeout": timedelta(seconds=600),
-    },
-    "feedback_mcp": {
-       "url": "http://localhost:8800/api/v1/feedback/mcp",
-       "transport": "streamable_http",
-   }
-}
-
-app = FastAPI(title="Communication Agent")
-
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
-
-
-class State(TypedDict):
-    messages: Annotated[list, add_messages]
-
-
-def router(state: State):
-    last = state["messages"][-1]
-    if isinstance(last, AIMessage) and getattr(last, "tool_calls", None):
-        return "tools"
-    if isinstance(last, AIMessage) and last.content:
-        if "Continue" in last.content:
-            return "tools"
-        if "End" in last.content:
-            return "End"
-    return "End"
-
-
-# _FALLBACK_PROMPT = """
-# You are the Communication Agent for an insurance claims platform,
-# assisting a Policyholder.
-
-# Given a claim_number, your workflow is:
-
-# 1. Call draft_status_notification with the claim_number. This will:
-#    - Retrieve the claim's current status and the policyholder's sentiment.
-#    - Review recent communication history.
-#    - Generate an empathetic, channel-appropriate notification draft.
-#    - Save the draft to communication_history with status='Draft'.
-
-# 2. Present the drafted notification to the user:
-#    - Show the subject line, message body, and recommended channel.
-#    - Explain the tone chosen based on the policyholder's sentiment.
-#    - Mention the recommended next action.
-
-# When you have completed the task, end your response with "End".
-# """
-
-_FALLBACK_PROMPT = """"
-Given a policyholder inquiry:
-1. Extract claim_number.
-2.Call draft_status_notification
-3. Call get_communication_history.
-4. Call log_communication.
-5. If sentiment information is unavailable and the customer message
-contains emotional language, call update_sentiment_tracker.
-6. Draft a response explaining:
-  - current claim status
-  - previous communications
-  - sentiment assessment
-7. Call draft_status_notification.
-8. Present:
-  - claim details
-  - sentiment information
-  - drafted notification
-9. End.
-"""
-
-
-def load_prompt() -> str:
-    if not PHOENIX_ENDPOINT:
-        raise RuntimeError("Phoenix not configured")
-    from phoenix.client import Client
-    client = Client(base_url=PHOENIX_ENDPOINT, api_key=PHOENIX_API_KEY)
-    prompt = client.prompts.get(name="communication_agent", label="production")
-    prompt_set = prompt._template["messages"]
-    system_msg = next(
-        (item["content"][0]["text"] for item in prompt_set if item.get("role") == "system"), None
-    )
-    if not system_msg:
-        raise ValueError("System prompt is empty or missing in Phoenix")
-    return system_msg
-
-
-def create_graph(model, tools, prompt):
-    graph_builder = StateGraph(State)
-    llm_with_tools = model.bind_tools(tools)
-
-    async def agent_node(state: State):
-        all_messages = [SystemMessage(content=prompt)] + state["messages"]
-        message = await llm_with_tools.ainvoke(all_messages)
-        return {"messages": [message]}
-
-    graph_builder.add_node("agent", agent_node)
-    graph_builder.add_node("tools", ToolNode(tools=tools))
-    graph_builder.add_edge(START, "agent")
-    graph_builder.add_conditional_edges("agent", router, {"tools": "tools", "End": END})
-    graph_builder.add_edge("tools", "agent")
-    return graph_builder.compile()
-
-
-async def get_tools():
-    client = MultiServerMCPClient(config_mcp_server)
-    tools = await client.get_tools()
-    logger.info("Tools loaded from MCP: %s", [t.name for t in tools])
-    return tools
-
-
-async def stream_graph(graph, initial_state, config):
-    async for event in graph.astream_events(initial_state, config=config, version="v2"):
-        kind = event.get("event", "")
-        if kind == "on_chat_model_stream":
-            chunk = event["data"].get("chunk")
-            if chunk and hasattr(chunk, "content") and chunk.content:
-                yield f"data: {chunk.content}\n\n"
-        elif kind == "on_tool_start":
-            yield f"data: [Tool: {event.get('name', 'unknown_tool')}] Starting...\n\n"
-        elif kind == "on_tool_end":
-            yield f"data: [Tool: {event.get('name', 'unknown_tool')}] Done\n\n"
-
+Request goes to:
 
 @app.post("/chat")
-async def chat_stream(request: Request):
-    load_dotenv(find_dotenv())
-    tools = await get_tools()
+async def chat_stream(request: Request)
 
-    model = AzureChatOpenAI(
-        api_key=os.getenv("AZURE_OPENAI_API_KEY"),
-        api_version=os.getenv("AZURE_OPENAI_API_VERSION"),
-        azure_deployment=os.getenv("AZURE_OPENAI_CHAT_DEPLOYMENT"),
-        azure_endpoint=os.getenv("AZURE_OPENAI_ENDPOINT"),
-    )
+inside:
 
-    try:
-        system_prompt = load_prompt()
-    except Exception as e:
-        logger.warning("Phoenix prompt load failed (%s) — using fallback prompt", e)
-        system_prompt = _FALLBACK_PROMPT
+CommunicationAgent/server.py
 
-    body = await request.json()
-    user_message = body.get("message", "Draft a status update notification")
-    graph = create_graph(model=model, tools=tools, prompt=system_prompt)
+⸻
 
-    async def generate():
-        start = time.time()
-        last_event_at = start
-        last_tool = None
-        try:
-            async for event in stream_graph(
-                graph=graph,
-                initial_state={"messages": [user_message]},
-                config={"recursion_limit": 250},
-            ):
-                last_event_at = time.time()
-                if isinstance(event, str) and event.startswith("data: [Tool:"):
-                    try:
-                        last_tool = event.split("[Tool:", 1)[1].split("]", 1)[0]
-                    except Exception:
-                        pass
-                yield event
-        except BaseException as e:
-            elapsed = time.time() - start
-            since_last = time.time() - last_event_at
-            err = {
-                "exception_class": type(e).__name__,
-                "message": str(e),
-                "elapsed_total_seconds": round(elapsed, 2),
-                "seconds_since_last_event": round(since_last, 2),
-                "last_tool_invoked": last_tool,
-                "traceback": traceback.format_exc(),
-                "timestamp_utc": datetime.utcnow().isoformat(),
-            }
-            logger.error("AGENT_ERROR %s", json.dumps(err, default=str))
-            try:
-                yield f"data: [AGENT_ERROR] {json.dumps(err, default=str)}\n\n"
-            except Exception:
-                pass
-            import asyncio
-            if isinstance(e, asyncio.CancelledError):
-                raise
+Step 2: Agent loads tools
 
-    return StreamingResponse(generate(), media_type="text/event-stream")
+From:
 
+tools = await get_tools()
 
-@app.get("/health")
-async def health():
-    return {"status": "healthy", "agent": "communication_agent"}
+which loads:
 
+communication_mcp
+feedback_mcp
 
-if __name__ == "__main__":
-    uvicorn.run(app, host="0.0.0.0", port=AGENT_PORT)
+Tools available:
 
+get_communication_history
+draft_status_notification
+write_customer_feedback
+get_customer_feedback
+update_sentiment_tracker
+get_sentiment_tracker
 
+You can see that in logs:
+
+Tools loaded from MCP:
+[
+ get_communication_history,
+ draft_status_notification,
+ write_customer_feedback,
+ get_customer_feedback,
+ update_sentiment_tracker,
+ get_sentiment_tracker
+]
+
+⸻
+
+Step 3: LLM receives prompt
+
+Prompt:
+
+_FALLBACK_PROMPT
+
+Current prompt says:
+
+1. Extract claim_number
+2. Call draft_status_notification
+3. Call get_communication_history
+4. Call log_communication
+5. If sentiment unavailable call update_sentiment_tracker
+...
+
+⸻
+
+Important Issue
+
+You DO NOT HAVE:
+
+log_communication
+
+tool.
+
+But prompt says:
+
+Call log_communication
+
+So GPT may try to call a non-existent tool.
+
+This should be removed.
+
+⸻
+
+Step 4: draft_status_notification()
+
+First tool called.
+
+Router:
+
+POST
+/api/communication/draft/{claim_number}
+
+calls:
+
+handler.draft_status_notification()
+
+⸻
+
+What data does it read?
+
+Table 1
+
+claims
+
+Query:
+
+SELECT *
+FROM claims
+WHERE claim_number=%s
+
+Reads:
+
+claim_number
+status
+claimant_name
+policy_holder_name
+loss_type
+
+Example:
+
+CLM-2026-1001
+Open
+John Smith
+Water Damage
+
+Stored into:
+
+claim
+
+⸻
+
+Table 2
+
+communication_history
+
+Query:
+
+SELECT *
+FROM communication_history
+WHERE claim_number=%s
+ORDER BY communication_date DESC
+LIMIT 5
+
+Reads latest communications.
+
+Example:
+
+Email sent
+SMS sent
+Customer called
+Adjuster update
+
+Stored into:
+
+history
+
+⸻
+
+Table 3
+
+claim_sentiment_tracker
+
+Query:
+
+SELECT *
+FROM claim_sentiment_tracker
+WHERE claim_number=%s
+ORDER BY updated_at DESC
+LIMIT 1
+
+Reads:
+
+current_sentiment
+
+Example:
+
+Frustrated
+Angry
+Neutral
+Satisfied
+
+Stored into:
+
+sentiment_data
+
+⸻
+
+Step 5: Prompt sent to Azure OpenAI
+
+Agent builds:
+
+prompt = (
+    Claimant
+    Claim Number
+    Current Status
+    Loss Type
+    Sentiment
+    Recent Communication Summaries
+)
+
+Example:
+
+Claimant: John Smith
+Claim Number:
+CLM-2026-1001
+Current Status:
+Coverage Verification
+Loss Type:
+Water Damage
+Policyholder Sentiment:
+Frustrated
+Recent Communications:
+[
+ "Adjuster assigned",
+ "Inspection scheduled"
+]
+
+⸻
+
+Step 6: GPT generates notification
+
+GPT returns:
+
+{
+  "subject":"Update on Your Claim",
+  "message_body":"We understand your frustration...",
+  "channel":"Email",
+  "tone":"Empathetic",
+  "next_action":"Adjuster will contact you"
+}
+
+Stored in:
+
+draft
+
+⸻
+
+Step 7: Communication History gets updated
+
+New row inserted.
+
+Table:
+
+communication_history
+
+Insert:
+
+INSERT INTO communication_history
+(
+ claim_number,
+ communication_date,
+ channel,
+ subject,
+ message_body,
+ direction,
+ status,
+ drafted_by
+)
+
+Values:
+
+claim_number
+communication_date
+Email
+subject
+message_body
+Outbound
+Draft
+CommunicationAgent
+
+⸻
+
+So what gets populated?
+
+Communication Agent WRITES ONLY:
+
+communication_history
+
+New record:
+
+claim_number
+communication_date
+channel
+subject
+message_body
+direction
+status
+drafted_by
+
+⸻
+
+What does get_communication_history do?
+
+Router:
+
+GET
+/api/communication/history/{claim_number}
+
+calls:
+
+handler.get_communication_history()
+
+Query:
+
+SELECT *
+FROM communication_history
+WHERE claim_number=%s
+ORDER BY communication_date DESC
+
+Returns:
+
+[
+ {
+   communication_id:1,
+   subject:"Update",
+   message_body:"..."
+ }
+]
+
+NO INSERT.
+
+NO UPDATE.
+
+Read only.
+
+⸻
+
+What is Feedback MCP doing?
+
+Loaded here:
+
+feedback_mcp
+
+Tools:
+
+write_customer_feedback
+get_customer_feedback
+update_sentiment_tracker
+get_sentiment_tracker
+
+Those are NOT in this handler.
+
+They belong to:
+
+Feedback Agent
+
+and probably update:
+
+customer_feedback
+claim_sentiment_tracker
+
+tables.
+
+⸻
+
+Actual Runtime Sequence
+
+User says:
+
+I am frustrated about claim CLM-2026-1001
+
+Agent flow:
+
+Communication Agent
+        ↓
+Extract claim number
+        ↓
+draft_status_notification
+        ↓
+Read claims
+        ↓
+Read communication_history
+        ↓
+Read claim_sentiment_tracker
+        ↓
+Call GPT
+        ↓
+Generate notification
+        ↓
+Insert draft into communication_history
+        ↓
+get_communication_history
+        ↓
+Return communication history
+        ↓
+Show drafted response
+
+⸻
+
+Current Problems in Your Code
+
+Problem 1
+
+Prompt says:
+
+Call log_communication
+
+No such tool exists.
+
+Remove it.
+
+⸻
+
+Problem 2
+
+Prompt says:
+
+Call draft_status_notification
+
+twice.
+
+Step 2 and Step 7.
+
+This causes duplicate drafts.
+
+Remove second call.
+
+⸻
+
+Problem 3
+
+Prompt says:
+
+If sentiment unavailable
+call update_sentiment_tracker
+
+But it never explains how to pass:
+
+claim_number
+sentiment
+feedback text
+
+GPT may call tool incorrectly.
+
+⸻
+
+Tables Used By Communication Agent
+
+Reads
+
+claims
+
+Fields used:
+
+claim_number
+status
+claimant_name
+policy_holder_name
+loss_type
+
+⸻
+
+Reads
+
+claim_sentiment_tracker
+
+Fields used:
+
+current_sentiment
+updated_at
+
+⸻
+
+Reads
+
+communication_history
+
+Fields used:
+
+message_text
+message_body
+summary
+communication_date
+
+⸻
+
+Writes
+
+communication_history
+
+Fields populated:
+
+claim_number
+communication_date
+channel
+subject
+message_body
+direction
+status
+drafted_by
+
+That’s the complete end-to-end flow of your Communication Agent based on the code you’ve shared.
