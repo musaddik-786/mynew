@@ -1,174 +1,877 @@
-def save_policy_details(policy_number: str) -> dict:
-    """
-    Fetch policy from Guidewire and save locally.
-    """
+JarvisClaims@JarvisClaims:~/Ramakrishna$ curl -s -N -X POST http://localhost:8807/chat -H "Content-Type: application/json" -d '{"message":"Verify coverage for claim CLM-2026-1001"}'
+data: [Tool: verify_coverage] Starting...
 
-    search_result = gw_search_policy(policy_number)
-    if not search_result["found"]:
-        return search_result
+data: [Tool: verify_coverage] Done
 
-    policy = search_result["policy"]
+data: [Tool: gw_search_policy] Starting...
 
-    gw_policy_id = policy.get("gw_policy_id")
-    effective_date = policy.get("effective_date")
-    expiration_date = policy.get("expiration_date")
-    insured_name = policy.get("insured_name")
-    account_number = policy.get("account_number")
+data: [Tool: save_policy_details] Starting...
 
-    policy_address = (
-        policy.get("raw", {})
-        .get("data", [{}])[0]
-        .get("attributes", {})
-        .get("policyAddress")
-    )
+data: [Tool: gw_search_policy] Done
 
-    coverage_result = gw_get_policy_coverages(policy_number)
+data: [Tool: save_policy_details] Done
 
-    attrs = {}
+data: [Tool: get_policy_details] Starting...
 
-    if coverage_result.get("found"):
-        attrs = (
-            coverage_result
-            .get("coverage_detail", {})
-            .get("data", {})
-            .get("attributes", {})
-        )
+data: [Tool: get_policy_details] Done
 
-    state = attrs.get("baseState", {}).get("name")
-    term_type = attrs.get("termType", {}).get("name")
+data: Coverage
 
-    premium_amount = (
-        attrs.get("totalPremium", {})
-        .get("amount")
-    )
+data:  verification
 
-    currency = (
-        attrs.get("preferredCoverageCurrency", {})
-        .get("code")
-    )
+data:  for
 
-    city = (
-        attrs.get("policyAddress", {})
-        .get("city")
-    )
+data:  claim
 
-    country = (
-        attrs.get("policyAddress", {})
-        .get("country")
-    )
+data:  CL
 
-    postal_code = (
-        attrs.get("policyAddress", {})
-        .get("postalCode")
-    )
+data: M
 
-    status = "Active" if coverage_result.get("found") else "Unknown"
+data: -
 
-    product_name = (
-        attrs.get("product", {})
-        .get("displayName", "Unknown")
-    )
+data: 202
 
-    coverage_type = (
-        "Homeowners"
-        if "Homeowners" in product_name
-        else product_name
-    )
+data: 6
 
-    # Still hardcoded for now
-    deductible = 1000
-    coverage_limit = 250000
-    exclusions = "Flood Damage,Earthquake"
+data: -
 
-    conn = get_db_connection()
+data: 100
 
-    try:
-        cur = conn.cursor()
+data: 1
 
-        cur.execute(
-            """
-            INSERT INTO policy_details
-            (
-                policy_id,
-                gw_policy_id,
-                status,
-                coverage_type,
-                deductible,
-                coverage_limit,
-                exclusions,
-                effective_date,
-                expiration_date,
-                premium_amount,
-                insured_name,
-                account_number,
-                policy_address,
-                state,
-                term_type,
-                currency,
-                city,
-                country,
-                postal_code
-            )
-            VALUES
-            (
-                %s,%s,%s,%s,%s,%s,%s,%s,%s,%s,
-                %s,%s,%s,%s,%s,%s,%s,%s,%s
-            )
-            ON CONFLICT (policy_id)
-            DO UPDATE SET
-                gw_policy_id = EXCLUDED.gw_policy_id,
-                status = EXCLUDED.status,
-                coverage_type = EXCLUDED.coverage_type,
-                deductible = EXCLUDED.deductible,
-                coverage_limit = EXCLUDED.coverage_limit,
-                exclusions = EXCLUDED.exclusions,
-                effective_date = EXCLUDED.effective_date,
-                expiration_date = EXCLUDED.expiration_date,
-                premium_amount = EXCLUDED.premium_amount,
-                insured_name = EXCLUDED.insured_name,
-                account_number = EXCLUDED.account_number,
-                policy_address = EXCLUDED.policy_address,
-                state = EXCLUDED.state,
-                term_type = EXCLUDED.term_type,
-                currency = EXCLUDED.currency,
-                city = EXCLUDED.city,
-                country = EXCLUDED.country,
-                postal_code = EXCLUDED.postal_code
-            """,
-            (
-                policy_number,
-                gw_policy_id,
-                status,
-                coverage_type,
-                deductible,
-                coverage_limit,
-                exclusions,
-                effective_date,
-                expiration_date,
-                premium_amount,
-                insured_name,
-                account_number,
-                policy_address,
-                state,
-                term_type,
-                currency,
-                city,
-                country,
-                postal_code,
-            ),
-        )
+data:  cannot
 
-        conn.commit()
+data:  be
 
-        return {
-            "saved": True,
-            "policy_id": policy_number,
-            "gw_policy_id": gw_policy_id,
-            "status": status,
-            "coverage_type": coverage_type,
-            "premium_amount": premium_amount,
-            "currency": currency,
-        }
+data:  fully
 
-    finally:
-        conn.close()
+data:  completed
+
+data:  because
+
+data:  the
+
+data:  linked
+
+data:  policy
+
+data:  (
+
+data: 608
+
+data: 153
+
+data: 157
+
+data: 4
+
+data: )
+
+data:  is
+
+data:  not
+
+data:  accessible
+
+data: :
+
+
+
+data: -
+
+data:  Guide
+
+data: wire
+
+data:  policy
+
+data:  search
+
+data:  failed
+
+data:  (
+
+data: 403
+
+data:  Forbidden
+
+data: ).
+
+
+data: -
+
+data:  Local
+
+data:  policy
+
+data: _details
+
+data:  lookup
+
+data:  failed
+
+data:  (
+
+data: 500
+
+data:  Internal
+
+data:  Server
+
+data:  Error
+
+data: ).
+
+
+data: -
+
+data:  As
+
+data:  a
+
+data:  result
+
+data: ,
+
+data:  I
+
+data:  cannot
+
+data:  reliably
+
+data:  obtain
+
+data: :
+
+
+data:  
+
+data:  -
+
+data:  Coverage
+
+data:  verdict
+
+data: 
+
+
+data:  
+
+data:  -
+
+data:  Coverage
+
+data:  limits
+
+data: 
+
+
+data:  
+
+data:  -
+
+data:  Ded
+
+data: uct
+
+data: ible
+
+data: 
+
+
+data:  
+
+data:  -
+
+data:  Ex
+
+data: clusions
+
+data: 
+
+
+data:  
+
+data:  -
+
+data:  Net
+
+data:  payable
+
+data:  amount
+
+data: 
+
+
+
+data: What
+
+data:  is
+
+data:  known
+
+data: :
+
+
+data: -
+
+data:  Claim
+
+data:  number
+
+data: :
+
+data:  CL
+
+data: M
+
+data: -
+
+data: 202
+
+data: 6
+
+data: -
+
+data: 100
+
+data: 1
+
+data:   
+
+
+data: -
+
+data:  Policy
+
+data:  number
+
+data:  on
+
+data:  claim
+
+data: :
+
+data:  
+
+data: 608
+
+data: 153
+
+data: 157
+
+data: 4
+
+data:   
+
+
+data: -
+
+data:  Loss
+
+data:  type
+
+data: :
+
+data:  Water
+
+data:  Damage
+
+data:  (
+
+data: burst
+
+data:  pipe
+
+data:  in
+
+data:  kitchen
+
+data: ,
+
+data:  flooding
+
+data: )
+
+data:   
+
+
+data: -
+
+data:  Claim
+
+data:  system
+
+data:  currently
+
+data:  flags
+
+data:  coverage
+
+data:  as
+
+data: :
+
+data:  true
+
+data:  (
+
+data: with
+
+data:  AI
+
+data:  confidence
+
+data:  
+
+data: 85
+
+data: %),
+
+data:  but
+
+data:  this
+
+data:  is
+
+data:  not
+
+data:  validated
+
+data:  against
+
+data:  the
+
+data:  actual
+
+data:  policy
+
+data:  due
+
+data:  to
+
+data:  the
+
+data:  system
+
+data:  errors
+
+data:  above
+
+data: .
+
+
+
+data: Recommended
+
+data:  next
+
+data:  steps
+
+data:  for
+
+data:  a
+
+data:  human
+
+data:  user
+
+data: :
+
+
+data: 1
+
+data: .
+
+data:  Man
+
+data: ually
+
+data:  confirm
+
+data:  policy
+
+data:  
+
+data: 608
+
+data: 153
+
+data: 157
+
+data: 4
+
+data: :
+
+
+data:   
+
+data:  -
+
+data:  Check
+
+data:  your
+
+data:  policy
+
+data:  administration
+
+data:  system
+
+data:  directly
+
+data:  by
+
+data:  policy
+
+data:  number
+
+data: .
+
+
+data:   
+
+data:  -
+
+data:  Verify
+
+data:  that
+
+data:  the
+
+data:  policy
+
+data:  is
+
+data:  active
+
+data:  on
+
+data:  the
+
+data:  date
+
+data:  of
+
+data:  loss
+
+data:  (
+
+data: 202
+
+data: 6
+
+data: -
+
+data: 05
+
+data: -
+
+data: 20
+
+data: ).
+
+
+data: 2
+
+data: .
+
+data:  Retrieve
+
+data:  coverage
+
+data:  details
+
+data: :
+
+
+data:   
+
+data:  -
+
+data:  Property
+
+data: /w
+
+data: ater
+
+data:  damage
+
+data:  section
+
+data: 
+
+
+data:   
+
+data:  -
+
+data:  Limits
+
+data:  for
+
+data:  water
+
+data:  damage
+
+data: /pl
+
+data: umbing
+
+data:  incidents
+
+data: 
+
+
+data:   
+
+data:  -
+
+data:  Applicable
+
+data:  deductible
+
+data: 
+
+
+data:   
+
+data:  -
+
+data:  Any
+
+data:  exclusions
+
+data:  relevant
+
+data:  to
+
+data: :
+
+
+data:     
+
+data:  -
+
+data:  Grad
+
+data: ual
+
+data:  leaks
+
+data:  vs
+
+data: .
+
+data:  sudden
+
+data:  burst
+
+data: 
+
+
+data:     
+
+data:  -
+
+data:  Poor
+
+data:  maintenance
+
+data:  or
+
+data:  wear
+
+data:  and
+
+data:  tear
+
+data: 
+
+
+data: 3
+
+data: .
+
+data:  Re
+
+data: -run
+
+data:  or
+
+data:  document
+
+data:  coverage
+
+data:  decision
+
+data: :
+
+
+data:   
+
+data:  -
+
+data:  If
+
+data:  your
+
+data:  systems
+
+data:  come
+
+data:  back
+
+data:  online
+
+data: ,
+
+data:  re
+
+data: -run
+
+data:  electronic
+
+data:  verification
+
+data: .
+
+
+data:   
+
+data:  -
+
+data:  Until
+
+data:  then
+
+data: ,
+
+data:  document
+
+data:  that
+
+data:  the
+
+data:  automated
+
+data:  coverage
+
+data:  verification
+
+data:  failed
+
+data:  due
+
+data:  to
+
+data:  external
+
+data:  system
+
+data:  errors
+
+data: .
+
+
+
+data: Because
+
+data:  I
+
+data:  cannot
+
+data:  reach
+
+data:  or
+
+data:  read
+
+data:  the
+
+data:  policy
+
+data: ,
+
+data:  I
+
+data:  cannot
+
+data:  provide
+
+data:  a
+
+data:  formal
+
+data:  coverage
+
+data:  verdict
+
+data: ,
+
+data:  limit
+
+data: ,
+
+data:  deductible
+
+data: ,
+
+data:  exclusions
+
+data: ,
+
+data:  or
+
+data:  net
+
+data:  payable
+
+data:  amount
+
+data:  for
+
+data:  this
+
+data:  claim
+
+data: .
+
+
+
+data: End
+
+JarvisClaims@JarvisClaims:~/Ramakrishna$ 
+
+(vnev) JarvisClaims@JarvisClaims:~/Ramakrishna/Jarvis_claims_agents_v2/PolicyholderAgents/PolicyCoverageVerificationAgent$ python3 server.py 
+INFO:     Started server process [7802]
+INFO:     Waiting for application startup.
+INFO:     Application startup complete.
+INFO:     Uvicorn running on http://0.0.0.0:8807 (Press CTRL+C to quit)
+2026-06-23 08:07:03,620 | INFO     | httpx | HTTP Request: POST http://localhost:8800/api/v1/policy_coverage/mcp "HTTP/1.1 200 OK"
+2026-06-23 08:07:03,620 | INFO     | mcp.client.streamable_http | Received session ID: f91561467c2245e7b85ec5d0eb9388f6
+2026-06-23 08:07:03,621 | INFO     | mcp.client.streamable_http | Negotiated protocol version: 2025-11-25
+2026-06-23 08:07:03,625 | INFO     | httpx | HTTP Request: POST http://localhost:8800/api/v1/policy_coverage/mcp "HTTP/1.1 202 Accepted"
+2026-06-23 08:07:03,630 | INFO     | httpx | HTTP Request: POST http://localhost:8800/api/v1/policy_coverage/mcp "HTTP/1.1 200 OK"
+2026-06-23 08:07:03,632 | INFO     | httpx | HTTP Request: DELETE http://localhost:8800/api/v1/policy_coverage/mcp "HTTP/1.1 200 OK"
+2026-06-23 08:07:03,633 | INFO     | policy_coverage_agent | Tools loaded from MCP: ['gw_get_policy_coverages', 'gw_search_policy', 'verify_coverage', 'save_policy_details', 'get_policy_details']
+2026-06-23 08:07:04,047 | WARNING  | policy_coverage_agent | Phoenix prompt load failed (Phoenix not configured) — using fallback prompt
+INFO:     127.0.0.1:40350 - "POST /chat HTTP/1.1" 200 OK
+2026-06-23 08:07:04,982 | INFO     | httpx | HTTP Request: POST https://azureclaimsopenai.openai.azure.com/openai/deployments/gpt-5.1-claims/chat/completions?api-version=2025-04-01-preview "HTTP/1.1 200 OK"
+2026-06-23 08:07:05,445 | INFO     | httpx | HTTP Request: POST http://localhost:8800/api/v1/policy_coverage/mcp "HTTP/1.1 200 OK"
+2026-06-23 08:07:05,445 | INFO     | mcp.client.streamable_http | Received session ID: 208c164098de4c4ba1facfa345bcffe6
+2026-06-23 08:07:05,446 | INFO     | mcp.client.streamable_http | Negotiated protocol version: 2025-11-25
+2026-06-23 08:07:05,448 | INFO     | httpx | HTTP Request: POST http://localhost:8800/api/v1/policy_coverage/mcp "HTTP/1.1 202 Accepted"
+2026-06-23 08:07:05,517 | INFO     | httpx | HTTP Request: POST http://localhost:8800/api/v1/policy_coverage/mcp "HTTP/1.1 200 OK"
+2026-06-23 08:07:05,521 | INFO     | httpx | HTTP Request: POST http://localhost:8800/api/v1/policy_coverage/mcp "HTTP/1.1 200 OK"
+2026-06-23 08:07:05,523 | INFO     | httpx | HTTP Request: DELETE http://localhost:8800/api/v1/policy_coverage/mcp "HTTP/1.1 200 OK"
+2026-06-23 08:07:06,928 | INFO     | httpx | HTTP Request: POST https://azureclaimsopenai.openai.azure.com/openai/deployments/gpt-5.1-claims/chat/completions?api-version=2025-04-01-preview "HTTP/1.1 200 OK"
+2026-06-23 08:07:07,056 | INFO     | httpx | HTTP Request: POST http://localhost:8800/api/v1/policy_coverage/mcp "HTTP/1.1 200 OK"
+2026-06-23 08:07:07,056 | INFO     | mcp.client.streamable_http | Received session ID: 91147d3f09d445b5a65febdafce80415
+2026-06-23 08:07:07,056 | INFO     | mcp.client.streamable_http | Negotiated protocol version: 2025-11-25
+2026-06-23 08:07:07,057 | INFO     | httpx | HTTP Request: POST http://localhost:8800/api/v1/policy_coverage/mcp "HTTP/1.1 200 OK"
+2026-06-23 08:07:07,057 | INFO     | mcp.client.streamable_http | Received session ID: 9acd9769ef2d4474b155947e52e89c7a
+2026-06-23 08:07:07,058 | INFO     | mcp.client.streamable_http | Negotiated protocol version: 2025-11-25
+2026-06-23 08:07:07,060 | INFO     | httpx | HTTP Request: POST http://localhost:8800/api/v1/policy_coverage/mcp "HTTP/1.1 202 Accepted"
+2026-06-23 08:07:07,062 | INFO     | httpx | HTTP Request: POST http://localhost:8800/api/v1/policy_coverage/mcp "HTTP/1.1 202 Accepted"
+2026-06-23 08:07:07,301 | INFO     | httpx | HTTP Request: POST http://localhost:8800/api/v1/policy_coverage/mcp "HTTP/1.1 200 OK"
+2026-06-23 08:07:07,304 | INFO     | httpx | HTTP Request: POST http://localhost:8800/api/v1/policy_coverage/mcp "HTTP/1.1 200 OK"
+2026-06-23 08:07:07,305 | INFO     | httpx | HTTP Request: POST http://localhost:8800/api/v1/policy_coverage/mcp "HTTP/1.1 200 OK"
+2026-06-23 08:07:07,307 | INFO     | httpx | HTTP Request: POST http://localhost:8800/api/v1/policy_coverage/mcp "HTTP/1.1 200 OK"
+2026-06-23 08:07:07,308 | INFO     | httpx | HTTP Request: DELETE http://localhost:8800/api/v1/policy_coverage/mcp "HTTP/1.1 200 OK"
+2026-06-23 08:07:07,310 | INFO     | httpx | HTTP Request: DELETE http://localhost:8800/api/v1/policy_coverage/mcp "HTTP/1.1 200 OK"
+2026-06-23 08:07:07,904 | INFO     | httpx | HTTP Request: POST https://azureclaimsopenai.openai.azure.com/openai/deployments/gpt-5.1-claims/chat/completions?api-version=2025-04-01-preview "HTTP/1.1 200 OK"
+2026-06-23 08:07:08,040 | INFO     | httpx | HTTP Request: POST http://localhost:8800/api/v1/policy_coverage/mcp "HTTP/1.1 200 OK"
+2026-06-23 08:07:08,041 | INFO     | mcp.client.streamable_http | Received session ID: 9ccec5ad3cda4389a1f20cf0a8c1b8db
+2026-06-23 08:07:08,041 | INFO     | mcp.client.streamable_http | Negotiated protocol version: 2025-11-25
+2026-06-23 08:07:08,043 | INFO     | httpx | HTTP Request: POST http://localhost:8800/api/v1/policy_coverage/mcp "HTTP/1.1 202 Accepted"
+2026-06-23 08:07:08,051 | INFO     | httpx | HTTP Request: POST http://localhost:8800/api/v1/policy_coverage/mcp "HTTP/1.1 200 OK"
+2026-06-23 08:07:08,053 | INFO     | httpx | HTTP Request: DELETE http://localhost:8800/api/v1/policy_coverage/mcp "HTTP/1.1 200 OK"
+2026-06-23 08:07:08,815 | INFO     | httpx | HTTP Request: POST https://azureclaimsopenai.openai.azure.com/openai/deployments/gpt-5.1-claims/chat/completions?api-version=2025-04-01-preview "HTTP/1.1 200 OK"
+
+
+
+(vnev) JarvisClaims@JarvisClaims:~/Ramakrishna/Jarvis_claims_agents_v2/PolicyholderAgents/MCP$ python3 main.py 
+/home/JarvisClaims/Ramakrishna/Jarvis_claims_agents_v2/PolicyholderAgents/MCP/main.py:254: DeprecationWarning: 
+        on_event is deprecated, use lifespan event handlers instead.
+
+        Read more about it in the
+        [FastAPI docs for Lifespan Events](https://fastapi.tiangolo.com/advanced/events/).
+        
+  @app.on_event("startup")
+INFO:     Started server process [7763]
+INFO:     Waiting for application startup.
+INFO:     Application startup complete.
+INFO:     Uvicorn running on http://0.0.0.0:8800 (Press CTRL+C to quit)
+INFO:     127.0.0.1:39330 - "POST /api/v1/policy_coverage/mcp HTTP/1.1" 200 OK
+INFO:     127.0.0.1:39330 - "POST /api/v1/policy_coverage/mcp HTTP/1.1" 202 Accepted
+INFO:     127.0.0.1:39344 - "POST /api/v1/policy_coverage/mcp HTTP/1.1" 200 OK
+INFO:     127.0.0.1:39344 - "DELETE /api/v1/policy_coverage/mcp HTTP/1.1" 200 OK
+INFO:     127.0.0.1:39340 - "GET /api/v1/policy_coverage/mcp HTTP/1.1" 200 OK
+INFO:     127.0.0.1:50356 - "POST /api/v1/policy_coverage/mcp HTTP/1.1" 200 OK
+INFO:     127.0.0.1:50356 - "POST /api/v1/policy_coverage/mcp HTTP/1.1" 202 Accepted
+Debug policy id  6081531574
+INFO:     127.0.0.1:50370 - "POST /api/v1/policy_coverage/mcp HTTP/1.1" 200 OK
+INFO:     127.0.0.1:50370 - "POST /api/v1/policy_coverage/mcp HTTP/1.1" 200 OK
+INFO:     127.0.0.1:50370 - "DELETE /api/v1/policy_coverage/mcp HTTP/1.1" 200 OK
+INFO:     127.0.0.1:50368 - "GET /api/v1/policy_coverage/mcp HTTP/1.1" 200 OK
+INFO:     127.0.0.1:50374 - "POST /api/v1/policy_coverage/mcp HTTP/1.1" 200 OK
+INFO:     127.0.0.1:50378 - "POST /api/v1/policy_coverage/mcp HTTP/1.1" 200 OK
+INFO:     127.0.0.1:50374 - "POST /api/v1/policy_coverage/mcp HTTP/1.1" 202 Accepted
+INFO:     127.0.0.1:50378 - "POST /api/v1/policy_coverage/mcp HTTP/1.1" 202 Accepted
+Guidewire PC POST /policy/v1/search/policies → HTTP 403: {
+  "message":"IP address not allowed: 20.49.1.3",
+  "request_id":"5493fd1b0c7aa8738cefeb6a69041515"
+}
+Guidewire policy search failed for 6081531574
+Traceback (most recent call last):
+  File "/home/JarvisClaims/Ramakrishna/Jarvis_claims_agents_v2/PolicyholderAgents/MCP/policy_coverage_mcp/handler.py", line 241, in gw_search_policy
+    raw = guidewire_client.search_policy(policy_number)
+          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/JarvisClaims/Ramakrishna/Jarvis_claims_agents_v2/PolicyholderAgents/MCP/policy_coverage_mcp/guidewire_client.py", line 780, in search_policy
+    return _pc_post("/policy/v1/search/policies", body)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/JarvisClaims/Ramakrishna/Jarvis_claims_agents_v2/PolicyholderAgents/MCP/policy_coverage_mcp/guidewire_client.py", line 723, in _pc_post
+    _raise_for_status(resp, "PC POST", uri)
+  File "/home/JarvisClaims/Ramakrishna/Jarvis_claims_agents_v2/PolicyholderAgents/MCP/policy_coverage_mcp/guidewire_client.py", line 749, in _raise_for_status
+    resp.raise_for_status()
+  File "/home/JarvisClaims/Ramakrishna/Jarvis_claims_agents_v2/PolicyholderAgents/vnev/lib/python3.11/site-packages/requests/models.py", line 1167, in raise_for_status
+    raise HTTPError(http_error_msg, response=self)
+requests.exceptions.HTTPError: 403 Client Error: Forbidden for url: https://pc-sandbox-gwcpdev.hexaware.zeta1-andromeda.guidewire.net/rest/policy/v1/search/policies
+Guidewire PC POST /policy/v1/search/policies → HTTP 403: {
+  "message":"IP address not allowed: 20.49.1.3",
+  "request_id":"45ae437eaa75167052733348f6ae4309"
+}
+INFO:     127.0.0.1:50412 - "POST /api/v1/policy_coverage/mcp HTTP/1.1" 200 OK
+Guidewire policy search failed for 6081531574
+Traceback (most recent call last):
+  File "/home/JarvisClaims/Ramakrishna/Jarvis_claims_agents_v2/PolicyholderAgents/MCP/policy_coverage_mcp/handler.py", line 241, in gw_search_policy
+    raw = guidewire_client.search_policy(policy_number)
+          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/JarvisClaims/Ramakrishna/Jarvis_claims_agents_v2/PolicyholderAgents/MCP/policy_coverage_mcp/guidewire_client.py", line 780, in search_policy
+    return _pc_post("/policy/v1/search/policies", body)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/JarvisClaims/Ramakrishna/Jarvis_claims_agents_v2/PolicyholderAgents/MCP/policy_coverage_mcp/guidewire_client.py", line 723, in _pc_post
+    _raise_for_status(resp, "PC POST", uri)
+  File "/home/JarvisClaims/Ramakrishna/Jarvis_claims_agents_v2/PolicyholderAgents/MCP/policy_coverage_mcp/guidewire_client.py", line 749, in _raise_for_status
+    resp.raise_for_status()
+  File "/home/JarvisClaims/Ramakrishna/Jarvis_claims_agents_v2/PolicyholderAgents/vnev/lib/python3.11/site-packages/requests/models.py", line 1167, in raise_for_status
+    raise HTTPError(http_error_msg, response=self)
+requests.exceptions.HTTPError: 403 Client Error: Forbidden for url: https://pc-sandbox-gwcpdev.hexaware.zeta1-andromeda.guidewire.net/rest/policy/v1/search/policies
+INFO:     127.0.0.1:50420 - "POST /api/v1/policy_coverage/mcp HTTP/1.1" 200 OK
+INFO:     127.0.0.1:50412 - "POST /api/v1/policy_coverage/mcp HTTP/1.1" 200 OK
+INFO:     127.0.0.1:50420 - "POST /api/v1/policy_coverage/mcp HTTP/1.1" 200 OK
+INFO:     127.0.0.1:50412 - "DELETE /api/v1/policy_coverage/mcp HTTP/1.1" 200 OK
+INFO:     127.0.0.1:50394 - "GET /api/v1/policy_coverage/mcp HTTP/1.1" 200 OK
+INFO:     127.0.0.1:50420 - "DELETE /api/v1/policy_coverage/mcp HTTP/1.1" 200 OK
+INFO:     127.0.0.1:50406 - "GET /api/v1/policy_coverage/mcp HTTP/1.1" 200 OK
+INFO:     127.0.0.1:50436 - "POST /api/v1/policy_coverage/mcp HTTP/1.1" 200 OK
+INFO:     127.0.0.1:50436 - "POST /api/v1/policy_coverage/mcp HTTP/1.1" 202 Accepted
+Error calling get_policy_details
+Traceback (most recent call last):
+  File "/home/JarvisClaims/Ramakrishna/Jarvis_claims_agents_v2/PolicyholderAgents/vnev/lib/python3.11/site-packages/fastapi_mcp/server.py", line 559, in _execute_api_tool
+    raise Exception(
+Exception: Error calling get_policy_details. Status code: 500. Response: Internal Server Error
+INFO:     127.0.0.1:50456 - "POST /api/v1/policy_coverage/mcp HTTP/1.1" 200 OK
+INFO:     127.0.0.1:50456 - "DELETE /api/v1/policy_coverage/mcp HTTP/1.1" 200 OK
+INFO:     127.0.0.1:50442 - "GET /api/v1/policy_coverage/mcp HTTP/1.1" 200 OK
