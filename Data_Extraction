@@ -1,5 +1,803 @@
-echo $AZURE_OPENAI_ENDPOINT
+(venv) Jarvis@JarvisPhase2:~/Musaddique/Jarvis_claims_agents_v2/PolicyholderAgents/MCP$ python3 main.py 
+/home/Jarvis/Musaddique/Jarvis_claims_agents_v2/PolicyholderAgents/MCP/main.py:240: DeprecationWarning: 
+        on_event is deprecated, use lifespan event handlers instead.
 
-echo $AZURE_OPENAI_CHAT_DEPLOYMENT
+        Read more about it in the
+        [FastAPI docs for Lifespan Events](https://fastapi.tiangolo.com/advanced/events/).
+        
+  @app.on_event("startup")
+INFO:     Started server process [28690]
+INFO:     Waiting for application startup.
+INFO:     Application startup complete.
+INFO:     Uvicorn running on http://0.0.0.0:8800 (Press CTRL+C to quit)
+INFO:     127.0.0.1:36362 - "POST /api/v1/communication/mcp HTTP/1.1" 200 OK
+INFO:     127.0.0.1:36372 - "POST /api/v1/feedback/mcp HTTP/1.1" 200 OK
+INFO:     127.0.0.1:36362 - "POST /api/v1/communication/mcp HTTP/1.1" 202 Accepted
+INFO:     127.0.0.1:36372 - "POST /api/v1/feedback/mcp HTTP/1.1" 202 Accepted
+INFO:     127.0.0.1:36386 - "POST /api/v1/communication/mcp HTTP/1.1" 200 OK
+INFO:     127.0.0.1:36402 - "POST /api/v1/feedback/mcp HTTP/1.1" 200 OK
+INFO:     127.0.0.1:36402 - "DELETE /api/v1/feedback/mcp HTTP/1.1" 200 OK
+INFO:     127.0.0.1:36386 - "DELETE /api/v1/communication/mcp HTTP/1.1" 200 OK
+INFO:     127.0.0.1:36378 - "GET /api/v1/communication/mcp HTTP/1.1" 200 OK
+INFO:     127.0.0.1:49894 - "POST /api/v1/communication/mcp HTTP/1.1" 200 OK
+INFO:     127.0.0.1:49898 - "POST /api/v1/feedback/mcp HTTP/1.1" 200 OK
+INFO:     127.0.0.1:49906 - "POST /api/v1/communication/mcp HTTP/1.1" 200 OK
+INFO:     127.0.0.1:49912 - "POST /api/v1/feedback/mcp HTTP/1.1" 200 OK
+INFO:     127.0.0.1:49898 - "POST /api/v1/feedback/mcp HTTP/1.1" 202 Accepted
+INFO:     127.0.0.1:49894 - "POST /api/v1/communication/mcp HTTP/1.1" 202 Accepted
+INFO:     127.0.0.1:49906 - "POST /api/v1/communication/mcp HTTP/1.1" 202 Accepted
+INFO:     127.0.0.1:49912 - "POST /api/v1/feedback/mcp HTTP/1.1" 202 Accepted
+INFO:     127.0.0.1:49960 - "POST /api/v1/feedback/mcp HTTP/1.1" 200 OK
+INFO:     127.0.0.1:49980 - "POST /api/v1/communication/mcp HTTP/1.1" 200 OK
+INFO:     127.0.0.1:49960 - "POST /api/v1/feedback/mcp HTTP/1.1" 200 OK
+INFO:     127.0.0.1:49980 - "POST /api/v1/communication/mcp HTTP/1.1" 200 OK
+INFO:     127.0.0.1:49960 - "DELETE /api/v1/feedback/mcp HTTP/1.1" 200 OK
+INFO:     127.0.0.1:49926 - "GET /api/v1/feedback/mcp HTTP/1.1" 200 OK
+INFO:     127.0.0.1:49980 - "DELETE /api/v1/communication/mcp HTTP/1.1" 200 OK
+write_customer_feedback error
+Traceback (most recent call last):
+  File "/home/Jarvis/Musaddique/Jarvis_claims_agents_v2/PolicyholderAgents/MCP/feedback_router.py", line 38, in write_customer_feedback
+    return handler.write_customer_feedback(
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/Jarvis/Musaddique/Jarvis_claims_agents_v2/PolicyholderAgents/MCP/feedback_mcp/handler.py", line 70, in write_customer_feedback
+    cur.execute(
+  File "/home/Jarvis/Musaddique/Jarvis_claims_agents_v2/PolicyholderAgents/venv/lib/python3.11/site-packages/psycopg2/extras.py", line 236, in execute
+    return super().execute(query, vars)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+psycopg2.errors.InvalidTextRepresentation: invalid input syntax for type integer: "CLM-2026-1001"
+LINE 4:             ) VALUES ('CLM-2026-1001','CLM-2026-1001',0,'Pol...
+                              ^
 
-echo $AZURE_OPENAI_API_VERSION
+Error calling write_customer_feedback
+Traceback (most recent call last):
+  File "/home/Jarvis/Musaddique/Jarvis_claims_agents_v2/PolicyholderAgents/venv/lib/python3.11/site-packages/fastapi_mcp/server.py", line 559, in _execute_api_tool
+    raise Exception(
+Exception: Error calling write_customer_feedback. Status code: 500. Response: {"detail":"invalid input syntax for type integer: \"CLM-2026-1001\"\nLINE 4:             ) VALUES ('CLM-2026-1001','CLM-2026-1001',0,'Pol...\n                              ^\n"}
+INFO:     127.0.0.1:49984 - "POST /api/v1/feedback/mcp HTTP/1.1" 200 OK
+INFO:     127.0.0.1:49984 - "DELETE /api/v1/feedback/mcp HTTP/1.1" 200 OK
+INFO:     127.0.0.1:49956 - "GET /api/v1/feedback/mcp HTTP/1.1" 200 OK
+Could not write communication_history: column "channel" of relation "communication_history" does not exist
+LINE 3:               (claim_number, communication_date, channel, su...
+                                                         ^
+
+INFO:     127.0.0.1:49966 - "POST /api/v1/communication/mcp HTTP/1.1" 200 OK
+INFO:     127.0.0.1:49966 - "POST /api/v1/communication/mcp HTTP/1.1" 200 OK
+INFO:     127.0.0.1:49966 - "DELETE /api/v1/communication/mcp HTTP/1.1" 200 OK
+INFO:     127.0.0.1:49938 - "GET /api/v1/communication/mcp HTTP/1.1" 200 OK
+INFO:     127.0.0.1:49990 - "POST /api/v1/feedback/mcp HTTP/1.1" 200 OK
+INFO:     127.0.0.1:49990 - "POST /api/v1/feedback/mcp HTTP/1.1" 202 Accepted
+INFO:     127.0.0.1:50000 - "POST /api/v1/feedback/mcp HTTP/1.1" 200 OK
+INFO:     127.0.0.1:50000 - "POST /api/v1/feedback/mcp HTTP/1.1" 200 OK
+INFO:     127.0.0.1:50000 - "DELETE /api/v1/feedback/mcp HTTP/1.1" 200 OK
+INFO:     127.0.0.1:49998 - "GET /api/v1/feedback/mcp HTTP/1.1" 200 OK
+
+
+
+(venv) Jarvis@JarvisPhase2:~/Musaddique/Jarvis_claims_agents_v2/PolicyholderAgents/CommunicationAgent$ python3 server.py 
+INFO:     Started server process [28868]
+INFO:     Waiting for application startup.
+INFO:     Application startup complete.
+INFO:     Uvicorn running on http://0.0.0.0:8809 (Press CTRL+C to quit)
+2026-06-23 11:19:11,554 | INFO     | httpx | HTTP Request: POST http://localhost:8800/api/v1/communication/mcp "HTTP/1.1 200 OK"
+2026-06-23 11:19:11,554 | INFO     | mcp.client.streamable_http | Received session ID: ee098370dc8346afbb8c53bda2990188
+2026-06-23 11:19:11,555 | INFO     | mcp.client.streamable_http | Negotiated protocol version: 2025-11-25
+2026-06-23 11:19:11,556 | INFO     | httpx | HTTP Request: POST http://localhost:8800/api/v1/feedback/mcp "HTTP/1.1 200 OK"
+2026-06-23 11:19:11,556 | INFO     | mcp.client.streamable_http | Received session ID: 7daba9e5333140f9b9224d9054597a68
+2026-06-23 11:19:11,556 | INFO     | mcp.client.streamable_http | Negotiated protocol version: 2025-11-25
+2026-06-23 11:19:11,561 | INFO     | httpx | HTTP Request: POST http://localhost:8800/api/v1/communication/mcp "HTTP/1.1 202 Accepted"
+2026-06-23 11:19:11,563 | INFO     | httpx | HTTP Request: POST http://localhost:8800/api/v1/feedback/mcp "HTTP/1.1 202 Accepted"
+2026-06-23 11:19:11,572 | INFO     | httpx | HTTP Request: POST http://localhost:8800/api/v1/communication/mcp "HTTP/1.1 200 OK"
+2026-06-23 11:19:11,573 | INFO     | httpx | HTTP Request: POST http://localhost:8800/api/v1/feedback/mcp "HTTP/1.1 200 OK"
+2026-06-23 11:19:11,576 | INFO     | httpx | HTTP Request: DELETE http://localhost:8800/api/v1/feedback/mcp "HTTP/1.1 200 OK"
+2026-06-23 11:19:11,577 | INFO     | httpx | HTTP Request: DELETE http://localhost:8800/api/v1/communication/mcp "HTTP/1.1 200 OK"
+2026-06-23 11:19:11,579 | INFO     | communication_agent | Tools loaded from MCP: ['get_communication_history', 'draft_status_notification', 'write_customer_feedback', 'get_customer_feedback', 'update_sentiment_tracker', 'get_sentiment_tracker']
+2026-06-23 11:19:11,969 | WARNING  | communication_agent | Phoenix prompt load failed (Phoenix not configured) — using fallback prompt
+INFO:     127.0.0.1:35534 - "POST /chat HTTP/1.1" 200 OK
+2026-06-23 11:19:14,894 | INFO     | httpx | HTTP Request: POST https://agenticinsuranceopenai.openai.azure.com/openai/deployments/gpt-4.1-jarvis/chat/completions?api-version=2025-01-01-preview "HTTP/1.1 200 OK"
+2026-06-23 11:19:15,137 | INFO     | httpx | HTTP Request: POST http://localhost:8800/api/v1/communication/mcp "HTTP/1.1 200 OK"
+2026-06-23 11:19:15,137 | INFO     | mcp.client.streamable_http | Received session ID: 2d5f16c342f748bfa79c476242be5187
+2026-06-23 11:19:15,138 | INFO     | httpx | HTTP Request: POST http://localhost:8800/api/v1/feedback/mcp "HTTP/1.1 200 OK"
+2026-06-23 11:19:15,138 | INFO     | mcp.client.streamable_http | Received session ID: a0fa240e3dbe4bf29d1e6502d1ce523e
+2026-06-23 11:19:15,138 | INFO     | mcp.client.streamable_http | Negotiated protocol version: 2025-11-25
+2026-06-23 11:19:15,138 | INFO     | mcp.client.streamable_http | Negotiated protocol version: 2025-11-25
+2026-06-23 11:19:15,140 | INFO     | httpx | HTTP Request: POST http://localhost:8800/api/v1/communication/mcp "HTTP/1.1 200 OK"
+2026-06-23 11:19:15,141 | INFO     | mcp.client.streamable_http | Received session ID: 51a9cd6a91c44e3b9585662479101df9
+2026-06-23 11:19:15,141 | INFO     | mcp.client.streamable_http | Negotiated protocol version: 2025-11-25
+2026-06-23 11:19:15,141 | INFO     | httpx | HTTP Request: POST http://localhost:8800/api/v1/feedback/mcp "HTTP/1.1 200 OK"
+2026-06-23 11:19:15,141 | INFO     | mcp.client.streamable_http | Received session ID: f1863eeb8f1b4e46b28fe9354b89948f
+2026-06-23 11:19:15,142 | INFO     | mcp.client.streamable_http | Negotiated protocol version: 2025-11-25
+2026-06-23 11:19:15,145 | INFO     | httpx | HTTP Request: POST http://localhost:8800/api/v1/feedback/mcp "HTTP/1.1 202 Accepted"
+2026-06-23 11:19:15,145 | INFO     | httpx | HTTP Request: POST http://localhost:8800/api/v1/communication/mcp "HTTP/1.1 202 Accepted"
+2026-06-23 11:19:15,150 | INFO     | httpx | HTTP Request: POST http://localhost:8800/api/v1/communication/mcp "HTTP/1.1 202 Accepted"
+2026-06-23 11:19:15,151 | INFO     | httpx | HTTP Request: POST http://localhost:8800/api/v1/feedback/mcp "HTTP/1.1 202 Accepted"
+2026-06-23 11:19:15,283 | INFO     | httpx | HTTP Request: POST http://localhost:8800/api/v1/feedback/mcp "HTTP/1.1 200 OK"
+2026-06-23 11:19:15,286 | INFO     | httpx | HTTP Request: POST http://localhost:8800/api/v1/communication/mcp "HTTP/1.1 200 OK"
+2026-06-23 11:19:15,290 | INFO     | httpx | HTTP Request: POST http://localhost:8800/api/v1/feedback/mcp "HTTP/1.1 200 OK"
+2026-06-23 11:19:15,293 | INFO     | httpx | HTTP Request: POST http://localhost:8800/api/v1/communication/mcp "HTTP/1.1 200 OK"
+2026-06-23 11:19:15,295 | INFO     | httpx | HTTP Request: DELETE http://localhost:8800/api/v1/feedback/mcp "HTTP/1.1 200 OK"
+2026-06-23 11:19:15,297 | INFO     | httpx | HTTP Request: DELETE http://localhost:8800/api/v1/communication/mcp "HTTP/1.1 200 OK"
+2026-06-23 11:19:16,597 | INFO     | httpx | HTTP Request: POST http://localhost:8800/api/v1/feedback/mcp "HTTP/1.1 200 OK"
+2026-06-23 11:19:16,599 | INFO     | httpx | HTTP Request: DELETE http://localhost:8800/api/v1/feedback/mcp "HTTP/1.1 200 OK"
+2026-06-23 11:19:18,868 | INFO     | httpx | HTTP Request: POST http://localhost:8800/api/v1/communication/mcp "HTTP/1.1 200 OK"
+2026-06-23 11:19:18,871 | INFO     | httpx | HTTP Request: POST http://localhost:8800/api/v1/communication/mcp "HTTP/1.1 200 OK"
+2026-06-23 11:19:18,873 | INFO     | httpx | HTTP Request: DELETE http://localhost:8800/api/v1/communication/mcp "HTTP/1.1 200 OK"
+2026-06-23 11:19:19,994 | INFO     | httpx | HTTP Request: POST https://agenticinsuranceopenai.openai.azure.com/openai/deployments/gpt-4.1-jarvis/chat/completions?api-version=2025-01-01-preview "HTTP/1.1 200 OK"
+2026-06-23 11:19:20,228 | INFO     | httpx | HTTP Request: POST http://localhost:8800/api/v1/feedback/mcp "HTTP/1.1 200 OK"
+2026-06-23 11:19:20,228 | INFO     | mcp.client.streamable_http | Received session ID: d48f329931e541a38830f2c5ce9c49e8
+2026-06-23 11:19:20,228 | INFO     | mcp.client.streamable_http | Negotiated protocol version: 2025-11-25
+2026-06-23 11:19:20,231 | INFO     | httpx | HTTP Request: POST http://localhost:8800/api/v1/feedback/mcp "HTTP/1.1 202 Accepted"
+2026-06-23 11:19:20,383 | INFO     | httpx | HTTP Request: POST http://localhost:8800/api/v1/feedback/mcp "HTTP/1.1 200 OK"
+2026-06-23 11:19:20,386 | INFO     | httpx | HTTP Request: POST http://localhost:8800/api/v1/feedback/mcp "HTTP/1.1 200 OK"
+2026-06-23 11:19:20,388 | INFO     | httpx | HTTP Request: DELETE http://localhost:8800/api/v1/feedback/mcp "HTTP/1.1 200 OK"
+2026-06-23 11:19:21,725 | INFO     | httpx | HTTP Request: POST https://agenticinsuranceopenai.openai.azure.com/openai/deployments/gpt-4.1-jarvis/chat/completions?api-version=2025-01-01-preview "HTTP/1.1 200 OK"
+Jarvis@JarvisPhase2:~/Musaddique$ curl -s -N -X POST http://localhost:8809/chat   -H "Content-Type: application/json"   -d '{"message": "Forclaim CLM-2026-1001: I am happy for my claim"}'   --max-time 90
+data: [Tool: draft_status_notification] Starting...
+
+data: [Tool: get_communication_history] Starting...
+
+data: [Tool: get_sentiment_tracker] Starting...
+
+data: [Tool: write_customer_feedback] Starting...
+
+data: [Tool: get_sentiment_tracker] Done
+
+data: [Tool: get_communication_history] Done
+
+data: [Tool: write_customer_feedback] Done
+
+data: [Tool: draft_status_notification] Done
+
+data: [Tool: update_sentiment_tracker] Starting...
+
+data: [Tool: update_sentiment_tracker] Done
+
+data: Here
+
+data: ’s
+
+data:  a
+
+data:  summary
+
+data:  of
+
+data:  your
+
+data:  claim
+
+data:  details
+
+data: ,
+
+data:  sentiment
+
+data: ,
+
+data:  and
+
+data:  a
+
+data:  drafted
+
+data:  notification
+
+data: :
+
+
+
+data: Claim
+
+data:  Details
+
+data: 
+
+
+data: -
+
+data:  Claim
+
+data:  Number
+
+data: :
+
+data:  CL
+
+data: M
+
+data: -
+
+data: 202
+
+data: 6
+
+data: -
+
+data: 100
+
+data: 1
+
+data: 
+
+
+data: -
+
+data:  Current
+
+data:  Status
+
+data: :
+
+data:  Open
+
+data: 
+
+
+data: -
+
+data:  Recent
+
+data:  Inter
+
+data: actions
+
+data: :
+
+
+data:  
+
+data:  -
+
+data:  Claim
+
+data:  acknowledged
+
+data:  and
+
+data:  assigned
+
+data:  for
+
+data:  review
+
+data:  (
+
+data: neutral
+
+data: ).
+
+
+data:  
+
+data:  -
+
+data:  Follow
+
+data: -up
+
+data:  by
+
+data:  phone
+
+data:  requesting
+
+data:  progress
+
+data:  update
+
+data:  (
+
+data: conc
+
+data: ern
+
+data: ed
+
+data: ).
+
+
+data:  
+
+data:  -
+
+data:  Request
+
+data:  for
+
+data:  additional
+
+data:  documents
+
+data:  sent
+
+data:  (
+
+data: neutral
+
+data: ).
+
+
+
+data: Sent
+
+data: iment
+
+data:  Information
+
+data: 
+
+
+data: -
+
+data:  Most
+
+data:  recent
+
+data:  system
+
+data:  assessment
+
+data: :
+
+data:  “
+
+data: Negative
+
+data: ”
+
+data:  (
+
+data: Score
+
+data: :
+
+data:  
+
+data: 40
+
+data: ,
+
+data:  Stable
+
+data:  trend
+
+data: ,
+
+data:  Medium
+
+data:  escalation
+
+data:  risk
+
+data: ).
+
+
+data: -
+
+data:  Your
+
+data:  latest
+
+data:  feedback
+
+data:  (“
+
+data: I
+
+data:  am
+
+data:  happy
+
+data:  for
+
+data:  my
+
+data:  claim
+
+data: ”)
+
+data:  appears
+
+data:  positive
+
+data:  and
+
+data:  will
+
+data:  be
+
+data:  considered
+
+data:  to
+
+data:  enhance
+
+data:  your
+
+data:  sentiment
+
+data:  profile
+
+data: .
+
+
+
+data: Draft
+
+data: ed
+
+data:  Notification
+
+data: 
+
+
+data: Subject
+
+data: :
+
+data:  Update
+
+data:  on
+
+data:  Your
+
+data:  Water
+
+data:  Damage
+
+data:  Claim
+
+data:  (
+
+data: CL
+
+data: M
+
+data: -
+
+data: 202
+
+data: 6
+
+data: -
+
+data: 100
+
+data: 1
+
+data: )
+
+
+data: Message
+
+data: :
+
+
+data: Dear
+
+data:  Val
+
+data: ued
+
+data:  Policy
+
+data: holder
+
+data: ,
+
+
+
+data: We
+
+data:  understand
+
+data:  how
+
+data:  important
+
+data:  it
+
+data:  is
+
+data:  for
+
+data:  you
+
+data:  to
+
+data:  receive
+
+data:  timely
+
+data:  updates
+
+data:  regarding
+
+data:  your
+
+data:  water
+
+data:  damage
+
+data:  claim
+
+data:  (
+
+data: CL
+
+data: M
+
+data: -
+
+data: 202
+
+data: 6
+
+data: -
+
+data: 100
+
+data: 1
+
+data: ).
+
+data:  Our
+
+data:  team
+
+data:  is
+
+data:  actively
+
+data:  reviewing
+
+data:  the
+
+data:  information
+
+data:  you
+
+data:  have
+
+data:  provided
+
+data: ,
+
+data:  including
+
+data:  any
+
+data:  photos
+
+data:  and
+
+data:  repair
+
+data:  estimates
+
+data: .
+
+data:  We
+
+data:  sincerely
+
+data:  apologize
+
+data:  for
+
+data:  any
+
+data:  frustration
+
+data:  or
+
+data:  inconvenience
+
+data:  you
+
+data:  may
+
+data:  be
+
+data:  experiencing
+
+data:  during
+
+data:  this
+
+data:  process
+
+data: .
+
+data:  Please
+
+data:  know
+
+data:  that
+
+data:  we
+
+data:  are
+
+data:  committed
+
+data:  to
+
+data:  resolving
+
+data:  your
+
+data:  claim
+
+data:  as
+
+data:  quickly
+
+data:  and
+
+data:  efficiently
+
+data:  as
+
+data:  possible
+
+data: .
+
+
+
+data: If
+
+data:  you
+
+data:  have
+
+data:  any
+
+data:  additional
+
+data:  documents
+
+data:  or
+
+data:  questions
+
+data: ,
+
+data:  please
+
+data:  do
+
+data:  not
+
+data:  hesitate
+
+data:  to
+
+data:  reach
+
+data:  out
+
+data: .
+
+data:  We
+
+data:  appreciate
+
+data:  your
+
+data:  patience
+
+data:  and
+
+data:  will
+
+data:  keep
+
+data:  you
+
+data:  informed
+
+data:  of
+
+data:  any
+
+data:  significant
+
+data:  developments
+
+data: .
+
+
+
+data: Thank
+
+data:  you
+
+data:  for
+
+data:  allowing
+
+data:  us
+
+data:  to
+
+data:  assist
+
+data:  you
+
+data:  during
+
+data:  this
+
+data:  challenging
+
+data:  time
+
+data: .
+
+
+
+data: —
+
+
+data: If
+
+data:  you
+
+data:  have
+
+data:  further
+
+data:  feedback
+
+data:  or
+
+data:  questions
+
+data: ,
+
+data:  let
+
+data:  us
+
+data:  know
+
+data:  and
+
+data:  we
+
+data: ’ll
+
+data:  be
+
+data:  glad
+
+data:  to
+
+data:  assist
+
+data: !
+
+Jarvis@JarvisPhase2:~/Musaddique$ 
+
+
+
+(venv) Jarvis@JarvisPhase2:~/Musaddique/Jarvis_claims_agents_v2/PolicyholderAgents/FeedbackAgent$ python3 server.py 
+INFO:     Started server process [28837]
+INFO:     Waiting for application startup.
+INFO:     Application startup complete.
+INFO:     Uvicorn running on http://0.0.0.0:8806 (Press CTRL+C to quit)
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
