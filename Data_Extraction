@@ -1,22 +1,223 @@
-this is my feedback handler.py
+gudiewireclient.py
 """
-handler.py — Feedback / Sentiment Tracking
-─────────────────────────────────────────────
-Records per-stage customer feedback with LLM sentiment classification,
-and maintains an aggregate claim_sentiment_tracker row.
+guidewire_client.py
+───────────────────
+All HTTP calls to the Guidewire PolicyCenter and ClaimCenter REST APIs.
+
+PolicyCenter base : https://pc-sandbox-gwcpdev.hexaware.zeta1-andromeda.guidewire.net/rest
+ClaimCenter base  : https://cc-sandbox-gwcpdev.hexaware.zeta1-andromeda.guidewire.net/rest
+"""
+
+import logging
+import os
+from typing import Optional
+
+import requests
+from dotenv import load_dotenv
+
+load_dotenv()
+
+log = logging.getLogger(__name__)
+
+PC_BASE_URL = os.environ.get(
+    "GW_PC_BASE_URL",
+    "https://pc-sandbox-gwcpdev.hexaware.zeta1-andromeda.guidewire.net/rest",
+)
+CC_BASE_URL = os.environ.get(
+    "GW_CC_BASE_URL",
+    "https://cc-sandbox-gwcpdev.hexaware.zeta1-andromeda.guidewire.net/rest",
+)
+GW_AUTH = os.environ.get("GW_AUTHORIZATION", "Basic c3U6Z3c=")
+
+HEADERS = {
+    "accept": "application/json",
+    "Content-Type": "application/json",
+    "authorization": GW_AUTH,
+}
+
+REQUEST_TIMEOUT = int(os.environ.get("GW_TIMEOUT_SECONDS", "30"))
+
+
+# ── Low-level helpers ─────────────────────────────────────────────────────────
+
+def _pc_post(uri: str, body: dict) -> dict:
+    url = PC_BASE_URL + uri
+    log.info("GW PC POST %s", url)
+    resp = requests.post(url, json=body, headers=HEADERS, timeout=REQUEST_TIMEOUT)
+    _raise_for_status(resp, "PC POST", uri)
+    return resp.json()
+
+
+def _pc_get(uri: str, params: Optional[dict] = None) -> dict:
+    url = PC_BASE_URL + uri
+    log.info("GW PC GET %s", url)
+    resp = requests.get(url, headers=HEADERS, params=params, timeout=REQUEST_TIMEOUT)
+    _raise_for_status(resp, "PC GET", uri)
+    return resp.json()
+
+
+def _cc_post(uri: str, body: dict) -> dict:
+    url = CC_BASE_URL + uri
+    log.info("GW CC POST %s", url)
+    resp = requests.post(url, json=body, headers=HEADERS, timeout=REQUEST_TIMEOUT)
+    _raise_for_status(resp, "CC POST", uri)
+    return resp.json()
+
+
+def _raise_for_status(resp: requests.Response, method: str, uri: str):
+    if not resp.ok:
+        log.error(
+            "Guidewire %s %s → HTTP %s: %s",
+            method, uri, resp.status_code, resp.text[:500],
+        )
+        resp.raise_for_status()
+
+
+# ── PolicyCenter — Policy Search ──────────────────────────────────────────────
+
+def search_policy(policy_number: str) -> dict:
+    """
+    Search for a policy in Guidewire PolicyCenter by policy number.
+    Uses: POST /policy/v1/search/policies
+    """
+    body = {
+        "data": {
+            "attributes": {
+                "policyNumber": policy_number
+            }
+        }
+    }
+    return _pc_post("/policy/v1/search/policies", body)
+
+
+def get_policy_coverages(policy_id: str) -> dict:
+    """
+    Retrieve detailed coverage information for a policy from Guidewire.
+    Uses: GET /policy/v1/policies/{policyId}
+    """
+    return _pc_get(f"/policy/v1/policies/{policy_id}")
+
+
+# ── ClaimCenter — Loss / FNOL Reporting ──────────────────────────────────────
+
+def report_loss_to_guidewire(
+    policy_number: str,
+    claim_number: str,
+    loss_type: str,
+    loss_date: str,
+    loss_description: str,
+    insured_name: str,
+    loss_location: Optional[str] = None,
+    estimated_amount: Optional[float] = None,
+) -> dict:
+    """
+    Reports a new loss (FNOL) to Guidewire ClaimCenter.
+    Uses: POST /claim/v1/fnols
+    """
+    loss_cause_map = {
+        "water damage": "WaterDamage",
+        "fire":         "Fire",
+        "fire damage":  "Fire",
+        "wind/hail":    "WindHail",
+        "hail":         "WindHail",
+        "wind":         "WindHail",
+        "tree damage":  "WindHail",
+        "theft":        "Theft",
+        "structural":   "Other",
+        "motor":        "Collision",
+        "auto":         "Collision",
+        "collision":    "Collision",
+    }
+    loss_cause = loss_cause_map.get(loss_type.lower().strip(), "Other")
+
+    body = {
+        "data": {
+            "attributes": {
+                "policyNumber": policy_number,
+                "lossDate": loss_date,
+                "lossCause": loss_cause,
+                "description": loss_description,
+                "claimNumber": claim_number,
+                "insured": {"displayName": insured_name},
+            }
+        }
+    }
+    if loss_location:
+        body["data"]["attributes"]["lossLocation"] = {"displayName": loss_location}
+    if estimated_amount is not None:
+        body["data"]["attributes"]["estimatedTotalClaim"] = {
+            "amount": estimated_amount,
+            "currency": "USD",
+        }
+
+    return _cc_post("/claim/v1/fnols", body)
+
+
+# ── Response parsers ──────────────────────────────────────────────────────────
+
+def parse_policy_from_search(gw_response: dict) -> Optional[dict]:
+    """
+    Extract a flat normalised policy dict from a Guidewire search response.
+    Returns None if no policies were found.
+    """
+    try:
+        data_list = gw_response.get("data", [])
+        if not data_list:
+            log.warning("No policy data returned from Guidewire")
+            return None
+
+        policy = data_list[0]
+        attrs = policy.get("attributes", {})
+
+        parsed = {
+            "gw_policy_id":    attrs.get("policyId", ""),
+            "policy_number":   attrs.get("policyNumber", ""),
+            "status":          attrs.get("status", "Unknown"),
+            "effective_date":  attrs.get("effectiveDate", ""),
+            "expiration_date": attrs.get("expirationDate", ""),
+            "coverage_types":  attrs.get("coverageTypes", []),
+            "insured_name":    attrs.get("insuredName", ""),
+            "insured_address": attrs.get("policyAddress", ""),
+            "account_number":  attrs.get("accountNumber", ""),
+            "product_name":    (attrs.get("product") or {}).get("displayName", ""),
+            "raw":             gw_response,
+        }
+
+        log.info("Parsed policy: %s", {k: v for k, v in parsed.items() if k != "raw"})
+        return parsed
+
+    except Exception as exc:
+        log.exception("Failed to parse Guidewire policy response")
+        raise ValueError(f"Unable to parse Guidewire response: {str(exc)}")
+
+
+handler.py
+"""
+handler.py — Policy Coverage Verification
+──────────────────────────────────────────
+Functions:
+  gw_search_policy          Search Guidewire for a policy by number
+  gw_get_policy_coverages   Fetch full coverage detail from Guidewire
+  save_policy_details       Persist Guidewire policy data to local DB
+  get_policy_details        Read policy from local DB
+  verify_coverage           LLM-based coverage verdict for a claim
+  record_claim_payment      Record an approved payment and reduce remaining coverage
 """
 
 import json
 import logging
 import os
+import random
 import sys
-from typing import Optional
+from datetime import datetime
+from zoneinfo import ZoneInfo
 
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "common"))
 
 from db import get_db_connection, row_to_dict  # noqa: E402
 from dotenv import load_dotenv, find_dotenv
 from openai import AzureOpenAI
+from policy_coverage_mcp import guidewire_client
 
 load_dotenv(find_dotenv())
 
@@ -24,8 +225,8 @@ log = logging.getLogger(__name__)
 
 AZURE_OPENAI_ENDPOINT = os.environ.get("AZURE_OPENAI_ENDPOINT", "")
 AZURE_OPENAI_API_KEY = os.environ.get("AZURE_OPENAI_API_KEY", "")
-AZURE_OPENAI_API_VERSION = os.environ.get("AZURE_OPENAI_API_VERSION", "2025-11-13")
-AZURE_OPENAI_CHAT_DEPLOYMENT = os.environ.get("AZURE_OPENAI_CHAT_DEPLOYMENT", "gpt-5.1")
+AZURE_OPENAI_API_VERSION = os.environ.get("AZURE_OPENAI_API_VERSION", "2025-01-01-preview")
+AZURE_OPENAI_CHAT_DEPLOYMENT = os.environ.get("AZURE_OPENAI_CHAT_DEPLOYMENT", "gpt-4.1-claims")
 
 
 def _get_openai_client() -> AzureOpenAI:
@@ -36,14 +237,320 @@ def _get_openai_client() -> AzureOpenAI:
     )
 
 
-def _classify_sentiment(comment: str) -> dict:
+# ── Guidewire: Policy Search ──────────────────────────────────────────────────
+
+def gw_search_policy(policy_number: str) -> dict:
+    """
+    Search Guidewire PolicyCenter for the given policy number.
+    Returns found=True with normalised policy dict, or found=False with error.
+    """
+    try:
+        raw = guidewire_client.search_policy(policy_number)
+        parsed = guidewire_client.parse_policy_from_search(raw)
+
+        if not parsed:
+            return {
+                "found": False,
+                "policy": None,
+                "error": f"No policy found in Guidewire for policy number '{policy_number}'.",
+                "raw_gw_response": raw,
+            }
+
+        return {
+            "found": True,
+            "policy": parsed,
+            "error": None,
+            "raw_gw_response": raw,
+        }
+
+    except Exception as exc:
+        status_code = getattr(getattr(exc, "response", None), "status_code", None)
+        if status_code == 404:
+            return {
+                "found": False,
+                "policy": None,
+                "error": f"Policy '{policy_number}' not found in Guidewire (HTTP 404).",
+                "raw_gw_response": {},
+            }
+        log.exception("Guidewire policy search failed for %s", policy_number)
+        return {
+            "found": False,
+            "policy": None,
+            "error": f"Guidewire API error: {str(exc)}",
+            "raw_gw_response": {},
+        }
+
+
+# ── Guidewire: Policy Coverages ───────────────────────────────────────────────
+
+def gw_get_policy_coverages(policy_number: str) -> dict:
+    """
+    Fetch full coverage details for a policy from Guidewire.
+    Searches by policy number first, then fetches the detail record.
+    """
+    search_result = gw_search_policy(policy_number)
+    if not search_result["found"]:
+        return search_result
+
+    gw_policy_id = search_result["policy"]["gw_policy_id"]
+    try:
+        detail = guidewire_client.get_policy_coverages(gw_policy_id)
+        return {
+            "found": True,
+            "policy_id": gw_policy_id,
+            "coverage_detail": detail,
+            "error": None,
+        }
+    except Exception as exc:
+        log.exception("gw_get_policy_coverages failed for %s", gw_policy_id)
+        return {
+            "found": False,
+            "policy_id": gw_policy_id,
+            "coverage_detail": None,
+            "error": str(exc),
+        }
+
+
+# ── Local DB: Save & Read policy_details ─────────────────────────────────────
+
+def save_policy_details(policy_number: str) -> dict:
+    """
+    Fetch policy from Guidewire (search + coverage detail) and persist to the
+    local policy_details table.  Deductible, coverage limit, and exclusions are
+    extracted from the Guidewire coverage response where available.
+    """
+    search_result = gw_search_policy(policy_number)
+    if not search_result["found"]:
+        return search_result
+
+    policy = search_result["policy"]
+    gw_policy_id = policy.get("gw_policy_id")
+    effective_date = policy.get("effective_date")
+    expiration_date = policy.get("expiration_date")
+    insured_name = policy.get("insured_name")
+    account_number = policy.get("account_number")
+    policy_address = policy.get("insured_address") or (
+        policy.get("raw", {})
+        .get("data", [{}])[0]
+        .get("attributes", {})
+        .get("policyAddress")
+    )
+
+    coverage_result = gw_get_policy_coverages(policy_number)
+    attrs = {}
+    if coverage_result.get("found"):
+        attrs = (
+            coverage_result
+            .get("coverage_detail", {})
+            .get("data", {})
+            .get("attributes", {})
+        )
+
+    state = attrs.get("baseState", {}).get("name") if isinstance(attrs.get("baseState"), dict) else None
+    term_type = attrs.get("termType", {}).get("name") if isinstance(attrs.get("termType"), dict) else None
+    premium_amount = (attrs.get("totalPremium") or {}).get("amount") if isinstance(attrs.get("totalPremium"), dict) else None
+    currency = (attrs.get("preferredCoverageCurrency") or {}).get("code") if isinstance(attrs.get("preferredCoverageCurrency"), dict) else None
+
+    addr = attrs.get("policyAddress") or {}
+    city = addr.get("city") if isinstance(addr, dict) else None
+    country = addr.get("country") if isinstance(addr, dict) else None
+    postal_code = addr.get("postalCode") if isinstance(addr, dict) else None
+
+    product_name = (attrs.get("product") or {}).get("displayName", "") if isinstance(attrs.get("product"), dict) else ""
+    coverage_type = "Homeowners" if "Homeowners" in product_name else (product_name or policy.get("product_name", ""))
+    status = "Active" if coverage_result.get("found") else (policy.get("status") or "Unknown")
+
+    # Extract deductible, coverage limit, and exclusions from Guidewire coverage lines
+    deductible = None
+    coverage_limit = None
+    exclusions_list = []
+
+    lines_data = (attrs.get("lines") or {}).get("data", []) if isinstance(attrs.get("lines"), dict) else []
+    for line in lines_data:
+        line_attrs = line.get("attributes", {}) if isinstance(line, dict) else {}
+        coverages_data = (line_attrs.get("coverages") or {}).get("data", []) if isinstance(line_attrs.get("coverages"), dict) else []
+        for cov in coverages_data:
+            cov_attrs = cov.get("attributes", {}) if isinstance(cov, dict) else {}
+            # Deductible — take the first non-null value found
+            if deductible is None:
+                ded = cov_attrs.get("deductible") or {}
+                if isinstance(ded, dict) and ded.get("amount") is not None:
+                    try:
+                        deductible = float(ded["amount"])
+                    except (TypeError, ValueError):
+                        pass
+            # Coverage limit
+            if coverage_limit is None:
+                lim = cov_attrs.get("coverageAmount") or cov_attrs.get("limit") or {}
+                if isinstance(lim, dict) and lim.get("amount") is not None:
+                    try:
+                        coverage_limit = float(lim["amount"])
+                    except (TypeError, ValueError):
+                        pass
+            # Exclusions
+            for excl in (cov_attrs.get("exclusions") or []):
+                name = (excl.get("attributes") or {}).get("name") if isinstance(excl, dict) else None
+                if name:
+                    exclusions_list.append(name)
+
+    exclusions = ",".join(exclusions_list) if exclusions_list else None
+
+    conn = get_db_connection()
+    try:
+        cur = conn.cursor()
+        cur.execute(
+            """
+            INSERT INTO policy_details (
+                policy_id, gw_policy_id, status, coverage_type,
+                deductible, coverage_limit, remaining_coverage_limit, exclusions,
+                effective_date, expiration_date, premium_amount,
+                insured_name, account_number, policy_address,
+                state, term_type, currency, city, country, postal_code
+            ) VALUES (
+                %s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s
+            )
+            ON CONFLICT (policy_id) DO UPDATE SET
+                gw_policy_id = EXCLUDED.gw_policy_id,
+                status = EXCLUDED.status,
+                coverage_type = EXCLUDED.coverage_type,
+                deductible = EXCLUDED.deductible,
+                coverage_limit = EXCLUDED.coverage_limit,
+                remaining_coverage_limit = COALESCE(
+                    policy_details.remaining_coverage_limit, EXCLUDED.coverage_limit
+                ),
+                exclusions = EXCLUDED.exclusions,
+                effective_date = EXCLUDED.effective_date,
+                expiration_date = EXCLUDED.expiration_date,
+                premium_amount = EXCLUDED.premium_amount,
+                insured_name = EXCLUDED.insured_name,
+                account_number = EXCLUDED.account_number,
+                policy_address = EXCLUDED.policy_address,
+                state = EXCLUDED.state,
+                term_type = EXCLUDED.term_type,
+                currency = EXCLUDED.currency,
+                city = EXCLUDED.city,
+                country = EXCLUDED.country,
+                postal_code = EXCLUDED.postal_code
+            """,
+            (
+                policy_number, gw_policy_id, status, coverage_type,
+                deductible, coverage_limit, coverage_limit, exclusions,
+                effective_date, expiration_date, premium_amount,
+                insured_name, account_number, policy_address,
+                state, term_type, currency, city, country, postal_code,
+            ),
+        )
+        conn.commit()
+    except Exception:
+        conn.rollback()
+        raise
+    finally:
+        conn.close()
+
+    return {
+        "saved": True,
+        "policy_id": policy_number,
+        "gw_policy_id": gw_policy_id,
+        "status": status,
+        "coverage_type": coverage_type,
+        "deductible": deductible,
+        "coverage_limit": coverage_limit,
+        "exclusions": exclusions,
+        "premium_amount": premium_amount,
+        "currency": currency,
+    }
+
+
+def get_policy_details(policy_id: str) -> dict:
+    """Read a policy record from the local policy_details table."""
+    conn = get_db_connection()
+    try:
+        cur = conn.cursor()
+        cur.execute("SELECT * FROM policy_details WHERE policy_id = %s", (policy_id,))
+        return row_to_dict(cur.fetchone())
+    finally:
+        conn.close()
+
+
+# ── Coverage Verification ─────────────────────────────────────────────────────
+
+def get_coverage_verification_result(claim_id: str) -> dict:
+    """
+    Read an existing coverage verification result for the claim.
+    Returns the record if found, or {"found": False} if none exists yet.
+    """
+    conn = get_db_connection()
+    try:
+        cur = conn.cursor()
+        cur.execute(
+            "SELECT * FROM coverage_verification_results WHERE claim_id = %s",
+            (claim_id,),
+        )
+        row = row_to_dict(cur.fetchone())
+        if row:
+            return {"found": True, **row}
+        return {"found": False, "claim_id": claim_id}
+    finally:
+        conn.close()
+
+
+def verify_coverage(claim_id: str) -> dict:
+    """
+    Look up the claim and its linked policy from the local DB, send to the LLM
+    to determine the coverage verdict, and persist the result to
+    coverage_verification_results.
+    """
+    conn = get_db_connection()
+    try:
+        cur = conn.cursor()
+        cur.execute("SELECT * FROM claims WHERE claim_number = %s", (claim_id,))
+        claim = row_to_dict(cur.fetchone())
+        if not claim:
+            return {"error": f"Claim {claim_id} not found"}
+
+        policy_id = claim.get("policy_number")
+        if not policy_id:
+            return {"error": "No policy_number on claim", "claim": claim}
+
+        cur.execute("SELECT * FROM policy_details WHERE policy_id = %s", (policy_id,))
+        policy = row_to_dict(cur.fetchone())
+        if not policy:
+            return {"error": f"Policy {policy_id} not found in local DB — run save_policy_details first", "claim": claim}
+    finally:
+        conn.close()
+
+    loss_type = claim.get("loss_type", "")
+    cause_of_loss = claim.get("detected_cause") or claim.get("cause_of_loss", "")
+    coverage_type = policy.get("coverage_type", "")
+    coverage_limit = float(policy.get("remaining_coverage_limit") or policy.get("coverage_limit") or 0)
+    deductible = float(policy.get("deductible") or 0)
+    exclusions_raw = policy.get("exclusions") or ""
+    exclusions = (
+        json.loads(exclusions_raw)
+        if isinstance(exclusions_raw, str) and exclusions_raw.startswith("[")
+        else [x.strip() for x in exclusions_raw.split(",") if x.strip()]
+    )
+    loss_amount = float(
+        claim.get("loss_amount") or claim.get("estimated_loss_amount") or claim.get("estimated_cost") or 0
+    )
+
     try:
         client = _get_openai_client()
         prompt = (
-            "Classify the sentiment of this insurance claim policyholder feedback "
-            "comment. Return JSON: "
-            '{"sentiment": "Positive"|"Neutral"|"Negative", "sentiment_score": 0-100}.\n\n'
-            f"Comment: {comment}"
+            "You are a policy coverage analyst. Determine whether the claim is covered. "
+            "Respond with JSON: "
+            '{"coverage_verdict": "Covered|Partially Covered|Not Covered|Needs Investigation", '
+            '"exclusion_triggered": true/false, '
+            '"exclusion_details": "...", '
+            '"net_payable": <number>, '
+            '"coverage_notes": "..."}.\n\n'
+            f"Policy Coverage Type: {coverage_type}\n"
+            f"Remaining Coverage Limit: {coverage_limit}\n"
+            f"Deductible: {deductible}\n"
+            f"Policy Exclusions: {exclusions}\n"
+            f"Claim Loss Type: {loss_type}\n"
+            f"Cause of Loss: {cause_of_loss}\n"
+            f"Estimated Loss Amount: {loss_amount}"
         )
         response = client.chat.completions.create(
             model=AZURE_OPENAI_CHAT_DEPLOYMENT,
@@ -51,308 +558,357 @@ def _classify_sentiment(comment: str) -> dict:
             temperature=0.0,
             response_format={"type": "json_object"},
         )
-        result = json.loads(response.choices[0].message.content)
-        return {
-            "sentiment": result.get("sentiment", "Neutral"),
-            "sentiment_score": result.get("sentiment_score", 50),
-        }
+        llm_result = json.loads(response.choices[0].message.content)
     except Exception as e:
-        log.warning("sentiment classification failed: %s", e)
-        return {"sentiment": "Neutral", "sentiment_score": 50}
+        log.warning("LLM coverage check failed: %s", e)
+        net_payable = max(0.0, loss_amount - deductible)
+        if coverage_limit:
+            net_payable = min(net_payable, coverage_limit)
+        llm_result = {
+            "coverage_verdict": "Needs Investigation",
+            "exclusion_triggered": False,
+            "exclusion_details": "",
+            "net_payable": net_payable,
+            "coverage_notes": "Automated LLM check failed; manual review needed",
+        }
 
-
-def write_customer_feedback(claim_id: str, claim_number: str, stage_number: int,
-                             stage_name: str, comment: str) -> dict:
-    classification = _classify_sentiment(comment)
-
-    conn = get_db_connection()
+    conn2 = get_db_connection()
     try:
-        cur = conn.cursor()
-        cur.execute(
+        cur2 = conn2.cursor()
+        cur2.execute(
             """
-            INSERT INTO customer_feedback_per_stage (
-                claim_id, claim_number, stage_number, stage_name, sentiment, comment, submitted_at
-            ) VALUES (%s,%s,%s,%s,%s,%s,NOW())
-            RETURNING *
+            INSERT INTO coverage_verification_results
+              (claim_id, policy_id, coverage_verdict, exclusion_triggered,
+               exclusion_details, net_payable, coverage_notes, verified_at)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+            ON CONFLICT (claim_id) DO UPDATE SET
+              coverage_verdict = EXCLUDED.coverage_verdict,
+              exclusion_triggered = EXCLUDED.exclusion_triggered,
+              exclusion_details = EXCLUDED.exclusion_details,
+              net_payable = EXCLUDED.net_payable,
+              coverage_notes = EXCLUDED.coverage_notes,
+              verified_at = EXCLUDED.verified_at
             """,
-            (claim_id, claim_number, stage_number, stage_name, classification["sentiment"], comment),
+            (
+                claim_id, str(policy_id),
+                llm_result.get("coverage_verdict"),
+                llm_result.get("exclusion_triggered", False),
+                llm_result.get("exclusion_details"),
+                llm_result.get("net_payable"),
+                llm_result.get("coverage_notes"),
+                datetime.now(ZoneInfo("UTC")).isoformat(),
+            ),
         )
-        feedback_row = row_to_dict(cur.fetchone())
-        conn.commit()
+        conn2.commit()
+    except Exception as e:
+        conn2.rollback()
+        log.warning("Could not write coverage_verification_results: %s", e)
+    finally:
+        conn2.close()
+
+    return {
+        "claim_id": claim_id,
+        "policy_id": str(policy_id),
+        "coverage_type": coverage_type,
+        "remaining_coverage_limit": coverage_limit,
+        "deductible": deductible,
+        "loss_amount": loss_amount,
+        "exclusions": exclusions,
+        **llm_result,
+    }
+
+
+# ── Payment Tracking ──────────────────────────────────────────────────────────
+
+def record_claim_payment(
+    claim_id: str,
+    amount_paid: float,
+    approved_by: str = None,
+    notes: str = None,
+) -> dict:
+    """
+    Record an approved claim payment and reduce the policy's remaining_coverage_limit
+    in the local policy_details table.
+
+    This tracks how much of the coverage has been consumed so future verify_coverage
+    calls use the correct remaining limit, not the original full limit.
+    """
+    conn = get_db_connection()
+    try:
+        cur = conn.cursor()
+        cur.execute("SELECT * FROM claims WHERE claim_number = %s", (claim_id,))
+        claim = row_to_dict(cur.fetchone())
+    finally:
+        conn.close()
+
+    if not claim:
+        return {"error": f"Claim {claim_id} not found"}
+
+    policy_id = claim.get("policy_number")
+    if not policy_id:
+        return {"error": "No policy_number on claim"}
+
+    conn2 = get_db_connection()
+    try:
+        cur2 = conn2.cursor()
+        cur2.execute(
+            "SELECT coverage_limit, remaining_coverage_limit FROM policy_details WHERE policy_id = %s",
+            (policy_id,),
+        )
+        policy = row_to_dict(cur2.fetchone())
+    finally:
+        conn2.close()
+
+    if not policy:
+        return {"error": f"Policy {policy_id} not found in local DB — run save_policy_details first"}
+
+    coverage_before = float(
+        policy.get("remaining_coverage_limit") or policy.get("coverage_limit") or 0
+    )
+    coverage_after = max(0.0, coverage_before - amount_paid)
+
+    payment_id = f"PAY-{datetime.now().strftime('%Y%m%d%H%M%S')}-{random.randint(1000, 9999)}"
+    payment_date = datetime.now(ZoneInfo("UTC")).isoformat()
+
+    conn3 = get_db_connection()
+    try:
+        cur3 = conn3.cursor()
+        cur3.execute(
+            """
+            INSERT INTO claim_payments (
+                payment_id, claim_id, policy_id, amount_paid, payment_date,
+                approved_by, payment_status, coverage_before, coverage_after, notes
+            ) VALUES (%s,%s,%s,%s,%s,%s,'Released',%s,%s,%s)
+            """,
+            (
+                payment_id, claim_id, policy_id, amount_paid, payment_date,
+                approved_by, coverage_before, coverage_after, notes,
+            ),
+        )
+        cur3.execute(
+            "UPDATE policy_details SET remaining_coverage_limit = %s WHERE policy_id = %s",
+            (coverage_after, policy_id),
+        )
+        cur3.execute(
+            "UPDATE claims SET status = 'Settled' WHERE claim_number = %s",
+            (claim_id,),
+        )
+        conn3.commit()
     except Exception:
-        conn.rollback()
+        conn3.rollback()
         raise
     finally:
-        conn.close()
+        conn3.close()
 
-    feedback_row["sentiment_score"] = classification["sentiment_score"]
+    return {
+        "payment_id": payment_id,
+        "claim_id": claim_id,
+        "policy_id": policy_id,
+        "amount_paid": amount_paid,
+        "coverage_before": coverage_before,
+        "coverage_after": coverage_after,
+        "payment_status": "Released",
+        "payment_date": payment_date,
+    }
 
-    tracker = update_sentiment_tracker(claim_number)
-    return {"feedback": feedback_row, "sentiment_tracker": tracker}
-
-
-def get_customer_feedback(claim_number: str) -> list:
-    conn = get_db_connection()
-    try:
-        cur = conn.cursor()
-        cur.execute(
-            "SELECT * FROM customer_feedback_per_stage WHERE claim_number = %s ORDER BY submitted_at",
-            (claim_number,),
-        )
-        return row_to_dict(cur.fetchall())
-    finally:
-        conn.close()
-
-
-_SENTIMENT_LABEL_SCORE = {"Positive": 80, "Neutral": 50, "Negative": 20}
-
-
-def update_sentiment_tracker(claim_number: str, policyholder_name: Optional[str] = None) -> dict:
-    conn = get_db_connection()
-    try:
-        cur = conn.cursor()
-        cur.execute(
-            "SELECT * FROM customer_feedback_per_stage WHERE claim_number = %s ORDER BY submitted_at",
-            (claim_number,),
-        )
-        rows = row_to_dict(cur.fetchall())
-
-        if not rows:
-            return None
-
-        scores = [_SENTIMENT_LABEL_SCORE.get(r.get("sentiment"), 50) for r in rows]
-        avg_score = sum(scores) / len(scores)
-
-        if len(scores) >= 2:
-            if scores[-1] > scores[-2]:
-                trend = "Improving"
-            elif scores[-1] < scores[-2]:
-                trend = "Declining"
-            else:
-                trend = "Stable"
-        else:
-            trend = "Stable"
-
-        if avg_score < 40:
-            escalation_risk = "High"
-        elif avg_score < 70:
-            escalation_risk = "Medium"
-        else:
-            escalation_risk = "Low"
-
-        current_sentiment = rows[-1].get("sentiment")
-        last_interaction_date = rows[-1].get("submitted_at")
-
-        claim_id = None
-        cur.execute("SELECT id FROM claims WHERE claim_number = %s", (claim_number,))
-        claim_row = cur.fetchone()
-        if claim_row:
-            claim_id = claim_row["id"]
-
-        if not policyholder_name:
-            cur.execute("SELECT policyholder_name FROM claims WHERE claim_number = %s", (claim_number,))
-            ph_row = cur.fetchone()
-            policyholder_name = ph_row["policyholder_name"] if ph_row else None
-
-        tracker_id = f"SENT-{claim_number}"
-
-        cur.execute("SELECT id FROM claim_sentiment_tracker WHERE tracker_id = %s", (tracker_id,))
-        existing = cur.fetchone()
-
-        if existing:
-            cur.execute(
-                """
-                UPDATE claim_sentiment_tracker SET
-                    current_sentiment = %s, sentiment_score = %s, sentiment_trend = %s,
-                    last_interaction_date = %s, escalation_risk = %s, policyholder_name = %s,
-                    updated_at = NOW()
-                WHERE tracker_id = %s
-                """,
-                (current_sentiment, avg_score, trend, last_interaction_date, escalation_risk,
-                 policyholder_name, tracker_id),
-            )
-        else:
-            cur.execute(
-                """
-                INSERT INTO claim_sentiment_tracker (
-                    tracker_id, claim_id, claim_number, policyholder_name, current_sentiment,
-                    sentiment_score, sentiment_trend, last_interaction_date, escalation_risk,
-                    created_at, updated_at
-                ) VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,NOW(),NOW())
-                """,
-                (tracker_id, claim_id, claim_number, policyholder_name, current_sentiment,
-                 avg_score, trend, last_interaction_date, escalation_risk),
-            )
-
-        conn.commit()
-        cur.execute("SELECT * FROM claim_sentiment_tracker WHERE tracker_id = %s", (tracker_id,))
-        return row_to_dict(cur.fetchone())
-    except Exception:
-        conn.rollback()
-        raise
-    finally:
-        conn.close()
-
-
-def get_sentiment_tracker(claim_number: str) -> dict:
-    conn = get_db_connection()
-    try:
-        cur = conn.cursor()
-        cur.execute("SELECT * FROM claim_sentiment_tracker WHERE claim_number = %s", (claim_number,))
-        return row_to_dict(cur.fetchone())
-    finally:
-        conn.close()
 
 
 models.py
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from typing import Optional
 
 
-class WriteCustomerFeedbackRequest(BaseModel):
-    claim_id: str
-    claim_number: str
-    stage_number: int
-    stage_name: str
-    comment: str
+class GwSearchPolicyRequest(BaseModel):
+    policy_number: str = Field(..., description="Policy number to look up in Guidewire, e.g. '9802322834'")
 
 
-class UpdateSentimentTrackerRequest(BaseModel):
-    claim_number: str
-    policyholder_name: Optional[str] = None
+class GwReportLossRequest(BaseModel):
+    policy_number: str = Field(..., description="Policy number the loss is reported against")
+    claim_number: str = Field(..., description="Local claim number, e.g. CLM-2026-1234")
+    loss_type: str = Field(..., description="Type of loss, e.g. 'Water Damage', 'Fire'")
+    loss_date: str = Field(..., description="Date of loss in YYYY-MM-DD format")
+    loss_description: str = Field(..., description="Free-text description of what happened")
+    loss_location: Optional[str] = Field(None, description="Address or area where loss occurred")
+    insured_name: str = Field(..., description="Name of the insured policyholder")
+    estimated_amount: Optional[float] = Field(None, description="Policyholder's estimated loss amount")
 
 
-feedback router.py
+class SavePolicyDetailsRequest(BaseModel):
+    policy_number: str = Field(..., description="Policy number to fetch from Guidewire and save locally")
+
+
+class RecordClaimPaymentRequest(BaseModel):
+    claim_id: str = Field(..., description="Claim number (e.g. CLM-2026-1001) for which payment is released")
+    amount_paid: float = Field(..., description="Amount paid out for this claim")
+    approved_by: Optional[str] = Field(None, description="Name or ID of the adjuster who approved the payment")
+    notes: Optional[str] = Field(None, description="Optional notes about the payment")
+
+
+policy_coverage_router.py
+
 """
-feedback_router.py
-─────────────────────
-FastAPI routes for the Feedback / Sentiment Tracking MCP.
-
-Tool / Endpoint map:
-  write_customer_feedback   POST /api/feedback/write
-  get_customer_feedback      GET  /api/feedback/claim/{claim_number}
-  update_sentiment_tracker    POST /api/feedback/sentiment/update
-  get_sentiment_tracker        GET  /api/feedback/sentiment/{claim_number}
+policy_coverage_router.py
+──────────────────────────
+Endpoints / MCP tools:
+  gw_search_policy        POST /gw_search_policy
+  gw_get_policy_coverages POST /gw_get_policy_coverages
+  save_policy_details     POST /save_policy_details
+  get_policy_details      GET  /get_policy_details/{policy_id}
+  verify_coverage         POST /api/policy_coverage/verify/{claim_id}
+  record_claim_payment    POST /api/policy_coverage/payment
 """
 
 import logging
 from fastapi import APIRouter, HTTPException
 
-from feedback_mcp.models import WriteCustomerFeedbackRequest, UpdateSentimentTrackerRequest
-from feedback_mcp import handler
+from policy_coverage_mcp import handler
+from policy_coverage_mcp.models import (
+    GwSearchPolicyRequest,
+    SavePolicyDetailsRequest,
+    RecordClaimPaymentRequest,
+)
 
 log = logging.getLogger(__name__)
-
 router = APIRouter()
 
 
 @router.post(
-    "/api/feedback/write",
-    operation_id="write_customer_feedback",
-    summary="Record policyholder feedback for a claim stage with sentiment analysis",
-    tags=["Feedback"],
+    "/gw_search_policy",
+    operation_id="gw_search_policy",
+    summary="Search Guidewire PolicyCenter for a policy by policy number",
 )
-def write_customer_feedback(req: WriteCustomerFeedbackRequest):
+def gw_search_policy(req: GwSearchPolicyRequest):
     """
-    Uses an LLM to classify the sentiment of the comment ("Positive",
-    "Neutral", or "Negative") plus a 0-100 sentiment_score, inserts a row
-    into customer_feedback_per_stage, then recomputes the aggregate
-    claim_sentiment_tracker. Returns {feedback, sentiment_tracker}.
+    Look up a policy in Guidewire PolicyCenter using the policy number.
+    Returns found=True with policy details, or found=False with an error message.
     """
-    try:
-        return handler.write_customer_feedback(
-            req.claim_id, req.claim_number, req.stage_number, req.stage_name, req.comment
-        )
-    except Exception as e:
-        log.exception("write_customer_feedback error")
-        raise HTTPException(status_code=500, detail=str(e))
-
-
-@router.get(
-    "/api/feedback/claim/{claim_number}",
-    operation_id="get_customer_feedback",
-    summary="Get all stage feedback for a claim",
-    tags=["Feedback"],
-)
-def get_customer_feedback(claim_number: str):
-    """
-    Returns all customer_feedback_per_stage rows for the given
-    claim_number, ordered by submission time.
-    """
-    return handler.get_customer_feedback(claim_number)
+    return handler.gw_search_policy(req.policy_number)
 
 
 @router.post(
-    "/api/feedback/sentiment/update",
-    operation_id="update_sentiment_tracker",
-    summary="Recompute the aggregate sentiment tracker for a claim",
-    tags=["Feedback"],
+    "/gw_get_policy_coverages",
+    operation_id="gw_get_policy_coverages",
+    summary="Fetch full policy coverage details from Guidewire",
 )
-def update_sentiment_tracker(req: UpdateSentimentTrackerRequest):
+def gw_get_policy_coverages(req: GwSearchPolicyRequest):
     """
-    Recomputes the average sentiment score, trend (Improving/Declining/
-    Stable based on the last two feedback entries), and escalation_risk
-    (High if avg<40, Medium if avg<70, else Low) from all
-    customer_feedback_per_stage rows for the claim, then upserts the
-    claim_sentiment_tracker row.
+    Fetches the detailed policy record from Guidewire PolicyCenter including
+    all lines of business, coverage clauses, deductibles, and limits.
+    """
+    return handler.gw_get_policy_coverages(req.policy_number)
+
+
+@router.post(
+    "/save_policy_details",
+    operation_id="save_policy_details",
+    summary="Fetch policy from Guidewire and persist to local database",
+)
+def save_policy_details(req: SavePolicyDetailsRequest):
+    """
+    Calls Guidewire (search + coverage detail), extracts deductible, coverage limit,
+    exclusions, and all policy metadata, then saves/updates the local policy_details table.
+    Sets remaining_coverage_limit = coverage_limit on first save (preserved on updates).
     """
     try:
-        result = handler.update_sentiment_tracker(req.claim_number, req.policyholder_name)
-        if result is None:
-            raise HTTPException(status_code=404, detail="No feedback found for this claim")
-        return result
-    except HTTPException:
-        raise
+        return handler.save_policy_details(req.policy_number)
     except Exception as e:
-        log.exception("update_sentiment_tracker error")
+        log.exception("save_policy_details error")
         raise HTTPException(status_code=500, detail=str(e))
 
 
 @router.get(
-    "/api/feedback/sentiment/{claim_number}",
-    operation_id="get_sentiment_tracker",
-    summary="Get the sentiment tracker for a claim",
-    tags=["Feedback"],
+    "/get_policy_details/{policy_id}",
+    operation_id="get_policy_details",
+    summary="Read policy details from the local database",
 )
-def get_sentiment_tracker(claim_number: str):
-    """
-    Returns the claim_sentiment_tracker row for the given claim_number,
-    including current_sentiment, sentiment_score, sentiment_trend, and
-    escalation_risk.
-    """
-    record = handler.get_sentiment_tracker(claim_number)
+def get_policy_details(policy_id: str):
+    """Returns the full policy_details record for the given policy_id."""
+    record = handler.get_policy_details(policy_id)
     if not record:
-        raise HTTPException(status_code=404, detail=f"No sentiment tracker for {claim_number}")
+        return {"status": "not_found", "policy_id": policy_id}
     return record
 
-main;py
 
-# ── Sub-app: feedback (FULL) ───────────────────────────────────────────────────
-
-feedback_app = _make_cors_app(
-    title="feedback_agent_mcps",
-    description="MCP tools for policyholder feedback and sentiment tracking.",
+@router.get(
+    "/api/policy_coverage/result/{claim_id}",
+    operation_id="get_coverage_verification_result",
+    summary="Read an existing coverage verification result for a claim",
 )
-feedback_app.include_router(feedback_router)
+def get_coverage_verification_result(claim_id: str):
+    """
+    Returns the most recent coverage verification result from the local DB
+    without re-running the LLM. Returns found=False if none exists yet.
+    """
+    return handler.get_coverage_verification_result(claim_id)
+
+
+@router.post(
+    "/api/policy_coverage/verify/{claim_id}",
+    operation_id="verify_coverage",
+    summary="Verify whether a claim's loss is covered by the linked policy",
+)
+def verify_coverage(claim_id: str):
+    """
+    Looks up the claim and its linked policy from the local DB, uses the LLM to
+    determine the coverage verdict (Covered / Partially Covered / Not Covered /
+    Needs Investigation), computes net payable after deductible and remaining limit,
+    and persists the result to coverage_verification_results.
+    """
+    return handler.verify_coverage(claim_id)
+
+
+@router.post(
+    "/api/policy_coverage/payment",
+    operation_id="record_claim_payment",
+    summary="Record an approved claim payment and reduce remaining policy coverage",
+)
+def record_claim_payment(req: RecordClaimPaymentRequest):
+    """
+    Records a payment released for an approved claim and reduces the
+    remaining_coverage_limit on the linked policy in the local policy_details table.
+    Also updates the claim status to 'Settled' and logs the payment in claim_payments.
+    """
+    try:
+        return handler.record_claim_payment(
+            req.claim_id, req.amount_paid, req.approved_by, req.notes
+        )
+    except Exception as e:
+        log.exception("record_claim_payment error")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+main.py
+
+
+policy_coverage_app = _make_cors_app(
+    title="policy_coverage_agent_mcps",
+    description="MCP tools for Guidewire policy lookup, coverage verification, and payment tracking.",
+)
+policy_coverage_app.include_router(policy_coverage_router)
 FastApiMCP(
-    feedback_app,
+    policy_coverage_app,
     include_operations=[
-        "write_customer_feedback",
-        "get_customer_feedback",
-        "update_sentiment_tracker",
-        "get_sentiment_tracker",
+        "gw_search_policy",
+        "gw_get_policy_coverages",
+        "save_policy_details",
+        "get_policy_details",
+        "get_coverage_verification_result",
+        "verify_coverage",
+        "record_claim_payment",
     ],
 ).mount_http()
-app.mount("/api/v1/feedback", feedback_app)
+app.mount("/api/v1/policy_coverage", policy_coverage_app)
 
+
+server.py inside PolicyCoverageVerificationAgent
 """
-server.py — Feedback Agent
-─────────────────────────────
-LangGraph agent that records policyholder feedback for a claim stage,
-classifies sentiment, and responds empathetically based on escalation risk.
+server.py — Policy Coverage Verification Agent
+───────────────────────────────────────────────
+LangGraph agent that verifies whether a claim's reported loss falls within
+the linked policy's coverage terms, deductible, limit, and exclusions.
 
-Port: 8806
-MCP : http://localhost:8800/api/v1/feedback/mcp
+Port: 8807
+MCP : http://localhost:8800/api/v1/policy_coverage/mcp
 
 Run:
     py -3 server.py
@@ -387,15 +943,15 @@ logging.basicConfig(
     stream=sys.stdout,
     force=True,
 )
-logger = logging.getLogger("feedback_agent")
+logger = logging.getLogger("policy_coverage_agent")
 
 PHOENIX_API_KEY = os.getenv("PHOENIX_API_KEY", "")
 PHOENIX_ENDPOINT = os.getenv("PHOENIX_ENDPOINT", "")
-MCP_URL = os.getenv("MCP_URL", "http://localhost:8800/api/v1/feedback/mcp")
-AGENT_PORT = int(os.getenv("AGENT_PORT", "8806"))
+MCP_URL = os.getenv("MCP_URL", "http://localhost:8800/api/v1/policy_coverage/mcp")
+AGENT_PORT = int(os.getenv("AGENT_PORT", "8807"))
 
 config_mcp_server = {
-    "feedback_mcp": {
+    "policy_coverage_mcp": {
         "url": MCP_URL,
         "transport": "streamable_http",
         "timeout": timedelta(seconds=120),
@@ -403,7 +959,7 @@ config_mcp_server = {
     }
 }
 
-app = FastAPI(title="Feedback Agent")
+app = FastAPI(title="Policy Coverage Verification Agent")
 
 app.add_middleware(
     CORSMiddleware,
@@ -431,25 +987,55 @@ def router(state: State):
 
 
 _FALLBACK_PROMPT = """
-You are the Feedback Agent for an insurance claims platform.
+You are the Policy Coverage Verification Agent for an insurance claims platform,
+assisting a Policyholder.
 
-When a policyholder gives feedback about a claim stage:
+─── STEP 0 — Determine whether a tool call is needed ───────────────────────
+Only call tools when the policyholder is asking about coverage status or
+verification for a SPECIFIC claim.
 
-1. Identify claim_id, claim_number, stage_number, stage_name, and the
-   comment text.
-2. Call write_customer_feedback with these values. This classifies the
-   sentiment, stores the feedback, and recomputes the sentiment tracker.
-3. Look at the returned sentiment_tracker.escalation_risk:
-   - If "High" or "Medium": empathetically acknowledge the policyholder's
-     concerns and let them know their case may receive extra attention
-     from the team.
-   - If "Low": thank them warmly for their feedback.
+If the message is a general question (e.g. "What does deductible mean?",
+"How does coverage work?") — answer it from your knowledge WITHOUT calling
+any tools, then end with "End".
 
-You can also use get_customer_feedback or get_sentiment_tracker to review
-prior feedback for a claim.
+─── STEP 1 — Extract the claim number ──────────────────────────────────────
+Before calling any tool, identify the claim number from the CURRENT message
+only. Do NOT use claim numbers from earlier in the conversation.
 
-Be warm, empathetic, and concise. When you have completed the task, end
-your response with "End".
+If no claim number is present in the current message, ask:
+  "Could you please share your claim number so I can check the coverage?"
+Do not call any tool until the policyholder provides it.
+
+─── STEP 2 — Check for an existing verification result ─────────────────────
+Call get_coverage_verification_result with the claim number.
+- If a result already exists, use it to answer the policyholder directly.
+  Do NOT call verify_coverage again unless they explicitly ask for a recheck.
+- If no result exists, proceed to Step 3.
+
+─── STEP 3 — Ensure policy is in the local database ────────────────────────
+Call get_policy_details with the policy number linked to the claim.
+- If policy details exist locally, proceed directly to Step 4.
+- If not found locally:
+    a. Call gw_search_policy to find the policy in Guidewire.
+    b. Call save_policy_details to persist it locally.
+
+─── STEP 4 — Run coverage verification ─────────────────────────────────────
+Call verify_coverage with the claim number.
+
+─── STEP 5 — Explain the result in plain language ──────────────────────────
+Tell the policyholder:
+- Whether their loss is Covered, Partially Covered, or Not Covered.
+- Any exclusions that apply and why, in plain terms.
+- The deductible that applies to their claim.
+- The estimated net payable amount after the deductible.
+- Recommended next steps.
+
+─── RULES ───────────────────────────────────────────────────────────────────
+- NEVER show internal IDs (gw_policy_id, claim_id integers, etc.).
+- NEVER expose remaining_coverage_limit as a raw number — describe it in
+  context (e.g. "Your remaining coverage for this period is $X").
+- NEVER assume or guess a claim number. Always take it from the current message.
+- When you have completed the full response, end with "End".
 """
 
 
@@ -458,11 +1044,10 @@ def load_prompt() -> str:
         raise RuntimeError("Phoenix not configured")
     from phoenix.client import Client
     client = Client(base_url=PHOENIX_ENDPOINT, api_key=PHOENIX_API_KEY)
-    prompt = client.prompts.get(name="feedback_agent", label="production")
+    prompt = client.prompts.get(name="policy_coverage_agent", label="production")
     prompt_set = prompt._template["messages"]
     system_msg = next(
-        (item["content"][0]["text"] for item in prompt_set if item.get("role") == "system"),
-        None,
+        (item["content"][0]["text"] for item in prompt_set if item.get("role") == "system"), None
     )
     if not system_msg:
         raise ValueError("System prompt is empty or missing in Phoenix")
@@ -474,8 +1059,7 @@ def create_graph(model, tools, prompt):
     llm_with_tools = model.bind_tools(tools)
 
     async def agent_node(state: State):
-        messages = state["messages"]
-        all_messages = [SystemMessage(content=prompt)] + messages
+        all_messages = [SystemMessage(content=prompt)] + state["messages"]
         message = await llm_with_tools.ainvoke(all_messages)
         return {"messages": [message]}
 
@@ -497,25 +1081,19 @@ async def get_tools():
 async def stream_graph(graph, initial_state, config):
     async for event in graph.astream_events(initial_state, config=config, version="v2"):
         kind = event.get("event", "")
-
         if kind == "on_chat_model_stream":
             chunk = event["data"].get("chunk")
             if chunk and hasattr(chunk, "content") and chunk.content:
                 yield f"data: {chunk.content}\n\n"
-
         elif kind == "on_tool_start":
-            tool_name = event.get("name", "unknown_tool")
-            yield f"data: [Tool: {tool_name}] Starting...\n\n"
-
+            yield f"data: [Tool: {event.get('name', 'unknown_tool')}] Starting...\n\n"
         elif kind == "on_tool_end":
-            tool_name = event.get("name", "unknown_tool")
-            yield f"data: [Tool: {tool_name}] Done\n\n"
+            yield f"data: [Tool: {event.get('name', 'unknown_tool')}] Done\n\n"
 
 
 @app.post("/chat")
 async def chat_stream(request: Request):
     load_dotenv(find_dotenv())
-
     tools = await get_tools()
 
     model = AzureChatOpenAI(
@@ -532,8 +1110,10 @@ async def chat_stream(request: Request):
         system_prompt = _FALLBACK_PROMPT
 
     body = await request.json()
-    user_message = body.get("message", "I'd like to leave feedback about my claim")
+    history = body.get("history", [])
+    user_message = body.get("message", "Verify policy coverage for this claim")
 
+    initial_messages = history + [user_message] if history else [user_message]
     graph = create_graph(model=model, tools=tools, prompt=system_prompt)
 
     async def generate():
@@ -543,7 +1123,7 @@ async def chat_stream(request: Request):
         try:
             async for event in stream_graph(
                 graph=graph,
-                initial_state={"messages": [user_message]},
+                initial_state={"messages": initial_messages},
                 config={"recursion_limit": 250},
             ):
                 last_event_at = time.time()
@@ -579,11 +1159,9 @@ async def chat_stream(request: Request):
 
 @app.get("/health")
 async def health():
-    return {"status": "healthy", "agent": "feedback_agent"}
+    return {"status": "healthy", "agent": "policy_coverage_agent"}
 
 
 if __name__ == "__main__":
     uvicorn.run(app, host="0.0.0.0", port=AGENT_PORT)
-
-
 
