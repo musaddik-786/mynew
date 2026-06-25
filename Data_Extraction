@@ -346,4 +346,13 @@ Fetch full policy coverage details from Guidewire
 }
 
 
+SELECT
+claim_number,
+policy_number
+FROM claims
+WHERE claim_number='CLM-TEST-2001';
+
+this also worked fine 
+I think is there issue in table schema and data mismatch maybe?
+
 
