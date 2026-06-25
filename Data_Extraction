@@ -1,35 +1,427 @@
-it is working fine now 
+I was told to test
+✗  NEGATIVE TEST:  Ask: 'Verify coverage for claim CLM-2026-5344' — then ask again without reloading the page
+✓  EXPECTED RESULT:  Second call hits get_coverage_verification_result first → found=true. Returns cached result. verify_coverage is NOT called again. Check agent logs: only ONE call to verify_coverage.
 
-JarvisClaims@JarvisClaims:~/Musaddique$ curl -s -N -X POST http://localhost:8807/chat -H "Content-Type: application/json" -d '{"message":"Does my policy cover water damage from a dishwasher leak"}'
-data: Could
+so check whether it worked fine
 
-data:  you
 
-data:  please
 
-data:  share
 
-data:  your
+
+
+
+
+(vnev) JarvisClaims@JarvisClaims:~/Musaddique/Jarvis_claims_agents_v2/PolicyholderAgents/PolicyCoverageVerificationAgent$ python3 server.py 
+INFO:     Started server process [5920]
+INFO:     Waiting for application startup.
+INFO:     Application startup complete.
+INFO:     Uvicorn running on http://0.0.0.0:8807 (Press CTRL+C to quit)
+2026-06-25 06:59:38,681 | INFO     | httpx | HTTP Request: POST http://localhost:8800/api/v1/policy_coverage/mcp "HTTP/1.1 200 OK"
+2026-06-25 06:59:38,681 | INFO     | mcp.client.streamable_http | Received session ID: 7ca527351aa44c039f0b23e0ce7cdd8c
+2026-06-25 06:59:38,682 | INFO     | mcp.client.streamable_http | Negotiated protocol version: 2025-11-25
+2026-06-25 06:59:38,686 | INFO     | httpx | HTTP Request: POST http://localhost:8800/api/v1/policy_coverage/mcp "HTTP/1.1 202 Accepted"
+2026-06-25 06:59:38,691 | INFO     | httpx | HTTP Request: POST http://localhost:8800/api/v1/policy_coverage/mcp "HTTP/1.1 200 OK"
+2026-06-25 06:59:38,693 | INFO     | httpx | HTTP Request: DELETE http://localhost:8800/api/v1/policy_coverage/mcp "HTTP/1.1 200 OK"
+2026-06-25 06:59:38,694 | INFO     | policy_coverage_agent | Tools loaded from MCP: ['get_claim_details', 'gw_search_policy', 'gw_get_policy_coverages', 'save_policy_details', 'get_policy_details', 'get_coverage_verification_result', 'verify_coverage', 'record_claim_payment']
+2026-06-25 06:59:39,089 | WARNING  | policy_coverage_agent | Phoenix prompt load failed (Phoenix not configured) — using fallback prompt
+INFO:     127.0.0.1:56136 - "POST /chat HTTP/1.1" 200 OK
+2026-06-25 06:59:39,819 | INFO     | httpx | HTTP Request: POST https://azureclaimsopenai.openai.azure.com/openai/deployments/gpt-4.1-claims/chat/completions?api-version=2025-01-01-preview "HTTP/1.1 200 OK"
+2026-06-25 06:59:39,922 | INFO     | policy_coverage_agent | ================================================================================
+2026-06-25 06:59:39,923 | INFO     | policy_coverage_agent | LLM Response
+2026-06-25 06:59:39,923 | INFO     | policy_coverage_agent | Content: 
+2026-06-25 06:59:39,923 | INFO     | policy_coverage_agent | Tool Calls:
+2026-06-25 06:59:39,923 | INFO     | policy_coverage_agent | Tool=get_coverage_verification_result Args={'claim_id': 'CLM-2026-1001'}
+2026-06-25 06:59:39,923 | INFO     | policy_coverage_agent | ================================================================================
+2026-06-25 06:59:39,925 | INFO     | policy_coverage_agent | TOOL START: get_coverage_verification_result | INPUT={'claim_id': 'CLM-2026-1001'}
+2026-06-25 06:59:39,968 | INFO     | httpx | HTTP Request: POST http://localhost:8800/api/v1/policy_coverage/mcp "HTTP/1.1 200 OK"
+2026-06-25 06:59:39,969 | INFO     | mcp.client.streamable_http | Received session ID: fb8b614d51ae474fa81eb35db2e9e420
+2026-06-25 06:59:39,969 | INFO     | mcp.client.streamable_http | Negotiated protocol version: 2025-11-25
+2026-06-25 06:59:39,972 | INFO     | httpx | HTTP Request: POST http://localhost:8800/api/v1/policy_coverage/mcp "HTTP/1.1 202 Accepted"
+2026-06-25 06:59:40,030 | INFO     | httpx | HTTP Request: POST http://localhost:8800/api/v1/policy_coverage/mcp "HTTP/1.1 200 OK"
+2026-06-25 06:59:40,034 | INFO     | httpx | HTTP Request: POST http://localhost:8800/api/v1/policy_coverage/mcp "HTTP/1.1 200 OK"
+2026-06-25 06:59:40,036 | INFO     | httpx | HTTP Request: DELETE http://localhost:8800/api/v1/policy_coverage/mcp "HTTP/1.1 200 OK"
+2026-06-25 06:59:40,037 | INFO     | policy_coverage_agent | TOOL END: get_coverage_verification_result | OUTPUT=content=[{'type': 'text', 'text': '{\n  "found": true,\n  "id": 25,\n  "claim_id": "CLM-2026-1001",\n  "policy_id": "7514500163",\n  "coverage_verdict": "Not Covered",\n  "exclusion_triggered": false,\n  "exclusion_details": "",\n  "net_payable": 0.0,\n  "coverage_notes": "The claim is not covered because the remaining coverage limit is $0.00, meaning no further claims can be paid under this policy period regardless of the loss type or exclusions.",\n  "verified_at": "2026-06-25T06:45:06.358346"\n}', 'id': 'lc_5f79aa96-819e-4d02-8867-422c67ca36b4'}] name='get_coverage_verification_result' tool_call_id='call_SidgCa69rOdaWKtEICL6EjqQ'
+2026-06-25 06:59:40,614 | INFO     | httpx | HTTP Request: POST https://azureclaimsopenai.openai.azure.com/openai/deployments/gpt-4.1-claims/chat/completions?api-version=2025-01-01-preview "HTTP/1.1 200 OK"
+2026-06-25 06:59:41,262 | INFO     | policy_coverage_agent | ================================================================================
+2026-06-25 06:59:41,262 | INFO     | policy_coverage_agent | LLM Response
+2026-06-25 06:59:41,262 | INFO     | policy_coverage_agent | Content: For claim number CLM-2026-1001, the policy's coverage for this period has reached its limit. That means your claim is not covered, and unfortunately, no further claims can be paid under this policy period regardless of the loss type or any exclusions.
+
+If you believe this is incorrect or want a recheck, please let me know. Otherwise, this is the most recent coverage verification for your claim. End.
+2026-06-25 06:59:41,262 | INFO     | policy_coverage_agent | ================================================================================
+2026-06-25 06:59:45,754 | INFO     | httpx | HTTP Request: POST http://localhost:8800/api/v1/policy_coverage/mcp "HTTP/1.1 200 OK"
+2026-06-25 06:59:45,754 | INFO     | mcp.client.streamable_http | Received session ID: 74c852c9d7854eb38ef2cab44c86d5c3
+2026-06-25 06:59:45,754 | INFO     | mcp.client.streamable_http | Negotiated protocol version: 2025-11-25
+2026-06-25 06:59:45,757 | INFO     | httpx | HTTP Request: POST http://localhost:8800/api/v1/policy_coverage/mcp "HTTP/1.1 202 Accepted"
+2026-06-25 06:59:45,762 | INFO     | httpx | HTTP Request: POST http://localhost:8800/api/v1/policy_coverage/mcp "HTTP/1.1 200 OK"
+2026-06-25 06:59:45,764 | INFO     | httpx | HTTP Request: DELETE http://localhost:8800/api/v1/policy_coverage/mcp "HTTP/1.1 200 OK"
+2026-06-25 06:59:45,765 | INFO     | policy_coverage_agent | Tools loaded from MCP: ['get_claim_details', 'gw_search_policy', 'gw_get_policy_coverages', 'save_policy_details', 'get_policy_details', 'get_coverage_verification_result', 'verify_coverage', 'record_claim_payment']
+2026-06-25 06:59:45,837 | WARNING  | policy_coverage_agent | Phoenix prompt load failed (Phoenix not configured) — using fallback prompt
+INFO:     127.0.0.1:35508 - "POST /chat HTTP/1.1" 200 OK
+2026-06-25 06:59:46,474 | INFO     | httpx | HTTP Request: POST https://azureclaimsopenai.openai.azure.com/openai/deployments/gpt-4.1-claims/chat/completions?api-version=2025-01-01-preview "HTTP/1.1 200 OK"
+2026-06-25 06:59:46,606 | INFO     | policy_coverage_agent | ================================================================================
+2026-06-25 06:59:46,606 | INFO     | policy_coverage_agent | LLM Response
+2026-06-25 06:59:46,606 | INFO     | policy_coverage_agent | Content: 
+2026-06-25 06:59:46,606 | INFO     | policy_coverage_agent | Tool Calls:
+2026-06-25 06:59:46,606 | INFO     | policy_coverage_agent | Tool=get_coverage_verification_result Args={'claim_id': 'CLM-2026-1001'}
+2026-06-25 06:59:46,606 | INFO     | policy_coverage_agent | ================================================================================
+2026-06-25 06:59:46,608 | INFO     | policy_coverage_agent | TOOL START: get_coverage_verification_result | INPUT={'claim_id': 'CLM-2026-1001'}
+2026-06-25 06:59:46,649 | INFO     | httpx | HTTP Request: POST http://localhost:8800/api/v1/policy_coverage/mcp "HTTP/1.1 200 OK"
+2026-06-25 06:59:46,649 | INFO     | mcp.client.streamable_http | Received session ID: 27dd63c9f90047b09d7b2cbc62e5d35c
+2026-06-25 06:59:46,650 | INFO     | mcp.client.streamable_http | Negotiated protocol version: 2025-11-25
+2026-06-25 06:59:46,652 | INFO     | httpx | HTTP Request: POST http://localhost:8800/api/v1/policy_coverage/mcp "HTTP/1.1 202 Accepted"
+2026-06-25 06:59:46,704 | INFO     | httpx | HTTP Request: POST http://localhost:8800/api/v1/policy_coverage/mcp "HTTP/1.1 200 OK"
+2026-06-25 06:59:46,708 | INFO     | httpx | HTTP Request: POST http://localhost:8800/api/v1/policy_coverage/mcp "HTTP/1.1 200 OK"
+2026-06-25 06:59:46,711 | INFO     | httpx | HTTP Request: DELETE http://localhost:8800/api/v1/policy_coverage/mcp "HTTP/1.1 200 OK"
+2026-06-25 06:59:46,712 | INFO     | policy_coverage_agent | TOOL END: get_coverage_verification_result | OUTPUT=content=[{'type': 'text', 'text': '{\n  "found": true,\n  "id": 25,\n  "claim_id": "CLM-2026-1001",\n  "policy_id": "7514500163",\n  "coverage_verdict": "Not Covered",\n  "exclusion_triggered": false,\n  "exclusion_details": "",\n  "net_payable": 0.0,\n  "coverage_notes": "The claim is not covered because the remaining coverage limit is $0.00, meaning no further claims can be paid under this policy period regardless of the loss type or exclusions.",\n  "verified_at": "2026-06-25T06:45:06.358346"\n}', 'id': 'lc_f2a42468-8a80-44cf-be0d-594c57911540'}] name='get_coverage_verification_result' tool_call_id='call_1zG2jkwmpl3hzjyTmwjlHsP3'
+2026-06-25 06:59:47,270 | INFO     | httpx | HTTP Request: POST https://azureclaimsopenai.openai.azure.com/openai/deployments/gpt-4.1-claims/chat/completions?api-version=2025-01-01-preview "HTTP/1.1 200 OK"
+2026-06-25 06:59:47,859 | INFO     | policy_coverage_agent | ================================================================================
+2026-06-25 06:59:47,859 | INFO     | policy_coverage_agent | LLM Response
+2026-06-25 06:59:47,859 | INFO     | policy_coverage_agent | Content: Your claim CLM-2026-1001 is not covered by your policy. The reason is that your remaining coverage limit for this policy period is $0.00, so no further claims can be paid under this policy, regardless of the loss type or any exclusions.
+
+If you have questions about your coverage or want a recheck, please let me know.
+
+End
+2026-06-25 06:59:47,859 | INFO     | policy_coverage_agent | ================================================================================
+
+
+
+JarvisClaims@JarvisClaims:~/Musaddique$ curl -s -N -X POST http://localhost:8807/chat -H "Content-Type: application/json" -d '{"message":"'Verify coverage for claim This is my claim number CLM-2026-1001"}'
+> ^C
+JarvisClaims@JarvisClaims:~/Musaddique$ curl -s -N -X POST http://localhost:8807/chat -H "Content-Type: application/json" -d '{"message":"Verify cover
+age for claim This is my claim number CLM-2026-1001"}'
+data: [Tool: get_coverage_verification_result] Starting...
+
+data: [Tool: get_coverage_verification_result] Done
+
+data: For
 
 data:  claim
 
 data:  number
 
-data:  so
+data:  CL
 
-data:  I
+data: M
 
-data:  can
+data: -
 
-data:  check
+data: 202
+
+data: 6
+
+data: -
+
+data: 100
+
+data: 1
+
+data: ,
 
 data:  the
 
+data:  policy
+
+data: 's
+
 data:  coverage
 
-data: ?
-[Tool: get_coverage_verification_result] Starting... [Tool: get_coverage_verification_result] Done [Tool: get_claim_details] Starting... [Tool: get_claim_details] Done [Tool: get_policy_details] Starting... [Tool: get_policy_details] Done [Tool: gw_search_policy] Starting... [Tool: save_policy_details] Starting... [Tool: gw_search_policy] Done [Tool: save_policy_details] Done [Tool: get_policy_details] Starting... [Tool: get_policy_details] Done [Tool: verify_coverage] Starting... [Tool: verify_coverage] Done Your claim (CLM-2026-1001), which involves water damage due to a burst pipe, is linked to a homeowners policy with policy number 7514500163. Based on the coverage review, your claim is not covered. This is because the remaining coverage limit on your policy is $0.00 for this period, so no further claims can be paid—even if the loss itself would normally be covered. If you have questions about how your coverage limit was used or want to discuss additional options, let me know. End.
+data:  for
+
+data:  this
+
+data:  period
+
+data:  has
+
+data:  reached
+
+data:  its
+
+data:  limit
+
+data: .
+
+data:  That
+
+data:  means
+
+data:  your
+
+data:  claim
+
+data:  is
+
+data:  not
+
+data:  covered
+
+data: ,
+
+data:  and
+
+data:  unfortunately
+
+data: ,
+
+data:  no
+
+data:  further
+
+data:  claims
+
+data:  can
+
+data:  be
+
+data:  paid
+
+data:  under
+
+data:  this
+
+data:  policy
+
+data:  period
+
+data:  regardless
+
+data:  of
+
+data:  the
+
+data:  loss
+
+data:  type
+
+data:  or
+
+data:  any
+
+data:  exclusions
+
+data: .
 
 
-but the remaining_coverage_limit column in policy _details _table
-seems NULL why is it> are we getting it from GW? 
+
+data: If
+
+data:  you
+
+data:  believe
+
+data:  this
+
+data:  is
+
+data:  incorrect
+
+data:  or
+
+data:  want
+
+data:  a
+
+data:  re
+
+data: check
+
+data: ,
+
+data:  please
+
+data:  let
+
+data:  me
+
+data:  know
+
+data: .
+
+data:  Otherwise
+
+data: ,
+
+data:  this
+
+data:  is
+
+data:  the
+
+data:  most
+
+data:  recent
+
+data:  coverage
+
+data:  verification
+
+data:  for
+
+data:  your
+
+data:  claim
+
+data: .
+
+data:  End
+
+data: .
+
+JarvisClaims@JarvisClaims:~/Musaddique$ curl -s -N -X POST http://localhost:8807/chat -H "Content-Type: application/json" -d '{"message":"Verify coverage for claim This is my claim number CLM-2026-1001"}'
+data: [Tool: get_coverage_verification_result] Starting...
+
+data: [Tool: get_coverage_verification_result] Done
+
+data: Your
+
+data:  claim
+
+data:  CL
+
+data: M
+
+data: -
+
+data: 202
+
+data: 6
+
+data: -
+
+data: 100
+
+data: 1
+
+data:  is
+
+data:  not
+
+data:  covered
+
+data:  by
+
+data:  your
+
+data:  policy
+
+data: .
+
+data:  The
+
+data:  reason
+
+data:  is
+
+data:  that
+
+data:  your
+
+data:  remaining
+
+data:  coverage
+
+data:  limit
+
+data:  for
+
+data:  this
+
+data:  policy
+
+data:  period
+
+data:  is
+
+data:  $
+
+data: 0
+
+data: .
+
+data: 00
+
+data: ,
+
+data:  so
+
+data:  no
+
+data:  further
+
+data:  claims
+
+data:  can
+
+data:  be
+
+data:  paid
+
+data:  under
+
+data:  this
+
+data:  policy
+
+data: ,
+
+data:  regardless
+
+data:  of
+
+data:  the
+
+data:  loss
+
+data:  type
+
+data:  or
+
+data:  any
+
+data:  exclusions
+
+data: .
+
+
+
+data: If
+
+data:  you
+
+data:  have
+
+data:  questions
+
+data:  about
+
+data:  your
+
+data:  coverage
+
+data:  or
+
+data:  want
+
+data:  a
+
+data:  re
+
+data: check
+
+data: ,
+
+data:  please
+
+data:  let
+
+data:  me
+
+data:  know
+
+data: .
+
+
+
+data: End
+
+JarvisClaims@JarvisClaims:~/Musaddique$ 
