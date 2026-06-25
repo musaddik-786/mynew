@@ -1,23 +1,140 @@
-I tried 
+POST
+/gw_search_policy
+Search Guidewire PolicyCenter for a policy by policy number
 
-JarvisClaims@JarvisClaims:~/Musaddique$ curl -s -N -X POST http://localhost:8807/chat -H "Content-Type: application/json" -d '{"message":"This is my policy number 3311640995"}'
-data: Thank
+{
+  "policy_number": "0192328137"
+}
 
-data:  you
+{
+  "found": true,
+  "policy": {
+    "gw_policy_id": "pc:SVtPzl-RBlzMLP3mSW0FL",
+    "policy_number": "0192328137",
+    "status": "Unknown",
+    "effective_date": "2025-07-16T04:01:00.000Z",
+    "expiration_date": "2026-07-16T04:01:00.000Z",
+    "coverage_types": [],
+    "insured_name": "Hexa Tester",
+    "insured_address": "2850 S. Delaware St.\nSan Mateo, CA 94403",
+    "account_number": "9169194213",
+    "product_name": "Manual Products",
+    "raw": {
+      "count": 1,
+      "data": [
+        {
+          "attributes": {
+            "accountNumber": "9169194213",
+            "effectiveDate": "2025-07-16T04:01:00.000Z",
+            "expirationDate": "2026-07-16T04:01:00.000Z",
+            "insuredName": "Hexa Tester",
+            "policyAddress": "2850 S. Delaware St.\nSan Mateo, CA 94403",
+            "policyId": "pc:SVtPzl-RBlzMLP3mSW0FL",
+            "policyNumber": "0192328137",
+            "producerOfRecordName": "Armstrong and Company",
+            "producerOfServiceName": "Armstrong and Company",
+            "product": {
+              "displayName": "Manual Products",
+              "id": "Manual"
+            }
+          },
+          "links": {
+            "self": {
+              "href": "/policy/v1/policies/pc:SVtPzl-RBlzMLP3mSW0FL",
+              "methods": [
+                "get"
+              ]
+            }
+          }
+        }
+      ],
+      "links": {
+        "first": {
+          "href": "/policy/v1/search/policies",
+          "methods": [
+            "post"
+          ]
+        },
+        "self": {
+          "href": "/policy/v1/search/policies",
+          "methods": [
+            "post"
+          ]
+        }
+      }
+    }
+  },
+  "error": null,
+  "raw_gw_response": {
+    "count": 1,
+    "data": [
+      {
+        "attributes": {
+          "accountNumber": "9169194213",
+          "effectiveDate": "2025-07-16T04:01:00.000Z",
+          "expirationDate": "2026-07-16T04:01:00.000Z",
+          "insuredName": "Hexa Tester",
+          "policyAddress": "2850 S. Delaware St.\nSan Mateo, CA 94403",
+          "policyId": "pc:SVtPzl-RBlzMLP3mSW0FL",
+          "policyNumber": "0192328137",
+          "producerOfRecordName": "Armstrong and Company",
+          "producerOfServiceName": "Armstrong and Company",
+          "product": {
+            "displayName": "Manual Products",
+            "id": "Manual"
+          }
+        },
+        "links": {
+          "self": {
+            "href": "/policy/v1/policies/pc:SVtPzl-RBlzMLP3mSW0FL",
+            "methods": [
+              "get"
+            ]
+          }
+        }
+      }
+    ],
+    "links": {
+      "first": {
+        "href": "/policy/v1/search/policies",
+        "methods": [
+          "post"
+        ]
+      },
+      "self": {
+        "href": "/policy/v1/search/policies",
+        "methods": [
+          "post"
+        ]
+      }
+    }
+  }
+}
+GET
+/get_policy_details/{policy_id}
+Read policy details from the local database
 
-data:  for
+Returns the full policy_details record for the given policy_id.
 
-data:  sharing
+Parameters
+Cancel
+Name	Description
+policy_id *
+string
+(path)
+0192328137
 
-data:  your
 
-data:  policy
+	
+Response body
+Download
+{
+  "status": "not_found",
+  "policy_id": "0192328137"
+}
 
-data:  number
-
-data: .
-
-data:  Could
+JarvisClaims@JarvisClaims:~/Musaddique$ curl -s -N -X POST http://localhost:8807/chat -H "Content-Type: application/json" -d '{"message":"Does my policy cover water damage from a dishwasher leak"}'
+data: Could
 
 data:  you
 
@@ -44,12 +161,7 @@ data:  the
 data:  coverage
 
 data: ?
-
-data:  End
-
-data: .
-
-JarvisClaims@JarvisClaims:~/Musaddique$ curl -s -N -X POST http://localhost:8807/chat -H "Content-Type: application/json" -d '{"message":"This is my claim number CLM-2024-1003"}'
+JarvisClaims@JarvisClaims:~/Musaddique$ curl -s -N -X POST http://localhost:8807/chat -H "Content-Type: application/json" -d '{"message":"This is my claim number CLM-TEST-2001"}'
 data: [Tool: get_coverage_verification_result] Starting...
 
 data: [Tool: get_coverage_verification_result] Done
@@ -58,116 +170,12 @@ data: [Tool: get_policy_details] Starting...
 
 data: [Tool: get_policy_details] Done
 
-data: [Tool: verify_coverage] Starting...
+data: [Tool: save_policy_details] Starting...
 
-data: [Tool: verify_coverage] Done
+data: [Tool: save_policy_details] Done
+[Tool: get_coverage_verification_result] Starting... [Tool: get_coverage_verification_result] Done [Tool: get_policy_details] Starting... [Tool: get_policy_details] Done [Tool: save_policy_details] Starting... [Tool: save_policy_details] Done I was unable to find a policy associated with claim number CLM-TEST-2001 in our system or through Guidewire. This usually means either the claim number is incorrect, or the policy linked to this claim is not yet registered in our database. Could you please confirm your policy number or provide further details about your claim (such as the policyholder's name or policy number) so I can check your coverage accurately? End.
 
-data: I
+The policy details table did not populate at all even if claims table had the policy number 
 
-data:  was
 
-data:  unable
-
-data:  to
-
-data:  find
-
-data:  your
-
-data:  claim
-
-data:  number
-
-data:  CL
-
-data: M
-
-data: -
-
-data: 202
-
-data: 4
-
-data: -
-
-data: 100
-
-data: 3
-
-data:  in
-
-data:  the
-
-data:  records
-
-data: .
-
-data:  Could
-
-data:  you
-
-data:  please
-
-data:  confirm
-
-data:  that
-
-data:  your
-
-data:  claim
-
-data:  number
-
-data:  is
-
-data:  correct
-
-data: ,
-
-data:  or
-
-data:  provide
-
-data:  the
-
-data:  policy
-
-data:  number
-
-data:  linked
-
-data:  to
-
-data:  your
-
-data:  claim
-
-data: ?
-
-data:  This
-
-data:  will
-
-data:  help
-
-data:  me
-
-data:  check
-
-data:  the
-
-data:  coverage
-
-data:  for
-
-data:  you
-
-data: .
-
-data:  End
-
-data: .
-
-JarvisClaims@JarvisClaims:~/Musaddique$ 
-
-I know policynumber exists in guidewire but claim number does not exists anywhere also policy number does not exists in any table locally or inpostregs as well so what am i supposed to do
+so this is theissue it seems 
