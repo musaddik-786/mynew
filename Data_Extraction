@@ -1,217 +1,774 @@
-Yes — based on the logs you shared, this test passed successfully.
+JarvisClaims@JarvisClaims:~/Musaddique$ curl -s -N -X POST http://localhost:8809/chat -H "Content-Type: application/json" -d '{"message":"My claim has
+ been pending for weeks can someone please update me i am really frustrated now,  my claim number is CLM-2026-1001"}'
+data: [Tool: get_communication_history] Starting...
 
-Let’s compare it with what your senior expected.
+data: [Tool: get_communication_history] Done
 
-⸻
+data: [Tool: log_inbound_communication] Starting...
 
-Expected
+data: [Tool: write_customer_feedback] Starting...
 
-Ask:
+data: [Tool: log_inbound_communication] Done
 
-Verify coverage for claim CLM-2026-1001
+data: [Tool: write_customer_feedback] Done
 
-Then ask again without restarting.
+data: [Tool: draft_status_notification] Starting...
 
-Expected
+data: [Tool: draft_status_notification] Done
 
-* First call → verify_coverage runs.
-* Second call → get_coverage_verification_result returns found=true.
-* verify_coverage is NOT called.
+data: Thank
 
-⸻
+data:  you
 
-First Request
+data:  for
 
-Your logs show:
+data:  reaching
 
-Tool=get_coverage_verification_result
+data:  out
 
-↓
+data:  again
 
-OUTPUT
-found=true
+data: .
 
-Immediately after that, the LLM responded
+data:  I
 
-For claim number CLM-2026-1001...
-...
-Otherwise, this is the most recent coverage verification...
+data:  see
 
-Now look carefully.
+data:  you've
 
-There is NO
+data:  previously
 
-TOOL START: verify_coverage
+data:  requested
 
-There is NO
+data:  updates
 
-Tool=verify_coverage
+data: ,
 
-There is NO
+data:  and
 
-get_claim_details
+data:  I
 
-There is NO
+data:  truly
 
-get_policy_details
+data:  understand
 
-Meaning
+data:  your
 
-coverage_verification_results
-        │
-        ▼
-found=true
-        │
-        ▼
-Return cached result
+data:  frustration
 
-Exactly as designed.
+data:  at
 
-⸻
+data:  the
 
-Second Request
+data:  ongoing
 
-Again
+data:  delay
 
-Tool=get_coverage_verification_result
+data: .
 
-↓
 
-found=true
 
-Then immediately
+data: Your
 
-Your claim CLM-2026-1001 is not covered...
+data:  feedback
 
-Again
+data:  about
 
-there is no
+data:  the
 
-verify_coverage
+data:  wait
 
-⸻
+data:  time
 
-What would have happened if the cache wasn’t working?
+data:  and
 
-You would have seen something like
+data:  your
 
-Tool=get_coverage_verification_result
-↓
-found=false
-↓
-Tool=get_claim_details
-↓
-Tool=get_policy_details
-↓
-Tool=verify_coverage
-↓
-INSERT INTO coverage_verification_results
+data:  frustration
 
-That entire sequence is missing.
+data:  has
 
-Which is exactly what you wanted.
+data:  been
 
-⸻
+data:  logged
 
-The proof is here
+data:  and
 
-You only have
+data:  shared
 
-Tool=get_coverage_verification_result
+data:  with
 
-followed by
+data:  the
 
-LLM Response
+data:  team
 
-There is no
+data: .
 
-verify_coverage
+data:  We
 
-in between.
+data:  sincerely
 
-That proves the cached result was used.
+data:  apologize
 
-⸻
+data:  for
 
-Your curl output confirms it too
+data:  the
 
-The terminal only shows
+data:  inconvenience
 
-[Tool: get_coverage_verification_result] Starting...
-[Tool: get_coverage_verification_result] Done
+data:  and
 
-There is no
+data:  want
 
-[Tool: verify_coverage]
+data:  you
 
-or
+data:  to
 
-[Tool: get_claim_details]
+data:  know
 
-or
+data:  that
 
-[Tool: save_policy_details]
+data:  your
 
-Those tools were skipped because the verification result already existed.
+data:  concerns
 
-⸻
+data:  are
 
-Your current flow is therefore
+data:  being
 
-User
-   │
-   ▼
-get_coverage_verification_result
-   │
-   ├──────── found=true
-   │              │
-   │              ▼
-   │      Return cached answer ✅
-   │
-   └──────── found=false
-                  │
-                  ▼
-          get_claim_details
-                  │
-                  ▼
-          get_policy_details
-                  │
-          ├──── Found
-          │        │
-          │        ▼
-          │   verify_coverage
-          │
-          └──── Not Found
-                   │
-                   ▼
-            gw_search_policy
-                   │
-                   ▼
-           save_policy_details
-                   │
-                   ▼
-           verify_coverage
-                   │
-                   ▼
-     coverage_verification_results
+data:  taken
 
-One small observation
+data:  seriously
 
-The test description says:
+data: .
 
-Ask: Verify coverage for claim CLM-2026-5344 — then ask again
 
-However, your logs show:
 
-found=true
+data: Here
 
-on the first request as well. That means CLM-2026-1001 already had a cached record in coverage_verification_results from an earlier run (likely at 06:45:06, as shown by verified_at).
+data:  is
 
-So you did not test the full “first run → second run” sequence in this session. You tested the cache-hit path twice.
+data:  the
 
-If your senior wants to verify both paths, use a new claim number that does not exist in coverage_verification_results, or delete the existing row for CLM-2026-1001 before testing:
+data:  latest
 
-1. First request: found=false → verify_coverage executes → result is saved.
-2. Second request: found=true → cached result is returned → verify_coverage is not executed.
+data:  notification
 
-That demonstrates both the cache miss and cache hit behavior end-to-end.
+data:  draft
+
+data:  for
+
+data:  your
+
+data:  claim
+
+data: :
+
+
+
+data: Subject
+
+data: :
+
+data:  Update
+
+data:  on
+
+data:  Your
+
+data:  Water
+
+data:  Damage
+
+data:  Claim
+
+data:  (
+
+data: CL
+
+data: M
+
+data: -
+
+data: 202
+
+data: 6
+
+data: -
+
+data: 100
+
+data: 1
+
+data: )
+
+
+
+data: Message
+
+data: :
+
+
+data: Dear
+
+data:  John
+
+data:  Doe
+
+data: ,
+
+
+
+data: We
+
+data:  understand
+
+data:  how
+
+data:  concerning
+
+data:  it
+
+data:  can
+
+data:  be
+
+data:  to
+
+data:  wait
+
+data:  for
+
+data:  updates
+
+data:  on
+
+data:  your
+
+data:  water
+
+data:  damage
+
+data:  claim
+
+data:  (
+
+data: CL
+
+data: M
+
+data: -
+
+data: 202
+
+data: 6
+
+data: -
+
+data: 100
+
+data: 1
+
+data: ),
+
+data:  and
+
+data:  we
+
+data:  sincerely
+
+data:  apologize
+
+data:  for
+
+data:  any
+
+data:  frustration
+
+data:  this
+
+data:  delay
+
+data:  has
+
+data:  caused
+
+data: .
+
+data:  Your
+
+data:  claim
+
+data:  remains
+
+data:  open
+
+data:  and
+
+data:  is
+
+data:  currently
+
+data:  in
+
+data:  the
+
+data:  '
+
+data: Claim
+
+data:  Initi
+
+data: ated
+
+data: '
+
+data:  stage
+
+data: .
+
+data:  Our
+
+data:  team
+
+data:  is
+
+data:  actively
+
+data:  reviewing
+
+data:  your
+
+data:  case
+
+data:  to
+
+data:  ensure
+
+data:  a
+
+data:  thorough
+
+data:  and
+
+data:  fair
+
+data:  resolution
+
+data: .
+
+
+
+data: We
+
+data:  recognize
+
+data:  the
+
+data:  importance
+
+data:  of
+
+data:  timely
+
+data:  communication
+
+data:  and
+
+data:  are
+
+data:  priorit
+
+data: izing
+
+data:  your
+
+data:  claim
+
+data: .
+
+data:  At
+
+data:  this
+
+data:  time
+
+data: ,
+
+data:  there
+
+data:  are
+
+data:  no
+
+data:  additional
+
+data:  actions
+
+data:  required
+
+data:  from
+
+data:  you
+
+data: .
+
+data:  We
+
+data:  will
+
+data:  reach
+
+data:  out
+
+data:  immediately
+
+data:  if
+
+data:  we
+
+data:  need
+
+data:  further
+
+data:  information
+
+data:  or
+
+data:  as
+
+data:  soon
+
+data:  as
+
+data:  there
+
+data:  is
+
+data:  a
+
+data:  significant
+
+data:  update
+
+data: .
+
+
+
+data: Thank
+
+data:  you
+
+data:  for
+
+data:  your
+
+data:  patience
+
+data:  and
+
+data:  understanding
+
+data: .
+
+data:  If
+
+data:  you
+
+data:  have
+
+data:  any
+
+data:  questions
+
+data:  or
+
+data:  need
+
+data:  further
+
+data:  assistance
+
+data: ,
+
+data:  please
+
+data:  reply
+
+data:  to
+
+data:  this
+
+data:  email
+
+data:  or
+
+data:  contact
+
+data:  our
+
+data:  support
+
+data:  team
+
+data:  directly
+
+data: .
+
+data:  We
+
+data:  are
+
+data:  here
+
+data:  to
+
+data:  support
+
+data:  you
+
+data:  every
+
+data:  step
+
+data:  of
+
+data:  the
+
+data:  way
+
+data: .
+
+
+
+data: Best
+
+data:  regards
+
+data: ,
+
+
+data: Your
+
+data:  Claims
+
+data:  Team
+
+data: 
+
+
+
+data: Recommended
+
+data:  channel
+
+data: :
+
+data:  Email
+
+data:   
+
+
+data: Next
+
+data:  action
+
+data: :
+
+data:  Claims
+
+data:  team
+
+data:  to
+
+data:  provide
+
+data:  next
+
+data:  status
+
+data:  update
+
+data:  within
+
+data:  
+
+data: 3
+
+data:  business
+
+data:  days
+
+data:  or
+
+data:  sooner
+
+data:  if
+
+data:  there
+
+data:  is
+
+data:  a
+
+data:  development
+
+data: .
+
+data:  Policy
+
+data: holder
+
+data:  may
+
+data:  reply
+
+data:  to
+
+data:  this
+
+data:  email
+
+data:  or
+
+data:  contact
+
+data:  support
+
+data:  for
+
+data:  immediate
+
+data:  concerns
+
+data: .
+
+
+
+data: Your
+
+data:  case
+
+data:  is
+
+data:  receiving
+
+data:  priority
+
+data:  attention
+
+data:  from
+
+data:  the
+
+data:  claims
+
+data:  team
+
+data:  due
+
+data:  to
+
+data:  the
+
+data:  escalation
+
+data:  risk
+
+data: .
+
+data:  Please
+
+data:  let
+
+data:  us
+
+data:  know
+
+data:  if
+
+data:  there
+
+data: ’s
+
+data:  anything
+
+data:  else
+
+data:  you
+
+data:  need
+
+data: —we
+
+data: ’re
+
+data:  here
+
+data:  for
+
+data:  you
+
+data: .
+
+JarvisClaims@JarvisClaims:~/Musaddique$ 
+
+
+
+
+(vnev) JarvisClaims@JarvisClaims:~/Musaddique/Jarvis_claims_agents_v2/PolicyholderAgents/CommunicationAgent$ python3 server.py 
+INFO:     Started server process [19789]
+INFO:     Waiting for application startup.
+INFO:     Application startup complete.
+INFO:     Uvicorn running on http://0.0.0.0:8809 (Press CTRL+C to quit)
+2026-06-25 10:58:15,959 | INFO     | httpx | HTTP Request: POST http://localhost:8800/api/v1/communication/mcp "HTTP/1.1 200 OK"
+2026-06-25 10:58:15,959 | INFO     | mcp.client.streamable_http | Received session ID: 19fdb67a04034d7fbf6bda8f0c220c50
+2026-06-25 10:58:15,960 | INFO     | mcp.client.streamable_http | Negotiated protocol version: 2025-11-25
+2026-06-25 10:58:15,960 | INFO     | httpx | HTTP Request: POST http://localhost:8800/api/v1/feedback/mcp "HTTP/1.1 200 OK"
+2026-06-25 10:58:15,960 | INFO     | mcp.client.streamable_http | Received session ID: 4097305c921d43169edaab4578714494
+2026-06-25 10:58:15,961 | INFO     | mcp.client.streamable_http | Negotiated protocol version: 2025-11-25
+2026-06-25 10:58:15,966 | INFO     | httpx | HTTP Request: POST http://localhost:8800/api/v1/communication/mcp "HTTP/1.1 202 Accepted"
+2026-06-25 10:58:15,967 | INFO     | httpx | HTTP Request: POST http://localhost:8800/api/v1/feedback/mcp "HTTP/1.1 202 Accepted"
+2026-06-25 10:58:15,979 | INFO     | httpx | HTTP Request: POST http://localhost:8800/api/v1/communication/mcp "HTTP/1.1 200 OK"
+2026-06-25 10:58:15,979 | INFO     | httpx | HTTP Request: POST http://localhost:8800/api/v1/feedback/mcp "HTTP/1.1 200 OK"
+2026-06-25 10:58:15,983 | INFO     | httpx | HTTP Request: DELETE http://localhost:8800/api/v1/feedback/mcp "HTTP/1.1 200 OK"
+2026-06-25 10:58:15,984 | INFO     | httpx | HTTP Request: DELETE http://localhost:8800/api/v1/communication/mcp "HTTP/1.1 200 OK"
+2026-06-25 10:58:15,986 | INFO     | communication_agent | Tools loaded from MCP: ['log_inbound_communication', 'get_communication_history', 'draft_status_notification', 'write_customer_feedback', 'get_customer_feedback', 'update_sentiment_tracker', 'get_sentiment_tracker']
+2026-06-25 10:58:16,385 | WARNING  | communication_agent | Phoenix prompt load failed (Phoenix not configured) — using fallback prompt
+INFO:     127.0.0.1:59594 - "POST /chat HTTP/1.1" 200 OK
+2026-06-25 10:58:17,691 | INFO     | httpx | HTTP Request: POST https://azureclaimsopenai.openai.azure.com/openai/deployments/gpt-4.1-claims/chat/completions?api-version=2025-01-01-preview "HTTP/1.1 200 OK"
+2026-06-25 10:58:17,937 | INFO     | httpx | HTTP Request: POST http://localhost:8800/api/v1/communication/mcp "HTTP/1.1 200 OK"
+2026-06-25 10:58:17,937 | INFO     | mcp.client.streamable_http | Received session ID: e9f7182849bf4c9fa14e1e60d143c3f6
+2026-06-25 10:58:17,937 | INFO     | mcp.client.streamable_http | Negotiated protocol version: 2025-11-25
+2026-06-25 10:58:17,941 | INFO     | httpx | HTTP Request: POST http://localhost:8800/api/v1/communication/mcp "HTTP/1.1 202 Accepted"
+2026-06-25 10:58:18,004 | INFO     | httpx | HTTP Request: POST http://localhost:8800/api/v1/communication/mcp "HTTP/1.1 200 OK"
+2026-06-25 10:58:18,008 | INFO     | httpx | HTTP Request: POST http://localhost:8800/api/v1/communication/mcp "HTTP/1.1 200 OK"
+2026-06-25 10:58:18,010 | INFO     | httpx | HTTP Request: DELETE http://localhost:8800/api/v1/communication/mcp "HTTP/1.1 200 OK"
+2026-06-25 10:58:20,845 | INFO     | httpx | HTTP Request: POST https://azureclaimsopenai.openai.azure.com/openai/deployments/gpt-4.1-claims/chat/completions?api-version=2025-01-01-preview "HTTP/1.1 200 OK"
+2026-06-25 10:58:20,989 | INFO     | httpx | HTTP Request: POST http://localhost:8800/api/v1/communication/mcp "HTTP/1.1 200 OK"
+2026-06-25 10:58:20,989 | INFO     | mcp.client.streamable_http | Received session ID: f81abeafebac4ceab99b5611f4f9d00c
+2026-06-25 10:58:20,989 | INFO     | mcp.client.streamable_http | Negotiated protocol version: 2025-11-25
+2026-06-25 10:58:20,989 | INFO     | httpx | HTTP Request: POST http://localhost:8800/api/v1/feedback/mcp "HTTP/1.1 200 OK"
+2026-06-25 10:58:20,989 | INFO     | mcp.client.streamable_http | Received session ID: e144a1ef43fe42f8a4584a45b69d90dd
+2026-06-25 10:58:20,990 | INFO     | mcp.client.streamable_http | Negotiated protocol version: 2025-11-25
+2026-06-25 10:58:20,993 | INFO     | httpx | HTTP Request: POST http://localhost:8800/api/v1/communication/mcp "HTTP/1.1 202 Accepted"
+2026-06-25 10:58:20,994 | INFO     | httpx | HTTP Request: POST http://localhost:8800/api/v1/feedback/mcp "HTTP/1.1 202 Accepted"
+2026-06-25 10:58:21,072 | INFO     | httpx | HTTP Request: POST http://localhost:8800/api/v1/communication/mcp "HTTP/1.1 200 OK"
+2026-06-25 10:58:21,075 | INFO     | httpx | HTTP Request: POST http://localhost:8800/api/v1/communication/mcp "HTTP/1.1 200 OK"
+2026-06-25 10:58:21,077 | INFO     | httpx | HTTP Request: DELETE http://localhost:8800/api/v1/communication/mcp "HTTP/1.1 200 OK"
+2026-06-25 10:58:22,169 | INFO     | httpx | HTTP Request: POST http://localhost:8800/api/v1/feedback/mcp "HTTP/1.1 200 OK"
+2026-06-25 10:58:22,172 | INFO     | httpx | HTTP Request: POST http://localhost:8800/api/v1/feedback/mcp "HTTP/1.1 200 OK"
+2026-06-25 10:58:22,175 | INFO     | httpx | HTTP Request: DELETE http://localhost:8800/api/v1/feedback/mcp "HTTP/1.1 200 OK"
+2026-06-25 10:58:23,414 | INFO     | httpx | HTTP Request: POST https://azureclaimsopenai.openai.azure.com/openai/deployments/gpt-4.1-claims/chat/completions?api-version=2025-01-01-preview "HTTP/1.1 200 OK"
+2026-06-25 10:58:23,650 | INFO     | httpx | HTTP Request: POST http://localhost:8800/api/v1/communication/mcp "HTTP/1.1 200 OK"
+2026-06-25 10:58:23,650 | INFO     | mcp.client.streamable_http | Received session ID: 0b598fcf57ed4c3989da1c136361f219
+2026-06-25 10:58:23,650 | INFO     | mcp.client.streamable_http | Negotiated protocol version: 2025-11-25
+2026-06-25 10:58:23,653 | INFO     | httpx | HTTP Request: POST http://localhost:8800/api/v1/communication/mcp "HTTP/1.1 202 Accepted"
+2026-06-25 10:58:26,245 | INFO     | httpx | HTTP Request: POST http://localhost:8800/api/v1/communication/mcp "HTTP/1.1 200 OK"
+2026-06-25 10:58:26,248 | INFO     | httpx | HTTP Request: POST http://localhost:8800/api/v1/communication/mcp "HTTP/1.1 200 OK"
+2026-06-25 10:58:26,251 | INFO     | httpx | HTTP Request: DELETE http://localhost:8800/api/v1/communication/mcp "HTTP/1.1 200 OK"
+2026-06-25 10:58:27,450 | INFO     | httpx | HTTP Request: POST https://azureclaimsopenai.openai.azure.com/openai/deployments/gpt-4.1-claims/chat/completions?api-version=2025-01-01-preview "HTTP/1.1 200 OK"
+
+
+
+I think it worked fine please check , but i need to understand one thind whatever tools of feednack are getting called here what data are we providing it from communication agent for respective tables to be populated i want that and what exact data fields are we retriving from the tables that those feedbakc agent is connected to that as well 
