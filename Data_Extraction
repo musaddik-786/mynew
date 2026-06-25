@@ -1,10 +1,234 @@
-👤 YOU TYPE:  For claim CLM-2026-5344: I found my kitchen flooded. I need help urgently, the water damage is spreading!
-⚙  TOOL CALLED:  Step 1: get_communication_history  →  GET /api/communication/history/CLM-2026-5344  — agent reads prior comms first
-⚙  TOOL CALLED:  Step 2: log_inbound_communication  →  POST /api/communication/log_inbound/CLM-2026-5344  body: {message_text: '...', sentiment: 'Negative'}
-✓  EXPECTED RESULT:  From live test — log_inbound returns: {communication_id: 'COMM-IN-CLM-2026-5344-...', direction: 'Inbound', subject: 'Policyholder Message', summary: 'I found my kitchen flooded...'}
-⚙  TOOL CALLED:  Step 3: write_customer_feedback (from feedback_mcp)  →  called because message contains emotional/urgent content
-⚙  TOOL CALLED:  Step 4: draft_status_notification  →  POST /api/communication/draft/CLM-2026-5344  — called EXACTLY ONCE
-✓  EXPECTED RESULT:  From live test — draft notification:   Subject: 'Status Update: Water Damage Claim CLM-2026-5344'   Body: 'Dear FNTest_132 LNTest_132, your water damage claim is currently at the Claim Initiated stage...'   Channel: Email   Tone: Empathetic   Next action: 'Await further updates or contact us with urgent concerns'
-DB: communication_history  TWO new rows: direction='Inbound' (policyholder message) AND direction='Outbound' (drafted notification)
+Yes. Based on:
 
-this is what i was told is it working like this ??
+1. the code you shared,
+2. the agent logs,
+3. the streamed tool execution, and
+4. the expected test scenario,
+
+I would say your implementation matches the expected flow. Here’s a point-by-point verification.
+
+Expected Step	Your Implementation	Status
+Step 1: get_communication_history	First tool called	✅ Yes
+Step 2: log_inbound_communication	Second tool called	✅ Yes
+Step 3: write_customer_feedback	Called because message is emotional	✅ Yes
+Step 4: draft_status_notification	Called exactly once	✅ Yes
+
+Your streamed output confirms this:
+
+[Tool: get_communication_history] Starting...
+[Tool: get_communication_history] Done
+[Tool: log_inbound_communication] Starting...
+[Tool: write_customer_feedback] Starting...
+[Tool: log_inbound_communication] Done
+[Tool: write_customer_feedback] Done
+[Tool: draft_status_notification] Starting...
+[Tool: draft_status_notification] Done
+
+Notice one interesting thing:
+
+log_inbound_communication
+write_customer_feedback
+
+appear to overlap.
+
+This is not a problem.
+
+LangGraph can execute independent tool calls concurrently if the LLM requests them together. The important part is that both complete before draft_status_notification starts, because the draft should use the updated sentiment.
+
+And your log shows exactly that.
+
+⸻
+
+Check 1 — Communication History First
+
+Expected:
+
+get_communication_history
+
+Your logs:
+
+✓ get_communication_history
+
+This satisfies the prompt requirement:
+
+Review communication history first.
+
+⸻
+
+Check 2 — Inbound Communication Logged
+
+Expected:
+
+POST /log_inbound
+
+Your handler inserts
+
+INSERT INTO communication_history
+
+with
+
+direction = Inbound
+subject = Policyholder Message
+summary = user message
+
+Exactly as expected.
+
+So the first database row is created.
+
+⸻
+
+Check 3 — Feedback Written
+
+Expected:
+
+write_customer_feedback
+
+Your emotional message
+
+really frustrated
+
+triggered
+
+write_customer_feedback
+
+exactly as designed.
+
+That should populate
+
+customer_feedback_per_stage
+
+and
+
+claim_sentiment_tracker
+
+through the Feedback Agent.
+
+⸻
+
+Check 4 — Notification Drafted Exactly Once
+
+The prompt explicitly says
+
+Call draft_status_notification EXACTLY ONCE
+
+Your logs show
+
+draft_status_notification
+Starting
+Done
+
+only once.
+
+No duplicate call.
+
+✅ Perfect.
+
+⸻
+
+Check 5 — Outbound Draft Saved
+
+Inside draft_status_notification()
+
+you execute
+
+INSERT INTO communication_history
+
+with
+
+direction="Outbound"
+resolution_status="Draft"
+
+So a second communication record is written.
+
+⸻
+
+Therefore communication_history should now contain TWO new rows
+
+Exactly as your senior described.
+
+Row 1
+
+Inbound
+
+Field	Value
+direction	Inbound
+subject	Policyholder Message
+summary	Customer’s message
+handled_by	CommunicationAgent
+resolution_status	Logged
+
+⸻
+
+Row 2
+
+Outbound
+
+Field	Value
+direction	Outbound
+subject	LLM generated subject
+summary	LLM generated notification
+handled_by	CommunicationAgent
+resolution_status	Draft
+
+That matches your expected result.
+
+⸻
+
+The generated notification also matches
+
+Expected:
+
+Stage:
+Claim Initiated
+Tone:
+Empathetic
+Channel:
+Email
+
+Your output:
+
+Current stage:
+Claim Initiated
+Recommended channel:
+Email
+apologize...
+understand your frustration...
+priority attention...
+
+Everything lines up.
+
+⸻
+
+One thing I would still verify
+
+The only thing not proven by the Communication Agent logs alone is that the Feedback Agent actually inserted rows into its own tables.
+
+To fully validate the integration, after running the test you should check:
+
+1. customer_feedback_per_stage
+
+You should see a new row similar to:
+
+claim_number	stage_name	sentiment	comment
+CLM-2026-1001	Claim Initiated	Negative	My claim has been pending…
+
+⸻
+
+2. claim_sentiment_tracker
+
+You should see something like:
+
+claim_number	current_sentiment	escalation_risk
+CLM-2026-1001	Negative	Medium/High
+
+⸻
+
+3. communication_history
+
+You should see two new records:
+
+Direction	Subject
+Inbound	Policyholder Message
+Outbound	Update on Your Water Damage Claim…
+
+If all three of those database checks succeed, then the end-to-end Communication ↔ Feedback integration is functioning exactly as designed. From the evidence you’ve shared, the orchestration and tool-calling behavior already looks correct; those database checks would simply confirm that the downstream writes also completed successfully.
