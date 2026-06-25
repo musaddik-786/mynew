@@ -1,21 +1,32 @@
-for 
-POST
-/save_policy_details
-Fetch policy from Guidewire and persist to local database
+GET
+/get_policy_details/{policy_id}
 
+Name	Description
+policy_id *
+string
+(path)
+0192328137
 {
-  "policy_number": "0192328137"
-}
-{
-  "saved": true,
+  "id": 342,
   "policy_id": "0192328137",
-  "gw_policy_id": "pc:SVtPzl-RBlzMLP3mSW0FL",
   "status": "Active",
   "coverage_type": "Homeowners",
   "deductible": null,
   "coverage_limit": null,
+  "created_at": "2026-06-25T05:42:31.959121",
   "exclusions": null,
-  "premium_amount": "1768.13",
-  "currency": "usd"
+  "gw_policy_id": "pc:SVtPzl-RBlzMLP3mSW0FL",
+  "effective_date": "2025-07-16T04:01:00",
+  "expiration_date": "2026-07-16T04:01:00",
+  "insured_name": "Hexa Tester",
+  "account_number": "9169194213",
+  "policy_address": "2850 S. Delaware St.\nSan Mateo, CA 94403",
+  "state": "California",
+  "term_type": "Annual",
+  "premium_amount": 1768.13,
+  "currency": "usd",
+  "city": "San Mateo",
+  "country": "US",
+  "postal_code": "94403",
+  "remaining_coverage_limit": null
 }
-
