@@ -1,181 +1,349 @@
+this is also working fine 
 POST
-/gw_search_policy
-Search Guidewire PolicyCenter for a policy by policy number
-
-{
-  "policy_number": "0192328137"
-}
+/gw_get_policy_coverages
+Fetch full policy coverage details from Guidewire
 
 {
   "found": true,
-  "policy": {
-    "gw_policy_id": "pc:SVtPzl-RBlzMLP3mSW0FL",
-    "policy_number": "0192328137",
-    "status": "Unknown",
-    "effective_date": "2025-07-16T04:01:00.000Z",
-    "expiration_date": "2026-07-16T04:01:00.000Z",
-    "coverage_types": [],
-    "insured_name": "Hexa Tester",
-    "insured_address": "2850 S. Delaware St.\nSan Mateo, CA 94403",
-    "account_number": "9169194213",
-    "product_name": "Manual Products",
-    "raw": {
-      "count": 1,
-      "data": [
-        {
-          "attributes": {
-            "accountNumber": "9169194213",
-            "effectiveDate": "2025-07-16T04:01:00.000Z",
-            "expirationDate": "2026-07-16T04:01:00.000Z",
-            "insuredName": "Hexa Tester",
-            "policyAddress": "2850 S. Delaware St.\nSan Mateo, CA 94403",
-            "policyId": "pc:SVtPzl-RBlzMLP3mSW0FL",
-            "policyNumber": "0192328137",
-            "producerOfRecordName": "Armstrong and Company",
-            "producerOfServiceName": "Armstrong and Company",
-            "product": {
-              "displayName": "Manual Products",
-              "id": "Manual"
-            }
+  "policy_id": "pc:SVtPzl-RBlzMLP3mSW0FL",
+  "coverage_detail": {
+    "data": {
+      "attributes": {
+        "account": {
+          "displayName": "9169194213",
+          "id": "pc:SASef0TfcTnxGH68aI-je",
+          "type": "Account",
+          "uri": "/account/v1/accounts/pc:SASef0TfcTnxGH68aI-je"
+        },
+        "baseState": {
+          "code": "CA",
+          "name": "California"
+        },
+        "createdDate": "2026-06-24T14:33:51.184Z",
+        "depositReleased": false,
+        "id": "pc:SVtPzl-RBlzMLP3mSW0FL",
+        "issueDate": "2026-06-24",
+        "mostRecentTerm": true,
+        "nextRenewalCheckDate": "2026-04-17",
+        "organization": {
+          "displayName": "Armstrong and Company",
+          "id": "pc:1",
+          "type": "Organization",
+          "uri": "/admin/v1/organizations/pc:1"
+        },
+        "organizationOfService": {
+          "displayName": "Armstrong and Company",
+          "id": "pc:1",
+          "type": "Organization",
+          "uri": "/admin/v1/organizations/pc:1"
+        },
+        "periodEnd": "2026-07-16T04:01:00.000Z",
+        "periodStart": "2025-07-16T04:01:00.000Z",
+        "policyAddress": {
+          "addressLine1": "2850 S. Delaware St.",
+          "addressType": {
+            "code": "business",
+            "name": "Business"
           },
-          "links": {
-            "self": {
-              "href": "/policy/v1/policies/pc:SVtPzl-RBlzMLP3mSW0FL",
-              "methods": [
-                "get"
-              ]
-            }
+          "city": "San Mateo",
+          "country": "US",
+          "displayName": "2850 S. Delaware St., San Mateo, CA 94403",
+          "id": "3574",
+          "postalCode": "94403",
+          "primaryNamedInsuredAddress": {
+            "displayName": "2850 S. Delaware St., San Mateo, CA 94403",
+            "id": "pc:SyqoJFczDpZ7tX0ux2QAS"
+          },
+          "state": {
+            "code": "CA",
+            "name": "California"
           }
+        },
+        "policyNumber": "0192328137",
+        "preRenewalDirection": "nonrenew",
+        "preferredCoverageCurrency": {
+          "code": "usd",
+          "name": "USD"
+        },
+        "preferredSettlementCurrency": {
+          "code": "usd",
+          "name": "USD"
+        },
+        "primaryInsured": {
+          "displayName": "Hexa Tester",
+          "id": "pc:ShDlVpENjfDePhhTT9wBY",
+          "type": "PolicyContact",
+          "uri": "/policy/v1/policies/pc:SVtPzl-RBlzMLP3mSW0FL/contacts/pc:ShDlVpENjfDePhhTT9wBY"
+        },
+        "primaryLocation": {
+          "displayName": "1: 2850 S. Delaware St., San Mateo, CA",
+          "id": "4460",
+          "type": "PolicyLocation",
+          "uri": "/policy/v1/policies/pc:SVtPzl-RBlzMLP3mSW0FL/locations/4460"
+        },
+        "producerCode": {
+          "code": "100-002541",
+          "displayName": "100-002541",
+          "id": "pc:6",
+          "type": "ProducerCode",
+          "uri": "/admin/v1/producer-codes/pc:6"
+        },
+        "producerCodeOfService": {
+          "code": "100-002541",
+          "displayName": "100-002541",
+          "id": "pc:6",
+          "type": "ProducerCode",
+          "uri": "/admin/v1/producer-codes/pc:6"
+        },
+        "product": {
+          "displayName": "Homeowners Product",
+          "id": "HomeownersProduct"
+        },
+        "rateAsOfDate": "2026-06-24T14:33:50.527Z",
+        "taxesAndSurcharges": {
+          "amount": "0.00",
+          "currency": "usd"
+        },
+        "termNumber": 1,
+        "termType": {
+          "code": "Annual",
+          "name": "Annual"
+        },
+        "totalCost": {
+          "amount": "1768.13",
+          "currency": "usd"
+        },
+        "totalPremium": {
+          "amount": "1768.13",
+          "currency": "usd"
+        },
+        "uwCompany": {
+          "code": {
+            "code": "default",
+            "name": "Default"
+          },
+          "displayName": "Default",
+          "id": "apd:1"
         }
-      ],
+      },
+      "checksum": "d65e4306e17bf1dbdaeb374e083cf3b2",
       "links": {
-        "first": {
-          "href": "/policy/v1/search/policies",
+        "activities": {
+          "href": "/policy/v1/policies/pc:SVtPzl-RBlzMLP3mSW0FL/activities",
+          "methods": [
+            "get",
+            "post"
+          ]
+        },
+        "activity-assignees": {
+          "href": "/policy/v1/policies/pc:SVtPzl-RBlzMLP3mSW0FL/activity-assignees",
+          "methods": [
+            "get"
+          ]
+        },
+        "activity-patterns": {
+          "href": "/policy/v1/policies/pc:SVtPzl-RBlzMLP3mSW0FL/activity-patterns",
+          "methods": [
+            "get"
+          ]
+        },
+        "additional-named-insureds": {
+          "href": "/policy/v1/policies/pc:SVtPzl-RBlzMLP3mSW0FL/additional-named-insureds",
+          "methods": [
+            "get"
+          ]
+        },
+        "audits": {
+          "href": "/policy/v1/policies/pc:SVtPzl-RBlzMLP3mSW0FL/audits",
+          "methods": [
+            "get"
+          ]
+        },
+        "cancel": {
+          "href": "/policy/v1/policies/pc:SVtPzl-RBlzMLP3mSW0FL/cancel",
           "methods": [
             "post"
           ]
         },
-        "self": {
-          "href": "/policy/v1/search/policies",
+        "change": {
+          "href": "/policy/v1/policies/pc:SVtPzl-RBlzMLP3mSW0FL/change",
           "methods": [
+            "post"
+          ]
+        },
+        "coinsurance-agreements": {
+          "href": "/policy/v1/policies/pc:SVtPzl-RBlzMLP3mSW0FL/coinsurance-agreements",
+          "methods": [
+            "get"
+          ]
+        },
+        "compare-jobs": {
+          "href": "/policy/v1/policies/pc:SVtPzl-RBlzMLP3mSW0FL/compare-jobs",
+          "methods": [
+            "post"
+          ]
+        },
+        "contacts": {
+          "href": "/policy/v1/policies/pc:SVtPzl-RBlzMLP3mSW0FL/contacts",
+          "methods": [
+            "get"
+          ]
+        },
+        "contingencies": {
+          "href": "/policy/v1/policies/pc:SVtPzl-RBlzMLP3mSW0FL/contingencies",
+          "methods": [
+            "get",
+            "post"
+          ]
+        },
+        "copy-submission": {
+          "href": "/policy/v1/policies/pc:SVtPzl-RBlzMLP3mSW0FL/copy-submission",
+          "methods": [
+            "post"
+          ]
+        },
+        "costs": {
+          "href": "/policy/v1/policies/pc:SVtPzl-RBlzMLP3mSW0FL/costs",
+          "methods": [
+            "get"
+          ]
+        },
+        "do-not-destroy": {
+          "href": "/policy/v1/policies/pc:SVtPzl-RBlzMLP3mSW0FL/do-not-destroy",
+          "methods": [
+            "post"
+          ]
+        },
+        "documents": {
+          "href": "/policy/v1/policies/pc:SVtPzl-RBlzMLP3mSW0FL/documents",
+          "methods": [
+            "get",
+            "post"
+          ]
+        },
+        "forms": {
+          "href": "/policy/v1/policies/pc:SVtPzl-RBlzMLP3mSW0FL/forms",
+          "methods": [
+            "get"
+          ]
+        },
+        "history-events": {
+          "href": "/policy/v1/policies/pc:SVtPzl-RBlzMLP3mSW0FL/history-events",
+          "methods": [
+            "get"
+          ]
+        },
+        "jobs": {
+          "href": "/policy/v1/policies/pc:SVtPzl-RBlzMLP3mSW0FL/jobs",
+          "methods": [
+            "get"
+          ]
+        },
+        "lines": {
+          "href": "/policy/v1/policies/pc:SVtPzl-RBlzMLP3mSW0FL/lines",
+          "methods": [
+            "get"
+          ]
+        },
+        "locations": {
+          "href": "/policy/v1/policies/pc:SVtPzl-RBlzMLP3mSW0FL/locations",
+          "methods": [
+            "get"
+          ]
+        },
+        "loss-history": {
+          "href": "/policy/v1/policies/pc:SVtPzl-RBlzMLP3mSW0FL/loss-history",
+          "methods": [
+            "get",
+            "patch"
+          ]
+        },
+        "modifiers": {
+          "href": "/policy/v1/policies/pc:SVtPzl-RBlzMLP3mSW0FL/modifiers",
+          "methods": [
+            "get"
+          ]
+        },
+        "notes": {
+          "href": "/policy/v1/policies/pc:SVtPzl-RBlzMLP3mSW0FL/notes",
+          "methods": [
+            "get",
+            "post"
+          ]
+        },
+        "payment-info": {
+          "href": "/policy/v1/policies/pc:SVtPzl-RBlzMLP3mSW0FL/payment-info",
+          "methods": [
+            "get"
+          ]
+        },
+        "policy-sections": {
+          "href": "/policy/v1/policies/pc:SVtPzl-RBlzMLP3mSW0FL/policy-sections",
+          "methods": [
+            "get"
+          ]
+        },
+        "prior-policies": {
+          "href": "/policy/v1/policies/pc:SVtPzl-RBlzMLP3mSW0FL/prior-policies",
+          "methods": [
+            "get",
+            "post"
+          ]
+        },
+        "questions": {
+          "href": "/policy/v1/policies/pc:SVtPzl-RBlzMLP3mSW0FL/questions",
+          "methods": [
+            "get"
+          ]
+        },
+        "rate-capping-groups": {
+          "href": "/policy/v1/policies/pc:SVtPzl-RBlzMLP3mSW0FL/rate-capping-groups",
+          "methods": [
+            "get"
+          ]
+        },
+        "reinsurables": {
+          "href": "/policy/v1/policies/pc:SVtPzl-RBlzMLP3mSW0FL/reinsurables",
+          "methods": [
+            "get"
+          ]
+        },
+        "self": {
+          "href": "/policy/v1/policies/pc:SVtPzl-RBlzMLP3mSW0FL",
+          "methods": [
+            "get"
+          ]
+        },
+        "set-do-not-archive": {
+          "href": "/policy/v1/policies/pc:SVtPzl-RBlzMLP3mSW0FL/set-do-not-archive",
+          "methods": [
+            "post"
+          ]
+        },
+        "towers": {
+          "href": "/policy/v1/policies/pc:SVtPzl-RBlzMLP3mSW0FL/towers",
+          "methods": [
+            "get"
+          ]
+        },
+        "uw-issues": {
+          "href": "/policy/v1/policies/pc:SVtPzl-RBlzMLP3mSW0FL/uw-issues",
+          "methods": [
+            "get"
+          ]
+        },
+        "uw-referral-reasons": {
+          "href": "/policy/v1/policies/pc:SVtPzl-RBlzMLP3mSW0FL/uw-referral-reasons",
+          "methods": [
+            "get",
             "post"
           ]
         }
       }
     }
   },
-  "error": null,
-  "raw_gw_response": {
-    "count": 1,
-    "data": [
-      {
-        "attributes": {
-          "accountNumber": "9169194213",
-          "effectiveDate": "2025-07-16T04:01:00.000Z",
-          "expirationDate": "2026-07-16T04:01:00.000Z",
-          "insuredName": "Hexa Tester",
-          "policyAddress": "2850 S. Delaware St.\nSan Mateo, CA 94403",
-          "policyId": "pc:SVtPzl-RBlzMLP3mSW0FL",
-          "policyNumber": "0192328137",
-          "producerOfRecordName": "Armstrong and Company",
-          "producerOfServiceName": "Armstrong and Company",
-          "product": {
-            "displayName": "Manual Products",
-            "id": "Manual"
-          }
-        },
-        "links": {
-          "self": {
-            "href": "/policy/v1/policies/pc:SVtPzl-RBlzMLP3mSW0FL",
-            "methods": [
-              "get"
-            ]
-          }
-        }
-      }
-    ],
-    "links": {
-      "first": {
-        "href": "/policy/v1/search/policies",
-        "methods": [
-          "post"
-        ]
-      },
-      "self": {
-        "href": "/policy/v1/search/policies",
-        "methods": [
-          "post"
-        ]
-      }
-    }
-  }
-}
-GET
-/get_policy_details/{policy_id}
-Read policy details from the local database
-
-Returns the full policy_details record for the given policy_id.
-
-Parameters
-Cancel
-Name	Description
-policy_id *
-string
-(path)
-0192328137
-
-
-	
-Response body
-Download
-{
-  "status": "not_found",
-  "policy_id": "0192328137"
+  "error": null
 }
 
-JarvisClaims@JarvisClaims:~/Musaddique$ curl -s -N -X POST http://localhost:8807/chat -H "Content-Type: application/json" -d '{"message":"Does my policy cover water damage from a dishwasher leak"}'
-data: Could
-
-data:  you
-
-data:  please
-
-data:  share
-
-data:  your
-
-data:  claim
-
-data:  number
-
-data:  so
-
-data:  I
-
-data:  can
-
-data:  check
-
-data:  the
-
-data:  coverage
-
-data: ?
-JarvisClaims@JarvisClaims:~/Musaddique$ curl -s -N -X POST http://localhost:8807/chat -H "Content-Type: application/json" -d '{"message":"This is my claim number CLM-TEST-2001"}'
-data: [Tool: get_coverage_verification_result] Starting...
-
-data: [Tool: get_coverage_verification_result] Done
-
-data: [Tool: get_policy_details] Starting...
-
-data: [Tool: get_policy_details] Done
-
-data: [Tool: save_policy_details] Starting...
-
-data: [Tool: save_policy_details] Done
-[Tool: get_coverage_verification_result] Starting... [Tool: get_coverage_verification_result] Done [Tool: get_policy_details] Starting... [Tool: get_policy_details] Done [Tool: save_policy_details] Starting... [Tool: save_policy_details] Done I was unable to find a policy associated with claim number CLM-TEST-2001 in our system or through Guidewire. This usually means either the claim number is incorrect, or the policy linked to this claim is not yet registered in our database. Could you please confirm your policy number or provide further details about your claim (such as the policyholder's name or policy number) so I can check your coverage accurately? End.
-
-The policy details table did not populate at all even if claims table had the policy number 
 
 
-so this is theissue it seems 
