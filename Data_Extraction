@@ -1,774 +1,930 @@
-JarvisClaims@JarvisClaims:~/Musaddique$ curl -s -N -X POST http://localhost:8809/chat -H "Content-Type: application/json" -d '{"message":"My claim has
- been pending for weeks can someone please update me i am really frustrated now,  my claim number is CLM-2026-1001"}'
-data: [Tool: get_communication_history] Starting...
+Yes, this Communication Agent is now much more complete than the earlier placeholder version.
 
-data: [Tool: get_communication_history] Done
+I’ll explain the entire end-to-end sequence, including:
 
-data: [Tool: log_inbound_communication] Starting...
+1. User request
+2. Communication Agent (LangGraph)
+3. MCP tools
+4. Database tables read
+5. Database tables written
+6. Feedback Agent interaction
+7. LLM notification generation
+8. Final response returned to user
 
-data: [Tool: write_customer_feedback] Starting...
+⸻
 
-data: [Tool: log_inbound_communication] Done
+High Level Architecture
 
-data: [Tool: write_customer_feedback] Done
+Policyholder
+      │
+      ▼
+Communication Agent (LangGraph)
+      │
+      ├── Communication MCP
+      │      ├─ get_communication_history
+      │      ├─ log_inbound_communication
+      │      └─ draft_status_notification
+      │
+      └── Feedback MCP
+             └─ write_customer_feedback
+      │
+      ▼
+Azure OpenAI
+      │
+      ▼
+Draft Notification
+      │
+      ▼
+communication_history table
 
-data: [Tool: draft_status_notification] Starting...
+⸻
 
-data: [Tool: draft_status_notification] Done
+Example Scenario
 
-data: Thank
+Suppose policyholder sends:
 
-data:  you
+My claim CLM-2025-1001 has been pending for weeks.
+Can someone please update me?
 
-data:  for
+⸻
 
-data:  reaching
+STEP 1 : Request hits Communication Agent
 
-data:  out
+Endpoint:
 
-data:  again
+POST /chat
 
-data: .
+Body:
 
-data:  I
+{
+  "message":"My claim CLM-2025-1001 has been pending for weeks. Can someone please update me?"
+}
 
-data:  see
+Execution starts here:
 
-data:  you've
+@app.post("/chat")
+async def chat_stream(...)
 
-data:  previously
+⸻
 
-data:  requested
+STEP 2 : MCP Tools Loaded
 
-data:  updates
+Communication Agent loads tools from:
 
-data: ,
+communication_mcp
+feedback_mcp
 
-data:  and
+via:
 
-data:  I
+tools = await get_tools()
 
-data:  truly
+Available tools become:
 
-data:  understand
+get_communication_history
+log_inbound_communication
+draft_status_notification
+write_customer_feedback
 
-data:  your
+⸻
 
-data:  frustration
+STEP 3 : LLM Reads System Prompt
 
-data:  at
+The fallback prompt instructs:
 
-data:  the
+1 Get claim number
+2 Read communication history
+3 Log inbound message
+4 Save feedback if emotional
+5 Draft notification
+6 Return result
 
-data:  ongoing
+So the LLM becomes the orchestrator.
 
-data:  delay
+⸻
 
-data: .
+STEP 4 : Extract Claim Number
 
+User message:
 
+My claim CLM-2025-1001 has been pending for weeks.
 
-data: Your
+LLM extracts:
 
-data:  feedback
+claim_number = CLM-2025-1001
 
-data:  about
+If not found:
 
-data:  the
+Could you share your claim number?
 
-data:  wait
+and flow stops.
 
-data:  time
+⸻
 
-data:  and
+STEP 5 : Call Communication History Tool
 
-data:  your
+Tool called:
 
-data:  frustration
+get_communication_history(
+   claim_number="CLM-2025-1001"
+)
 
-data:  has
+Handler:
 
-data:  been
+get_communication_history()
 
-data:  logged
+SQL:
 
-data:  and
+SELECT *
+FROM communication_history
+WHERE claim_number = ?
+ORDER BY communication_date DESC
 
-data:  shared
+⸻
 
-data:  with
+Table Read #1
 
-data:  the
+communication_history
 
-data:  team
+Reads previous interactions.
 
-data: .
+Example:
 
-data:  We
+direction	summary
+Outbound	Claim under review
+Inbound	Any update?
+Outbound	Documents received
 
-data:  sincerely
+Returned to LLM.
 
-data:  apologize
+⸻
 
-data:  for
+STEP 6 : Log Inbound Message
 
-data:  the
+Tool:
 
-data:  inconvenience
+log_inbound_communication()
 
-data:  and
+Called with:
 
-data:  want
+claim_number="CLM-2025-1001"
+message_text=
+"My claim CLM-2025-1001 has been pending for weeks"
+sentiment="Negative"
 
-data:  you
+⸻
 
-data:  to
+Table Read #2
 
-data:  know
+Before insert:
 
-data:  that
+SELECT
+ id,
+ policyholder_name
+FROM claims
+WHERE claim_number=?
 
-data:  your
+Purpose:
 
-data:  concerns
+Get:
 
-data:  are
+claim_id
+policyholder_name
 
-data:  being
+Example:
 
-data:  taken
+id	claim_number	policyholder_name
+55	CLM-2025-1001	John Smith
 
-data:  seriously
+⸻
 
-data: .
+Table Write #1
 
+Insert into:
 
+communication_history
 
-data: Here
+INSERT INTO communication_history
 
-data:  is
+Row inserted:
 
-data:  the
+field	value
+communication_id	COMM-IN-CLM-2025-1001-xxxxx
+claim_id	55
+claim_number	CLM-2025-1001
+policyholder_name	John Smith
+communication_type	Portal
+direction	Inbound
+subject	Policyholder Message
+summary	User text
+sentiment_detected	Negative
+handled_by	CommunicationAgent
+resolution_status	Logged
 
-data:  latest
+⸻
 
-data:  notification
+STEP 7 : Emotional Message Detection
 
-data:  draft
+Prompt says:
 
-data:  for
+If emotional
+call write_customer_feedback
 
-data:  your
+User said:
 
-data:  claim
+pending for weeks
 
-data: :
+This is frustration.
 
+So:
 
+write_customer_feedback(
+  claim_number,
+  comment
+)
 
-data: Subject
+gets called.
 
-data: :
+⸻
 
-data:  Update
+Feedback Agent Flow
 
-data:  on
+Communication Agent does not determine stage.
 
-data:  Your
+Feedback Agent does.
 
-data:  Water
+⸻
 
-data:  Damage
+Table Reads Inside Feedback Agent
 
-data:  Claim
+Typically:
 
-data:  (
+claims
 
-data: CL
+SELECT ...
+FROM claims
 
-data: M
+claim_journey_master
 
-data: -
+SELECT ...
+FROM claim_journey_master
 
-data: 202
+Find current stage.
 
-data: 6
+Example:
 
-data: -
+Stage 4
+Investigation
 
-data: 100
+⸻
 
-data: 1
+Table Write #2
 
-data: )
+customer_feedback_per_stage
 
+Insert:
 
+column	value
+claim_id	55
+claim_number	CLM-2025-1001
+stage_number	4
+stage_name	Investigation
+sentiment	Negative
+comment	original user message
 
-data: Message
+⸻
 
-data: :
+Table Write #3
 
+claim_sentiment_tracker
 
-data: Dear
+Updated by Feedback Agent.
 
-data:  John
+Example:
 
-data:  Doe
+field	value
+claim_number	CLM-2025-1001
+current_sentiment	Negative
+escalation_risk	Medium
 
-data: ,
+This becomes important later.
 
+⸻
 
+STEP 8 : Draft Notification Tool
 
-data: We
+Now LLM calls:
 
-data:  understand
+draft_status_notification(
+   claim_number
+)
 
-data:  how
+This is the most important step.
 
-data:  concerning
+⸻
 
-data:  it
+Inside draft_status_notification()
 
-data:  can
+⸻
 
-data:  be
+Read #1
 
-data:  to
+Claims Table
 
-data:  wait
+SELECT *
+FROM claims
+WHERE claim_number=?
 
-data:  for
+Gets:
 
-data:  updates
+claim id
+policyholder
+status
+loss type
 
-data:  on
+Example:
 
-data:  your
+field	value
+id	55
+status	Under Review
+loss_type	Auto
+policyholder_name	John Smith
 
-data:  water
+⸻
 
-data:  damage
+Read #2
 
-data:  claim
+Communication History
 
-data:  (
+SELECT *
+FROM communication_history
+WHERE claim_number=?
+ORDER BY communication_date DESC
+LIMIT 5
 
-data: CL
+Gets latest communications.
 
-data: M
+⸻
 
-data: -
+Read #3
 
-data: 202
+Sentiment Tracker
 
-data: 6
+SELECT *
+FROM claim_sentiment_tracker
+WHERE claim_number=?
+ORDER BY updated_at DESC
+LIMIT 1
 
-data: -
+Example:
 
-data: 100
+current_sentiment=Negative
+escalation_risk=Medium
 
-data: 1
+⸻
 
-data: ),
+Read #4
 
-data:  and
+Claim Journey
 
-data:  we
+SELECT *
+FROM claim_journey_master
+WHERE claim_number=?
+ORDER BY id DESC
+LIMIT 1
 
-data:  sincerely
+Example:
 
-data:  apologize
+current_stage_name = Investigation
 
-data:  for
+⸻
 
-data:  any
+Summary of Data Collected
 
-data:  frustration
+Now Communication Agent has:
 
-data:  this
+Claim Number:
+CLM-2025-1001
+Claimant:
+John Smith
+Status:
+Under Review
+Stage:
+Investigation
+Loss Type:
+Auto
+Sentiment:
+Negative
+Escalation Risk:
+Medium
+Recent Communication History:
+[
+ "Any update?",
+ "Claim under review",
+ "Documents received"
+]
 
-data:  delay
+⸻
 
-data:  has
+STEP 9 : Azure OpenAI Call
 
-data:  caused
+Prompt sent:
 
-data: .
+You are an insurance claims communication specialist.
+Draft a professional empathetic notification.
+Claimant: John Smith
+Claim Number: CLM-2025-1001
+Status: Under Review
+Stage: Investigation
+Loss Type: Auto
+Sentiment: Negative
+Escalation Risk: Medium
+Recent Communications:
+...
 
-data:  Your
+⸻
 
-data:  claim
+Azure OpenAI Returns
 
-data:  remains
+Example:
 
-data:  open
+{
+  "subject":"Update on Your Claim",
+  "message_body":"We understand your concerns...",
+  "channel":"Email",
+  "tone":"Empathetic",
+  "next_action":"Claims team continues review"
+}
 
-data:  and
+⸻
 
-data:  is
+STEP 10 : Save Draft
 
-data:  currently
+Communication Agent saves draft.
 
-data:  in
+⸻
 
-data:  the
+Table Write #4
 
-data:  '
+communication_history
 
-data: Claim
+Insert:
 
-data:  Initi
+field	value
+communication_id	COMM-CLM-2025-1001-xxxxx
+direction	Outbound
+communication_type	Email
+subject	Update on Your Claim
+summary	Generated message
+sentiment_detected	Negative
+handled_by	CommunicationAgent
+resolution_status	Draft
 
-data: ated
+This becomes part of future communication history.
 
-data: '
+⸻
 
-data:  stage
+STEP 11 : Tool Returns
 
-data: .
+Tool returns:
 
-data:  Our
+{
+  "claim_number":"CLM-2025-1001",
+  "claim_status":"Under Review",
+  "current_stage":"Investigation",
+  "policyholder_sentiment":"Negative",
+  "escalation_risk":"Medium",
+  "drafted_notification":{
+     ...
+  }
+}
 
-data:  team
+⸻
 
-data:  is
+STEP 12 : Final Response Generation
 
-data:  actively
+LLM formats response.
 
-data:  reviewing
+Example:
 
-data:  your
+I reviewed recent communications regarding your claim.
+I understand your frustration and appreciate your patience.
+Subject:
+Update on Your Claim
+Message:
+We understand your concerns and wanted to provide an update...
+Recommended Channel:
+Email
+Next Action:
+Claims team continues review
+Your case is receiving priority attention.
 
-data:  case
+Returned to policyholder.
 
-data:  to
+⸻
 
-data:  ensure
+Complete Table Activity Sequence
 
-data:  a
+Step	Table	Action
+1	communication_history	Read previous communications
+2	claims	Read claim_id & policyholder
+3	communication_history	Insert inbound message
+4	claims	Feedback Agent read
+5	claim_journey_master	Feedback Agent read stage
+6	customer_feedback_per_stage	Insert feedback
+7	claim_sentiment_tracker	Update sentiment
+8	claims	Read claim details
+9	communication_history	Read last 5 communications
+10	claim_sentiment_tracker	Read sentiment
+11	claim_journey_master	Read current stage
+12	Azure OpenAI	Generate draft
+13	communication_history	Insert outbound draft
 
-data:  thorough
+⸻
 
-data:  and
+Net Result
 
-data:  fair
+For a single frustrated policyholder message, the Communication Agent now performs:
 
-data:  resolution
+1. Extract claim number
+2. Read communication history
+3. Log inbound message
+4. Send feedback to Feedback Agent
+5. Update sentiment tracker
+6. Read claim status
+7. Read journey stage
+8. Generate empathetic notification
+9. Save drafted notification
+10. Return notification to user
 
-data: .
+The key enhancement compared to the earlier version is that the Communication Agent is now tightly integrated with the Feedback Agent. This means every emotional customer interaction can immediately influence claim_sentiment_tracker, and the drafted notification automatically adapts its tone and urgency based on the latest sentiment and 
+escalation risk.
 
 
 
-data: We
+Yes, from everything you’ve shared, the flow worked exactly as intended.
 
-data:  recognize
+The tool execution order is perfect:
 
-data:  the
+✓ get_communication_history
+✓ log_inbound_communication
+✓ write_customer_feedback
+✓ draft_status_notification
 
-data:  importance
+and the final response clearly shows that the Communication Agent used the outputs from those tools.
 
-data:  of
+⸻
 
-data:  timely
+Let’s answer your main question
 
-data:  communication
+What exactly is Communication Agent sending to the Feedback Agent?
 
-data:  and
+This is actually a very small payload.
 
-data:  are
+From your fallback prompt:
 
-data:  priorit
+Call write_customer_feedback with:
+claim_number
+comment
+DO NOT pass stage_number
+DO NOT pass stage_name
+The system resolves them automatically.
 
-data: izing
+So Communication Agent only sends:
 
-data:  your
+Field	Value
+claim_number	CLM-2026-1001
+comment	“My claim has been pending for weeks can someone please update me i am really frustrated now”
 
-data:  claim
+That’s it.
 
-data: .
+It does not send
 
-data:  At
+* claim_id ❌
+* stage_number ❌
+* stage_name ❌
+* sentiment ❌
+* escalation risk ❌
 
-data:  this
+Those are computed by the Feedback Agent itself.
 
-data:  time
+⸻
 
-data: ,
+What happens inside Feedback Agent?
 
-data:  there
+Communication Agent calls
 
-data:  are
+write_customer_feedback(
+    claim_number="CLM-2026-1001",
+    comment="My claim has been pending for weeks..."
+)
 
-data:  no
+Now Feedback Agent starts enriching this data.
 
-data:  additional
+⸻
 
-data:  actions
+Step 1
 
-data:  required
+It first looks up the claim.
 
-data:  from
+Reads
 
-data:  you
+claims
 
-data: .
+SQL is conceptually
 
-data:  We
+SELECT *
+FROM claims
+WHERE claim_number='CLM-2026-1001'
 
-data:  will
+From this table it typically retrieves
 
-data:  reach
+Column	Why
+id	Needed as claim_id
+claim_number	Verification
+status	Sometimes used
+policyholder_name	Optional
 
-data:  out
+Most important:
 
-data:  immediately
+claim_id
 
-data:  if
+because the Communication Agent never knew it.
 
-data:  we
+⸻
 
-data:  need
+Step 2
 
-data:  further
+Feedback Agent now needs the current stage.
 
-data:  information
+It queries
 
-data:  or
+claim_journey_master
 
-data:  as
+Something like
 
-data:  soon
+SELECT *
+FROM claim_journey_master
+WHERE claim_number='CLM-2026-1001'
+ORDER BY id DESC
+LIMIT 1;
 
-data:  as
+From here it retrieves
 
-data:  there
+Column	Purpose
+stage_number	Save feedback
+current_stage_name	Save feedback
+current_stage	Used internally
 
-data:  is
+Example
 
-data:  a
+Stage Number = 1
+Stage Name = Claim Initiated
 
-data:  significant
+Notice how your generated notification later said
 
-data:  update
+Current stage:
+Claim Initiated
 
-data: .
+This came from this table.
 
+⸻
 
+Step 3
 
-data: Thank
+Now Feedback Agent performs sentiment analysis.
 
-data:  you
+Input
 
-data:  for
+"My claim has been pending for weeks.
+I'm really frustrated."
 
-data:  your
+Azure OpenAI determines
 
-data:  patience
+Negative
 
-data:  and
+or
 
-data:  understanding
+Frustrated
 
-data: .
+depending on implementation.
 
-data:  If
+Then escalation rules determine
 
-data:  you
+Medium
 
-data:  have
+or
 
-data:  any
+High
 
-data:  questions
+⸻
 
-data:  or
+Step 4
 
-data:  need
+Now Feedback Agent has enough data to populate
 
-data:  further
+customer_feedback_per_stage
 
-data:  assistance
+The row becomes something like
 
-data: ,
+Column	Source
+claim_id	claims table
+claim_number	Communication Agent
+stage_number	claim_journey_master
+stage_name	claim_journey_master
+sentiment	Azure OpenAI
+comment	Communication Agent
+submitted_at	NOW()
 
-data:  please
+Notice only two fields actually came from the Communication Agent.
 
-data:  reply
+⸻
 
-data:  to
+Step 5
 
-data:  this
+Then Feedback Agent updates
 
-data:  email
+claim_sentiment_tracker
 
-data:  or
+Now it already has
 
-data:  contact
+claim_number
+current sentiment
+escalation risk
 
-data:  our
+It either inserts or updates
 
-data:  support
+Example
 
-data:  team
+Column	Value
+claim_number	CLM-2026-1001
+current_sentiment	Negative
+escalation_risk	High
+updated_at	NOW
 
-data:  directly
+⸻
 
-data: .
+Then Communication Agent calls draft_status_notification
 
-data:  We
+Now Communication Agent reads
 
-data:  are
+claim_sentiment_tracker
 
-data:  here
+Specifically
 
-data:  to
+current_sentiment
+escalation_risk
 
-data:  support
+Exactly these lines
 
-data:  you
+sentiment_label =
+(sentiment_data or {}).get(
+    "current_sentiment",
+    "Neutral"
+)
+escalation_risk =
+(sentiment_data or {}).get(
+    "escalation_risk",
+    "Low"
+)
 
-data:  every
+Those values are injected into the LLM prompt.
 
-data:  step
+⸻
 
-data:  of
+It also reads claim_journey_master
 
-data:  the
+current_stage_name =
+journey.get(
+    "current_stage_name",
+    claim_status
+)
 
-data:  way
+This becomes
 
-data: .
+Claim Initiated
 
+inside the notification.
 
+⸻
 
-data: Best
+Then Communication Agent also reads communication_history
 
-data:  regards
+Only the latest 5 rows.
 
-data: ,
+From those rows it extracts only
 
+summary
 
-data: Your
+Notice this line
 
-data:  Claims
+recent_summaries =
+[h.get("summary")
+ for h in history[:3]]
 
-data:  Team
+So although it fetched complete rows
 
-data: 
+SELECT *
 
+it only actually passes
 
+summary
 
-data: Recommended
+to Azure OpenAI.
 
-data:  channel
+Example
 
-data: :
+[
+"Customer requested update",
+"Documents received",
+"Inspection scheduled"
+]
 
-data:  Email
+⸻
 
-data:   
+Then Communication Agent reads claims
 
+It extracts
 
-data: Next
+Field	Used for
+id	Insert outbound communication
+status	Prompt
+policyholder_name	Prompt
+loss_type	Prompt
 
-data:  action
+⸻
 
-data: :
+Everything finally sent to Azure OpenAI
 
-data:  Claims
+The notification LLM receives something like
 
-data:  team
+Claimant:
+John Doe
+Claim Number:
+CLM-2026-1001
+Status:
+Open
+Current Stage:
+Claim Initiated
+Loss Type:
+Water Damage
+Current Sentiment:
+Negative
+Escalation Risk:
+High
+Recent Communication Summaries:
+Customer asked for update
+Inspection completed
+Documents received
 
-data:  to
+From this, it generates an empathetic notification.
 
-data:  provide
+⸻
 
-data:  next
+Complete data lineage
 
-data:  status
+Customer Message
+      │
+      ▼
+Communication Agent
+      │
+      ├──────────────► get_communication_history
+      │                 Reads:
+      │                 communication_history
+      │
+      ├──────────────► log_inbound_communication
+      │                 Reads:
+      │                     claims
+      │                 Writes:
+      │                     communication_history
+      │
+      ├──────────────► write_customer_feedback
+      │                 Sends ONLY:
+      │                     claim_number
+      │                     comment
+      │
+      │                 Feedback Agent Reads:
+      │                     claims
+      │                     claim_journey_master
+      │
+      │                 Feedback Agent Writes:
+      │                     customer_feedback_per_stage
+      │                     claim_sentiment_tracker
+      │
+      └──────────────► draft_status_notification
+                        Reads:
+                           claims
+                           communication_history
+                           claim_sentiment_tracker
+                           claim_journey_master
+                                │
+                                ▼
+                         Azure OpenAI
+                                │
+                                ▼
+                  Writes outbound draft into
+                     communication_history
 
-data:  update
+So the Communication Agent and Feedback Agent have a clear separation of responsibilities:
 
-data:  within
-
-data:  
-
-data: 3
-
-data:  business
-
-data:  days
-
-data:  or
-
-data:  sooner
-
-data:  if
-
-data:  there
-
-data:  is
-
-data:  a
-
-data:  development
-
-data: .
-
-data:  Policy
-
-data: holder
-
-data:  may
-
-data:  reply
-
-data:  to
-
-data:  this
-
-data:  email
-
-data:  or
-
-data:  contact
-
-data:  support
-
-data:  for
-
-data:  immediate
-
-data:  concerns
-
-data: .
-
-
-
-data: Your
-
-data:  case
-
-data:  is
-
-data:  receiving
-
-data:  priority
-
-data:  attention
-
-data:  from
-
-data:  the
-
-data:  claims
-
-data:  team
-
-data:  due
-
-data:  to
-
-data:  the
-
-data:  escalation
-
-data:  risk
-
-data: .
-
-data:  Please
-
-data:  let
-
-data:  us
-
-data:  know
-
-data:  if
-
-data:  there
-
-data: ’s
-
-data:  anything
-
-data:  else
-
-data:  you
-
-data:  need
-
-data: —we
-
-data: ’re
-
-data:  here
-
-data:  for
-
-data:  you
-
-data: .
-
-JarvisClaims@JarvisClaims:~/Musaddique$ 
-
-
-
-
-(vnev) JarvisClaims@JarvisClaims:~/Musaddique/Jarvis_claims_agents_v2/PolicyholderAgents/CommunicationAgent$ python3 server.py 
-INFO:     Started server process [19789]
-INFO:     Waiting for application startup.
-INFO:     Application startup complete.
-INFO:     Uvicorn running on http://0.0.0.0:8809 (Press CTRL+C to quit)
-2026-06-25 10:58:15,959 | INFO     | httpx | HTTP Request: POST http://localhost:8800/api/v1/communication/mcp "HTTP/1.1 200 OK"
-2026-06-25 10:58:15,959 | INFO     | mcp.client.streamable_http | Received session ID: 19fdb67a04034d7fbf6bda8f0c220c50
-2026-06-25 10:58:15,960 | INFO     | mcp.client.streamable_http | Negotiated protocol version: 2025-11-25
-2026-06-25 10:58:15,960 | INFO     | httpx | HTTP Request: POST http://localhost:8800/api/v1/feedback/mcp "HTTP/1.1 200 OK"
-2026-06-25 10:58:15,960 | INFO     | mcp.client.streamable_http | Received session ID: 4097305c921d43169edaab4578714494
-2026-06-25 10:58:15,961 | INFO     | mcp.client.streamable_http | Negotiated protocol version: 2025-11-25
-2026-06-25 10:58:15,966 | INFO     | httpx | HTTP Request: POST http://localhost:8800/api/v1/communication/mcp "HTTP/1.1 202 Accepted"
-2026-06-25 10:58:15,967 | INFO     | httpx | HTTP Request: POST http://localhost:8800/api/v1/feedback/mcp "HTTP/1.1 202 Accepted"
-2026-06-25 10:58:15,979 | INFO     | httpx | HTTP Request: POST http://localhost:8800/api/v1/communication/mcp "HTTP/1.1 200 OK"
-2026-06-25 10:58:15,979 | INFO     | httpx | HTTP Request: POST http://localhost:8800/api/v1/feedback/mcp "HTTP/1.1 200 OK"
-2026-06-25 10:58:15,983 | INFO     | httpx | HTTP Request: DELETE http://localhost:8800/api/v1/feedback/mcp "HTTP/1.1 200 OK"
-2026-06-25 10:58:15,984 | INFO     | httpx | HTTP Request: DELETE http://localhost:8800/api/v1/communication/mcp "HTTP/1.1 200 OK"
-2026-06-25 10:58:15,986 | INFO     | communication_agent | Tools loaded from MCP: ['log_inbound_communication', 'get_communication_history', 'draft_status_notification', 'write_customer_feedback', 'get_customer_feedback', 'update_sentiment_tracker', 'get_sentiment_tracker']
-2026-06-25 10:58:16,385 | WARNING  | communication_agent | Phoenix prompt load failed (Phoenix not configured) — using fallback prompt
-INFO:     127.0.0.1:59594 - "POST /chat HTTP/1.1" 200 OK
-2026-06-25 10:58:17,691 | INFO     | httpx | HTTP Request: POST https://azureclaimsopenai.openai.azure.com/openai/deployments/gpt-4.1-claims/chat/completions?api-version=2025-01-01-preview "HTTP/1.1 200 OK"
-2026-06-25 10:58:17,937 | INFO     | httpx | HTTP Request: POST http://localhost:8800/api/v1/communication/mcp "HTTP/1.1 200 OK"
-2026-06-25 10:58:17,937 | INFO     | mcp.client.streamable_http | Received session ID: e9f7182849bf4c9fa14e1e60d143c3f6
-2026-06-25 10:58:17,937 | INFO     | mcp.client.streamable_http | Negotiated protocol version: 2025-11-25
-2026-06-25 10:58:17,941 | INFO     | httpx | HTTP Request: POST http://localhost:8800/api/v1/communication/mcp "HTTP/1.1 202 Accepted"
-2026-06-25 10:58:18,004 | INFO     | httpx | HTTP Request: POST http://localhost:8800/api/v1/communication/mcp "HTTP/1.1 200 OK"
-2026-06-25 10:58:18,008 | INFO     | httpx | HTTP Request: POST http://localhost:8800/api/v1/communication/mcp "HTTP/1.1 200 OK"
-2026-06-25 10:58:18,010 | INFO     | httpx | HTTP Request: DELETE http://localhost:8800/api/v1/communication/mcp "HTTP/1.1 200 OK"
-2026-06-25 10:58:20,845 | INFO     | httpx | HTTP Request: POST https://azureclaimsopenai.openai.azure.com/openai/deployments/gpt-4.1-claims/chat/completions?api-version=2025-01-01-preview "HTTP/1.1 200 OK"
-2026-06-25 10:58:20,989 | INFO     | httpx | HTTP Request: POST http://localhost:8800/api/v1/communication/mcp "HTTP/1.1 200 OK"
-2026-06-25 10:58:20,989 | INFO     | mcp.client.streamable_http | Received session ID: f81abeafebac4ceab99b5611f4f9d00c
-2026-06-25 10:58:20,989 | INFO     | mcp.client.streamable_http | Negotiated protocol version: 2025-11-25
-2026-06-25 10:58:20,989 | INFO     | httpx | HTTP Request: POST http://localhost:8800/api/v1/feedback/mcp "HTTP/1.1 200 OK"
-2026-06-25 10:58:20,989 | INFO     | mcp.client.streamable_http | Received session ID: e144a1ef43fe42f8a4584a45b69d90dd
-2026-06-25 10:58:20,990 | INFO     | mcp.client.streamable_http | Negotiated protocol version: 2025-11-25
-2026-06-25 10:58:20,993 | INFO     | httpx | HTTP Request: POST http://localhost:8800/api/v1/communication/mcp "HTTP/1.1 202 Accepted"
-2026-06-25 10:58:20,994 | INFO     | httpx | HTTP Request: POST http://localhost:8800/api/v1/feedback/mcp "HTTP/1.1 202 Accepted"
-2026-06-25 10:58:21,072 | INFO     | httpx | HTTP Request: POST http://localhost:8800/api/v1/communication/mcp "HTTP/1.1 200 OK"
-2026-06-25 10:58:21,075 | INFO     | httpx | HTTP Request: POST http://localhost:8800/api/v1/communication/mcp "HTTP/1.1 200 OK"
-2026-06-25 10:58:21,077 | INFO     | httpx | HTTP Request: DELETE http://localhost:8800/api/v1/communication/mcp "HTTP/1.1 200 OK"
-2026-06-25 10:58:22,169 | INFO     | httpx | HTTP Request: POST http://localhost:8800/api/v1/feedback/mcp "HTTP/1.1 200 OK"
-2026-06-25 10:58:22,172 | INFO     | httpx | HTTP Request: POST http://localhost:8800/api/v1/feedback/mcp "HTTP/1.1 200 OK"
-2026-06-25 10:58:22,175 | INFO     | httpx | HTTP Request: DELETE http://localhost:8800/api/v1/feedback/mcp "HTTP/1.1 200 OK"
-2026-06-25 10:58:23,414 | INFO     | httpx | HTTP Request: POST https://azureclaimsopenai.openai.azure.com/openai/deployments/gpt-4.1-claims/chat/completions?api-version=2025-01-01-preview "HTTP/1.1 200 OK"
-2026-06-25 10:58:23,650 | INFO     | httpx | HTTP Request: POST http://localhost:8800/api/v1/communication/mcp "HTTP/1.1 200 OK"
-2026-06-25 10:58:23,650 | INFO     | mcp.client.streamable_http | Received session ID: 0b598fcf57ed4c3989da1c136361f219
-2026-06-25 10:58:23,650 | INFO     | mcp.client.streamable_http | Negotiated protocol version: 2025-11-25
-2026-06-25 10:58:23,653 | INFO     | httpx | HTTP Request: POST http://localhost:8800/api/v1/communication/mcp "HTTP/1.1 202 Accepted"
-2026-06-25 10:58:26,245 | INFO     | httpx | HTTP Request: POST http://localhost:8800/api/v1/communication/mcp "HTTP/1.1 200 OK"
-2026-06-25 10:58:26,248 | INFO     | httpx | HTTP Request: POST http://localhost:8800/api/v1/communication/mcp "HTTP/1.1 200 OK"
-2026-06-25 10:58:26,251 | INFO     | httpx | HTTP Request: DELETE http://localhost:8800/api/v1/communication/mcp "HTTP/1.1 200 OK"
-2026-06-25 10:58:27,450 | INFO     | httpx | HTTP Request: POST https://azureclaimsopenai.openai.azure.com/openai/deployments/gpt-4.1-claims/chat/completions?api-version=2025-01-01-preview "HTTP/1.1 200 OK"
-
-
-
-I think it worked fine please check , but i need to understand one thind whatever tools of feednack are getting called here what data are we providing it from communication agent for respective tables to be populated i want that and what exact data fields are we retriving from the tables that those feedbakc agent is connected to that as well 
+* Communication Agent is responsible for orchestrating the conversation, logging inbound/outbound communications, and generating the notification draft.
+* Feedback Agent is responsible for enriching the minimal input (claim_number and comment) by looking up claim details, determining the current stage, analyzing sentiment, calculating escalation risk, and updating the feedback-related tables. This design keeps the Communication Agent lightweight while centralizing sentiment and feedback logic in the Feedback Agent.
