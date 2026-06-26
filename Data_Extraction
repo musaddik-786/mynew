@@ -216,9 +216,9 @@ def save_policy_details(policy_number: str) -> dict:
     for line in lines_data:
         line_attrs = line.get("attributes", {}) if isinstance(line, dict) else {}
         coverages_data = (
-        (line_attrs.get("coverages") or {}).get("data", [])
-        if isinstance(line_attrs.get("coverages"), dict)
-        else []
+            (line_attrs.get("coverages") or {}).get("data", [])
+            if isinstance(line_attrs.get("coverages"), dict)
+            else []
     )
         for cov in coverages_data:
             cov_attrs = cov.get("attributes", {}) if isinstance(cov, dict) else {}
@@ -249,11 +249,11 @@ def save_policy_details(policy_number: str) -> dict:
                     exclusions_list.append(name)
     # Fallback ONLY if Guidewire did not provide a coverage limit
     if coverage_limit is None:
-    log.warning(
-        "Guidewire did not return a coverage limit for policy %s. Using default PoC value 500000.",
-        policy_number,
-    )
-    coverage_limit = 500000.0
+        log.warning(
+            "Guidewire did not return a coverage limit for policy %s. Using default PoC value 500000.",
+            policy_number,
+        )
+        coverage_limit = 500000.0
     exclusions = ",".join(exclusions_list) if exclusions_list else None
 
 
@@ -627,4 +627,4 @@ def get_claim_details(claim_id: str) -> dict:
         conn.close()
 
 
-now is it correct
+now check is it correct
