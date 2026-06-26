@@ -1,3 +1,445 @@
+JarvisClaims@JarvisClaims:~/Musaddique$ curl -s -N -X POST http://localhost:8807/chat -H "Content-Type: application/json" -d '{"message":"Does my policy cover water damage from a dishwasher leak"}'
+data: Could
+
+data:  you
+
+data:  please
+
+data:  share
+
+data:  your
+
+data:  claim
+
+data:  number
+
+data:  so
+
+data:  I
+
+data:  can
+
+data:  check
+
+data:  the
+
+data:  coverage
+
+data: ?
+
+JarvisClaims@JarvisClaims:~/Musaddique$ curl -s -N -X POST http://localhost:8807/chat -H "Content-Type: application/json" -d '{"message":"My Claim number is CLM-2026-1001"}'
+data: [Tool: get_coverage_verification_result] Starting...
+
+data: [Tool: get_coverage_verification_result] Done
+
+data: [Tool: get_claim_details] Starting...
+
+data: [Tool: get_claim_details] Done
+
+data: [Tool: get_policy_details] Starting...
+
+data: [Tool: get_policy_details] Done
+
+data: [Tool: gw_search_policy] Starting...
+
+data: [Tool: save_policy_details] Starting...
+
+data: [Tool: gw_search_policy] Done
+
+data: [Tool: save_policy_details] Done
+
+data: [Tool: get_policy_details] Starting...
+
+data: [Tool: get_policy_details] Done
+
+data: [Tool: verify_coverage] Starting...
+
+data: [Tool: verify_coverage] Done
+
+data: For
+
+data:  claim
+
+data:  number
+
+data:  CL
+
+data: M
+
+data: -
+
+data: 202
+
+data: 6
+
+data: -
+
+data: 100
+
+data: 1
+
+data:  (
+
+data: burst
+
+data:  pipe
+
+data:  in
+
+data:  kitchen
+
+data: —
+
+data: water
+
+data:  damage
+
+data: ),
+
+data:  your
+
+data:  policy
+
+data:  is
+
+data:  currently
+
+data:  active
+
+data:  but
+
+data:  the
+
+data:  remaining
+
+data:  coverage
+
+data:  limit
+
+data:  is
+
+data:  $
+
+data: 0
+
+data: .
+
+data: 00
+
+data: .
+
+data:  This
+
+data:  means
+
+data:  there
+
+data:  are
+
+data:  no
+
+data:  funds
+
+data:  available
+
+data:  for
+
+data:  payout
+
+data:  under
+
+data:  your
+
+data:  policy
+
+data:  for
+
+data:  this
+
+data:  claim
+
+data: ,
+
+data:  so
+
+data:  it
+
+data:  is
+
+data:  not
+
+data:  covered
+
+data:  regardless
+
+data:  of
+
+data:  the
+
+data:  loss
+
+data:  type
+
+data:  or
+
+data:  exclusions
+
+data: .
+
+
+
+data: If
+
+data:  you
+
+data:  believe
+
+data:  this
+
+data:  is
+
+data:  a
+
+data:  mistake
+
+data:  or
+
+data:  need
+
+data:  clarification
+
+data:  about
+
+data:  the
+
+data:  coverage
+
+data:  period
+
+data:  or
+
+data:  prior
+
+data:  claims
+
+data:  that
+
+data:  may
+
+data:  have
+
+data:  used
+
+data:  up
+
+data:  your
+
+data:  coverage
+
+data:  limit
+
+data: ,
+
+data:  please
+
+data:  let
+
+data:  me
+
+data:  know
+
+data: .
+
+
+
+data: End
+
+
+
+
+(vnev) JarvisClaims@JarvisClaims:~/Musaddique/Jarvis_claims_agents_myv/PolicyholderAgents$ cd PolicyCoverageVerificationAgent/
+(vnev) JarvisClaims@JarvisClaims:~/Musaddique/Jarvis_claims_agents_myv/PolicyholderAgents/PolicyCoverageVerificationAgent$ python3 server.py 
+INFO:     Started server process [29927]
+INFO:     Waiting for application startup.
+INFO:     Application startup complete.
+INFO:     Uvicorn running on http://0.0.0.0:8807 (Press CTRL+C to quit)
+2026-06-26 12:25:20,458 | INFO     | httpx | HTTP Request: POST http://localhost:8800/api/v1/policy_coverage/mcp "HTTP/1.1 200 OK"
+2026-06-26 12:25:20,458 | INFO     | mcp.client.streamable_http | Received session ID: ae9b8a10c3344d209e5ef5802d4a2eb0
+2026-06-26 12:25:20,459 | INFO     | mcp.client.streamable_http | Negotiated protocol version: 2025-11-25
+2026-06-26 12:25:20,464 | INFO     | httpx | HTTP Request: POST http://localhost:8800/api/v1/policy_coverage/mcp "HTTP/1.1 202 Accepted"
+2026-06-26 12:25:20,469 | INFO     | httpx | HTTP Request: POST http://localhost:8800/api/v1/policy_coverage/mcp "HTTP/1.1 200 OK"
+2026-06-26 12:25:20,471 | INFO     | httpx | HTTP Request: DELETE http://localhost:8800/api/v1/policy_coverage/mcp "HTTP/1.1 200 OK"
+2026-06-26 12:25:20,473 | INFO     | policy_coverage_agent | Tools loaded from MCP: ['get_claim_details', 'gw_search_policy', 'gw_get_policy_coverages', 'save_policy_details', 'get_policy_details', 'get_coverage_verification_result', 'verify_coverage', 'record_claim_payment']
+2026-06-26 12:25:20,890 | WARNING  | policy_coverage_agent | Phoenix prompt load failed (Phoenix not configured) — using fallback prompt
+INFO:     127.0.0.1:45498 - "POST /chat HTTP/1.1" 200 OK
+2026-06-26 12:25:21,610 | INFO     | httpx | HTTP Request: POST https://azureclaimsopenai.openai.azure.com/openai/deployments/gpt-4.1-claims/chat/completions?api-version=2025-01-01-preview "HTTP/1.1 200 OK"
+2026-06-26 12:25:21,785 | INFO     | policy_coverage_agent | ================================================================================
+2026-06-26 12:25:21,785 | INFO     | policy_coverage_agent | LLM Response
+2026-06-26 12:25:21,785 | INFO     | policy_coverage_agent | Content: Could you please share your claim number so I can check the coverage?
+2026-06-26 12:25:21,785 | INFO     | policy_coverage_agent | ================================================================================
+2026-06-26 12:25:46,983 | INFO     | httpx | HTTP Request: POST http://localhost:8800/api/v1/policy_coverage/mcp "HTTP/1.1 200 OK"
+2026-06-26 12:25:46,984 | INFO     | mcp.client.streamable_http | Received session ID: bf653656fdff42b0ad49937b3fe3ba4b
+2026-06-26 12:25:46,984 | INFO     | mcp.client.streamable_http | Negotiated protocol version: 2025-11-25
+2026-06-26 12:25:46,987 | INFO     | httpx | HTTP Request: POST http://localhost:8800/api/v1/policy_coverage/mcp "HTTP/1.1 202 Accepted"
+2026-06-26 12:25:46,993 | INFO     | httpx | HTTP Request: POST http://localhost:8800/api/v1/policy_coverage/mcp "HTTP/1.1 200 OK"
+2026-06-26 12:25:46,995 | INFO     | httpx | HTTP Request: DELETE http://localhost:8800/api/v1/policy_coverage/mcp "HTTP/1.1 200 OK"
+2026-06-26 12:25:46,997 | INFO     | policy_coverage_agent | Tools loaded from MCP: ['get_claim_details', 'gw_search_policy', 'gw_get_policy_coverages', 'save_policy_details', 'get_policy_details', 'get_coverage_verification_result', 'verify_coverage', 'record_claim_payment']
+2026-06-26 12:25:47,075 | WARNING  | policy_coverage_agent | Phoenix prompt load failed (Phoenix not configured) — using fallback prompt
+INFO:     127.0.0.1:38892 - "POST /chat HTTP/1.1" 200 OK
+2026-06-26 12:25:47,539 | INFO     | httpx | HTTP Request: POST https://azureclaimsopenai.openai.azure.com/openai/deployments/gpt-4.1-claims/chat/completions?api-version=2025-01-01-preview "HTTP/1.1 200 OK"
+2026-06-26 12:25:47,628 | INFO     | policy_coverage_agent | ================================================================================
+2026-06-26 12:25:47,628 | INFO     | policy_coverage_agent | LLM Response
+2026-06-26 12:25:47,628 | INFO     | policy_coverage_agent | Content: 
+2026-06-26 12:25:47,628 | INFO     | policy_coverage_agent | Tool Calls:
+2026-06-26 12:25:47,628 | INFO     | policy_coverage_agent | Tool=get_coverage_verification_result Args={'claim_id': 'CLM-2026-1001'}
+2026-06-26 12:25:47,628 | INFO     | policy_coverage_agent | ================================================================================
+2026-06-26 12:25:47,630 | INFO     | policy_coverage_agent | TOOL START: get_coverage_verification_result | INPUT={'claim_id': 'CLM-2026-1001'}
+2026-06-26 12:25:47,674 | INFO     | httpx | HTTP Request: POST http://localhost:8800/api/v1/policy_coverage/mcp "HTTP/1.1 200 OK"
+2026-06-26 12:25:47,674 | INFO     | mcp.client.streamable_http | Received session ID: e604e11629ef4b2586aa3e3ee17f8da7
+2026-06-26 12:25:47,675 | INFO     | mcp.client.streamable_http | Negotiated protocol version: 2025-11-25
+2026-06-26 12:25:47,677 | INFO     | httpx | HTTP Request: POST http://localhost:8800/api/v1/policy_coverage/mcp "HTTP/1.1 202 Accepted"
+2026-06-26 12:25:47,739 | INFO     | httpx | HTTP Request: POST http://localhost:8800/api/v1/policy_coverage/mcp "HTTP/1.1 200 OK"
+2026-06-26 12:25:47,742 | INFO     | httpx | HTTP Request: POST http://localhost:8800/api/v1/policy_coverage/mcp "HTTP/1.1 200 OK"
+2026-06-26 12:25:47,744 | INFO     | httpx | HTTP Request: DELETE http://localhost:8800/api/v1/policy_coverage/mcp "HTTP/1.1 200 OK"
+2026-06-26 12:25:47,746 | INFO     | policy_coverage_agent | TOOL END: get_coverage_verification_result | OUTPUT=content=[{'type': 'text', 'text': '{\n  "found": false,\n  "claim_id": "CLM-2026-1001"\n}', 'id': 'lc_93424abc-46f8-432c-8b57-352850d54619'}] name='get_coverage_verification_result' tool_call_id='call_V4uusYIqR0Ye9GMcyRoRkXSL'
+2026-06-26 12:25:48,411 | INFO     | httpx | HTTP Request: POST https://azureclaimsopenai.openai.azure.com/openai/deployments/gpt-4.1-claims/chat/completions?api-version=2025-01-01-preview "HTTP/1.1 200 OK"
+2026-06-26 12:25:48,524 | INFO     | policy_coverage_agent | ================================================================================
+2026-06-26 12:25:48,524 | INFO     | policy_coverage_agent | LLM Response
+2026-06-26 12:25:48,524 | INFO     | policy_coverage_agent | Content: 
+2026-06-26 12:25:48,524 | INFO     | policy_coverage_agent | Tool Calls:
+2026-06-26 12:25:48,524 | INFO     | policy_coverage_agent | Tool=get_claim_details Args={'claim_id': 'CLM-2026-1001'}
+2026-06-26 12:25:48,524 | INFO     | policy_coverage_agent | ================================================================================
+2026-06-26 12:25:48,526 | INFO     | policy_coverage_agent | TOOL START: get_claim_details | INPUT={'claim_id': 'CLM-2026-1001'}
+2026-06-26 12:25:48,571 | INFO     | httpx | HTTP Request: POST http://localhost:8800/api/v1/policy_coverage/mcp "HTTP/1.1 200 OK"
+2026-06-26 12:25:48,571 | INFO     | mcp.client.streamable_http | Received session ID: 496bbc038a084eff816478e30da00b85
+2026-06-26 12:25:48,571 | INFO     | mcp.client.streamable_http | Negotiated protocol version: 2025-11-25
+2026-06-26 12:25:48,574 | INFO     | httpx | HTTP Request: POST http://localhost:8800/api/v1/policy_coverage/mcp "HTTP/1.1 202 Accepted"
+2026-06-26 12:25:48,647 | INFO     | httpx | HTTP Request: POST http://localhost:8800/api/v1/policy_coverage/mcp "HTTP/1.1 200 OK"
+2026-06-26 12:25:48,650 | INFO     | httpx | HTTP Request: POST http://localhost:8800/api/v1/policy_coverage/mcp "HTTP/1.1 200 OK"
+2026-06-26 12:25:48,653 | INFO     | httpx | HTTP Request: DELETE http://localhost:8800/api/v1/policy_coverage/mcp "HTTP/1.1 200 OK"
+2026-06-26 12:25:48,654 | INFO     | policy_coverage_agent | TOOL END: get_claim_details | OUTPUT=content=[{'type': 'text', 'text': '{\n  "found": true,\n  "claim": {\n    "id": 2,\n    "claim_number": "CLM-2026-1001",\n    "policyholder_name": "John Doe",\n    "policy_number": "0729690563",\n    "loss_type": "Water Damage",\n    "short_description": "Burst pipe in kitchen caused flooding",\n    "ai_generated_summary": null,\n    "detected_cause": null,\n    "severity": "Medium",\n    "estimated_cost": "8500",\n    "coverage": true,\n    "ai_confidence": 85,\n    "status": "Open",\n    "image_urls": [],\n    "location": "123 Main St, Springfield",\n    "assigned_adjuster": null,\n    "assigned_vendor": null,\n    "filed_at": "2026-06-16T14:44:41.091089",\n    "date_of_loss": "2026-05-20",\n    "complexity": "Moderate",\n    "police_report_number": null\n  }\n}', 'id': 'lc_2cda7d85-06dd-401e-8e14-63d85911107f'}] name='get_claim_details' tool_call_id='call_LNrJI1BEnBJqxDkzQxFAndpz'
+2026-06-26 12:25:49,277 | INFO     | httpx | HTTP Request: POST https://azureclaimsopenai.openai.azure.com/openai/deployments/gpt-4.1-claims/chat/completions?api-version=2025-01-01-preview "HTTP/1.1 200 OK"
+2026-06-26 12:25:49,568 | INFO     | policy_coverage_agent | ================================================================================
+2026-06-26 12:25:49,568 | INFO     | policy_coverage_agent | LLM Response
+2026-06-26 12:25:49,569 | INFO     | policy_coverage_agent | Content: 
+2026-06-26 12:25:49,569 | INFO     | policy_coverage_agent | Tool Calls:
+2026-06-26 12:25:49,569 | INFO     | policy_coverage_agent | Tool=get_policy_details Args={'policy_id': '0729690563'}
+2026-06-26 12:25:49,569 | INFO     | policy_coverage_agent | ================================================================================
+2026-06-26 12:25:49,571 | INFO     | policy_coverage_agent | TOOL START: get_policy_details | INPUT={'policy_id': '0729690563'}
+2026-06-26 12:25:49,617 | INFO     | httpx | HTTP Request: POST http://localhost:8800/api/v1/policy_coverage/mcp "HTTP/1.1 200 OK"
+2026-06-26 12:25:49,617 | INFO     | mcp.client.streamable_http | Received session ID: d5e99b73db22429398aae08baee811da
+2026-06-26 12:25:49,617 | INFO     | mcp.client.streamable_http | Negotiated protocol version: 2025-11-25
+2026-06-26 12:25:49,620 | INFO     | httpx | HTTP Request: POST http://localhost:8800/api/v1/policy_coverage/mcp "HTTP/1.1 202 Accepted"
+2026-06-26 12:25:49,678 | INFO     | httpx | HTTP Request: POST http://localhost:8800/api/v1/policy_coverage/mcp "HTTP/1.1 200 OK"
+2026-06-26 12:25:49,681 | INFO     | httpx | HTTP Request: POST http://localhost:8800/api/v1/policy_coverage/mcp "HTTP/1.1 200 OK"
+2026-06-26 12:25:49,683 | INFO     | httpx | HTTP Request: DELETE http://localhost:8800/api/v1/policy_coverage/mcp "HTTP/1.1 200 OK"
+2026-06-26 12:25:49,684 | INFO     | policy_coverage_agent | TOOL END: get_policy_details | OUTPUT=content=[{'type': 'text', 'text': '{\n  "status": "not_found",\n  "policy_id": "0729690563"\n}', 'id': 'lc_e8d044b9-6cdc-4880-9030-72ba46079b23'}] name='get_policy_details' tool_call_id='call_SgsTGW4pbn6sbpW3CTgdDLuV'
+2026-06-26 12:25:50,497 | INFO     | httpx | HTTP Request: POST https://azureclaimsopenai.openai.azure.com/openai/deployments/gpt-4.1-claims/chat/completions?api-version=2025-01-01-preview "HTTP/1.1 200 OK"
+2026-06-26 12:25:50,537 | INFO     | policy_coverage_agent | ================================================================================
+2026-06-26 12:25:50,537 | INFO     | policy_coverage_agent | LLM Response
+2026-06-26 12:25:50,537 | INFO     | policy_coverage_agent | Content: 
+2026-06-26 12:25:50,537 | INFO     | policy_coverage_agent | Tool Calls:
+2026-06-26 12:25:50,537 | INFO     | policy_coverage_agent | Tool=gw_search_policy Args={'policy_number': '0729690563'}
+2026-06-26 12:25:50,537 | INFO     | policy_coverage_agent | Tool=save_policy_details Args={'policy_number': '0729690563'}
+2026-06-26 12:25:50,537 | INFO     | policy_coverage_agent | ================================================================================
+2026-06-26 12:25:50,539 | INFO     | policy_coverage_agent | TOOL START: gw_search_policy | INPUT={'policy_number': '0729690563'}
+2026-06-26 12:25:50,539 | INFO     | policy_coverage_agent | TOOL START: save_policy_details | INPUT={'policy_number': '0729690563'}
+2026-06-26 12:25:50,626 | INFO     | httpx | HTTP Request: POST http://localhost:8800/api/v1/policy_coverage/mcp "HTTP/1.1 200 OK"
+2026-06-26 12:25:50,626 | INFO     | mcp.client.streamable_http | Received session ID: ce26b3b5bcef4a658881cbb576bb6cd9
+2026-06-26 12:25:50,627 | INFO     | mcp.client.streamable_http | Negotiated protocol version: 2025-11-25
+2026-06-26 12:25:50,628 | INFO     | httpx | HTTP Request: POST http://localhost:8800/api/v1/policy_coverage/mcp "HTTP/1.1 200 OK"
+2026-06-26 12:25:50,628 | INFO     | mcp.client.streamable_http | Received session ID: 9f1d3ace48814d79b5bd52c1cb18dee0
+2026-06-26 12:25:50,628 | INFO     | mcp.client.streamable_http | Negotiated protocol version: 2025-11-25
+2026-06-26 12:25:50,630 | INFO     | httpx | HTTP Request: POST http://localhost:8800/api/v1/policy_coverage/mcp "HTTP/1.1 202 Accepted"
+2026-06-26 12:25:50,633 | INFO     | httpx | HTTP Request: POST http://localhost:8800/api/v1/policy_coverage/mcp "HTTP/1.1 202 Accepted"
+2026-06-26 12:25:50,863 | INFO     | httpx | HTTP Request: POST http://localhost:8800/api/v1/policy_coverage/mcp "HTTP/1.1 200 OK"
+2026-06-26 12:25:50,867 | INFO     | httpx | HTTP Request: POST http://localhost:8800/api/v1/policy_coverage/mcp "HTTP/1.1 200 OK"
+2026-06-26 12:25:50,870 | INFO     | httpx | HTTP Request: DELETE http://localhost:8800/api/v1/policy_coverage/mcp "HTTP/1.1 200 OK"
+2026-06-26 12:25:50,871 | INFO     | policy_coverage_agent | TOOL END: gw_search_policy | OUTPUT=content=[{'type': 'text', 'text': '{\n  "found": true,\n  "policy": {\n    "gw_policy_id": "pc:SOF81s7WuOLiQs_i_PJtn",\n    "policy_number": "0729690563",\n    "status": "Unknown",\n    "effective_date": "2025-07-16T04:01:00.000Z",\n    "expiration_date": "2026-07-16T04:01:00.000Z",\n    "coverage_types": [],\n    "insured_name": "Hexa Tester",\n    "insured_address": "2850 S. Delaware St.\\nSan Mateo, CA 94403",\n    "account_number": "4225836479",\n    "product_name": "Manual Products",\n    "raw": {\n      "count": 1,\n      "data": [\n        {\n          "attributes": {\n            "accountNumber": "4225836479",\n            "effectiveDate": "2025-07-16T04:01:00.000Z",\n            "expirationDate": "2026-07-16T04:01:00.000Z",\n            "insuredName": "Hexa Tester",\n            "policyAddress": "2850 S. Delaware St.\\nSan Mateo, CA 94403",\n            "policyId": "pc:SOF81s7WuOLiQs_i_PJtn",\n            "policyNumber": "0729690563",\n            "producerOfRecordName": "Armstrong and Company",\n            "producerOfServiceName": "Armstrong and Company",\n            "product": {\n              "displayName": "Manual Products",\n              "id": "Manual"\n            }\n          },\n          "links": {\n            "self": {\n              "href": "/policy/v1/policies/pc:SOF81s7WuOLiQs_i_PJtn",\n              "methods": [\n                "get"\n              ]\n            }\n          }\n        }\n      ],\n      "links": {\n        "first": {\n          "href": "/policy/v1/search/policies",\n          "methods": [\n            "post"\n          ]\n        },\n        "self": {\n          "href": "/policy/v1/search/policies",\n          "methods": [\n            "post"\n          ]\n        }\n      }\n    }\n  },\n  "error": null,\n  "raw_gw_response": {\n    "count": 1,\n    "data": [\n      {\n        "attributes": {\n          "accountNumber": "4225836479",\n          "effectiveDate": "2025-07-16T04:01:00.000Z",\n          "expirationDate": "2026-07-16T04:01:00.000Z",\n          "insuredName": "Hexa Tester",\n          "policyAddress": "2850 S. Delaware St.\\nSan Mateo, CA 94403",\n          "policyId": "pc:SOF81s7WuOLiQs_i_PJtn",\n          "policyNumber": "0729690563",\n          "producerOfRecordName": "Armstrong and Company",\n          "producerOfServiceName": "Armstrong and Company",\n          "product": {\n            "displayName": "Manual Products",\n            "id": "Manual"\n          }\n        },\n        "links": {\n          "self": {\n            "href": "/policy/v1/policies/pc:SOF81s7WuOLiQs_i_PJtn",\n            "methods": [\n              "get"\n            ]\n          }\n        }\n      }\n    ],\n    "links": {\n      "first": {\n        "href": "/policy/v1/search/policies",\n        "methods": [\n          "post"\n        ]\n      },\n      "self": {\n        "href": "/policy/v1/search/policies",\n        "methods": [\n          "post"\n        ]\n      }\n    }\n  }\n}', 'id': 'lc_54764715-70ca-4b11-a615-1b5f2bdacf32'}] name='gw_search_policy' tool_call_id='call_XWXiAkMuL2v1kAKvhXoqHCrW'
+2026-06-26 12:25:51,386 | INFO     | httpx | HTTP Request: POST http://localhost:8800/api/v1/policy_coverage/mcp "HTTP/1.1 200 OK"
+2026-06-26 12:25:51,390 | INFO     | httpx | HTTP Request: POST http://localhost:8800/api/v1/policy_coverage/mcp "HTTP/1.1 200 OK"
+2026-06-26 12:25:51,393 | INFO     | httpx | HTTP Request: DELETE http://localhost:8800/api/v1/policy_coverage/mcp "HTTP/1.1 200 OK"
+2026-06-26 12:25:51,394 | INFO     | policy_coverage_agent | TOOL END: save_policy_details | OUTPUT=content=[{'type': 'text', 'text': '{\n  "saved": true,\n  "policy_id": "0729690563",\n  "gw_policy_id": "pc:SOF81s7WuOLiQs_i_PJtn",\n  "status": "Active",\n  "coverage_type": "Homeowners",\n  "deductible": null,\n  "coverage_limit": null,\n  "exclusions": null,\n  "premium_amount": "1768.13",\n  "currency": "usd"\n}', 'id': 'lc_e4296e5f-98a3-4c6d-9b5e-f6364d299b6b'}] name='save_policy_details' tool_call_id='call_7MBrvuKWZLoLAbUHEo57tVqm'
+2026-06-26 12:25:52,160 | INFO     | httpx | HTTP Request: POST https://azureclaimsopenai.openai.azure.com/openai/deployments/gpt-4.1-claims/chat/completions?api-version=2025-01-01-preview "HTTP/1.1 200 OK"
+2026-06-26 12:25:52,227 | INFO     | policy_coverage_agent | ================================================================================
+2026-06-26 12:25:52,227 | INFO     | policy_coverage_agent | LLM Response
+2026-06-26 12:25:52,227 | INFO     | policy_coverage_agent | Content: 
+2026-06-26 12:25:52,227 | INFO     | policy_coverage_agent | Tool Calls:
+2026-06-26 12:25:52,227 | INFO     | policy_coverage_agent | Tool=get_policy_details Args={'policy_id': '0729690563'}
+2026-06-26 12:25:52,227 | INFO     | policy_coverage_agent | ================================================================================
+2026-06-26 12:25:52,230 | INFO     | policy_coverage_agent | TOOL START: get_policy_details | INPUT={'policy_id': '0729690563'}
+2026-06-26 12:25:52,274 | INFO     | httpx | HTTP Request: POST http://localhost:8800/api/v1/policy_coverage/mcp "HTTP/1.1 200 OK"
+2026-06-26 12:25:52,275 | INFO     | mcp.client.streamable_http | Received session ID: 96af9adfe0c5442a97430a864336e44b
+2026-06-26 12:25:52,275 | INFO     | mcp.client.streamable_http | Negotiated protocol version: 2025-11-25
+2026-06-26 12:25:52,278 | INFO     | httpx | HTTP Request: POST http://localhost:8800/api/v1/policy_coverage/mcp "HTTP/1.1 202 Accepted"
+2026-06-26 12:25:52,338 | INFO     | httpx | HTTP Request: POST http://localhost:8800/api/v1/policy_coverage/mcp "HTTP/1.1 200 OK"
+2026-06-26 12:25:52,342 | INFO     | httpx | HTTP Request: POST http://localhost:8800/api/v1/policy_coverage/mcp "HTTP/1.1 200 OK"
+2026-06-26 12:25:52,344 | INFO     | httpx | HTTP Request: DELETE http://localhost:8800/api/v1/policy_coverage/mcp "HTTP/1.1 200 OK"
+2026-06-26 12:25:52,345 | INFO     | policy_coverage_agent | TOOL END: get_policy_details | OUTPUT=content=[{'type': 'text', 'text': '{\n  "id": 403,\n  "policy_id": "0729690563",\n  "status": "Active",\n  "coverage_type": "Homeowners",\n  "deductible": null,\n  "coverage_limit": null,\n  "created_at": "2026-06-26T12:25:51.377827",\n  "exclusions": null,\n  "gw_policy_id": "pc:SOF81s7WuOLiQs_i_PJtn",\n  "effective_date": "2025-07-16T04:01:00",\n  "expiration_date": "2026-07-16T04:01:00",\n  "insured_name": "Hexa Tester",\n  "account_number": "4225836479",\n  "policy_address": "2850 S. Delaware St.\\nSan Mateo, CA 94403",\n  "state": "California",\n  "term_type": "Annual",\n  "premium_amount": 1768.13,\n  "currency": "usd",\n  "city": "San Mateo",\n  "country": "US",\n  "postal_code": "94403",\n  "remaining_coverage_limit": null\n}', 'id': 'lc_6cedc20f-04da-4ffa-bfd1-8726ebaee5e9'}] name='get_policy_details' tool_call_id='call_dOs0BNnWTVXFUbWi56WHKbD0'
+2026-06-26 12:25:52,844 | INFO     | httpx | HTTP Request: POST https://azureclaimsopenai.openai.azure.com/openai/deployments/gpt-4.1-claims/chat/completions?api-version=2025-01-01-preview "HTTP/1.1 200 OK"
+2026-06-26 12:25:52,952 | INFO     | policy_coverage_agent | ================================================================================
+2026-06-26 12:25:52,952 | INFO     | policy_coverage_agent | LLM Response
+2026-06-26 12:25:52,953 | INFO     | policy_coverage_agent | Content: 
+2026-06-26 12:25:52,953 | INFO     | policy_coverage_agent | Tool Calls:
+2026-06-26 12:25:52,953 | INFO     | policy_coverage_agent | Tool=verify_coverage Args={'claim_id': 'CLM-2026-1001'}
+2026-06-26 12:25:52,953 | INFO     | policy_coverage_agent | ================================================================================
+2026-06-26 12:25:52,955 | INFO     | policy_coverage_agent | TOOL START: verify_coverage | INPUT={'claim_id': 'CLM-2026-1001'}
+2026-06-26 12:25:53,000 | INFO     | httpx | HTTP Request: POST http://localhost:8800/api/v1/policy_coverage/mcp "HTTP/1.1 200 OK"
+2026-06-26 12:25:53,000 | INFO     | mcp.client.streamable_http | Received session ID: ce40d737e14f48288cac9d4294086729
+2026-06-26 12:25:53,001 | INFO     | mcp.client.streamable_http | Negotiated protocol version: 2025-11-25
+2026-06-26 12:25:53,004 | INFO     | httpx | HTTP Request: POST http://localhost:8800/api/v1/policy_coverage/mcp "HTTP/1.1 202 Accepted"
+2026-06-26 12:25:54,539 | INFO     | httpx | HTTP Request: POST http://localhost:8800/api/v1/policy_coverage/mcp "HTTP/1.1 200 OK"
+2026-06-26 12:25:54,543 | INFO     | httpx | HTTP Request: POST http://localhost:8800/api/v1/policy_coverage/mcp "HTTP/1.1 200 OK"
+2026-06-26 12:25:54,545 | INFO     | httpx | HTTP Request: DELETE http://localhost:8800/api/v1/policy_coverage/mcp "HTTP/1.1 200 OK"
+2026-06-26 12:25:54,546 | INFO     | policy_coverage_agent | TOOL END: verify_coverage | OUTPUT=content=[{'type': 'text', 'text': '{\n  "claim_id": "CLM-2026-1001",\n  "policy_id": "0729690563",\n  "coverage_type": "Homeowners",\n  "remaining_coverage_limit": 0.0,\n  "deductible": 0.0,\n  "loss_amount": 8500.0,\n  "exclusions": [],\n  "coverage_verdict": "Not Covered",\n  "exclusion_triggered": false,\n  "exclusion_details": "",\n  "net_payable": 0.0,\n  "coverage_notes": "The claim is not covered because the remaining coverage limit is $0.00, meaning no funds are available for payout regardless of the loss type or exclusions."\n}', 'id': 'lc_faa0d197-16f0-4bca-94b9-6cc08abb83a9'}] name='verify_coverage' tool_call_id='call_jLYLdZByaYtGpM9jolIgfgIw'
+2026-06-26 12:25:55,104 | INFO     | httpx | HTTP Request: POST https://azureclaimsopenai.openai.azure.com/openai/deployments/gpt-4.1-claims/chat/completions?api-version=2025-01-01-preview "HTTP/1.1 200 OK"
+2026-06-26 12:25:55,704 | INFO     | policy_coverage_agent | ================================================================================
+2026-06-26 12:25:55,704 | INFO     | policy_coverage_agent | LLM Response
+2026-06-26 12:25:55,704 | INFO     | policy_coverage_agent | Content: For claim number CLM-2026-1001 (burst pipe in kitchen—water damage), your policy is currently active but the remaining coverage limit is $0.00. This means there are no funds available for payout under your policy for this claim, so it is not covered regardless of the loss type or exclusions.
+
+If you believe this is a mistake or need clarification about the coverage period or prior claims that may have used up your coverage limit, please let me know.
+
+End
+2026-06-26 12:25:55,704 | INFO     | policy_coverage_agent | ================================================================================
+2026-06-26 12:26:28,443 | INFO     | httpx | HTTP Request: POST http://localhost:8800/api/v1/policy_coverage/mcp "HTTP/1.1 200 OK"
+2026-06-26 12:26:28,443 | INFO     | mcp.client.streamable_http | Received session ID: cd21b01be6ef4254aafd6efa31db60cd
+2026-06-26 12:26:28,444 | INFO     | mcp.client.streamable_http | Negotiated protocol version: 2025-11-25
+2026-06-26 12:26:28,446 | INFO     | httpx | HTTP Request: POST http://localhost:8800/api/v1/policy_coverage/mcp "HTTP/1.1 202 Accepted"
+2026-06-26 12:26:28,451 | INFO     | httpx | HTTP Request: POST http://localhost:8800/api/v1/policy_coverage/mcp "HTTP/1.1 200 OK"
+2026-06-26 12:26:28,453 | INFO     | httpx | HTTP Request: DELETE http://localhost:8800/api/v1/policy_coverage/mcp "HTTP/1.1 200 OK"
+2026-06-26 12:26:28,455 | INFO     | policy_coverage_agent | Tools loaded from MCP: ['get_claim_details', 'gw_search_policy', 'gw_get_policy_coverages', 'save_policy_details', 'get_policy_details', 'get_coverage_verification_result', 'verify_coverage', 'record_claim_payment']
+2026-06-26 12:26:28,532 | WARNING  | policy_coverage_agent | Phoenix prompt load failed (Phoenix not configured) — using fallback prompt
+INFO:     127.0.0.1:36050 - "POST /chat HTTP/1.1" 200 OK
+2026-06-26 12:26:29,035 | INFO     | httpx | HTTP Request: POST https://azureclaimsopenai.openai.azure.com/openai/deployments/gpt-4.1-claims/chat/completions?api-version=2025-01-01-preview "HTTP/1.1 200 OK"
+2026-06-26 12:26:29,433 | INFO     | policy_coverage_agent | ================================================================================
+2026-06-26 12:26:29,434 | INFO     | policy_coverage_agent | LLM Response
+2026-06-26 12:26:29,434 | INFO     | policy_coverage_agent | Content: 
+2026-06-26 12:26:29,434 | INFO     | policy_coverage_agent | Tool Calls:
+2026-06-26 12:26:29,434 | INFO     | policy_coverage_agent | Tool=get_coverage_verification_result Args={'claim_id': 'CLM-2026-1001'}
+2026-06-26 12:26:29,434 | INFO     | policy_coverage_agent | ================================================================================
+2026-06-26 12:26:29,436 | INFO     | policy_coverage_agent | TOOL START: get_coverage_verification_result | INPUT={'claim_id': 'CLM-2026-1001'}
+2026-06-26 12:26:29,484 | INFO     | httpx | HTTP Request: POST http://localhost:8800/api/v1/policy_coverage/mcp "HTTP/1.1 200 OK"
+2026-06-26 12:26:29,484 | INFO     | mcp.client.streamable_http | Received session ID: a3f2a14eef4445f18fdb309bc5c28ef5
+2026-06-26 12:26:29,484 | INFO     | mcp.client.streamable_http | Negotiated protocol version: 2025-11-25
+2026-06-26 12:26:29,487 | INFO     | httpx | HTTP Request: POST http://localhost:8800/api/v1/policy_coverage/mcp "HTTP/1.1 202 Accepted"
+2026-06-26 12:26:29,538 | INFO     | httpx | HTTP Request: POST http://localhost:8800/api/v1/policy_coverage/mcp "HTTP/1.1 200 OK"
+2026-06-26 12:26:29,542 | INFO     | httpx | HTTP Request: POST http://localhost:8800/api/v1/policy_coverage/mcp "HTTP/1.1 200 OK"
+2026-06-26 12:26:29,544 | INFO     | httpx | HTTP Request: DELETE http://localhost:8800/api/v1/policy_coverage/mcp "HTTP/1.1 200 OK"
+2026-06-26 12:26:29,545 | INFO     | policy_coverage_agent | TOOL END: get_coverage_verification_result | OUTPUT=content=[{'type': 'text', 'text': '{\n  "found": true,\n  "id": 28,\n  "claim_id": "CLM-2026-1001",\n  "policy_id": "0729690563",\n  "coverage_verdict": "Not Covered",\n  "exclusion_triggered": false,\n  "exclusion_details": "",\n  "net_payable": 0.0,\n  "coverage_notes": "The claim is not covered because the remaining coverage limit is $0.00, meaning no funds are available for payout regardless of the loss type or exclusions.",\n  "verified_at": "2026-06-26T12:25:54.530227"\n}', 'id': 'lc_ba38fc74-cd5b-4c2b-9504-85f2cb835016'}] name='get_coverage_verification_result' tool_call_id='call_Y6xlS9ord7s4KoUCTsBwSGuJ'
+2026-06-26 12:26:30,018 | INFO     | httpx | HTTP Request: POST https://azureclaimsopenai.openai.azure.com/openai/deployments/gpt-4.1-claims/chat/completions?api-version=2025-01-01-preview "HTTP/1.1 200 OK"
+2026-06-26 12:26:30,678 | INFO     | policy_coverage_agent | ================================================================================
+2026-06-26 12:26:30,678 | INFO     | policy_coverage_agent | LLM Response
+2026-06-26 12:26:30,678 | INFO     | policy_coverage_agent | Content: Your claim CLM-2026-1001 is not covered by your policy. The reason is that your remaining coverage limit is $0.00, meaning there are no funds left in your policy for payout, regardless of the type of loss or whether exclusions apply.
+
+If you have questions or need more details on this decision, please let me know.
+
+End
+2026-06-26 12:26:30,678 | INFO     | policy_coverage_agent | ================================================================================
+
+
+
+
+this is my handler.py
 """
 handler.py — Policy Coverage Verification
 ──────────────────────────────────────────
@@ -191,7 +633,13 @@ def save_policy_details(policy_number: str) -> dict:
                 if isinstance(lim, dict) and lim.get("amount") is not None:
                     try:
                         # coverage_limit = float(lim["amount"])
-                        coverage_limit = 500000
+                        # coverage_limit = 500000
+                        if coverage_limit is None:
+                            log.warning(
+                                "Guidewire did not return a coverage limit for policy %s. Using default PoC value 500000.",
+                                policy_number,
+                            )
+                            coverage_limit = 500000.0
                     except (TypeError, ValueError):
                         pass
             # Exclusions
