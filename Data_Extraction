@@ -214,39 +214,39 @@ def save_policy_details(policy_number: str) -> dict:
     exclusions_list = []
     lines_data = (attrs.get("lines") or {}).get("data", []) if isinstance(attrs.get("lines"), dict) else []
     for line in lines_data:
-    line_attrs = line.get("attributes", {}) if isinstance(line, dict) else {}
-    coverages_data = (
+        line_attrs = line.get("attributes", {}) if isinstance(line, dict) else {}
+        coverages_data = (
         (line_attrs.get("coverages") or {}).get("data", [])
         if isinstance(line_attrs.get("coverages"), dict)
         else []
     )
-    for cov in coverages_data:
-        cov_attrs = cov.get("attributes", {}) if isinstance(cov, dict) else {}
-        # Deductible
-        if deductible is None:
-            ded = cov_attrs.get("deductible") or {}
-            if isinstance(ded, dict) and ded.get("amount") is not None:
-                try:
-                    deductible = float(ded["amount"])
-                except (TypeError, ValueError):
-                    pass
-        # Coverage Limit
-        if coverage_limit is None:
-            lim = cov_attrs.get("coverageAmount") or cov_attrs.get("limit") or {}
-            if isinstance(lim, dict) and lim.get("amount") is not None:
-                try:
-                    coverage_limit = float(lim["amount"])
-                except (TypeError, ValueError):
-                    pass
-        # Exclusions
-        for excl in (cov_attrs.get("exclusions") or []):
-            name = (
-                (excl.get("attributes") or {}).get("name")
-                if isinstance(excl, dict)
-                else None
-            )
-            if name:
-                exclusions_list.append(name)
+        for cov in coverages_data:
+            cov_attrs = cov.get("attributes", {}) if isinstance(cov, dict) else {}
+            # Deductible
+            if deductible is None:
+                ded = cov_attrs.get("deductible") or {}
+                if isinstance(ded, dict) and ded.get("amount") is not None:
+                    try:
+                        deductible = float(ded["amount"])
+                    except (TypeError, ValueError):
+                        pass
+            # Coverage Limit
+            if coverage_limit is None:
+                lim = cov_attrs.get("coverageAmount") or cov_attrs.get("limit") or {}
+                if isinstance(lim, dict) and lim.get("amount") is not None:
+                    try:
+                        coverage_limit = float(lim["amount"])
+                    except (TypeError, ValueError):
+                        pass
+            # Exclusions
+            for excl in (cov_attrs.get("exclusions") or []):
+                name = (
+                    (excl.get("attributes") or {}).get("name")
+                    if isinstance(excl, dict)
+                    else None
+                )
+                if name:
+                    exclusions_list.append(name)
     # Fallback ONLY if Guidewire did not provide a coverage limit
     if coverage_limit is None:
     log.warning(
@@ -625,4 +625,6 @@ def get_claim_details(claim_id: str) -> dict:
     finally:
 
         conn.close()
- 
+
+
+now is it correct
