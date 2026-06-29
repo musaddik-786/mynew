@@ -1,233 +1,28 @@
-JarvisClaims@JarvisClaims:~/Musaddique$ curl -s -N -X POST http://localhost:8912/chat \
- -H "Content-Type: application/json" \
- -d '{
-   "message":"Should the laminate flooring in claim CLM-2026-1001 be repaired or replaced? The flooring is 4 years old and has 12 years of useful life remaining."
- }' \
- --max-time 90
-data: [Tool: compare_repair_vs_replace] Starting...
-
-data: [Tool: compare_repair_vs_replace] Done
-
-data: It
-
-data:  appears
-
-data:  there
-
-data:  was
-
-data:  an
-
-data:  issue
-
-data:  processing
-
-data:  the
-
-data:  claim
-
-data:  due
-
-data:  to
-
-data:  a
-
-data:  formatting
-
-data:  error
-
-data:  with
-
-data:  the
-
-data:  claim
-
-data:  ID
-
-data: .
-
-data:  The
-
-data:  system
-
-data:  expected
-
-data:  a
-
-data:  numerical
-
-data:  value
-
-data:  for
-
-data:  the
-
-data:  claim
-
-data:  ID
-
-data: ,
-
-data:  but
-
-data:  "
-
-data: CL
-
-data: M
-
-data: -
-
-data: 202
-
-data: 6
-
-data: -
-
-data: 100
-
-data: 1
-
-data: "
-
-data:  was
-
-data:  provided
-
-data: ,
-
-data:  which
-
-data:  caused
-
-data:  an
-
-data:  error
-
-data: .
-
-
-
-data: Could
-
-data:  you
-
-data:  please
-
-data:  confirm
-
-data:  if
-
-data:  the
-
-data:  claim
-
-data:  ID
-
-data:  "
-
-data: CL
-
-data: M
-
-data: -
-
-data: 202
-
-data: 6
-
-data: -
-
-data: 100
-
-data: 1
-
-data: "
-
-data:  is
-
-data:  correct
-
-data:  and
-
-data:  should
-
-data:  be
-
-data:  used
-
-data:  as
-
-data:  is
-
-data: ?
-
-data:  If
-
-data:  there
-
-data:  is
-
-data:  a
-
-data:  different
-
-data:  numerical
-
-data:  claim
-
-data:  ID
-
-data: ,
-
-data:  please
-
-data:  provide
-
-data:  it
-
-data: .
-
-data:  Once
-
-data:  confirmed
-
-data: ,
-
-data:  I
-
-data:  can
-
-data:  proceed
-
-data:  to
-
-data:  determine
-
-data:  whether
-
-data:  the
-
-data:  laminate
-
-data:  flooring
-
-data:  should
-
-data:  be
-
-data:  repaired
-
-data:  or
-
-data:  replaced
-
-data: .
-
-data:  
-
-
-
-data: End
-
-JarvisClaims@JarvisClaims:~/Musaddique$ 
+(venv) JarvisClaims@JarvisClaims:~/Musaddique/Jarvis_claims_agents_v2_copy/AdjusterAgents/RepairVsReplacementAgent$ python3 server.py 
+INFO:     Started server process [29422]
+INFO:     Waiting for application startup.
+INFO:     Application startup complete.
+INFO:     Uvicorn running on http://0.0.0.0:8912 (Press CTRL+C to quit)
+2026-06-29 12:18:23,014 | INFO     | httpx | HTTP Request: POST http://localhost:5900/api/v1/repair_vs_replacement/mcp "HTTP/1.1 200 OK"
+2026-06-29 12:18:23,015 | INFO     | mcp.client.streamable_http | Received session ID: e256eb82e5df44e791c86815ea6c3d5d
+2026-06-29 12:18:23,015 | INFO     | mcp.client.streamable_http | Negotiated protocol version: 2025-11-25
+2026-06-29 12:18:23,019 | INFO     | httpx | HTTP Request: POST http://localhost:5900/api/v1/repair_vs_replacement/mcp "HTTP/1.1 202 Accepted"
+2026-06-29 12:18:23,025 | INFO     | httpx | HTTP Request: POST http://localhost:5900/api/v1/repair_vs_replacement/mcp "HTTP/1.1 200 OK"
+2026-06-29 12:18:23,028 | INFO     | httpx | HTTP Request: DELETE http://localhost:5900/api/v1/repair_vs_replacement/mcp "HTTP/1.1 200 OK"
+2026-06-29 12:18:23,029 | INFO     | repair_vs_replacement_agent | Tools loaded from MCP: ['get_estimates', 'write_estimate', 'get_repair_cost_detail', 'write_repair_cost', 'get_replacement_cost_detail', 'write_replacement_cost', 'compare_repair_vs_replace']
+2026-06-29 12:18:23,452 | WARNING  | repair_vs_replacement_agent | Phoenix prompt load failed (Phoenix not configured) — using fallback prompt
+INFO:     127.0.0.1:45706 - "POST /chat HTTP/1.1" 200 OK
+2026-06-29 12:18:24,174 | INFO     | httpx | HTTP Request: POST https://azureclaimsopenai.openai.azure.com/openai/deployments/gpt-4.1-claims/chat/completions?api-version=2025-01-01-preview "HTTP/1.1 200 OK"
+2026-06-29 12:18:24,406 | INFO     | httpx | HTTP Request: POST http://localhost:5900/api/v1/repair_vs_replacement/mcp "HTTP/1.1 200 OK"
+2026-06-29 12:18:24,406 | INFO     | mcp.client.streamable_http | Received session ID: adcea002195e468bbbdfbffbe2904f25
+2026-06-29 12:18:24,407 | INFO     | mcp.client.streamable_http | Negotiated protocol version: 2025-11-25
+2026-06-29 12:18:24,410 | INFO     | httpx | HTTP Request: POST http://localhost:5900/api/v1/repair_vs_replacement/mcp "HTTP/1.1 202 Accepted"
+2026-06-29 12:18:24,519 | INFO     | httpx | HTTP Request: POST http://localhost:5900/api/v1/repair_vs_replacement/mcp "HTTP/1.1 200 OK"
+2026-06-29 12:18:24,522 | INFO     | httpx | HTTP Request: DELETE http://localhost:5900/api/v1/repair_vs_replacement/mcp "HTTP/1.1 200 OK"
+2026-06-29 12:18:25,308 | INFO     | httpx | HTTP Request: POST https://azureclaimsopenai.openai.azure.com/openai/deployments/gpt-4.1-claims/chat/completions?api-version=2025-01-01-preview "HTTP/1.1 200 OK"
+
+
+
+
+
+also claim id is text only ie string
