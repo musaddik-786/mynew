@@ -1,28 +1,298 @@
-(venv) JarvisClaims@JarvisClaims:~/Musaddique/Jarvis_claims_agents_v2_copy/AdjusterAgents/RepairVsReplacementAgent$ python3 server.py 
-INFO:     Started server process [29422]
-INFO:     Waiting for application startup.
-INFO:     Application startup complete.
-INFO:     Uvicorn running on http://0.0.0.0:8912 (Press CTRL+C to quit)
-2026-06-29 12:18:23,014 | INFO     | httpx | HTTP Request: POST http://localhost:5900/api/v1/repair_vs_replacement/mcp "HTTP/1.1 200 OK"
-2026-06-29 12:18:23,015 | INFO     | mcp.client.streamable_http | Received session ID: e256eb82e5df44e791c86815ea6c3d5d
-2026-06-29 12:18:23,015 | INFO     | mcp.client.streamable_http | Negotiated protocol version: 2025-11-25
-2026-06-29 12:18:23,019 | INFO     | httpx | HTTP Request: POST http://localhost:5900/api/v1/repair_vs_replacement/mcp "HTTP/1.1 202 Accepted"
-2026-06-29 12:18:23,025 | INFO     | httpx | HTTP Request: POST http://localhost:5900/api/v1/repair_vs_replacement/mcp "HTTP/1.1 200 OK"
-2026-06-29 12:18:23,028 | INFO     | httpx | HTTP Request: DELETE http://localhost:5900/api/v1/repair_vs_replacement/mcp "HTTP/1.1 200 OK"
-2026-06-29 12:18:23,029 | INFO     | repair_vs_replacement_agent | Tools loaded from MCP: ['get_estimates', 'write_estimate', 'get_repair_cost_detail', 'write_repair_cost', 'get_replacement_cost_detail', 'write_replacement_cost', 'compare_repair_vs_replace']
-2026-06-29 12:18:23,452 | WARNING  | repair_vs_replacement_agent | Phoenix prompt load failed (Phoenix not configured) — using fallback prompt
-INFO:     127.0.0.1:45706 - "POST /chat HTTP/1.1" 200 OK
-2026-06-29 12:18:24,174 | INFO     | httpx | HTTP Request: POST https://azureclaimsopenai.openai.azure.com/openai/deployments/gpt-4.1-claims/chat/completions?api-version=2025-01-01-preview "HTTP/1.1 200 OK"
-2026-06-29 12:18:24,406 | INFO     | httpx | HTTP Request: POST http://localhost:5900/api/v1/repair_vs_replacement/mcp "HTTP/1.1 200 OK"
-2026-06-29 12:18:24,406 | INFO     | mcp.client.streamable_http | Received session ID: adcea002195e468bbbdfbffbe2904f25
-2026-06-29 12:18:24,407 | INFO     | mcp.client.streamable_http | Negotiated protocol version: 2025-11-25
-2026-06-29 12:18:24,410 | INFO     | httpx | HTTP Request: POST http://localhost:5900/api/v1/repair_vs_replacement/mcp "HTTP/1.1 202 Accepted"
-2026-06-29 12:18:24,519 | INFO     | httpx | HTTP Request: POST http://localhost:5900/api/v1/repair_vs_replacement/mcp "HTTP/1.1 200 OK"
-2026-06-29 12:18:24,522 | INFO     | httpx | HTTP Request: DELETE http://localhost:5900/api/v1/repair_vs_replacement/mcp "HTTP/1.1 200 OK"
-2026-06-29 12:18:25,308 | INFO     | httpx | HTTP Request: POST https://azureclaimsopenai.openai.azure.com/openai/deployments/gpt-4.1-claims/chat/completions?api-version=2025-01-01-preview "HTTP/1.1 200 OK"
+JarvisClaims@JarvisClaims:~/Musaddique$ curl -s -N -X POST http://localhost:8912/chat  -H "Content-Type: application/json"  -d '{
+   "message":"Should the laminate flooring in claim CLM-2026-1001 be repaired or replaced? The flooring is 4 years old and has 12 years of useful life remaining."
+ }'  --max-time 90
+data: [Tool: compare_repair_vs_replace] Starting...
+
+data: [Tool: compare_repair_vs_replace] Done
+
+data: There
+
+data:  was
+
+data:  an
+
+data:  issue
+
+data:  processing
+
+data:  your
+
+data:  request
+
+data:  because
+
+data:  the
+
+data:  claim
+
+data: _id
+
+data:  "
+
+data: CL
+
+data: M
+
+data: -
+
+data: 202
+
+data: 6
+
+data: -
+
+data: 100
+
+data: 1
+
+data: "
+
+data:  was
+
+data:  not
+
+data:  recognized
+
+data:  as
+
+data:  a
+
+data:  valid
+
+data:  integer
+
+data: ,
+
+data:  which
+
+data:  is
+
+data:  required
+
+data:  by
+
+data:  the
+
+data:  system
+
+data: .
+
+data:  Please
+
+data:  provide
+
+data:  the
+
+data:  claim
+
+data:  ID
+
+data:  as
+
+data:  an
+
+data:  integer
+
+data:  or
+
+data:  verify
+
+data:  if
+
+data:  there
+
+data:  is
+
+data:  a
+
+data:  specific
+
+data:  numeric
+
+data:  identifier
+
+data:  associated
+
+data:  with
+
+data:  this
+
+data:  claim
+
+data: .
 
 
 
+data: Once
+
+data:  you
+
+data:  provide
+
+data:  a
+
+data:  valid
+
+data:  claim
+
+data:  ID
+
+data: ,
+
+data:  I
+
+data:  can
+
+data:  proceed
+
+data:  to
+
+data:  compare
+
+data:  repair
+
+data:  versus
+
+data:  replacement
+
+data:  for
+
+data:  the
+
+data:  laminate
+
+data:  flooring
+
+data:  and
+
+data:  give
+
+data:  you
+
+data:  a
+
+data:  recommendation
+
+data: .
+
+data:  
 
 
-also claim id is text only ie string
+
+data: End
+JarvisClaims@JarvisClaims:~/Musaddique$ 
+
+
+air_vs_replacement/mcp HTTP/1.1" 200 OK
+INFO:     127.0.0.1:35332 - "POST /api/v1/repair_vs_replacement/mcp HTTP/1.1" 202 Accepted
+compare_repair_vs_replace error
+Traceback (most recent call last):
+  File "/home/JarvisClaims/Musaddique/Jarvis_claims_agents_v2_copy/AdjusterAgents/MCP/repair_vs_replacement_router.py", line 136, in compare_repair_vs_replace
+    return handler.compare_repair_vs_replace(claim_id, body.item_type, body.item_age, body.useful_life_remaining)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/JarvisClaims/Musaddique/Jarvis_claims_agents_v2_copy/AdjusterAgents/MCP/repair_vs_replacement_mcp/handler.py", line 208, in compare_repair_vs_replace
+    estimate = write_estimate(
+               ^^^^^^^^^^^^^^^
+  File "/home/JarvisClaims/Musaddique/Jarvis_claims_agents_v2_copy/AdjusterAgents/MCP/repair_vs_replacement_mcp/handler.py", line 47, in write_estimate
+    cur.execute(
+  File "/home/JarvisClaims/Musaddique/Jarvis_claims_agents_v2_copy/AdjusterAgents/venv/lib/python3.11/site-packages/psycopg2/extras.py", line 236, in execute
+    return super().execute(query, vars)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+psycopg2.errors.InvalidTextRepresentation: invalid input syntax for type integer: "CLM-2026-1001"
+LINE 5:             ) VALUES ('CLM-2026-1001','laminate flooring',4,...
+                              ^
+
+Error calling compare_repair_vs_replace
+Traceback (most recent call last):
+  File "/home/JarvisClaims/Musaddique/Jarvis_claims_agents_v2_copy/AdjusterAgents/venv/lib/python3.11/site-packages/fastapi_mcp/server.py", line 559, in _execute_api_tool
+    raise Exception(
+Exception: Error calling compare_repair_vs_replace. Status code: 500. Response: {"detail":"invalid input syntax for type integer: \"CLM-2026-1001\"\nLINE 5:             ) VALUES ('CLM-2026-1001','laminate flooring',4,...\n                              ^\n"}
+INFO:     127.0.0.1:35344 - "POST /api/v1/repair_vs_replacement/mcp HTTP/1.1" 200 OK
+INFO:     127.0.0.1:35344 - "DELETE /api/v1/repair_vs_replacement/mcp HTTP/1.1" 200 OK
+INFO:     127.0.0.1:35342 - "GET /api/v1/repair_vs_replacement/mcp HTTP/1.1" 200 OK
+
+ed, not str
+Call stack:
+  File "/home/JarvisClaims/Musaddique/Jarvis_claims_agents_v2_copy/AdjusterAgents/RepairVsReplacementAgent/server.py", line 246, in <module>
+    uvicorn.run(app, host="0.0.0.0", port=AGENT_PORT)
+  File "/home/JarvisClaims/Musaddique/Jarvis_claims_agents_v2_copy/AdjusterAgents/venv/lib/python3.11/site-packages/uvicorn/main.py", line 620, in run
+    server.run()
+  File "/home/JarvisClaims/Musaddique/Jarvis_claims_agents_v2_copy/AdjusterAgents/venv/lib/python3.11/site-packages/uvicorn/server.py", line 75, in run
+    return asyncio_run(self.serve(sockets=sockets), loop_factory=self.config.get_loop_factory())
+  File "/home/JarvisClaims/Musaddique/Jarvis_claims_agents_v2_copy/AdjusterAgents/venv/lib/python3.11/site-packages/uvicorn/_compat.py", line 30, in asyncio_run
+    return runner.run(main)
+  File "/usr/lib/python3.11/asyncio/runners.py", line 118, in run
+    return self._loop.run_until_complete(task)
+  File "/usr/lib/python3.11/asyncio/base_events.py", line 640, in run_until_complete
+    self.run_forever()
+  File "/usr/lib/python3.11/asyncio/base_events.py", line 607, in run_forever
+    self._run_once()
+  File "/usr/lib/python3.11/asyncio/base_events.py", line 1922, in _run_once
+    handle._run()
+  File "/usr/lib/python3.11/asyncio/events.py", line 80, in _run
+    self._context.run(self._callback, *self._args)
+  File "/home/JarvisClaims/Musaddique/Jarvis_claims_agents_v2_copy/AdjusterAgents/venv/lib/python3.11/site-packages/uvicorn/server.py", line 79, in serve
+    await self._serve(sockets)
+  File "/home/JarvisClaims/Musaddique/Jarvis_claims_agents_v2_copy/AdjusterAgents/venv/lib/python3.11/site-packages/uvicorn/server.py", line 94, in _serve
+    await self.startup(sockets=sockets)
+  File "/home/JarvisClaims/Musaddique/Jarvis_claims_agents_v2_copy/AdjusterAgents/venv/lib/python3.11/site-packages/uvicorn/server.py", line 189, in startup
+    self._log_started_message(listeners)
+  File "/home/JarvisClaims/Musaddique/Jarvis_claims_agents_v2_copy/AdjusterAgents/venv/lib/python3.11/site-packages/uvicorn/server.py", line 224, in _log_started_message
+    logger.info(
+Message: 'Uvicorn running on %s://%s:%d (Press CTRL+C to quit)'
+Arguments: ('http', '0.0.0.0', '8912')
+2026-06-29 12:36:39,085 | INFO     | httpx | HTTP Request: POST http://localhost:5900/api/v1/repair_vs_replacement/mcp "HTTP/1.1 200 OK"
+2026-06-29 12:36:39,086 | INFO     | mcp.client.streamable_http | Received session ID: 59b0054620a44da38d06f61084678760
+2026-06-29 12:36:39,086 | INFO     | mcp.client.streamable_http | Negotiated protocol version: 2025-11-25
+2026-06-29 12:36:39,090 | INFO     | httpx | HTTP Request: POST http://localhost:5900/api/v1/repair_vs_replacement/mcp "HTTP/1.1 202 Accepted"
+2026-06-29 12:36:39,096 | INFO     | httpx | HTTP Request: POST http://localhost:5900/api/v1/repair_vs_replacement/mcp "HTTP/1.1 200 OK"
+2026-06-29 12:36:39,099 | INFO     | httpx | HTTP Request: DELETE http://localhost:5900/api/v1/repair_vs_replacement/mcp "HTTP/1.1 200 OK"
+2026-06-29 12:36:39,100 | INFO     | repair_vs_replacement_agent | Tools loaded from MCP: ['get_estimates', 'write_estimate', 'get_repair_cost_detail', 'write_repair_cost', 'get_replacement_cost_detail', 'write_replacement_cost', 'compare_repair_vs_replace']
+2026-06-29 12:36:39,521 | WARNING  | repair_vs_replacement_agent | Phoenix prompt load failed (Phoenix not configured) — using fallback prompt
+INFO:     127.0.0.1:53780 - "POST /chat HTTP/1.1" 200 OK
+2026-06-29 12:36:40,261 | INFO     | httpx | HTTP Request: POST https://azureclaimsopenai.openai.azure.com/openai/deployments/gpt-4.1-claims/chat/completions?api-version=2025-01-01-preview "HTTP/1.1 200 OK"
+2026-06-29 12:36:40,682 | INFO     | repair_vs_replacement_agent | AI MESSAGE = content='' additional_kwargs={} response_metadata={'finish_reason': 'tool_calls', 'model_name': 'gpt-4.1-2025-04-14', 'system_fingerprint': 'fp_6f1d30ad9d', 'service_tier': 'default', 'model_provider': 'openai'} id='lc_run--019f1361-b9f2-7203-9811-f1255362c355' tool_calls=[{'name': 'compare_repair_vs_replace', 'args': {'claim_id': 'CLM-2026-1001', 'item_type': 'laminate flooring', 'item_age': 4, 'useful_life_remaining': 12}, 'id': 'call_uqhdPTMh9fMUZkkzhfPqqoMw', 'type': 'tool_call'}] invalid_tool_calls=[] usage_metadata={'input_tokens': 882, 'output_tokens': 46, 'total_tokens': 928, 'input_token_details': {'audio': 0, 'cache_read': 0}, 'output_token_details': {'audio': 0, 'reasoning': 0}}
+2026-06-29 12:36:40,682 | INFO     | repair_vs_replacement_agent | TOOL CALLS = [{'name': 'compare_repair_vs_replace', 'args': {'claim_id': 'CLM-2026-1001', 'item_type': 'laminate flooring', 'item_age': 4, 'useful_life_remaining': 12}, 'id': 'call_uqhdPTMh9fMUZkkzhfPqqoMw', 'type': 'tool_call'}]
+2026-06-29 12:36:40,730 | INFO     | httpx | HTTP Request: POST http://localhost:5900/api/v1/repair_vs_replacement/mcp "HTTP/1.1 200 OK"
+2026-06-29 12:36:40,730 | INFO     | mcp.client.streamable_http | Received session ID: 7c469c15d4c0459abf211ed18b5a4754
+2026-06-29 12:36:40,730 | INFO     | mcp.client.streamable_http | Negotiated protocol version: 2025-11-25
+2026-06-29 12:36:40,734 | INFO     | httpx | HTTP Request: POST http://localhost:5900/api/v1/repair_vs_replacement/mcp "HTTP/1.1 202 Accepted"
+2026-06-29 12:36:40,845 | INFO     | httpx | HTTP Request: POST http://localhost:5900/api/v1/repair_vs_replacement/mcp "HTTP/1.1 200 OK"
+2026-06-29 12:36:40,849 | INFO     | httpx | HTTP Request: DELETE http://localhost:5900/api/v1/repair_vs_replacement/mcp "HTTP/1.1 200 OK"
+2026-06-29 12:36:41,701 | INFO     | httpx | HTTP Request: POST https://azureclaimsopenai.openai.azure.com/openai/deployments/gpt-4.1-claims/chat/completions?api-version=2025-01-01-preview "HTTP/1.1 200 OK"
+2026-06-29 12:36:42,338 | INFO     | repair_vs_replacement_agent | AI MESSAGE = content='It appears there was a technical issue interpreting the claim ID, possibly due to formatting. To proceed, could you confirm if "CLM-2026-1001" is the correct claim ID, or should I use a different format (such as a numeric value)? Once confirmed, I can accurately compare repair versus replacement options for the laminate flooring and provide a recommendation. \n\nPlease advise so I can continue. End' additional_kwargs={} response_metadata={'finish_reason': 'stop', 'model_name': 'gpt-4.1-2025-04-14', 'system_fingerprint': 'fp_6f1d30ad9d', 'service_tier': 'default', 'model_provider': 'openai'} id='lc_run--019f1361-bf14-7333-9762-b96adc149eb9' tool_calls=[] invalid_tool_calls=[] usage_metadata={'input_tokens': 1005, 'output_tokens': 85, 'total_tokens': 1090, 'input_token_details': {'audio': 0, 'cache_read': 0}, 'output_token_details': {'audio': 0, 'reasoning': 0}}
+2026-06-29 12:36:42,338 | INFO     | repair_vs_replacement_agent | TOOL CALLS = []
+2026-06-29 12:39:05,701 | INFO     | httpx | HTTP Request: POST http://localhost:5900/api/v1/repair_vs_replacement/mcp "HTTP/1.1 200 OK"
+2026-06-29 12:39:05,701 | INFO     | mcp.client.streamable_http | Received session ID: d7a1b9b519224baeb6d90c72d0e6376b
+2026-06-29 12:39:05,702 | INFO     | mcp.client.streamable_http | Negotiated protocol version: 2025-11-25
+2026-06-29 12:39:05,704 | INFO     | httpx | HTTP Request: POST http://localhost:5900/api/v1/repair_vs_replacement/mcp "HTTP/1.1 202 Accepted"
+2026-06-29 12:39:05,709 | INFO     | httpx | HTTP Request: POST http://localhost:5900/api/v1/repair_vs_replacement/mcp "HTTP/1.1 200 OK"
+2026-06-29 12:39:05,712 | INFO     | httpx | HTTP Request: DELETE http://localhost:5900/api/v1/repair_vs_replacement/mcp "HTTP/1.1 200 OK"
+2026-06-29 12:39:05,713 | INFO     | repair_vs_replacement_agent | Tools loaded from MCP: ['get_estimates', 'write_estimate', 'get_repair_cost_detail', 'write_repair_cost', 'get_replacement_cost_detail', 'write_replacement_cost', 'compare_repair_vs_replace']
+2026-06-29 12:39:05,792 | WARNING  | repair_vs_replacement_agent | Phoenix prompt load failed (Phoenix not configured) — using fallback prompt
+INFO:     127.0.0.1:60210 - "POST /chat HTTP/1.1" 200 OK
+2026-06-29 12:39:06,347 | INFO     | httpx | HTTP Request: POST https://azureclaimsopenai.openai.azure.com/openai/deployments/gpt-4.1-claims/chat/completions?api-version=2025-01-01-preview "HTTP/1.1 200 OK"
+2026-06-29 12:39:06,981 | INFO     | repair_vs_replacement_agent | AI MESSAGE = content='To proceed, please provide the following details:\n\n- item_type (e.g., appliance, HVAC, roofing, etc.)\n- item_age (number of years)\n- useful_life_remaining (number of years expected remaining for the item)\n\nOnce you provide these, I can begin the repair vs replacement analysis for the claim.' additional_kwargs={} response_metadata={'finish_reason': 'stop', 'model_name': 'gpt-4.1-2025-04-14', 'system_fingerprint': 'fp_6f1d30ad9d', 'service_tier': 'default', 'model_provider': 'openai'} id='lc_run--019f1363-f54c-7d83-a097-4f759c7c55ac' tool_calls=[] invalid_tool_calls=[] usage_metadata={'input_tokens': 853, 'output_tokens': 66, 'total_tokens': 919, 'input_token_details': {'audio': 0, 'cache_read': 0}, 'output_token_details': {'audio': 0, 'reasoning': 0}}
+2026-06-29 12:39:06,981 | INFO     | repair_vs_replacement_agent | TOOL CALLS = []
+2026-06-29 12:43:26,877 | INFO     | httpx | HTTP Request: POST http://localhost:5900/api/v1/repair_vs_replacement/mcp "HTTP/1.1 200 OK"
+2026-06-29 12:43:26,877 | INFO     | mcp.client.streamable_http | Received session ID: 79db69624f314fddbfd81c1d6fcfc00c
+2026-06-29 12:43:26,878 | INFO     | mcp.client.streamable_http | Negotiated protocol version: 2025-11-25
+2026-06-29 12:43:26,881 | INFO     | httpx | HTTP Request: POST http://localhost:5900/api/v1/repair_vs_replacement/mcp "HTTP/1.1 202 Accepted"
+2026-06-29 12:43:26,885 | INFO     | httpx | HTTP Request: POST http://localhost:5900/api/v1/repair_vs_replacement/mcp "HTTP/1.1 200 OK"
+2026-06-29 12:43:26,888 | INFO     | httpx | HTTP Request: DELETE http://localhost:5900/api/v1/repair_vs_replacement/mcp "HTTP/1.1 200 OK"
+2026-06-29 12:43:26,889 | INFO     | repair_vs_replacement_agent | Tools loaded from MCP: ['get_estimates', 'write_estimate', 'get_repair_cost_detail', 'write_repair_cost', 'get_replacement_cost_detail', 'write_replacement_cost', 'compare_repair_vs_replace']
+2026-06-29 12:43:26,966 | WARNING  | repair_vs_replacement_agent | Phoenix prompt load failed (Phoenix not configured) — using fallback prompt
+INFO:     127.0.0.1:58316 - "POST /chat HTTP/1.1" 200 OK
+2026-06-29 12:43:27,406 | INFO     | httpx | HTTP Request: POST https://azureclaimsopenai.openai.azure.com/openai/deployments/gpt-4.1-claims/chat/completions?api-version=2025-01-01-preview "HTTP/1.1 200 OK"
+2026-06-29 12:43:27,589 | INFO     | repair_vs_replacement_agent | AI MESSAGE = content='' additional_kwargs={} response_metadata={'finish_reason': 'tool_calls', 'model_name': 'gpt-4.1-2025-04-14', 'system_fingerprint': 'fp_6f1d30ad9d', 'service_tier': 'default', 'model_provider': 'openai'} id='lc_run--019f1367-f17f-7ab1-b470-ff7d28474d0c' tool_calls=[{'name': 'compare_repair_vs_replace', 'args': {'claim_id': 'CLM-2026-1001', 'item_type': 'laminate flooring', 'item_age': 4, 'useful_life_remaining': 12}, 'id': 'call_owuEfNQswOBPqKlFiGwN56vX', 'type': 'tool_call'}] invalid_tool_calls=[] usage_metadata={'input_tokens': 882, 'output_tokens': 46, 'total_tokens': 928, 'input_token_details': {'audio': 0, 'cache_read': 0}, 'output_token_details': {'audio': 0, 'reasoning': 0}}
+2026-06-29 12:43:27,589 | INFO     | repair_vs_replacement_agent | TOOL CALLS = [{'name': 'compare_repair_vs_replace', 'args': {'claim_id': 'CLM-2026-1001', 'item_type': 'laminate flooring', 'item_age': 4, 'useful_life_remaining': 12}, 'id': 'call_owuEfNQswOBPqKlFiGwN56vX', 'type': 'tool_call'}]
+2026-06-29 12:43:27,636 | INFO     | httpx | HTTP Request: POST http://localhost:5900/api/v1/repair_vs_replacement/mcp "HTTP/1.1 200 OK"
+2026-06-29 12:43:27,636 | INFO     | mcp.client.streamable_http | Received session ID: 963e3a285e9d4b5eac6677c1d6e0364d
+2026-06-29 12:43:27,636 | INFO     | mcp.client.streamable_http | Negotiated protocol version: 2025-11-25
+2026-06-29 12:43:27,639 | INFO     | httpx | HTTP Request: POST http://localhost:5900/api/v1/repair_vs_replacement/mcp "HTTP/1.1 202 Accepted"
+2026-06-29 12:43:27,751 | INFO     | httpx | HTTP Request: POST http://localhost:5900/api/v1/repair_vs_replacement/mcp "HTTP/1.1 200 OK"
+2026-06-29 12:43:27,754 | INFO     | httpx | HTTP Request: DELETE http://localhost:5900/api/v1/repair_vs_replacement/mcp "HTTP/1.1 200 OK"
+2026-06-29 12:43:28,231 | INFO     | httpx | HTTP Request: POST https://azureclaimsopenai.openai.azure.com/openai/deployments/gpt-4.1-claims/chat/completions?api-version=2025-01-01-preview "HTTP/1.1 200 OK"
+2026-06-29 12:43:29,692 | INFO     | repair_vs_replacement_agent | AI MESSAGE = content='There was an issue processing your request because the claim_id "CLM-2026-1001" was not recognized as a valid integer, which is required by the system. Please provide the claim ID as an integer or verify if there is a specific numeric identifier associated with this claim.\n\nOnce you provide a valid claim ID, I can proceed to compare repair versus replacement for the laminate flooring and give you a recommendation. \n\nEnd' additional_kwargs={} response_metadata={'finish_reason': 'stop', 'model_name': 'gpt-4.1-2025-04-14', 'system_fingerprint': 'fp_6f1d30ad9d', 'service_tier': 'default', 'model_provider': 'openai'} id='lc_run--019f1367-f48d-7240-a52b-7166af964b1b' tool_calls=[] invalid_tool_calls=[] usage_metadata={'input_tokens': 1005, 'output_tokens': 88, 'total_tokens': 1093, 'input_token_details': {'audio': 0, 'cache_read': 0}, 'output_token_details': {'audio': 0, 'reasoning': 0}}
+2026-06-29 12:43:29,692 | INFO     | repair_vs_replacement_agent | TOOL CALLS = []
+
