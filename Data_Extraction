@@ -1,12 +1,11 @@
-server.py
 """
-server.py — Repair Vs Replacement Agent
-───────────────────────────────────────
-LangGraph agent that compares repair vs. replacement costs for
-a damaged item and recommends a course of action.
+server.py — Reserve Recommendation Agent
+──────────────────────────────────────────
+LangGraph agent that computes a recommended financial reserve for a claim
+and compares it against the adjuster's manually set reserve.
 
-Port: 8912
-MCP : http://localhost:8900/api/v1/repair_vs_replacement/mcp
+Port: 8910
+MCP : http://localhost:8900/api/v1/reserve_recommendation/mcp
 
 Run:
     py -3 server.py
@@ -41,19 +40,15 @@ logging.basicConfig(
     stream=sys.stdout,
     force=True,
 )
-logger = logging.getLogger("repair_vs_replacement_agent")
+logger = logging.getLogger("reserve_recommendation_agent")
 
 PHOENIX_API_KEY = os.getenv("PHOENIX_API_KEY", "")
 PHOENIX_ENDPOINT = os.getenv("PHOENIX_ENDPOINT", "")
-MCP_URL = os.getenv("MCP_URL", "http://localhost:5900/api/v1/repair_vs_replacement/mcp")
-# MCP_URL =  "http://localhost:5900/api/v1/repair_vs_replacement/mcp"
-
-AGENT_PORT = int(os.getenv("AGENT_PORT", "8912"))
-
-# AGENT_PORT = "8912"
+MCP_URL = os.getenv("MCP_URL", "http://localhost:5900/api/v1/reserve_recommendation/mcp")
+AGENT_PORT = int(os.getenv("AGENT_PORT", "8910"))
 
 config_mcp_server = {
-    "repair_vs_replacement_mcp": {
+    "reserve_recommendation_mcp": {
         "url": MCP_URL,
         "transport": "streamable_http",
         "timeout": timedelta(seconds=120),
@@ -61,7 +56,7 @@ config_mcp_server = {
     }
 }
 
-app = FastAPI(title="Repair Vs Replacement Agent")
+app = FastAPI(title="Reserve Recommendation Agent")
 
 app.add_middleware(
     CORSMiddleware,
@@ -89,18 +84,22 @@ def router(state: State):
 
 
 _FALLBACK_PROMPT = """
-You are the Repair vs Replacement Agent for an insurance claims platform,
+You are the Reserve Recommendation Agent for an insurance claims platform,
 assisting a Claims Adjuster.
 
-Given a claim_id, item_type, item_age, and useful_life_remaining, your
-workflow is:
+Given a claim_id, your workflow is:
 
-1. Call compare_repair_vs_replace with these inputs. This will look up or
-   estimate repair and replacement costs, apply the rule: if
-   repair_cost > 0.6 * replacement_cost OR item_age >= useful_life_remaining
-   then recommend "Replace", else "Repair", and store the result.
-2. Explain to the adjuster the recommendation, the repair vs replacement
-   cost comparison, and the confidence score.
+1. Call recommend_reserve with the claim_id. This will:
+   - Pull loss assessment totals, fraud risk score, and claim severity.
+   - Apply severity and fraud buffers to compute a recommended reserve.
+   - Compare against the adjuster's manually set adjusted_reserve.
+   - Update adjuster_findings with the recommended reserve.
+
+2. Summarize for the adjuster:
+   - The recommended reserve amount and its calculation breakdown.
+   - The severity buffer and fraud risk buffer applied.
+   - Variance vs. the adjuster's manual reserve (if set).
+   - The LLM rationale.
 
 When you have completed the task, end your response with "End".
 """
@@ -111,11 +110,10 @@ def load_prompt() -> str:
         raise RuntimeError("Phoenix not configured")
     from phoenix.client import Client
     client = Client(base_url=PHOENIX_ENDPOINT, api_key=PHOENIX_API_KEY)
-    prompt = client.prompts.get(name="repair_vs_replacement_agent", label="production")
+    prompt = client.prompts.get(name="reserve_recommendation_agent", label="production")
     prompt_set = prompt._template["messages"]
     system_msg = next(
-        (item["content"][0]["text"] for item in prompt_set if item.get("role") == "system"),
-        None,
+        (item["content"][0]["text"] for item in prompt_set if item.get("role") == "system"), None
     )
     if not system_msg:
         raise ValueError("System prompt is empty or missing in Phoenix")
@@ -126,18 +124,9 @@ def create_graph(model, tools, prompt):
     graph_builder = StateGraph(State)
     llm_with_tools = model.bind_tools(tools)
 
-    # async def agent_node(state: State):
-    #     messages = state["messages"]
-    #     all_messages = [SystemMessage(content=prompt)] + messages
-    #     message = await llm_with_tools.ainvoke(all_messages)
-    #     return {"messages": [message]}
-
     async def agent_node(state: State):
-        messages = state["messages"]
-        all_messages = [SystemMessage(content=prompt)] + messages
+        all_messages = [SystemMessage(content=prompt)] + state["messages"]
         message = await llm_with_tools.ainvoke(all_messages)
-        logger.info("AI MESSAGE = %s", message)
-        logger.info("TOOL CALLS = %s", getattr(message, "tool_calls", None))
         return {"messages": [message]}
 
     graph_builder.add_node("agent", agent_node)
@@ -158,25 +147,19 @@ async def get_tools():
 async def stream_graph(graph, initial_state, config):
     async for event in graph.astream_events(initial_state, config=config, version="v2"):
         kind = event.get("event", "")
-
         if kind == "on_chat_model_stream":
             chunk = event["data"].get("chunk")
             if chunk and hasattr(chunk, "content") and chunk.content:
                 yield f"data: {chunk.content}\n\n"
-
         elif kind == "on_tool_start":
-            tool_name = event.get("name", "unknown_tool")
-            yield f"data: [Tool: {tool_name}] Starting...\n\n"
-
+            yield f"data: [Tool: {event.get('name', 'unknown_tool')}] Starting...\n\n"
         elif kind == "on_tool_end":
-            tool_name = event.get("name", "unknown_tool")
-            yield f"data: [Tool: {tool_name}] Done\n\n"
+            yield f"data: [Tool: {event.get('name', 'unknown_tool')}] Done\n\n"
 
 
 @app.post("/chat")
 async def chat_stream(request: Request):
     load_dotenv(find_dotenv())
-
     tools = await get_tools()
 
     model = AzureChatOpenAI(
@@ -193,8 +176,7 @@ async def chat_stream(request: Request):
         system_prompt = _FALLBACK_PROMPT
 
     body = await request.json()
-    user_message = body.get("message", "Recommend repair vs replacement for this item")
-
+    user_message = body.get("message", "Recommend a reserve for this claim")
     graph = create_graph(model=model, tools=tools, prompt=system_prompt)
 
     async def generate():
@@ -240,19 +222,20 @@ async def chat_stream(request: Request):
 
 @app.get("/health")
 async def health():
-    return {"status": "healthy", "agent": "repair_vs_replacement_agent"}
+    return {"status": "healthy", "agent": "reserve_recommendation_agent"}
 
 
 if __name__ == "__main__":
     uvicorn.run(app, host="0.0.0.0", port=AGENT_PORT)
 
 
-handler.py
+
 """
-handler.py — Repair vs Replacement
-───────────────────────────────────────
-Compares repair vs. replacement costs for a damaged item and recommends a
-course of action based on a cost-ratio / useful-life rule.
+handler.py — Reserve Recommendation
+──────────────────────────────────────
+Calculates a recommended financial reserve by combining loss_assessments,
+fraud_risk_score, and claim severity. Compares the recommendation against
+the adjuster's manually set adjusted_reserve.
 """
 
 import json
@@ -268,6 +251,8 @@ from langchain_openai.chat_models import AzureChatOpenAI  # noqa: E402
 
 log = logging.getLogger(__name__)
 
+_SEVERITY_BUFFER = {"Critical": 0.30, "High": 0.20, "Medium": 0.10, "Low": 0.05}
+
 
 def _get_llm():
     return AzureChatOpenAI(
@@ -278,199 +263,190 @@ def _get_llm():
     )
 
 
-def get_estimates(claim_id: str) -> list:
-    conn = get_db_connection()
-    try:
-        cur = conn.cursor()
-        cur.execute("SELECT * FROM estimates WHERE claim_id = %s ORDER BY id DESC", (claim_id,))
-        return row_to_dict(cur.fetchall())
-    finally:
-        conn.close()
-
-
-def write_estimate(claim_id: str, item_type: str, item_age: int, useful_life_remaining: int,
-                    repair_cost: float, replacement_cost: float, labor_cost: float, material_cost: float,
-                    recommendation: str, confidence_score: float) -> dict:
+def get_adjuster_findings(claim_id: str) -> Optional[dict]:
     conn = get_db_connection()
     try:
         cur = conn.cursor()
         cur.execute(
-            """
-            INSERT INTO estimates (
-                claim_id, item_type, item_age, useful_life_remaining, repair_cost, replacement_cost,
-                labor_cost, material_cost, recommendation, confidence_score
-            ) VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
-            """,
-            (claim_id, item_type, item_age, useful_life_remaining, repair_cost, replacement_cost,
-             labor_cost, material_cost, recommendation, confidence_score),
+            "SELECT * FROM adjuster_findings WHERE claim_id = %s ORDER BY id DESC LIMIT 1",
+            (claim_id,),
         )
-        conn.commit()
-        return {
-            "id": cur.lastrowid, "claim_id": claim_id, "item_type": item_type, "item_age": item_age,
-            "useful_life_remaining": useful_life_remaining, "repair_cost": repair_cost,
-            "replacement_cost": replacement_cost, "labor_cost": labor_cost, "material_cost": material_cost,
-            "recommendation": recommendation, "confidence_score": confidence_score,
-        }
+        return row_to_dict(cur.fetchone())
     finally:
         conn.close()
 
 
-def get_repair_cost_detail(claim_id: str) -> list:
+def _get_claim(claim_id: str) -> Optional[dict]:
     conn = get_db_connection()
     try:
         cur = conn.cursor()
-        cur.execute("SELECT * FROM repair_costs WHERE claim_id = %s ORDER BY id DESC", (claim_id,))
-        return row_to_dict(cur.fetchall())
+        cur.execute("SELECT * FROM claims WHERE claim_number = %s", (claim_id,))
+        row = cur.fetchone()
+        if row:
+            return row_to_dict(row)
+        if claim_id.isdigit():
+            cur.execute("SELECT * FROM claims WHERE id = %s", (int(claim_id),))
+            return row_to_dict(cur.fetchone())
+        return None
     finally:
         conn.close()
 
 
-def write_repair_cost(item_id: str, claim_id: str, item_type: str, material_cost: float, labor_hours: float,
-                       labor_rate: float, diagnostic_fee: float, urgency_factor: float, notes: Optional[str] = None) -> dict:
-    total_repair_estimate = round((material_cost + labor_hours * labor_rate + diagnostic_fee) * (urgency_factor or 1.0), 2)
+def _get_loss_assessment(claim_id: str) -> Optional[dict]:
     conn = get_db_connection()
     try:
         cur = conn.cursor()
         cur.execute(
-            """
-            INSERT INTO repair_costs (
-                item_id, claim_id, item_type, material_cost, labor_hours, labor_rate,
-                diagnostic_fee, urgency_factor, total_repair_estimate, notes
-            ) VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
-            """,
-            (item_id, claim_id, item_type, material_cost, labor_hours, labor_rate,
-             diagnostic_fee, urgency_factor, total_repair_estimate, notes),
+            "SELECT * FROM loss_assessments WHERE claim_number = %s ORDER BY id DESC LIMIT 1",
+            (claim_id,),
         )
-        conn.commit()
-        return {
-            "id": cur.lastrowid, "item_id": item_id, "claim_id": claim_id, "item_type": item_type,
-            "material_cost": material_cost, "labor_hours": labor_hours, "labor_rate": labor_rate,
-            "diagnostic_fee": diagnostic_fee, "urgency_factor": urgency_factor,
-            "total_repair_estimate": total_repair_estimate, "notes": notes,
-        }
+        return row_to_dict(cur.fetchone())
     finally:
         conn.close()
 
 
-def get_replacement_cost_detail(claim_id: str) -> list:
-    conn = get_db_connection()
-    try:
-        cur = conn.cursor()
-        cur.execute("SELECT * FROM replacement_costs WHERE claim_id = %s ORDER BY id DESC", (claim_id,))
-        return row_to_dict(cur.fetchall())
-    finally:
-        conn.close()
-
-
-def write_replacement_cost(item_id: str, claim_id: str, item_type: str, replacement_material_cost: float,
-                            installation_hours: float, labor_rate: float, delivery_fee: float, disposal_fee: float,
-                            notes: Optional[str] = None) -> dict:
-    total_replacement_estimate = round(
-        replacement_material_cost + installation_hours * labor_rate + delivery_fee + disposal_fee, 2
-    )
+def _get_fraud_risk(claim_id: str) -> Optional[dict]:
     conn = get_db_connection()
     try:
         cur = conn.cursor()
         cur.execute(
-            """
-            INSERT INTO replacement_costs (
-                item_id, claim_id, item_type, replacement_material_cost, installation_hours, labor_rate,
-                delivery_fee, disposal_fee, total_replacement_estimate, notes
-            ) VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
-            """,
-            (item_id, claim_id, item_type, replacement_material_cost, installation_hours, labor_rate,
-             delivery_fee, disposal_fee, total_replacement_estimate, notes),
+            "SELECT * FROM fraud_risk_snapshots WHERE claim_id = %s ORDER BY id DESC LIMIT 1",
+            (claim_id,),
         )
-        conn.commit()
-        return {
-            "id": cur.lastrowid, "item_id": item_id, "claim_id": claim_id, "item_type": item_type,
-            "replacement_material_cost": replacement_material_cost, "installation_hours": installation_hours,
-            "labor_rate": labor_rate, "delivery_fee": delivery_fee, "disposal_fee": disposal_fee,
-            "total_replacement_estimate": total_replacement_estimate, "notes": notes,
-        }
+        return row_to_dict(cur.fetchone())
     finally:
         conn.close()
 
 
-def _llm_estimate_costs(item_type: str, item_age: int) -> dict:
+def recommend_reserve(claim_id: str) -> dict:
+    """
+    Derives a recommended reserve from loss assessment totals, fraud risk
+    buffer, and severity adjustment. Compares to the adjuster's manually
+    set reserve and highlights significant variance.
+    """
+    claim = _get_claim(claim_id)
+    if not claim:
+        raise ValueError(f"Claim {claim_id} not found")
+
+    loss_assessment = _get_loss_assessment(claim_id)
+    fraud_snapshot = _get_fraud_risk(claim_id)
+    findings = get_adjuster_findings(claim_id)
+
+    severity = claim.get("severity") or "Medium"
+    estimated_cost = float(claim.get("estimated_cost") or 0)
+
+    if loss_assessment:
+        base_loss = float(loss_assessment.get("total_parts_cost") or 0) + \
+                    float(loss_assessment.get("total_labor_cost") or 0)
+    else:
+        base_loss = estimated_cost
+
+    fraud_score = int(fraud_snapshot.get("fraud_score") or 0) if fraud_snapshot else 0
+    fraud_buffer_pct = min(fraud_score / 1000, 0.15)
+    severity_buffer_pct = _SEVERITY_BUFFER.get(severity, 0.10)
+
+    recommended_reserve = round(base_loss * (1 + severity_buffer_pct + fraud_buffer_pct), 2)
+
+    adjuster_reserve = float(findings.get("adjusted_reserve") or 0) if findings else 0.0
+    variance_pct = round((recommended_reserve - adjuster_reserve) / adjuster_reserve * 100, 1) if adjuster_reserve > 0 else 0.0
+
     llm = _get_llm()
     prompt = f"""
-You are a claims adjuster's assistant. Estimate plausible repair and
-replacement costs in USD for a "{item_type}" that is {item_age} years old.
-Respond with ONLY a JSON object:
-{{"repair_cost": 0, "replacement_cost": 0, "labor_cost": 0, "material_cost": 0}}
+You are an insurance reserve specialist. Write a one-sentence rationale
+explaining the recommended reserve calculation.
+
+  severity: {severity}
+  base_loss_estimate: {base_loss}
+  severity_buffer_percent: {severity_buffer_pct * 100}%
+  fraud_risk_score: {fraud_score}
+  fraud_buffer_percent: {fraud_buffer_pct * 100:.1f}%
+  recommended_reserve: {recommended_reserve}
+  adjuster_set_reserve: {adjuster_reserve if adjuster_reserve else 'not set'}
+  variance_percent: {variance_pct}%
+
+Respond with ONLY a JSON object: {{"rationale": "..."}}
 """
     response = llm.invoke(prompt)
-    content = response.content.strip()
-    if content.startswith("```"):
-        content = content.strip("`")
-        if content.startswith("json"):
-            content = content[4:]
+    content = response.content.strip().strip("`")
+    if content.startswith("json"):
+        content = content[4:]
     try:
-        return json.loads(content)
+        rationale = json.loads(content).get("rationale", "")
     except Exception:
-        log.warning("Could not parse LLM JSON, defaulting: %s", content)
-        return {"repair_cost": 500, "replacement_cost": 1000, "labor_cost": 200, "material_cost": 300}
+        rationale = f"Reserve based on {severity} severity buffer ({int(severity_buffer_pct * 100)}%) and fraud risk adjustment ({int(fraud_buffer_pct * 100)}%)."
 
-
-def compare_repair_vs_replace(claim_id: str, item_type: str, item_age: int, useful_life_remaining: int) -> dict:
-    # Look up existing repair_costs/replacement_costs for this claim+item_type, if present
     conn = get_db_connection()
     try:
         cur = conn.cursor()
-        cur.execute(
-            "SELECT * FROM repair_costs WHERE claim_id = %s AND item_type = %s ORDER BY id DESC LIMIT 1",
-            (claim_id, item_type),
-        )
-        repair_row = row_to_dict(cur.fetchone())
-        cur.execute(
-            "SELECT * FROM replacement_costs WHERE claim_id = %s AND item_type = %s ORDER BY id DESC LIMIT 1",
-            (claim_id, item_type),
-        )
-        replacement_row = row_to_dict(cur.fetchone())
+        if findings:
+            cur.execute(
+                "UPDATE adjuster_findings SET adjusted_reserve = %s WHERE id = %s",
+                (recommended_reserve, findings["id"]),
+            )
+        else:
+            cur.execute(
+                "INSERT INTO adjuster_findings (claim_id, adjuster_name, fraud_risk, adjusted_reserve) VALUES (%s, %s, %s, %s)",
+                (claim_id, "ReserveRecommendationAgent", rationale[:100], recommended_reserve),
+            )
+        conn.commit()
     finally:
         conn.close()
-
-    if repair_row and replacement_row:
-        repair_cost = float(repair_row["total_repair_estimate"])
-        replacement_cost = float(replacement_row["total_replacement_estimate"])
-        labor_cost = float(repair_row.get("labor_hours") or 0) * float(repair_row.get("labor_rate") or 0)
-        material_cost = float(repair_row.get("material_cost") or 0)
-    else:
-        ai_costs = _llm_estimate_costs(item_type, item_age)
-        repair_cost = float(ai_costs.get("repair_cost", 500))
-        replacement_cost = float(ai_costs.get("replacement_cost", 1000))
-        labor_cost = float(ai_costs.get("labor_cost", 200))
-        material_cost = float(ai_costs.get("material_cost", 300))
-
-    if repair_cost > 0.6 * replacement_cost or item_age >= useful_life_remaining:
-        recommendation = "Replace"
-    else:
-        recommendation = "Repair"
-
-    # Confidence heuristic: bigger gap between costs => more confident
-    if replacement_cost > 0:
-        ratio_gap = abs(repair_cost - replacement_cost) / replacement_cost
-    else:
-        ratio_gap = 0
-    confidence_score = round(min(1.0, 0.5 + ratio_gap), 2)
-
-    estimate = write_estimate(
-        claim_id, item_type, item_age, useful_life_remaining, repair_cost, replacement_cost,
-        labor_cost, material_cost, recommendation, confidence_score,
-    )
 
     return {
         "claim_id": claim_id,
-        "item_type": item_type,
-        "item_age": item_age,
-        "useful_life_remaining": useful_life_remaining,
-        "repair_cost": repair_cost,
-        "replacement_cost": replacement_cost,
-        "recommendation": recommendation,
-        "confidence_score": confidence_score,
-        "estimate": estimate,
+        "recommended_reserve": recommended_reserve,
+        "adjuster_set_reserve": adjuster_reserve or None,
+        "variance_percent": variance_pct,
+        "severity_buffer_percent": round(severity_buffer_pct * 100, 1),
+        "fraud_buffer_percent": round(fraud_buffer_pct * 100, 1),
+        "rationale": rationale,
     }
+
+
+"""
+reserve_recommendation_router.py
+──────────────────────────────────
+Tool / Endpoint map:
+  get_adjuster_findings  GET  /api/reserve_recommendation/findings/{claim_id}
+  recommend_reserve      POST /api/reserve_recommendation/recommend/{claim_id}
+"""
+
+import logging
+from fastapi import APIRouter, HTTPException
+
+from reserve_recommendation_mcp import handler
+
+log = logging.getLogger(__name__)
+
+router = APIRouter()
+
+
+@router.get(
+    "/api/reserve_recommendation/findings/{claim_id}",
+    operation_id="get_adjuster_findings",
+    summary="Read the latest adjuster_findings record for a claim",
+    tags=["ReserveRecommendation"],
+)
+def get_adjuster_findings(claim_id: str):
+    record = handler.get_adjuster_findings(claim_id)
+    return {"claim_id": claim_id, "adjuster_findings": record}
+
+
+@router.post(
+    "/api/reserve_recommendation/recommend/{claim_id}",
+    operation_id="recommend_reserve",
+    summary="Compute and store a recommended financial reserve for a claim",
+    tags=["ReserveRecommendation"],
+)
+def recommend_reserve(claim_id: str):
+    try:
+        return handler.recommend_reserve(claim_id)
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    except Exception as e:
+        log.exception("recommend_reserve error")
+        raise HTTPException(status_code=500, detail=str(e))
+
 
 main.py
 """
@@ -850,5 +826,3 @@ def health():
 
 if __name__ == "__main__":
     uvicorn.run(app, host="0.0.0.0", port=5900)
-
-
