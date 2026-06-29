@@ -826,3 +826,522 @@ def health():
 
 if __name__ == "__main__":
     uvicorn.run(app, host="0.0.0.0", port=5900)
+
+
+
+
+JarvisClaims@JarvisClaims:~/Musaddique$ curl -s -N -X POST http://localhost:8910/chat \
+  -H "Content-Type: application/json" \
+  -d '{"message": "Set the initial reserve for claim CLM-2026-1001. The estimated loss is $8,500 with a $1,000 deductible."}' \
+  --max-time 90
+data: [Tool: get_adjuster_findings] Starting...
+
+data: [Tool: get_adjuster_findings] Done
+
+data: Here
+
+data: ’s
+
+data:  the
+
+data:  reserve
+
+data:  recommendation
+
+data:  summary
+
+data:  for
+
+data:  claim
+
+data:  CL
+
+data: M
+
+data: -
+
+data: 202
+
+data: 6
+
+data: -
+
+data: 100
+
+data: 1
+
+data: :
+
+
+
+data: -
+
+data:  Recommended
+
+data:  Reserve
+
+data:  Amount
+
+data: :
+
+data:  To
+
+data:  be
+
+data:  calculated
+
+data:  (
+
+data: based
+
+data:  on
+
+data:  your
+
+data:  inputs
+
+data: :
+
+data:  $
+
+data: 8
+
+data: ,
+
+data: 500
+
+data:  estimated
+
+data:  loss
+
+data: ,
+
+data:  $
+
+data: 1
+
+data: ,
+
+data: 000
+
+data:  deductible
+
+data: )
+
+
+data: -
+
+data:  Calculation
+
+data:  Breakdown
+
+data: :
+
+
+data:   
+
+data:  -
+
+data:  Base
+
+data:  loss
+
+data:  estimate
+
+data: :
+
+data:  $
+
+data: 8
+
+data: ,
+
+data: 500
+
+data: 
+
+
+data:   
+
+data:  -
+
+data:  Less
+
+data:  deductible
+
+data: :
+
+data:  -
+
+data: $
+
+data: 1
+
+data: ,
+
+data: 000
+
+data: 
+
+
+data:   
+
+data:  -
+
+data:  Severity
+
+data:  buffer
+
+data: :
+
+data:  will
+
+data:  be
+
+data:  added
+
+data:  (
+
+data: usually
+
+data:  a
+
+data:  percentage
+
+data:  applied
+
+data:  based
+
+data:  on
+
+data:  claim
+
+data:  type
+
+data: /se
+
+data: verity
+
+data: )
+
+
+data:   
+
+data:  -
+
+data:  Fraud
+
+data:  risk
+
+data:  buffer
+
+data: :
+
+data:  will
+
+data:  be
+
+data:  added
+
+data:  (
+
+data: based
+
+data:  on
+
+data:  risk
+
+data:  score
+
+data: /f
+
+data: raud
+
+data:  likelihood
+
+data: ;
+
+data:  currently
+
+data: ,
+
+data:  "
+
+data: Low
+
+data: "
+
+data:  risk
+
+data: ,
+
+data:  score
+
+data: :
+
+data:  
+
+data: 10
+
+data: )
+
+
+data: -
+
+data:  The
+
+data:  adjust
+
+data: er's
+
+data:  initial
+
+data:  manual
+
+data:  reserve
+
+data:  is
+
+data:  set
+
+data:  at
+
+data:  $
+
+data: 5
+
+data: ,
+
+data: 000
+
+data: .
+
+
+
+data: Next
+
+data:  steps
+
+data: :
+
+data:  
+
+
+data: -
+
+data:  I
+
+data:  will
+
+data:  complete
+
+data:  the
+
+data:  reserve
+
+data:  recommendation
+
+data:  with
+
+data:  breakdown
+
+data:  and
+
+data:  variance
+
+data: ,
+
+data:  using
+
+data:  the
+
+data:  calculation
+
+data:  model
+
+data:  and
+
+data:  buffers
+
+data: .
+
+
+data: -
+
+data:  I
+
+data: ’ll
+
+data:  summarize
+
+data:  the
+
+data:  rationale
+
+data:  and
+
+data:  highlight
+
+data:  any
+
+data:  discrepancy
+
+data:  compared
+
+data:  to
+
+data:  your
+
+data:  manual
+
+data:  reserve
+
+data: .
+
+
+
+data: Stand
+
+data:  by
+
+data:  for
+
+data:  the
+
+data:  full
+
+data:  calculation
+
+data:  and
+
+data:  final
+
+data:  reserve
+
+data:  recommendation
+
+data: .
+
+
+
+data: End
+JarvisClaims@JarvisClaims:~/Musaddique$ 
+
+
+
+(venv) JarvisClaims@JarvisClaims:~/Musaddique/Jarvis_claims_agents_v2_copy/AdjusterAgents/ReserveRecommendationAgent$ ^C
+(venv) JarvisClaims@JarvisClaims:~/Musaddique/Jarvis_claims_agents_v2_copy/AdjusterAgents/ReserveRecommendationAgent$ ^C
+(venv) JarvisClaims@JarvisClaims:~/Musaddique/Jarvis_claims_agents_v2_copy/AdjusterAgents/ReserveRecommendationAgent$ python3 server.py 
+INFO:     Started server process [39150]
+INFO:     Waiting for application startup.
+INFO:     Application startup complete.
+INFO:     Uvicorn running on http://0.0.0.0:8910 (Press CTRL+C to quit)
+2026-06-29 13:32:21,263 | INFO     | httpx | HTTP Request: POST http://localhost:5900/api/v1/reserve_recommendation/mcp "HTTP/1.1 200 OK"
+2026-06-29 13:32:21,263 | INFO     | mcp.client.streamable_http | Received session ID: ace74b0a71974579b59e44d38e3e2b1e
+2026-06-29 13:32:21,264 | INFO     | mcp.client.streamable_http | Negotiated protocol version: 2025-11-25
+2026-06-29 13:32:21,269 | INFO     | httpx | HTTP Request: POST http://localhost:5900/api/v1/reserve_recommendation/mcp "HTTP/1.1 202 Accepted"
+2026-06-29 13:32:21,275 | INFO     | httpx | HTTP Request: POST http://localhost:5900/api/v1/reserve_recommendation/mcp "HTTP/1.1 200 OK"
+2026-06-29 13:32:21,278 | INFO     | httpx | HTTP Request: DELETE http://localhost:5900/api/v1/reserve_recommendation/mcp "HTTP/1.1 200 OK"
+2026-06-29 13:32:21,279 | INFO     | reserve_recommendation_agent | Tools loaded from MCP: ['get_adjuster_findings']
+2026-06-29 13:32:21,719 | WARNING  | reserve_recommendation_agent | Phoenix prompt load failed (Phoenix not configured) — using fallback prompt
+INFO:     127.0.0.1:44754 - "POST /chat HTTP/1.1" 500 Internal Server Error
+ERROR:    Exception in ASGI application
+Traceback (most recent call last):
+  File "/home/JarvisClaims/Musaddique/Jarvis_claims_agents_v2_copy/AdjusterAgents/venv/lib/python3.11/site-packages/uvicorn/protocols/http/h11_impl.py", line 415, in run_asgi
+    result = await app(  # type: ignore[func-returns-value]
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/JarvisClaims/Musaddique/Jarvis_claims_agents_v2_copy/AdjusterAgents/venv/lib/python3.11/site-packages/uvicorn/middleware/proxy_headers.py", line 62, in __call__
+    return await self.app(scope, receive, send)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/JarvisClaims/Musaddique/Jarvis_claims_agents_v2_copy/AdjusterAgents/venv/lib/python3.11/site-packages/fastapi/applications.py", line 1163, in __call__
+    await super().__call__(scope, receive, send)
+  File "/home/JarvisClaims/Musaddique/Jarvis_claims_agents_v2_copy/AdjusterAgents/venv/lib/python3.11/site-packages/starlette/applications.py", line 90, in __call__
+    await self.middleware_stack(scope, receive, send)
+  File "/home/JarvisClaims/Musaddique/Jarvis_claims_agents_v2_copy/AdjusterAgents/venv/lib/python3.11/site-packages/starlette/middleware/errors.py", line 186, in __call__
+    raise exc
+  File "/home/JarvisClaims/Musaddique/Jarvis_claims_agents_v2_copy/AdjusterAgents/venv/lib/python3.11/site-packages/starlette/middleware/errors.py", line 164, in __call__
+    await self.app(scope, receive, _send)
+  File "/home/JarvisClaims/Musaddique/Jarvis_claims_agents_v2_copy/AdjusterAgents/venv/lib/python3.11/site-packages/starlette/middleware/cors.py", line 88, in __call__
+    await self.app(scope, receive, send)
+  File "/home/JarvisClaims/Musaddique/Jarvis_claims_agents_v2_copy/AdjusterAgents/venv/lib/python3.11/site-packages/starlette/middleware/exceptions.py", line 63, in __call__
+    await wrap_app_handling_exceptions(self.app, conn)(scope, receive, send)
+  File "/home/JarvisClaims/Musaddique/Jarvis_claims_agents_v2_copy/AdjusterAgents/venv/lib/python3.11/site-packages/starlette/_exception_handler.py", line 53, in wrapped_app
+    raise exc
+  File "/home/JarvisClaims/Musaddique/Jarvis_claims_agents_v2_copy/AdjusterAgents/venv/lib/python3.11/site-packages/starlette/_exception_handler.py", line 42, in wrapped_app
+    await app(scope, receive, sender)
+  File "/home/JarvisClaims/Musaddique/Jarvis_claims_agents_v2_copy/AdjusterAgents/venv/lib/python3.11/site-packages/fastapi/middleware/asyncexitstack.py", line 18, in __call__
+    await self.app(scope, receive, send)
+  File "/home/JarvisClaims/Musaddique/Jarvis_claims_agents_v2_copy/AdjusterAgents/venv/lib/python3.11/site-packages/starlette/routing.py", line 660, in __call__
+    await self.middleware_stack(scope, receive, send)
+  File "/home/JarvisClaims/Musaddique/Jarvis_claims_agents_v2_copy/AdjusterAgents/venv/lib/python3.11/site-packages/fastapi/routing.py", line 2531, in app
+    await route.handle(scope, receive, send)
+  File "/home/JarvisClaims/Musaddique/Jarvis_claims_agents_v2_copy/AdjusterAgents/venv/lib/python3.11/site-packages/fastapi/routing.py", line 1241, in handle
+    await super().handle(scope, receive, send)
+  File "/home/JarvisClaims/Musaddique/Jarvis_claims_agents_v2_copy/AdjusterAgents/venv/lib/python3.11/site-packages/starlette/routing.py", line 276, in handle
+    await self.app(scope, receive, send)
+  File "/home/JarvisClaims/Musaddique/Jarvis_claims_agents_v2_copy/AdjusterAgents/venv/lib/python3.11/site-packages/fastapi/routing.py", line 150, in app
+    await wrap_app_handling_exceptions(app, request)(scope, receive, send)
+  File "/home/JarvisClaims/Musaddique/Jarvis_claims_agents_v2_copy/AdjusterAgents/venv/lib/python3.11/site-packages/starlette/_exception_handler.py", line 53, in wrapped_app
+    raise exc
+  File "/home/JarvisClaims/Musaddique/Jarvis_claims_agents_v2_copy/AdjusterAgents/venv/lib/python3.11/site-packages/starlette/_exception_handler.py", line 42, in wrapped_app
+    await app(scope, receive, sender)
+  File "/home/JarvisClaims/Musaddique/Jarvis_claims_agents_v2_copy/AdjusterAgents/venv/lib/python3.11/site-packages/fastapi/routing.py", line 136, in app
+    response = await f(request)
+               ^^^^^^^^^^^^^^^^
+  File "/home/JarvisClaims/Musaddique/Jarvis_claims_agents_v2_copy/AdjusterAgents/venv/lib/python3.11/site-packages/fastapi/routing.py", line 690, in app
+    raw_response = await run_endpoint_function(
+                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/JarvisClaims/Musaddique/Jarvis_claims_agents_v2_copy/AdjusterAgents/venv/lib/python3.11/site-packages/fastapi/routing.py", line 344, in run_endpoint_function
+    return await dependant.call(**values)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/JarvisClaims/Musaddique/Jarvis_claims_agents_v2_copy/AdjusterAgents/ReserveRecommendationAgent/server.py", line 178, in chat_stream
+    body = await request.json()
+           ^^^^^^^^^^^^^^^^^^^^
+  File "/home/JarvisClaims/Musaddique/Jarvis_claims_agents_v2_copy/AdjusterAgents/venv/lib/python3.11/site-packages/starlette/requests.py", line 265, in json
+    self._json = json.loads(body)
+                 ^^^^^^^^^^^^^^^^
+  File "/usr/lib/python3.11/json/__init__.py", line 346, in loads
+    return _default_decoder.decode(s)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/lib/python3.11/json/decoder.py", line 337, in decode
+    obj, end = self.raw_decode(s, idx=_w(s, 0).end())
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/lib/python3.11/json/decoder.py", line 355, in raw_decode
+    raise JSONDecodeError("Expecting value", s, err.value) from None
+json.decoder.JSONDecodeError: Expecting value: line 1 column 1 (char 0)
+2026-06-29 13:32:42,141 | INFO     | httpx | HTTP Request: POST http://localhost:5900/api/v1/reserve_recommendation/mcp "HTTP/1.1 200 OK"
+2026-06-29 13:32:42,141 | INFO     | mcp.client.streamable_http | Received session ID: 76d299ee0b53429c95c2f31295272938
+2026-06-29 13:32:42,142 | INFO     | mcp.client.streamable_http | Negotiated protocol version: 2025-11-25
+2026-06-29 13:32:42,145 | INFO     | httpx | HTTP Request: POST http://localhost:5900/api/v1/reserve_recommendation/mcp "HTTP/1.1 202 Accepted"
+2026-06-29 13:32:42,149 | INFO     | httpx | HTTP Request: POST http://localhost:5900/api/v1/reserve_recommendation/mcp "HTTP/1.1 200 OK"
+2026-06-29 13:32:42,152 | INFO     | httpx | HTTP Request: DELETE http://localhost:5900/api/v1/reserve_recommendation/mcp "HTTP/1.1 200 OK"
+2026-06-29 13:32:42,153 | INFO     | reserve_recommendation_agent | Tools loaded from MCP: ['get_adjuster_findings']
+2026-06-29 13:32:42,231 | WARNING  | reserve_recommendation_agent | Phoenix prompt load failed (Phoenix not configured) — using fallback prompt
+INFO:     127.0.0.1:59344 - "POST /chat HTTP/1.1" 200 OK
+2026-06-29 13:32:42,903 | INFO     | httpx | HTTP Request: POST https://azureclaimsopenai.openai.azure.com/openai/deployments/gpt-4.1-claims/chat/completions?api-version=2025-01-01-preview "HTTP/1.1 200 OK"
+2026-06-29 13:32:43,037 | INFO     | httpx | HTTP Request: POST http://localhost:5900/api/v1/reserve_recommendation/mcp "HTTP/1.1 200 OK"
+2026-06-29 13:32:43,037 | INFO     | mcp.client.streamable_http | Received session ID: 34934948adb7422a920a269faefcfc68
+2026-06-29 13:32:43,038 | INFO     | mcp.client.streamable_http | Negotiated protocol version: 2025-11-25
+2026-06-29 13:32:43,041 | INFO     | httpx | HTTP Request: POST http://localhost:5900/api/v1/reserve_recommendation/mcp "HTTP/1.1 202 Accepted"
+2026-06-29 13:32:43,095 | INFO     | httpx | HTTP Request: POST http://localhost:5900/api/v1/reserve_recommendation/mcp "HTTP/1.1 200 OK"
+2026-06-29 13:32:43,099 | INFO     | httpx | HTTP Request: POST http://localhost:5900/api/v1/reserve_recommendation/mcp "HTTP/1.1 200 OK"
+2026-06-29 13:32:43,102 | INFO     | httpx | HTTP Request: DELETE http://localhost:5900/api/v1/reserve_recommendation/mcp "HTTP/1.1 200 OK"
+2026-06-29 13:32:43,736 | INFO     | httpx | HTTP Request: POST https://azureclaimsopenai.openai.azure.com/openai/deployments/gpt-4.1-claims/chat/completions?api-version=2025-01-01-preview "HTTP/1.1 200 OK"
+
+
+
+
+INFO:     127.0.0.1:52478 - "POST /api/v1/reserve_recommendation/mcp HTTP/1.1" 200 OK
+INFO:     127.0.0.1:52478 - "DELETE /api/v1/reserve_recommendation/mcp HTTP/1.1" 200 OK
+INFO:     127.0.0.1:52464 - "GET /api/v1/reserve_recommendation/mcp HTTP/1.1" 200 OK
+INFO:     127.0.0.1:60764 - "POST /api/v1/reserve_recommendation/mcp HTTP/1.1" 200 OK
+INFO:     127.0.0.1:60764 - "POST /api/v1/reserve_recommendation/mcp HTTP/1.1" 202 Accepted
+INFO:     127.0.0.1:60772 - "POST /api/v1/reserve_recommendation/mcp HTTP/1.1" 200 OK
+INFO:     127.0.0.1:60772 - "DELETE /api/v1/reserve_recommendation/mcp HTTP/1.1" 200 OK
+INFO:     127.0.0.1:60770 - "GET /api/v1/reserve_recommendation/mcp HTTP/1.1" 200 OK
+INFO:     127.0.0.1:60778 - "POST /api/v1/reserve_recommendation/mcp HTTP/1.1" 200 OK
+INFO:     127.0.0.1:60778 - "POST /api/v1/reserve_recommendation/mcp HTTP/1.1" 202 Accepted
+INFO:     127.0.0.1:60790 - "POST /api/v1/reserve_recommendation/mcp HTTP/1.1" 200 OK
+INFO:     127.0.0.1:60790 - "POST /api/v1/reserve_recommendation/mcp HTTP/1.1" 200 OK
+INFO:     127.0.0.1:60790 - "DELETE /api/v1/reserve_recommendation/mcp HTTP/1.1" 200 OK
+INFO:     127.0.0.1:60780 - "GET /api/v1/reserve_recommendation/mcp HTTP/1.1" 200 OK
