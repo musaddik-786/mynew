@@ -1,86 +1,1057 @@
-# Extract deductible, coverage limit, and exclusions from Guidewire coverage lines
-deductible = None
-coverage_limit = None
-exclusions_list = []
+"""
+handler.py — Repair vs Replacement
+───────────────────────────────────────
+Compares repair vs. replacement costs for a damaged item and recommends a
+course of action based on a cost-ratio / useful-life rule.
+"""
 
-lines_data = (
-    (attrs.get("lines") or {}).get("data", [])
-    if isinstance(attrs.get("lines"), dict)
-    else []
-)
+import json
+import logging
+import os
+import sys
+from typing import Optional
 
-for line in lines_data:
-    line_attrs = line.get("attributes", {}) if isinstance(line, dict) else {}
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "common"))
 
-    coverages_data = (
-        (line_attrs.get("coverages") or {}).get("data", [])
-        if isinstance(line_attrs.get("coverages"), dict)
-        else []
+from db import get_db_connection, row_to_dict  # noqa: E402
+from langchain_openai.chat_models import AzureChatOpenAI  # noqa: E402
+
+log = logging.getLogger(__name__)
+
+
+def _get_llm():
+    return AzureChatOpenAI(
+        api_key=os.getenv("AZURE_OPENAI_API_KEY"),
+        api_version=os.getenv("AZURE_OPENAI_API_VERSION"),
+        azure_deployment=os.getenv("AZURE_OPENAI_CHAT_DEPLOYMENT"),
+        azure_endpoint=os.getenv("AZURE_OPENAI_ENDPOINT"),
     )
 
-    for cov in coverages_data:
-        cov_attrs = cov.get("attributes", {}) if isinstance(cov, dict) else {}
 
-        # Deductible from Guidewire
-        if deductible is None:
-            ded = cov_attrs.get("deductible") or {}
-            if isinstance(ded, dict) and ded.get("amount") is not None:
-                try:
-                    deductible = float(ded["amount"])
-                except (TypeError, ValueError):
-                    pass
+def get_estimates(claim_id: str) -> list:
+    conn = get_db_connection()
+    try:
+        cur = conn.cursor()
+        cur.execute("SELECT * FROM estimates WHERE claim_id = %s ORDER BY id DESC", (claim_id,))
+        return row_to_dict(cur.fetchall())
+    finally:
+        conn.close()
 
-        # Coverage Limit from Guidewire
-        if coverage_limit is None:
-            lim = cov_attrs.get("coverageAmount") or cov_attrs.get("limit") or {}
-            if isinstance(lim, dict) and lim.get("amount") is not None:
-                try:
-                    coverage_limit = float(lim["amount"])
-                except (TypeError, ValueError):
-                    pass
 
-        # Exclusions
-        for excl in (cov_attrs.get("exclusions") or []):
-            name = (
-                (excl.get("attributes") or {}).get("name")
-                if isinstance(excl, dict)
-                else None
-            )
-            if name:
-                exclusions_list.append(name)
-
-# ------------------------------------------------------------------
-# PoC fallback logic when Guidewire does not provide values
-# ------------------------------------------------------------------
-coverage = (coverage_type or "").lower()
-
-if premium_amount is not None:
-    premium_amount = float(premium_amount)
-
-    # Coverage Limit
-    if coverage_limit is None:
-        if "vehicle" in coverage:
-            coverage_limit = premium_amount * 5
-
-        elif "homeowners" in coverage or "personal" in coverage:
-            coverage_limit = premium_amount * 7
-
-        log.info(
-            "Coverage limit not returned by Guidewire. Calculated value: %s",
-            coverage_limit,
+def write_estimate(claim_id: str, item_type: str, item_age: int, useful_life_remaining: int,
+                    repair_cost: float, replacement_cost: float, labor_cost: float, material_cost: float,
+                    recommendation: str, confidence_score: float) -> dict:
+    conn = get_db_connection()
+    try:
+        cur = conn.cursor()
+        cur.execute(
+            """
+            INSERT INTO estimates (
+                claim_id, item_type, item_age, useful_life_remaining, repair_cost, replacement_cost,
+                labor_cost, material_cost, recommendation, confidence_score
+            ) VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
+            """,
+            (claim_id, item_type, item_age, useful_life_remaining, repair_cost, replacement_cost,
+             labor_cost, material_cost, recommendation, confidence_score),
         )
+        conn.commit()
+        return {
+            "id": cur.lastrowid, "claim_id": claim_id, "item_type": item_type, "item_age": item_age,
+            "useful_life_remaining": useful_life_remaining, "repair_cost": repair_cost,
+            "replacement_cost": replacement_cost, "labor_cost": labor_cost, "material_cost": material_cost,
+            "recommendation": recommendation, "confidence_score": confidence_score,
+        }
+    finally:
+        conn.close()
 
-    # Deductible
-    if deductible is None:
-        if "vehicle" in coverage:
-            deductible = premium_amount * 0.10
 
-        elif "homeowners" in coverage or "personal" in coverage:
-            deductible = premium_amount * 0.05
+def get_repair_cost_detail(claim_id: str) -> list:
+    conn = get_db_connection()
+    try:
+        cur = conn.cursor()
+        cur.execute("SELECT * FROM repair_costs WHERE claim_id = %s ORDER BY id DESC", (claim_id,))
+        return row_to_dict(cur.fetchall())
+    finally:
+        conn.close()
 
-        log.info(
-            "Deductible not returned by Guidewire. Calculated value: %s",
-            deductible,
+
+def write_repair_cost(item_id: str, claim_id: str, item_type: str, material_cost: float, labor_hours: float,
+                       labor_rate: float, diagnostic_fee: float, urgency_factor: float, notes: Optional[str] = None) -> dict:
+    total_repair_estimate = round((material_cost + labor_hours * labor_rate + diagnostic_fee) * (urgency_factor or 1.0), 2)
+    conn = get_db_connection()
+    try:
+        cur = conn.cursor()
+        cur.execute(
+            """
+            INSERT INTO repair_costs (
+                item_id, claim_id, item_type, material_cost, labor_hours, labor_rate,
+                diagnostic_fee, urgency_factor, total_repair_estimate, notes
+            ) VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
+            """,
+            (item_id, claim_id, item_type, material_cost, labor_hours, labor_rate,
+             diagnostic_fee, urgency_factor, total_repair_estimate, notes),
         )
+        conn.commit()
+        return {
+            "id": cur.lastrowid, "item_id": item_id, "claim_id": claim_id, "item_type": item_type,
+            "material_cost": material_cost, "labor_hours": labor_hours, "labor_rate": labor_rate,
+            "diagnostic_fee": diagnostic_fee, "urgency_factor": urgency_factor,
+            "total_repair_estimate": total_repair_estimate, "notes": notes,
+        }
+    finally:
+        conn.close()
 
-exclusions = ",".join(exclusions_list) if exclusions_list else None
+
+def get_replacement_cost_detail(claim_id: str) -> list:
+    conn = get_db_connection()
+    try:
+        cur = conn.cursor()
+        cur.execute("SELECT * FROM replacement_costs WHERE claim_id = %s ORDER BY id DESC", (claim_id,))
+        return row_to_dict(cur.fetchall())
+    finally:
+        conn.close()
+
+
+def write_replacement_cost(item_id: str, claim_id: str, item_type: str, replacement_material_cost: float,
+                            installation_hours: float, labor_rate: float, delivery_fee: float, disposal_fee: float,
+                            notes: Optional[str] = None) -> dict:
+    total_replacement_estimate = round(
+        replacement_material_cost + installation_hours * labor_rate + delivery_fee + disposal_fee, 2
+    )
+    conn = get_db_connection()
+    try:
+        cur = conn.cursor()
+        cur.execute(
+            """
+            INSERT INTO replacement_costs (
+                item_id, claim_id, item_type, replacement_material_cost, installation_hours, labor_rate,
+                delivery_fee, disposal_fee, total_replacement_estimate, notes
+            ) VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
+            """,
+            (item_id, claim_id, item_type, replacement_material_cost, installation_hours, labor_rate,
+             delivery_fee, disposal_fee, total_replacement_estimate, notes),
+        )
+        conn.commit()
+        return {
+            "id": cur.lastrowid, "item_id": item_id, "claim_id": claim_id, "item_type": item_type,
+            "replacement_material_cost": replacement_material_cost, "installation_hours": installation_hours,
+            "labor_rate": labor_rate, "delivery_fee": delivery_fee, "disposal_fee": disposal_fee,
+            "total_replacement_estimate": total_replacement_estimate, "notes": notes,
+        }
+    finally:
+        conn.close()
+
+
+def _llm_estimate_costs(item_type: str, item_age: int) -> dict:
+    llm = _get_llm()
+    prompt = f"""
+You are a claims adjuster's assistant. Estimate plausible repair and
+replacement costs in USD for a "{item_type}" that is {item_age} years old.
+Respond with ONLY a JSON object:
+{{"repair_cost": 0, "replacement_cost": 0, "labor_cost": 0, "material_cost": 0}}
+"""
+    response = llm.invoke(prompt)
+    content = response.content.strip()
+    if content.startswith("```"):
+        content = content.strip("`")
+        if content.startswith("json"):
+            content = content[4:]
+    try:
+        return json.loads(content)
+    except Exception:
+        log.warning("Could not parse LLM JSON, defaulting: %s", content)
+        return {"repair_cost": 500, "replacement_cost": 1000, "labor_cost": 200, "material_cost": 300}
+
+
+def compare_repair_vs_replace(claim_id: str, item_type: str, item_age: int, useful_life_remaining: int) -> dict:
+    # Look up existing repair_costs/replacement_costs for this claim+item_type, if present
+    conn = get_db_connection()
+    try:
+        cur = conn.cursor()
+        cur.execute(
+            "SELECT * FROM repair_costs WHERE claim_id = %s AND item_type = %s ORDER BY id DESC LIMIT 1",
+            (claim_id, item_type),
+        )
+        repair_row = row_to_dict(cur.fetchone())
+        cur.execute(
+            "SELECT * FROM replacement_costs WHERE claim_id = %s AND item_type = %s ORDER BY id DESC LIMIT 1",
+            (claim_id, item_type),
+        )
+        replacement_row = row_to_dict(cur.fetchone())
+    finally:
+        conn.close()
+
+    if repair_row and replacement_row:
+        repair_cost = float(repair_row["total_repair_estimate"])
+        replacement_cost = float(replacement_row["total_replacement_estimate"])
+        labor_cost = float(repair_row.get("labor_hours") or 0) * float(repair_row.get("labor_rate") or 0)
+        material_cost = float(repair_row.get("material_cost") or 0)
+    else:
+        ai_costs = _llm_estimate_costs(item_type, item_age)
+        repair_cost = float(ai_costs.get("repair_cost", 500))
+        replacement_cost = float(ai_costs.get("replacement_cost", 1000))
+        labor_cost = float(ai_costs.get("labor_cost", 200))
+        material_cost = float(ai_costs.get("material_cost", 300))
+
+    if repair_cost > 0.6 * replacement_cost or item_age >= useful_life_remaining:
+        recommendation = "Replace"
+    else:
+        recommendation = "Repair"
+
+    # Confidence heuristic: bigger gap between costs => more confident
+    if replacement_cost > 0:
+        ratio_gap = abs(repair_cost - replacement_cost) / replacement_cost
+    else:
+        ratio_gap = 0
+    confidence_score = round(min(1.0, 0.5 + ratio_gap), 2)
+
+    estimate = write_estimate(
+        claim_id, item_type, item_age, useful_life_remaining, repair_cost, replacement_cost,
+        labor_cost, material_cost, recommendation, confidence_score,
+    )
+
+    return {
+        "claim_id": claim_id,
+        "item_type": item_type,
+        "item_age": item_age,
+        "useful_life_remaining": useful_life_remaining,
+        "repair_cost": repair_cost,
+        "replacement_cost": replacement_cost,
+        "recommendation": recommendation,
+        "confidence_score": confidence_score,
+        "estimate": estimate,
+    }
+
+from typing import Optional
+from pydantic import BaseModel
+
+
+class EstimateRequest(BaseModel):
+    item_type: str
+    item_age: int
+    useful_life_remaining: int
+    repair_cost: float
+    replacement_cost: float
+    labor_cost: float
+    material_cost: float
+    recommendation: str
+    confidence_score: float
+
+
+class RepairCostRequest(BaseModel):
+    item_id: str
+    item_type: str
+    material_cost: float
+    labor_hours: float
+    labor_rate: float
+    diagnostic_fee: float
+    urgency_factor: float
+    notes: Optional[str] = None
+
+
+class ReplacementCostRequest(BaseModel):
+    item_id: str
+    item_type: str
+    replacement_material_cost: float
+    installation_hours: float
+    labor_rate: float
+    delivery_fee: float
+    disposal_fee: float
+    notes: Optional[str] = None
+
+
+class CompareRequest(BaseModel):
+    item_type: str
+    item_age: int
+    useful_life_remaining: int
+
+
+"""
+repair_vs_replacement_router.py
+─────────────────────────────────────
+FastAPI routes for the Repair vs Replacement MCP.
+
+Tool / Endpoint map:
+  get_estimates                GET  /api/repair_vs_replacement/estimates/{claim_id}
+  write_estimate               POST /api/repair_vs_replacement/estimates/{claim_id}
+  get_repair_cost_detail        GET  /api/repair_vs_replacement/repair_costs/{claim_id}
+  write_repair_cost             POST /api/repair_vs_replacement/repair_costs/{claim_id}
+  get_replacement_cost_detail   GET  /api/repair_vs_replacement/replacement_costs/{claim_id}
+  write_replacement_cost        POST /api/repair_vs_replacement/replacement_costs/{claim_id}
+  compare_repair_vs_replace     POST /api/repair_vs_replacement/compare/{claim_id}
+"""
+
+import logging
+from fastapi import APIRouter, HTTPException
+
+from repair_vs_replacement_mcp import handler
+from repair_vs_replacement_mcp.models import (
+    CompareRequest,
+    EstimateRequest,
+    RepairCostRequest,
+    ReplacementCostRequest,
+)
+
+log = logging.getLogger(__name__)
+
+router = APIRouter()
+
+
+@router.get(
+    "/api/repair_vs_replacement/estimates/{claim_id}",
+    operation_id="get_estimates",
+    summary="Get repair-vs-replace estimates for a claim",
+    tags=["RepairVsReplacement"],
+)
+def get_estimates(claim_id: str):
+    """Returns all estimates rows for the given claim_id."""
+    return handler.get_estimates(claim_id)
+
+
+@router.post(
+    "/api/repair_vs_replacement/estimates/{claim_id}",
+    operation_id="write_estimate",
+    summary="Write a repair-vs-replace estimate for a claim",
+    tags=["RepairVsReplacement"],
+)
+def write_estimate(claim_id: str, body: EstimateRequest):
+    """Inserts a new estimates row for the given claim_id."""
+    try:
+        return handler.write_estimate(
+            claim_id, body.item_type, body.item_age, body.useful_life_remaining, body.repair_cost,
+            body.replacement_cost, body.labor_cost, body.material_cost, body.recommendation, body.confidence_score,
+        )
+    except Exception as e:
+        log.exception("write_estimate error")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get(
+    "/api/repair_vs_replacement/repair_costs/{claim_id}",
+    operation_id="get_repair_cost_detail",
+    summary="Get repair cost details for a claim",
+    tags=["RepairVsReplacement"],
+)
+def get_repair_cost_detail(claim_id: str):
+    """Returns all repair_costs rows for the given claim_id."""
+    return handler.get_repair_cost_detail(claim_id)
+
+
+@router.post(
+    "/api/repair_vs_replacement/repair_costs/{claim_id}",
+    operation_id="write_repair_cost",
+    summary="Write a repair cost detail row for a claim",
+    tags=["RepairVsReplacement"],
+)
+def write_repair_cost(claim_id: str, body: RepairCostRequest):
+    """Inserts a repair_costs row; total_repair_estimate is computed as
+    (material_cost + labor_hours*labor_rate + diagnostic_fee) * urgency_factor."""
+    try:
+        return handler.write_repair_cost(
+            body.item_id, claim_id, body.item_type, body.material_cost, body.labor_hours,
+            body.labor_rate, body.diagnostic_fee, body.urgency_factor, body.notes,
+        )
+    except Exception as e:
+        log.exception("write_repair_cost error")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get(
+    "/api/repair_vs_replacement/replacement_costs/{claim_id}",
+    operation_id="get_replacement_cost_detail",
+    summary="Get replacement cost details for a claim",
+    tags=["RepairVsReplacement"],
+)
+def get_replacement_cost_detail(claim_id: str):
+    """Returns all replacement_costs rows for the given claim_id."""
+    return handler.get_replacement_cost_detail(claim_id)
+
+
+@router.post(
+    "/api/repair_vs_replacement/replacement_costs/{claim_id}",
+    operation_id="write_replacement_cost",
+    summary="Write a replacement cost detail row for a claim",
+    tags=["RepairVsReplacement"],
+)
+def write_replacement_cost(claim_id: str, body: ReplacementCostRequest):
+    """Inserts a replacement_costs row; total_replacement_estimate is computed as
+    replacement_material_cost + installation_hours*labor_rate + delivery_fee + disposal_fee."""
+    try:
+        return handler.write_replacement_cost(
+            body.item_id, claim_id, body.item_type, body.replacement_material_cost, body.installation_hours,
+            body.labor_rate, body.delivery_fee, body.disposal_fee, body.notes,
+        )
+    except Exception as e:
+        log.exception("write_replacement_cost error")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post(
+    "/api/repair_vs_replacement/compare/{claim_id}",
+    operation_id="compare_repair_vs_replace",
+    summary="Compare repair vs replacement for an item and recommend a course of action",
+    tags=["RepairVsReplacement"],
+)
+def compare_repair_vs_replace(claim_id: str, body: CompareRequest):
+    """
+    Looks up existing repair_costs/replacement_costs for the claim+item_type
+    (or uses an LLM to estimate plausible costs if none exist), applies the
+    rule: if repair_cost > 0.6 * replacement_cost OR item_age >=
+    useful_life_remaining then recommend "Replace" else "Repair", computes a
+    confidence_score, writes an estimates row, and returns the comparison.
+    """
+    try:
+        return handler.compare_repair_vs_replace(claim_id, body.item_type, body.item_age, body.useful_life_remaining)
+    except Exception as e:
+        log.exception("compare_repair_vs_replace error")
+        raise HTTPException(status_code=500, detail=str(e))
+
+"""
+server.py — Repair Vs Replacement Agent
+───────────────────────────────────────
+LangGraph agent that compares repair vs. replacement costs for
+a damaged item and recommends a course of action.
+
+Port: 8912
+MCP : http://localhost:8900/api/v1/repair_vs_replacement/mcp
+
+Run:
+    py -3 server.py
+"""
+
+import json
+import logging
+import os
+import sys
+import time
+import traceback
+from datetime import datetime, timedelta
+from typing import Annotated, TypedDict
+
+import uvicorn
+from dotenv import load_dotenv, find_dotenv
+from fastapi import FastAPI, Request
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import StreamingResponse
+from langchain_core.messages import AIMessage, SystemMessage
+from langchain_mcp_adapters.client import MultiServerMCPClient
+from langchain_openai.chat_models import AzureChatOpenAI
+from langgraph.graph import END, START, StateGraph
+from langgraph.graph.message import add_messages
+from langgraph.prebuilt import ToolNode
+
+load_dotenv(find_dotenv())
+
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s | %(levelname)-8s | %(name)s | %(message)s",
+    stream=sys.stdout,
+    force=True,
+)
+logger = logging.getLogger("repair_vs_replacement_agent")
+
+PHOENIX_API_KEY = os.getenv("PHOENIX_API_KEY", "")
+PHOENIX_ENDPOINT = os.getenv("PHOENIX_ENDPOINT", "")
+MCP_URL = os.getenv("MCP_URL", "http://localhost:5900/api/v1/repair_vs_replacement/mcp")
+AGENT_PORT = int(os.getenv("AGENT_PORT", "8912"))
+
+config_mcp_server = {
+    "repair_vs_replacement_mcp": {
+        "url": MCP_URL,
+        "transport": "streamable_http",
+        "timeout": timedelta(seconds=120),
+        "sse_read_timeout": timedelta(seconds=600),
+    }
+}
+
+app = FastAPI(title="Repair Vs Replacement Agent")
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+
+class State(TypedDict):
+    messages: Annotated[list, add_messages]
+
+
+def router(state: State):
+    last = state["messages"][-1]
+    if isinstance(last, AIMessage) and getattr(last, "tool_calls", None):
+        return "tools"
+    if isinstance(last, AIMessage) and last.content:
+        if "Continue" in last.content:
+            return "tools"
+        if "End" in last.content:
+            return "End"
+    return "End"
+
+
+_FALLBACK_PROMPT = """
+You are the Repair vs Replacement Agent for an insurance claims platform,
+assisting a Claims Adjuster.
+
+Given a claim_id, item_type, item_age, and useful_life_remaining, your
+workflow is:
+
+1. Call compare_repair_vs_replace with these inputs. This will look up or
+   estimate repair and replacement costs, apply the rule: if
+   repair_cost > 0.6 * replacement_cost OR item_age >= useful_life_remaining
+   then recommend "Replace", else "Repair", and store the result.
+2. Explain to the adjuster the recommendation, the repair vs replacement
+   cost comparison, and the confidence score.
+
+When you have completed the task, end your response with "End".
+"""
+
+
+def load_prompt() -> str:
+    if not PHOENIX_ENDPOINT:
+        raise RuntimeError("Phoenix not configured")
+    from phoenix.client import Client
+    client = Client(base_url=PHOENIX_ENDPOINT, api_key=PHOENIX_API_KEY)
+    prompt = client.prompts.get(name="repair_vs_replacement_agent", label="production")
+    prompt_set = prompt._template["messages"]
+    system_msg = next(
+        (item["content"][0]["text"] for item in prompt_set if item.get("role") == "system"),
+        None,
+    )
+    if not system_msg:
+        raise ValueError("System prompt is empty or missing in Phoenix")
+    return system_msg
+
+
+def create_graph(model, tools, prompt):
+    graph_builder = StateGraph(State)
+    llm_with_tools = model.bind_tools(tools)
+
+    async def agent_node(state: State):
+        messages = state["messages"]
+        all_messages = [SystemMessage(content=prompt)] + messages
+        message = await llm_with_tools.ainvoke(all_messages)
+        return {"messages": [message]}
+
+    graph_builder.add_node("agent", agent_node)
+    graph_builder.add_node("tools", ToolNode(tools=tools))
+    graph_builder.add_edge(START, "agent")
+    graph_builder.add_conditional_edges("agent", router, {"tools": "tools", "End": END})
+    graph_builder.add_edge("tools", "agent")
+    return graph_builder.compile()
+
+
+async def get_tools():
+    client = MultiServerMCPClient(config_mcp_server)
+    tools = await client.get_tools()
+    logger.info("Tools loaded from MCP: %s", [t.name for t in tools])
+    return tools
+
+
+async def stream_graph(graph, initial_state, config):
+    async for event in graph.astream_events(initial_state, config=config, version="v2"):
+        kind = event.get("event", "")
+
+        if kind == "on_chat_model_stream":
+            chunk = event["data"].get("chunk")
+            if chunk and hasattr(chunk, "content") and chunk.content:
+                yield f"data: {chunk.content}\n\n"
+
+        elif kind == "on_tool_start":
+            tool_name = event.get("name", "unknown_tool")
+            yield f"data: [Tool: {tool_name}] Starting...\n\n"
+
+        elif kind == "on_tool_end":
+            tool_name = event.get("name", "unknown_tool")
+            yield f"data: [Tool: {tool_name}] Done\n\n"
+
+
+@app.post("/chat")
+async def chat_stream(request: Request):
+    load_dotenv(find_dotenv())
+
+    tools = await get_tools()
+
+    model = AzureChatOpenAI(
+        api_key=os.getenv("AZURE_OPENAI_API_KEY"),
+        api_version=os.getenv("AZURE_OPENAI_API_VERSION"),
+        azure_deployment=os.getenv("AZURE_OPENAI_CHAT_DEPLOYMENT"),
+        azure_endpoint=os.getenv("AZURE_OPENAI_ENDPOINT"),
+    )
+
+    try:
+        system_prompt = load_prompt()
+    except Exception as e:
+        logger.warning("Phoenix prompt load failed (%s) — using fallback prompt", e)
+        system_prompt = _FALLBACK_PROMPT
+
+    body = await request.json()
+    user_message = body.get("message", "Recommend repair vs replacement for this item")
+
+    graph = create_graph(model=model, tools=tools, prompt=system_prompt)
+
+    async def generate():
+        start = time.time()
+        last_event_at = start
+        last_tool = None
+        try:
+            async for event in stream_graph(
+                graph=graph,
+                initial_state={"messages": [user_message]},
+                config={"recursion_limit": 250},
+            ):
+                last_event_at = time.time()
+                if isinstance(event, str) and event.startswith("data: [Tool:"):
+                    try:
+                        last_tool = event.split("[Tool:", 1)[1].split("]", 1)[0]
+                    except Exception:
+                        pass
+                yield event
+        except BaseException as e:
+            elapsed = time.time() - start
+            since_last = time.time() - last_event_at
+            err = {
+                "exception_class": type(e).__name__,
+                "message": str(e),
+                "elapsed_total_seconds": round(elapsed, 2),
+                "seconds_since_last_event": round(since_last, 2),
+                "last_tool_invoked": last_tool,
+                "traceback": traceback.format_exc(),
+                "timestamp_utc": datetime.utcnow().isoformat(),
+            }
+            logger.error("AGENT_ERROR %s", json.dumps(err, default=str))
+            try:
+                yield f"data: [AGENT_ERROR] {json.dumps(err, default=str)}\n\n"
+            except Exception:
+                pass
+            import asyncio
+            if isinstance(e, asyncio.CancelledError):
+                raise
+
+    return StreamingResponse(generate(), media_type="text/event-stream")
+
+
+@app.get("/health")
+async def health():
+    return {"status": "healthy", "agent": "repair_vs_replacement_agent"}
+
+
+if __name__ == "__main__":
+    uvicorn.run(app, host="0.0.0.0", port=AGENT_PORT)
+(venv) JarvisClaims@JarvisClaims:~/Musaddique/Jarvis_claims_agents_v2_copy/AdjusterAgents/MCP$ python3 main.py 
+/home/JarvisClaims/Musaddique/Jarvis_claims_agents_v2_copy/AdjusterAgents/MCP/main.py:346: DeprecationWarning: 
+        on_event is deprecated, use lifespan event handlers instead.
+
+        Read more about it in the
+        [FastAPI docs for Lifespan Events](https://fastapi.tiangolo.com/advanced/events/).
+        
+  @app.on_event("startup")
+INFO:     Started server process [29439]
+INFO:     Waiting for application startup.
+INFO:     Application startup complete.
+INFO:     Uvicorn running on http://0.0.0.0:5900 (Press CTRL+C to quit)
+
+
+
+
+
+(venv) JarvisClaims@JarvisClaims:~/Musaddique/Jarvis_claims_agents_v2_copy/AdjusterAgents/RepairVsReplacementAgent$ python3 server.py 
+INFO:     Started server process [29422]
+INFO:     Waiting for application startup.
+INFO:     Application startup complete.
+INFO:     Uvicorn running on http://0.0.0.0:8912 (Press CTRL+C to quit)
+
+
+
+
+
+
+
+main.py
+"""
+main.py
+───────
+MCP server entry point for the Adjuster Agents platform — hosts 15 agent
+MCP sub-apps on a single FastAPI app (port 8900), backed by the SQLite
+database SHARED with PolicyholderAgents
+(`PolicyholderAgents/data/policyholder.db`).
+
+Registered sub-apps:
+  /api/v1/claim_classification     — Claim Classification              [FULL]
+  /api/v1/triage                    — Triage                            [PLACEHOLDER]
+  /api/v1/fraud_screening            — Fraud Screening                   [FULL]
+  /api/v1/routing                     — Routing                          [PLACEHOLDER]
+  /api/v1/evidence_validation          — Evidence Validation              [PLACEHOLDER]
+  /api/v1/external_data                 — External Data (Weather/Drone)   [FULL]
+  /api/v1/damage_assessment              — Damage Assessment              [FULL]
+  /api/v1/verification                    — Verification                  [FULL]
+  /api/v1/loss_assessment                  — Loss Assessment              [FULL]
+  /api/v1/reserve_recommendation            — Reserve Recommendation       [PLACEHOLDER]
+  /api/v1/financial_leakage                  — Financial Leakage           [PLACEHOLDER]
+  /api/v1/repair_vs_replacement               — Repair vs Replacement      [FULL]
+  /api/v1/settlement_recommendation            — Settlement Recommendation [PLACEHOLDER]
+  /api/v1/payment_eligibility                   — Payment Eligibility      [PLACEHOLDER]
+  /api/v1/payment_trigger                        — Payment Trigger         [FULL]
+
+Run:
+    py -3 main.py
+"""
+
+import os
+import sys
+
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "common"))
+
+from dotenv import load_dotenv, find_dotenv
+load_dotenv(find_dotenv())
+
+from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi_mcp import FastApiMCP
+
+from init_db import init_db
+
+from claim_classification_router import router as claim_classification_router
+from triage_router import router as triage_router
+from fraud_screening_router import router as fraud_screening_router
+from routing_router import router as routing_router
+from evidence_validation_router import router as evidence_validation_router
+from external_data_router import router as external_data_router
+from damage_assessment_router import router as damage_assessment_router
+from verification_router import router as verification_router
+from loss_assessment_router import router as loss_assessment_router
+from reserve_recommendation_router import router as reserve_recommendation_router
+from financial_leakage_router import router as financial_leakage_router
+from repair_vs_replacement_router import router as repair_vs_replacement_router
+from settlement_recommendation_router import router as settlement_recommendation_router
+from payment_eligibility_router import router as payment_eligibility_router
+from payment_trigger_router import router as payment_trigger_router
+
+import uvicorn
+
+
+app = FastAPI(docs_url="/docs", title="Jarvis Adjuster Agents MCP Server")
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+
+def _make_cors_app(title: str, description: str = "") -> FastAPI:
+    sub = FastAPI(title=title, description=description)
+    sub.add_middleware(
+        CORSMiddleware,
+        allow_origins=["*"],
+        allow_methods=["*"],
+        allow_headers=["*"],
+    )
+    return sub
+
+
+# ── Sub-app: claim_classification (FULL) ──────────────────────────────────────
+
+claim_classification_app = _make_cors_app(
+    title="claim_classification_agent_mcps",
+    description="MCP tools for claim complexity classification and routing recommendations.",
+)
+claim_classification_app.include_router(claim_classification_router)
+FastApiMCP(
+    claim_classification_app,
+    include_operations=[
+        "get_claim",
+        "classify_claim",
+        "get_claim_classification",
+    ],
+).mount_http()
+app.mount("/api/v1/claim_classification", claim_classification_app)
+
+
+# ── Sub-app: triage (PLACEHOLDER) ──────────────────────────────────────────────
+
+triage_app = _make_cors_app(
+    title="triage_agent_mcps",
+    description="[PLACEHOLDER] MCP tools for claim triage / prioritization.",
+)
+triage_app.include_router(triage_router)
+FastApiMCP(
+    triage_app,
+    include_operations=["get_claim_triage"],
+).mount_http()
+app.mount("/api/v1/triage", triage_app)
+
+
+# ── Sub-app: fraud_screening (FULL) ────────────────────────────────────────────
+
+fraud_screening_app = _make_cors_app(
+    title="fraud_screening_agent_mcps",
+    description="MCP tools for AI-assisted fraud screening and risk scoring.",
+)
+fraud_screening_app.include_router(fraud_screening_router)
+FastApiMCP(
+    fraud_screening_app,
+    include_operations=[
+        "get_fraud_flags",
+        "write_fraud_flag",
+        "get_ai_fraud_signals",
+        "write_ai_fraud_signal",
+        "get_fraud_risk_snapshot",
+        "write_fraud_risk_snapshot",
+        "run_fraud_screening",
+    ],
+).mount_http()
+app.mount("/api/v1/fraud_screening", fraud_screening_app)
+
+
+# ── Sub-app: routing (PLACEHOLDER) ─────────────────────────────────────────────
+
+routing_app = _make_cors_app(
+    title="routing_agent_mcps",
+    description="[PLACEHOLDER] MCP tools for adjuster/team assignment routing.",
+)
+routing_app.include_router(routing_router)
+FastApiMCP(
+    routing_app,
+    include_operations=["get_auto_assignment_log"],
+).mount_http()
+app.mount("/api/v1/routing", routing_app)
+
+
+# ── Sub-app: evidence_validation (PLACEHOLDER) ─────────────────────────────────
+
+evidence_validation_app = _make_cors_app(
+    title="evidence_validation_agent_mcps",
+    description="[PLACEHOLDER] MCP tools for evidence completeness/authenticity validation.",
+)
+evidence_validation_app.include_router(evidence_validation_router)
+FastApiMCP(
+    evidence_validation_app,
+    include_operations=["get_evidence_items"],
+).mount_http()
+app.mount("/api/v1/evidence_validation", evidence_validation_app)
+
+
+# ── Sub-app: external_data (FULL) ──────────────────────────────────────────────
+
+external_data_app = _make_cors_app(
+    title="external_data_agent_mcps",
+    description="MCP tools for (simulated) external weather and drone data verification.",
+)
+external_data_app.include_router(external_data_router)
+FastApiMCP(
+    external_data_app,
+    include_operations=[
+        "get_weather_alignment",
+        "write_weather_alignment",
+        "get_drone_authenticity",
+        "write_drone_analysis",
+        "run_external_data_checks",
+    ],
+).mount_http()
+app.mount("/api/v1/external_data", external_data_app)
+
+
+# ── Sub-app: damage_assessment (FULL) ──────────────────────────────────────────
+
+damage_assessment_app = _make_cors_app(
+    title="damage_assessment_agent_mcps",
+    description="MCP tools for AI-assisted damage item identification and condition assessment.",
+)
+damage_assessment_app.include_router(damage_assessment_router)
+FastApiMCP(
+    damage_assessment_app,
+    include_operations=[
+        "get_damage_items",
+        "write_damage_item",
+        "get_condition_assessments",
+        "write_condition_assessment",
+        "analyze_damage_from_description",
+    ],
+).mount_http()
+app.mount("/api/v1/damage_assessment", damage_assessment_app)
+
+
+# ── Sub-app: verification (FULL) ───────────────────────────────────────────────
+
+verification_app = _make_cors_app(
+    title="verification_agent_mcps",
+    description="MCP tools for cross-checking claim facts against policy details.",
+)
+verification_app.include_router(verification_router)
+FastApiMCP(
+    verification_app,
+    include_operations=[
+        "get_external_verifications",
+        "create_verification",
+        "get_verification_details",
+        "write_verification_detail",
+        "run_verification",
+    ],
+).mount_http()
+app.mount("/api/v1/verification", verification_app)
+
+
+# ── Sub-app: loss_assessment (FULL) ────────────────────────────────────────────
+
+loss_assessment_app = _make_cors_app(
+    title="loss_assessment_agent_mcps",
+    description="MCP tools for estimating total loss, deductible, and net payable.",
+)
+loss_assessment_app.include_router(loss_assessment_router)
+FastApiMCP(
+    loss_assessment_app,
+    include_operations=[
+        "get_loss_assessment",
+        "write_loss_assessment",
+        "get_loss_estimation",
+        "write_loss_estimation",
+        "run_loss_assessment",
+    ],
+).mount_http()
+app.mount("/api/v1/loss_assessment", loss_assessment_app)
+
+
+# ── Sub-app: reserve_recommendation (PLACEHOLDER) ──────────────────────────────
+
+reserve_recommendation_app = _make_cors_app(
+    title="reserve_recommendation_agent_mcps",
+    description="[PLACEHOLDER] MCP tools for reserve recommendation.",
+)
+reserve_recommendation_app.include_router(reserve_recommendation_router)
+FastApiMCP(
+    reserve_recommendation_app,
+    include_operations=["get_adjuster_findings"],
+).mount_http()
+app.mount("/api/v1/reserve_recommendation", reserve_recommendation_app)
+
+
+# ── Sub-app: financial_leakage (PLACEHOLDER) ───────────────────────────────────
+
+financial_leakage_app = _make_cors_app(
+    title="financial_leakage_agent_mcps",
+    description="[PLACEHOLDER] MCP tools for financial leakage / overpayment risk scoring.",
+)
+financial_leakage_app.include_router(financial_leakage_router)
+FastApiMCP(
+    financial_leakage_app,
+    include_operations=["get_cost_variance"],
+).mount_http()
+app.mount("/api/v1/financial_leakage", financial_leakage_app)
+
+
+# ── Sub-app: repair_vs_replacement (FULL) ──────────────────────────────────────
+
+repair_vs_replacement_app = _make_cors_app(
+    title="repair_vs_replacement_agent_mcps",
+    description="MCP tools for repair-vs-replacement cost comparison and recommendations.",
+)
+repair_vs_replacement_app.include_router(repair_vs_replacement_router)
+FastApiMCP(
+    repair_vs_replacement_app,
+    include_operations=[
+        "get_estimates",
+        "write_estimate",
+        "get_repair_cost_detail",
+        "write_repair_cost",
+        "get_replacement_cost_detail",
+        "write_replacement_cost",
+        "compare_repair_vs_replace",
+    ],
+).mount_http()
+app.mount("/api/v1/repair_vs_replacement", repair_vs_replacement_app)
+
+
+# ── Sub-app: settlement_recommendation (PLACEHOLDER) ───────────────────────────
+
+settlement_recommendation_app = _make_cors_app(
+    title="settlement_recommendation_agent_mcps",
+    description="[PLACEHOLDER] MCP tools for settlement amount recommendation.",
+)
+settlement_recommendation_app.include_router(settlement_recommendation_router)
+FastApiMCP(
+    settlement_recommendation_app,
+    include_operations=["get_ai_decision_recommendation"],
+).mount_http()
+app.mount("/api/v1/settlement_recommendation", settlement_recommendation_app)
+
+
+# ── Sub-app: payment_eligibility (PLACEHOLDER) ─────────────────────────────────
+
+payment_eligibility_app = _make_cors_app(
+    title="payment_eligibility_agent_mcps",
+    description="[PLACEHOLDER] MCP tools for auto-adjudication eligibility gating.",
+)
+payment_eligibility_app.include_router(payment_eligibility_router)
+FastApiMCP(
+    payment_eligibility_app,
+    include_operations=["get_auto_adjudication_thresholds"],
+).mount_http()
+app.mount("/api/v1/payment_eligibility", payment_eligibility_app)
+
+
+# ── Sub-app: payment_trigger (FULL) ────────────────────────────────────────────
+
+payment_trigger_app = _make_cors_app(
+    title="payment_trigger_agent_mcps",
+    description="MCP tools for checking claim approval and triggering payment disbursements.",
+)
+payment_trigger_app.include_router(payment_trigger_router)
+FastApiMCP(
+    payment_trigger_app,
+    include_operations=[
+        "check_claim_approved",
+        "create_payment_disbursement",
+        "update_payment_status",
+        "get_payment_disbursements",
+    ],
+).mount_http()
+app.mount("/api/v1/payment_trigger", payment_trigger_app)
+
+
+# ── Health ────────────────────────────────────────────────────────────────────
+
+@app.on_event("startup")
+def _startup():
+    init_db()
+
+
+@app.get("/health")
+def health():
+    return {
+        "status": "healthy",
+        "service": "jarvis_adjuster_agents_mcp",
+        "sub_apps": [
+            "claim_classification",
+            "triage",
+            "fraud_screening",
+            "routing",
+            "evidence_validation",
+            "external_data",
+            "damage_assessment",
+            "verification",
+            "loss_assessment",
+            "reserve_recommendation",
+            "financial_leakage",
+            "repair_vs_replacement",
+            "settlement_recommendation",
+            "payment_eligibility",
+            "payment_trigger",
+        ],
+    }
+
+
+if __name__ == "__main__":
+    uvicorn.run(app, host="0.0.0.0", port=5900)
+I want to test , 
+
+i have to test 
+like this 
+curl -s -N -X POST http://localhost:<port>/chat \
+  -H "Content-Type: application/json" \
+  -d '{"message": "Should the laminate flooring in claim CLM-2026-1001 be repaired or replaced? It is 4 years old with repair cost $800 and replacement cost $3,500."}' \
+  --max-time 90
