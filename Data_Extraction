@@ -1,3 +1,33 @@
+(venv) JarvisClaims@JarvisClaims:~/Musaddique/Jarvis_claims_agents_v2_copy/AdjusterAgents/RepairVsReplacementAgent$ python3 server.py 
+INFO:     Started server process [67867]
+INFO:     Waiting for application startup.
+INFO:     Application startup complete.
+INFO:     Uvicorn running on http://0.0.0.0:8912 (Press CTRL+C to quit)
+2026-06-30 12:51:07,831 | INFO     | httpx | HTTP Request: POST http://localhost:5900/api/v1/repair_vs_replacement/mcp "HTTP/1.1 200 OK"
+2026-06-30 12:51:07,831 | INFO     | mcp.client.streamable_http | Received session ID: a9a2aa4d7e6144c4bdb70d16f495bfae
+2026-06-30 12:51:07,832 | INFO     | mcp.client.streamable_http | Negotiated protocol version: 2025-11-25
+2026-06-30 12:51:07,836 | INFO     | httpx | HTTP Request: POST http://localhost:5900/api/v1/repair_vs_replacement/mcp "HTTP/1.1 202 Accepted"
+2026-06-30 12:51:07,840 | INFO     | httpx | HTTP Request: POST http://localhost:5900/api/v1/repair_vs_replacement/mcp "HTTP/1.1 200 OK"
+2026-06-30 12:51:07,843 | INFO     | httpx | HTTP Request: DELETE http://localhost:5900/api/v1/repair_vs_replacement/mcp "HTTP/1.1 200 OK"
+2026-06-30 12:51:07,844 | INFO     | repair_vs_replacement_agent | Tools loaded from MCP: ['get_estimates', 'write_estimate', 'get_repair_cost_detail', 'write_repair_cost', 'get_replacement_cost_detail', 'write_replacement_cost', 'compare_repair_vs_replace']
+2026-06-30 12:51:08,239 | WARNING  | repair_vs_replacement_agent | Phoenix prompt load failed (Phoenix not configured) — using fallback prompt
+INFO:     127.0.0.1:36976 - "POST /chat HTTP/1.1" 200 OK
+2026-06-30 12:51:09,527 | INFO     | httpx | HTTP Request: POST https://azureclaimsopenai.openai.azure.com/openai/deployments/gpt-4.1-claims/chat/completions?api-version=2025-01-01-preview "HTTP/1.1 200 OK"
+2026-06-30 12:51:09,818 | INFO     | repair_vs_replacement_agent | AI MESSAGE = content='' additional_kwargs={} response_metadata={'finish_reason': 'tool_calls', 'model_name': 'gpt-4.1-2025-04-14', 'system_fingerprint': 'fp_41479f4876', 'service_tier': 'default', 'model_provider': 'openai'} id='lc_run--019f1895-575f-7a01-8fa1-b072f0da97ff' tool_calls=[{'name': 'compare_repair_vs_replace', 'args': {'claim_number': 'CLM-2026-1001', 'item_age': 5, 'useful_life_remaining': 8}, 'id': 'call_I51nI6levX7sBhxvxM3P3EvE', 'type': 'tool_call'}] invalid_tool_calls=[] usage_metadata={'input_tokens': 969, 'output_tokens': 39, 'total_tokens': 1008, 'input_token_details': {'audio': 0, 'cache_read': 0}, 'output_token_details': {'audio': 0, 'reasoning': 0}}
+2026-06-30 12:51:09,818 | INFO     | repair_vs_replacement_agent | TOOL CALLS = [{'name': 'compare_repair_vs_replace', 'args': {'claim_number': 'CLM-2026-1001', 'item_age': 5, 'useful_life_remaining': 8}, 'id': 'call_I51nI6levX7sBhxvxM3P3EvE', 'type': 'tool_call'}]
+2026-06-30 12:51:09,864 | INFO     | httpx | HTTP Request: POST http://localhost:5900/api/v1/repair_vs_replacement/mcp "HTTP/1.1 200 OK"
+2026-06-30 12:51:09,864 | INFO     | mcp.client.streamable_http | Received session ID: 7fbe0489ce064b969b1941fdb84115a9
+2026-06-30 12:51:09,864 | INFO     | mcp.client.streamable_http | Negotiated protocol version: 2025-11-25
+2026-06-30 12:51:09,868 | INFO     | httpx | HTTP Request: POST http://localhost:5900/api/v1/repair_vs_replacement/mcp "HTTP/1.1 202 Accepted"
+2026-06-30 12:51:11,789 | INFO     | httpx | HTTP Request: POST http://localhost:5900/api/v1/repair_vs_replacement/mcp "HTTP/1.1 200 OK"
+2026-06-30 12:51:11,792 | INFO     | httpx | HTTP Request: POST http://localhost:5900/api/v1/repair_vs_replacement/mcp "HTTP/1.1 200 OK"
+2026-06-30 12:51:11,794 | INFO     | httpx | HTTP Request: DELETE http://localhost:5900/api/v1/repair_vs_replacement/mcp "HTTP/1.1 200 OK"
+2026-06-30 12:51:12,736 | INFO     | httpx | HTTP Request: POST https://azureclaimsopenai.openai.azure.com/openai/deployments/gpt-4.1-claims/chat/completions?api-version=2025-01-01-preview "HTTP/1.1 200 OK"
+2026-06-30 12:51:13,678 | INFO     | repair_vs_replacement_agent | AI MESSAGE = content='Recommendation: Repair\n\n- Repair cost: $600.00\n- Replacement cost: $1,900.00\n- Item type: Cabinetry\n- Item age: 5 years\n- Useful life remaining: 8 years\n- Confidence score: 1.0\n\nReasoning: The repair cost ($600.00) is less than 60% of the replacement cost ($1,900.00), and the item age (5 years) is less than the useful life remaining (8 years). Based on these business rules, repair is the most cost-effective and justified option.\n\nEnd' additional_kwargs={} response_metadata={'finish_reason': 'stop', 'model_name': 'gpt-4.1-2025-04-14', 'system_fingerprint': 'fp_41479f4876', 'service_tier': 'default', 'model_provider': 'openai'} id='lc_run--019f1895-6535-7e10-85bc-e4af5fd1a2c2' tool_calls=[] invalid_tool_calls=[] usage_metadata={'input_tokens': 1206, 'output_tokens': 123, 'total_tokens': 1329, 'input_token_details': {'audio': 0, 'cache_read': 1024}, 'output_token_details': {'audio': 0, 'reasoning': 0}}
+2026-06-30 12:51:13,678 | INFO     | repair_vs_replacement_agent | TOOL CALLS = []
+
+
+
 JarvisClaims@JarvisClaims:~/Musaddique$ curl -X POST "http://localhost:8912/chat" \
 -H "Content-Type: application/json" \
 -d '{
