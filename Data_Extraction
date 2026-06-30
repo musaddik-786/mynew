@@ -1,29 +1,29 @@
-(venv) JarvisClaims@JarvisClaims:~/Musaddique/Jarvis_claims_agents_v2_copy/AdjusterAgents/MCP$ python3 main.py 
-/home/JarvisClaims/Musaddique/Jarvis_claims_agents_v2_copy/AdjusterAgents/MCP/main.py:346: DeprecationWarning: 
-        on_event is deprecated, use lifespan event handlers instead.
+from damage_assessment_router import router as damage_assessment_router
+from verification_router import router as verification_router
+from loss_assessment_router import router as loss_assessment_router
+from reserve_recommendation_router import router as reserve_recommendation_router
+from financial_leakage_router import router as financial_leakage_router
+from repair_vs_replacement_router import router as repair_vs_replacement_router
+from settlement_recommendation_router import router as settlement_recommendation_router
+from payment_eligibility_router import router as payment_eligibility_router
+from payment_trigger_router import router as payment_trigger_router
 
-        Read more about it in the
-        [FastAPI docs for Lifespan Events](https://fastapi.tiangolo.com/advanced/events/).
-        
-  @app.on_event("startup")
-INFO:     Started server process [67826]
-INFO:     Waiting for application startup.
-INFO:     Application startup complete.
-INFO:     Uvicorn running on http://0.0.0.0:5900 (Press CTRL+C to quit)
-INFO:     127.0.0.1:43058 - "POST /api/repair_vs_replacement/compare/CLM-2026-1001 HTTP/1.1" 404 Not Found
+repair_vs_replacement_app = _make_cors_app(
+    title="repair_vs_replacement_agent_mcps",
+    description="MCP tools for repair-vs-replacement cost comparison and recommendations.",
+)
+repair_vs_replacement_app.include_router(repair_vs_replacement_router)
+FastApiMCP(
+    repair_vs_replacement_app,
+    include_operations=[
+        "get_estimates",
+        "write_estimate",
+        "get_repair_cost_detail",
+        "write_repair_cost",
+        "get_replacement_cost_detail",
+        "write_replacement_cost",
+        "compare_repair_vs_replace",
+    ],
+).mount_http()
+app.mount("/api/v1/repair_vs_replacement", repair_vs_replacement_app)
 
-(venv) JarvisClaims@JarvisClaims:~/Musaddique/Jarvis_claims_agents_v2_copy/AdjusterAgents/RepairVsReplacementAgent$ python3 server.py 
-INFO:     Started server process [67867]
-INFO:     Waiting for application startup.
-INFO:     Application startup complete.
-INFO:     Uvicorn running on http://0.0.0.0:8912 (Press CTRL+C to quit)
-
-
-
-
-
-{"detail":"Not Found"}JarvisClaims@JarvisClaims:~/Musaddique$ curl -X POST "http://localhost:5900/api/repair_vs_replacement/compare/CLM-2026-1001" -H "Content-Type: application/json" -d '{
- "item_age": 5,
- "useful_life_remaining": 8
-}'
-{"detail":"Not Found"}JarvisClaims@JarvisClaims:~/Musaddique$ 
