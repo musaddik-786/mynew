@@ -1,4 +1,238 @@
-before moving to the next step check this funciton once
+this is my handler 
+"""
+handler.py — Repair vs Replacement
+───────────────────────────────────────
+Compares repair vs. replacement costs for a damaged item and recommends a
+course of action based on a cost-ratio / useful-life rule.
+"""
+
+import json
+import logging
+import os
+import sys
+from typing import Optional
+
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "common"))
+
+from db import get_db_connection, row_to_dict  # noqa: E402
+from langchain_openai.chat_models import AzureChatOpenAI  # noqa: E402
+
+log = logging.getLogger(__name__)
+
+
+def get_claim_id(claim_number: str) -> int:
+#    claim_id = get_claim_id(claim_number)
+   conn = get_db_connection()
+   try:
+       cur = conn.cursor()
+       cur.execute(
+           """
+           SELECT id
+           FROM claims
+           WHERE claim_number = %s
+           """,
+           (claim_number,),
+       )
+       row = row_to_dict(cur.fetchone())
+       if not row:
+           raise ValueError(f"Claim '{claim_number}' not found")
+       return row["id"]
+   finally:
+       conn.close()
+
+
+def get_damage_item(claim_number: str) -> dict:
+   conn = get_db_connection()
+   try:
+       cur = conn.cursor()
+       cur.execute(
+           """
+           SELECT *
+           FROM damage_items
+           WHERE claim_number = %s
+           LIMIT 1
+           """,
+           (claim_number,),
+       )
+       row = row_to_dict(cur.fetchone())
+       if not row:
+           raise ValueError(
+               f"No damage item found for claim '{claim_number}'"
+           )
+       return row
+   finally:
+       conn.close()
+
+def _get_llm():
+    return AzureChatOpenAI(
+        api_key=os.getenv("AZURE_OPENAI_API_KEY"),
+        api_version=os.getenv("AZURE_OPENAI_API_VERSION"),
+        azure_deployment=os.getenv("AZURE_OPENAI_CHAT_DEPLOYMENT"),
+        azure_endpoint=os.getenv("AZURE_OPENAI_ENDPOINT"),
+    )
+
+
+def get_estimates(claim_number: str) -> list:
+    claim_id = get_claim_id(claim_number)
+    conn = get_db_connection()
+    try:
+        cur = conn.cursor()
+        cur.execute("SELECT * FROM estimates WHERE claim_id = %s ORDER BY id DESC", (claim_id,))
+        return row_to_dict(cur.fetchall())
+    finally:
+        conn.close()
+
+
+def write_estimate(claim_number: str, item_type: str, item_age: int, useful_life_remaining: int,
+                    repair_cost: float, replacement_cost: float, labor_cost: float, material_cost: float,
+                    recommendation: str, confidence_score: float) -> dict:
+    claim_id = get_claim_id(claim_number)
+    conn = get_db_connection()
+    try:
+        cur = conn.cursor()
+        cur.execute(
+            """
+            INSERT INTO estimates (
+                claim_id, item_type, item_age, useful_life_remaining, repair_cost, replacement_cost,
+                labor_cost, material_cost, recommendation, confidence_score
+            ) VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
+            """,
+            (claim_id, item_type, item_age, useful_life_remaining, repair_cost, replacement_cost,
+             labor_cost, material_cost, recommendation, confidence_score),
+        )
+        conn.commit()
+        return {
+            "id": cur.lastrowid, "claim_id": claim_id, "item_type": item_type, "item_age": item_age,
+            "useful_life_remaining": useful_life_remaining, "repair_cost": repair_cost,
+            "replacement_cost": replacement_cost, "labor_cost": labor_cost, "material_cost": material_cost,
+            "recommendation": recommendation, "confidence_score": confidence_score,
+        }
+    finally:
+        conn.close()
+
+
+def get_repair_cost_detail(claim_number: str) -> list:
+    claim_id = get_claim_id(claim_number)
+    conn = get_db_connection()
+    try:
+        cur = conn.cursor()
+        cur.execute("SELECT * FROM repair_costs WHERE claim_id = %s ORDER BY id DESC", (claim_id,))
+        return row_to_dict(cur.fetchall())
+    finally:
+        conn.close()
+
+
+def write_repair_cost(item_id: str, claim_number: str, item_type: str, material_cost: float, labor_hours: float,
+                       labor_rate: float, diagnostic_fee: float, urgency_factor: float, notes: Optional[str] = None) -> dict:
+    total_repair_estimate = round((material_cost + labor_hours * labor_rate + diagnostic_fee) * (urgency_factor or 1.0), 2)
+    claim_id = get_claim_id(claim_number)
+    conn = get_db_connection()
+    
+    try:
+        cur = conn.cursor()
+        cur.execute(
+            """
+            INSERT INTO repair_costs (
+                item_id, claim_id, item_type, material_cost, labor_hours, labor_rate,
+                diagnostic_fee, urgency_factor, total_repair_estimate, notes
+            ) VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
+            """,
+            (item_id, claim_id, item_type, material_cost, labor_hours, labor_rate,
+             diagnostic_fee, urgency_factor, total_repair_estimate, notes),
+        )
+        conn.commit()
+        return {
+            "id": cur.lastrowid, "item_id": item_id, "claim_id": claim_id, "item_type": item_type,
+            "material_cost": material_cost, "labor_hours": labor_hours, "labor_rate": labor_rate,
+            "diagnostic_fee": diagnostic_fee, "urgency_factor": urgency_factor,
+            "total_repair_estimate": total_repair_estimate, "notes": notes,
+        }
+    finally:
+        conn.close()
+
+
+def get_replacement_cost_detail(claim_number: str) -> list:
+    claim_id = get_claim_id(claim_number)
+    conn = get_db_connection()
+    try:
+        cur = conn.cursor()
+        cur.execute("SELECT * FROM replacement_costs WHERE claim_id = %s ORDER BY id DESC", (claim_id,))
+        return row_to_dict(cur.fetchall())
+    finally:
+        conn.close()
+
+
+def write_replacement_cost(item_id: str, claim_number: str, item_type: str, replacement_material_cost: float,
+                            installation_hours: float, labor_rate: float, delivery_fee: float, disposal_fee: float,
+                            notes: Optional[str] = None) -> dict:
+    total_replacement_estimate = round(
+        replacement_material_cost + installation_hours * labor_rate + delivery_fee + disposal_fee, 2
+    )
+    claim_id = get_claim_id(claim_number)
+    conn = get_db_connection()
+    try:
+        cur = conn.cursor()
+        cur.execute(
+            """
+            INSERT INTO replacement_costs (
+                item_id, claim_id, item_type, replacement_material_cost, installation_hours, labor_rate,
+                delivery_fee, disposal_fee, total_replacement_estimate, notes
+            ) VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
+            """,
+            (item_id, claim_id, item_type, replacement_material_cost, installation_hours, labor_rate,
+             delivery_fee, disposal_fee, total_replacement_estimate, notes),
+        )
+        conn.commit()
+        return {
+            "id": cur.lastrowid, "item_id": item_id, "claim_id": claim_id, "item_type": item_type,
+            "replacement_material_cost": replacement_material_cost, "installation_hours": installation_hours,
+            "labor_rate": labor_rate, "delivery_fee": delivery_fee, "disposal_fee": disposal_fee,
+            "total_replacement_estimate": total_replacement_estimate, "notes": notes,
+        }
+    finally:
+        conn.close()
+
+
+def _llm_estimate_costs(item_type: str, item_age: int) -> dict:
+    llm = _get_llm()
+#     prompt = f"""
+# You are a claims adjuster's assistant. Estimate plausible repair and
+# replacement costs in USD for a "{item_type}" that is {item_age} years old.
+# Respond with ONLY a JSON object:
+# {{"repair_cost": 0, "replacement_cost": 0, "labor_cost": 0, "material_cost": 0}}
+# """
+
+
+prompt = f"""
+You are an insurance claims cost estimator.
+Estimate realistic repair and replacement costs for a damaged "{item_type}"
+that is {item_age} years old.
+Return ONLY valid JSON.
+{{
+   "repair_cost": 0,
+   "replacement_cost": 0,
+   "material_cost": 0,
+   "labor_hours": 0,
+   "labor_rate": 0,
+   "diagnostic_fee": 0,
+   "urgency_factor": 1.0,
+   "replacement_material_cost": 0,
+   "installation_hours": 0,
+   "delivery_fee": 0,
+   "disposal_fee": 0
+}}
+"""
+    response = llm.invoke(prompt)
+    content = response.content.strip()
+    if content.startswith("```"):
+        content = content.strip("`")
+        if content.startswith("json"):
+            content = content[4:]
+    try:
+        return json.loads(content)
+    except Exception:
+        log.warning("Could not parse LLM JSON, defaulting: %s", content)
+        return {"repair_cost": 500, "replacement_cost": 1000, "labor_cost": 200, "material_cost": 300}
 
 
 def compare_repair_vs_replace(claim_number: str, item_type: str, item_age: int, useful_life_remaining: int) -> dict:
@@ -35,6 +269,51 @@ def compare_repair_vs_replace(claim_number: str, item_type: str, item_age: int, 
         labor_cost = float(ai_costs.get("labor_cost", 200))
         material_cost = float(ai_costs.get("material_cost", 300))
 
+
+
+
+        write_repair_cost(
+
+            item_id=damage_id,
+
+            claim_number=claim_number,
+
+            item_type=item_type,
+
+            material_cost=ai_costs["material_cost"],
+
+            labor_hours=ai_costs["labor_hours"],
+
+            labor_rate=ai_costs["labor_rate"],
+
+            diagnostic_fee=ai_costs["diagnostic_fee"],
+
+            urgency_factor=ai_costs["urgency_factor"],
+
+        )
+        
+        write_replacement_cost(
+
+            item_id=damage_id,
+
+            claim_number=claim_number,
+
+            item_type=item_type,
+
+            replacement_material_cost=ai_costs["replacement_material_cost"],
+
+            installation_hours=ai_costs["installation_hours"],
+
+            labor_rate=ai_costs["labor_rate"],
+
+            delivery_fee=ai_costs["delivery_fee"],
+
+            disposal_fee=ai_costs["disposal_fee"],
+
+        )
+        
+
+
     if repair_cost > 0.6 * replacement_cost or item_age >= useful_life_remaining:
         recommendation = "Replace"
     else:
@@ -63,3 +342,5 @@ def compare_repair_vs_replace(claim_number: str, item_type: str, item_age: int, 
         "confidence_score": confidence_score,
         "estimate": estimate,
     }
+
+
