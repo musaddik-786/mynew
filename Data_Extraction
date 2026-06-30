@@ -5,7 +5,17 @@ data: [Tool: compare_repair_vs_replace] Starting...
 
 data: [Tool: compare_repair_vs_replace] Done
 
-data: For
+data: Recommendation
+
+data: :
+
+data:  Replace
+
+data: 
+
+
+
+data: The
 
 data:  claim
 
@@ -25,30 +35,213 @@ data: 110
 
 data: 1
 
-data: ,
+data:  has
 
-data:  here
+data:  a
+
+data:  damaged
+
+data:  item
+
+data:  of
+
+data:  type
+
+data:  "
+
+data: Floor
+
+data: ing
+
+data: "
+
+data:  with
+
+data:  an
+
+data:  age
+
+data:  of
+
+data:  
+
+data: 5
+
+data:  years
+
+data:  and
+
+data:  a
+
+data:  useful
+
+data:  life
+
+data:  remaining
+
+data:  of
+
+data:  
+
+data: 8
+
+data:  years
+
+data: .
+
+data:  The
+
+data:  estimated
+
+data:  repair
+
+data:  cost
 
 data:  is
+
+data:  $
+
+data: 3
+
+data: ,
+
+data: 344
+
+data: .
+
+data: 00
+
+data: ,
+
+data:  while
+
+data:  the
+
+data:  replacement
+
+data:  cost
+
+data:  is
+
+data:  $
+
+data: 3
+
+data: ,
+
+data: 000
+
+data: .
+
+data: 00
+
+data: .
+
+data:  According
+
+data:  to
+
+data:  the
+
+data:  business
+
+data:  rule
+
+data: ,
+
+data:  since
 
 data:  the
 
 data:  repair
 
-data:  vs
+data:  cost
 
-data:  replacement
+data:  ($
 
-data:  analysis
+data: 3
 
-data:  for
+data: ,
+
+data: 344
+
+data: .
+
+data: 00
+
+data: )
+
+data:  exceeds
+
+data:  
+
+data: 60
+
+data: %
+
+data:  of
 
 data:  the
 
-data:  flooring
+data:  replacement
+
+data:  cost
+
+data:  ($
+
+data: 3
+
+data: ,
+
+data: 000
+
+data: .
+
+data: 00
+
+data: ),
+
+data:  replacement
+
+data:  is
+
+data:  recommended
+
+data: .
+
+data:  The
+
+data:  confidence
+
+data:  score
+
+data:  for
+
+data:  this
+
+data:  recommendation
+
+data:  is
+
+data:  
+
+data: 0
+
+data: .
+
+data: 61
+
+data: .
+
+
+
+data: Summary
+
+data:  of
+
+data:  comparison
 
 data: :
-
 
 
 data: -
@@ -61,7 +254,11 @@ data: :
 
 data:  $
 
-data: 0
+data: 3
+
+data: ,
+
+data: 344
 
 data: .
 
@@ -84,11 +281,22 @@ data: 3
 
 data: ,
 
-data: 200
+data: 000
 
 data: .
 
 data: 00
+
+data: 
+
+
+data: -
+
+data:  Recommendation
+
+data: :
+
+data:  Replace
 
 data: 
 
@@ -103,186 +311,49 @@ data: :
 
 data:  
 
-data: 1
+data: 0
 
 data: .
 
-data: 0
+data: 61
 
 data: 
 
-
-
-data: Recommendation
-
-data: :
-
-data:  Repair
-
-data: 
-
-
-
-data: Explanation
-
-data: :
 
 
 data: The
 
-data:  repair
+data:  primary
 
-data:  cost
+data:  reason
 
 data:  for
 
-data:  the
-
-data:  damaged
-
-data:  flooring
-
-data:  is
-
-data:  $
-
-data: 0
-
-data: .
-
-data: 00
-
-data: ,
-
-data:  which
-
-data:  is
-
-data:  significantly
-
-data:  less
-
-data:  than
-
-data:  
-
-data: 60
-
-data: %
-
-data:  of
-
-data:  the
+data:  recommending
 
 data:  replacement
 
-data:  cost
-
-data:  ($
-
-data: 1
-
-data: ,
-
-data: 920
-
-data: .
-
-data: 00
-
 data:  is
 
-data:  the
-
-data:  
-
-data: 60
-
-data: %
-
-data:  threshold
-
-data: ).
-
-data:  Additionally
-
-data: ,
+data:  that
 
 data:  the
-
-data:  item
-
-data:  age
-
-data:  (
-
-data: 5
-
-data:  years
-
-data: )
-
-data:  is
-
-data:  less
-
-data:  than
-
-data:  the
-
-data:  useful
-
-data:  life
-
-data:  remaining
-
-data:  (
-
-data: 8
-
-data:  years
-
-data: ).
-
-data:  Based
-
-data:  on
-
-data:  these
-
-data:  factors
-
-data: ,
-
-data:  the
-
-data:  recommendation
-
-data:  is
-
-data:  to
-
-data:  proceed
-
-data:  with
 
 data:  repair
 
-data: ,
+data:  cost
 
-data:  with
+data:  is
 
-data:  very
+data:  not
 
-data:  high
+data:  economical
 
-data:  confidence
+data:  compared
 
-data:  in
+data:  to
 
-data:  this
-
-data:  decision
+data:  replacement
 
 data: .
 
@@ -290,6 +361,30 @@ data: .
 
 data: End
 
-JarvisClaims@JarvisClaims:~/Musaddique$ 
-
-what do you think it worked if yes tell me what tables shouldi check to verify?
+JarvisClaims@JarvisClaims:~/Musaddique$ (venv) JarvisClaims@JarvisClaims:~/Musaddique/Jarvis_claims_agents_v2_copy/AdjusterAgents/RepairVsReplacementAgent$ python3 server.py 
+INFO:     Started server process [71113]
+INFO:     Waiting for application startup.
+INFO:     Application startup complete.
+INFO:     Uvicorn running on http://0.0.0.0:8912 (Press CTRL+C to quit)
+2026-06-30 13:20:20,101 | INFO     | httpx | HTTP Request: POST http://localhost:5900/api/v1/repair_vs_replacement/mcp "HTTP/1.1 200 OK"
+2026-06-30 13:20:20,101 | INFO     | mcp.client.streamable_http | Received session ID: 98c940cf58d048e388e6d23e80f0d82a
+2026-06-30 13:20:20,102 | INFO     | mcp.client.streamable_http | Negotiated protocol version: 2025-11-25
+2026-06-30 13:20:20,106 | INFO     | httpx | HTTP Request: POST http://localhost:5900/api/v1/repair_vs_replacement/mcp "HTTP/1.1 202 Accepted"
+2026-06-30 13:20:20,111 | INFO     | httpx | HTTP Request: POST http://localhost:5900/api/v1/repair_vs_replacement/mcp "HTTP/1.1 200 OK"
+2026-06-30 13:20:20,113 | INFO     | httpx | HTTP Request: DELETE http://localhost:5900/api/v1/repair_vs_replacement/mcp "HTTP/1.1 200 OK"
+2026-06-30 13:20:20,114 | INFO     | repair_vs_replacement_agent | Tools loaded from MCP: ['compare_repair_vs_replace']
+2026-06-30 13:20:20,512 | WARNING  | repair_vs_replacement_agent | Phoenix prompt load failed (Phoenix not configured) — using fallback prompt
+INFO:     127.0.0.1:39342 - "POST /chat HTTP/1.1" 200 OK
+2026-06-30 13:20:21,643 | INFO     | httpx | HTTP Request: POST https://azureclaimsopenai.openai.azure.com/openai/deployments/gpt-4.1-claims/chat/completions?api-version=2025-01-01-preview "HTTP/1.1 200 OK"
+2026-06-30 13:20:21,994 | INFO     | repair_vs_replacement_agent | AI MESSAGE = content='' additional_kwargs={} response_metadata={'finish_reason': 'tool_calls', 'model_name': 'gpt-4.1-2025-04-14', 'system_fingerprint': 'fp_dc49d4fcba', 'service_tier': 'default', 'model_provider': 'openai'} id='lc_run--019f18b0-142a-75e3-9809-867db4666991' tool_calls=[{'name': 'compare_repair_vs_replace', 'args': {'claim_number': 'CLM-2026-1101', 'item_age': 5, 'useful_life_remaining': 8}, 'id': 'call_abVtMpgAK7ytSxJRXNTQ7UaN', 'type': 'tool_call'}] invalid_tool_calls=[] usage_metadata={'input_tokens': 495, 'output_tokens': 39, 'total_tokens': 534, 'input_token_details': {'audio': 0, 'cache_read': 0}, 'output_token_details': {'audio': 0, 'reasoning': 0}}
+2026-06-30 13:20:21,994 | INFO     | repair_vs_replacement_agent | TOOL CALLS = [{'name': 'compare_repair_vs_replace', 'args': {'claim_number': 'CLM-2026-1101', 'item_age': 5, 'useful_life_remaining': 8}, 'id': 'call_abVtMpgAK7ytSxJRXNTQ7UaN', 'type': 'tool_call'}]
+2026-06-30 13:20:22,038 | INFO     | httpx | HTTP Request: POST http://localhost:5900/api/v1/repair_vs_replacement/mcp "HTTP/1.1 200 OK"
+2026-06-30 13:20:22,038 | INFO     | mcp.client.streamable_http | Received session ID: ec21238ffd614c38b16907e728ed92ed
+2026-06-30 13:20:22,038 | INFO     | mcp.client.streamable_http | Negotiated protocol version: 2025-11-25
+2026-06-30 13:20:22,042 | INFO     | httpx | HTTP Request: POST http://localhost:5900/api/v1/repair_vs_replacement/mcp "HTTP/1.1 202 Accepted"
+2026-06-30 13:20:24,059 | INFO     | httpx | HTTP Request: POST http://localhost:5900/api/v1/repair_vs_replacement/mcp "HTTP/1.1 200 OK"
+2026-06-30 13:20:24,063 | INFO     | httpx | HTTP Request: POST http://localhost:5900/api/v1/repair_vs_replacement/mcp "HTTP/1.1 200 OK"
+2026-06-30 13:20:24,065 | INFO     | httpx | HTTP Request: DELETE http://localhost:5900/api/v1/repair_vs_replacement/mcp "HTTP/1.1 200 OK"
+2026-06-30 13:20:25,608 | INFO     | httpx | HTTP Request: POST https://azureclaimsopenai.openai.azure.com/openai/deployments/gpt-4.1-claims/chat/completions?api-version=2025-01-01-preview "HTTP/1.1 200 OK"
+2026-06-30 13:20:27,495 | INFO     | repair_vs_replacement_agent | AI MESSAGE = content='Recommendation: Replace\n\nThe claim CLM-2026-1101 has a damaged item of type "Flooring" with an age of 5 years and a useful life remaining of 8 years. The estimated repair cost is $3,344.00, while the replacement cost is $3,000.00. According to the business rule, since the repair cost ($3,344.00) exceeds 60% of the replacement cost ($3,000.00), replacement is recommended. The confidence score for this recommendation is 0.61.\n\nSummary of comparison:\n- Repair Cost: $3,344.00\n- Replacement Cost: $3,000.00\n- Recommendation: Replace\n- Confidence Score: 0.61\n\nThe primary reason for recommending replacement is that the repair cost is not economical compared to replacement.\n\nEnd' additional_kwargs={} response_metadata={'finish_reason': 'stop', 'model_name': 'gpt-4.1-2025-04-14', 'system_fingerprint': 'fp_dc49d4fcba', 'service_tier': 'default', 'model_provider': 'openai'} id='lc_run--019f18b0-2204-70d2-aadb-feb69812c126' tool_calls=[] invalid_tool_calls=[] usage_metadata={'input_tokens': 730, 'output_tokens': 174, 'total_tokens': 904, 'input_token_details': {'audio': 0, 'cache_read': 0}, 'output_token_details': {'audio': 0, 'reasoning': 0}}
+2026-06-30 13:20:27,496 | INFO     | repair_vs_replacement_agent | TOOL CALLS = []
