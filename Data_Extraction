@@ -1,4 +1,4 @@
-so now is this correct?
+now check 
 
 """
 handler.py — Repair vs Replacement
@@ -51,15 +51,16 @@ def get_damage_item(claim_number: str) -> dict:
            SELECT *
            FROM damage_items
            WHERE claim_number = %s
+           LIMIT 1
            """,
            (claim_number,),
        )
-       rows = row_to_dict(cur.fetchone())
+       row = row_to_dict(cur.fetchone())
        if not row:
            raise ValueError(
                f"No damage item found for claim '{claim_number}'"
            )
-       return rows
+       return row
    finally:
        conn.close()
 
@@ -284,337 +285,124 @@ Return ONLY valid JSON.
 def compare_repair_vs_replace(claim_number: str, item_age: int, useful_life_remaining: int) -> dict:
     # Look up existing repair_costs/replacement_costs for this claim+item_type, if present
     claim_id = get_claim_id(claim_number)
-    damage= get_damage_item(claim_number)
-    
-
-    results = []
-
-    for damage in damage_items:
-
-        damage_id = damage["damage_id"]
-
-        item_type = damage["category"]
-
-        severity = damage["severity"]
-
-        estimated_cost = damage["estimated_cost"]
-
-        adjuster_notes = damage["adjuster_notes"]
-    
-
-
-        damage_id = damage["damage_id"]
-        # item_type = damage["category"]
-        severity = damage["severity"]
-        estimated_cost = damage["estimated_cost"]
-        adjuster_notes = damage["adjuster_notes"]
-        conn = get_db_connection()
-        try:
-            cur = conn.cursor()
-            cur.execute(
-                "SELECT * FROM repair_costs WHERE claim_id = %s AND item_type = %s ORDER BY id DESC LIMIT 1",
-                (claim_id, item_type),
-            )
-            repair_row = row_to_dict(cur.fetchone())
-            cur.execute(
-                "SELECT * FROM replacement_costs WHERE claim_id = %s AND item_type = %s ORDER BY id DESC LIMIT 1",
-                (claim_id, item_type),
-            )
-            replacement_row = row_to_dict(cur.fetchone())
-        finally:
-            conn.close()
-
-        if repair_row and replacement_row:
-            repair_cost = float(repair_row["total_repair_estimate"])
-            replacement_cost = float(replacement_row["total_replacement_estimate"])
-            labor_cost = float(repair_row.get("labor_hours") or 0) * float(repair_row.get("labor_rate") or 0)
-            material_cost = float(repair_row.get("material_cost") or 0)
-        else:
-            # ai_costs = _llm_estimate_costs(item_type, item_age)
-            ai_costs = _llm_estimate_costs(
-            item_type,
-            item_age,
-            severity,
-            estimated_cost,
-            adjuster_notes,
-            )
-            repair_cost = float(ai_costs.get("repair_cost", 500))
-            replacement_cost = float(ai_costs.get("replacement_cost", 1000))
-            # labor_cost = float(ai_costs.get("labor_cost", 200))
-            labor_cost = (
-            float(ai_costs["labor_hours"]) *
-            float(ai_costs["labor_rate"])
-            )
-            material_cost = float(ai_costs.get("material_cost", 300))
-
-
-
-
-            write_repair_cost(
-
-                item_id=damage_id,
-
-                claim_number=claim_number,
-
-                item_type=item_type,
-
-                material_cost=ai_costs["material_cost"],
-
-                labor_hours=ai_costs["labor_hours"],
-
-                labor_rate=ai_costs["labor_rate"],
-
-                diagnostic_fee=ai_costs["diagnostic_fee"],
-
-                urgency_factor=ai_costs["urgency_factor"],
-
-            )
-            
-            write_replacement_cost(
-
-                item_id=damage_id,
-
-                claim_number=claim_number,
-
-                item_type=item_type,
-
-                replacement_material_cost=ai_costs["replacement_material_cost"],
-
-                installation_hours=ai_costs["installation_hours"],
-
-                labor_rate=ai_costs["labor_rate"],
-
-                delivery_fee=ai_costs["delivery_fee"],
-
-                disposal_fee=ai_costs["disposal_fee"],
-
-            )
-            
-
-
-        if repair_cost > 0.6 * replacement_cost or item_age >= useful_life_remaining:
-            recommendation = "Replace"
-        else:
-            recommendation = "Repair"
-
-        # Confidence heuristic: bigger gap between costs => more confident
-        if replacement_cost > 0:
-            ratio_gap = abs(repair_cost - replacement_cost) / replacement_cost
-        else:
-            ratio_gap = 0
-        confidence_score = round(min(1.0, 0.5 + ratio_gap), 2)
-
-        estimate = write_estimate(
-            claim_number, item_type, item_age, useful_life_remaining, repair_cost, replacement_cost,
-            labor_cost, material_cost, recommendation, confidence_score,
+    damage = get_damage_item(claim_number)
+    damage_id = damage["damage_id"]
+    # item_type = damage["category"]
+    severity = damage["severity"]
+    estimated_cost = damage["estimated_cost"]
+    adjuster_notes = damage["adjuster_notes"]
+    conn = get_db_connection()
+    try:
+        cur = conn.cursor()
+        cur.execute(
+            "SELECT * FROM repair_costs WHERE claim_id = %s AND item_type = %s ORDER BY id DESC LIMIT 1",
+            (claim_id, item_type),
         )
+        repair_row = row_to_dict(cur.fetchone())
+        cur.execute(
+            "SELECT * FROM replacement_costs WHERE claim_id = %s AND item_type = %s ORDER BY id DESC LIMIT 1",
+            (claim_id, item_type),
+        )
+        replacement_row = row_to_dict(cur.fetchone())
+    finally:
+        conn.close()
 
-        results.append(estimate)
+    if repair_row and replacement_row:
+        repair_cost = float(repair_row["total_repair_estimate"])
+        replacement_cost = float(replacement_row["total_replacement_estimate"])
+        labor_cost = float(repair_row.get("labor_hours") or 0) * float(repair_row.get("labor_rate") or 0)
+        material_cost = float(repair_row.get("material_cost") or 0)
+    else:
+        # ai_costs = _llm_estimate_costs(item_type, item_age)
+        ai_costs = _llm_estimate_costs(
+        item_type,
+        item_age,
+        severity,
+        estimated_cost,
+        adjuster_notes,
+        )
+        repair_cost = float(ai_costs.get("repair_cost", 500))
+        replacement_cost = float(ai_costs.get("replacement_cost", 1000))
+        # labor_cost = float(ai_costs.get("labor_cost", 200))
+        labor_cost = (
+        float(ai_costs["labor_hours"]) *
+        float(ai_costs["labor_rate"])
+        )
+        material_cost = float(ai_costs.get("material_cost", 300))
 
-    # return {
-    #     "claim_id": claim_id,
-    #     "item_type": item_type,
-    #     "item_age": item_age,
-    #     "useful_life_remaining": useful_life_remaining,
-    #     "repair_cost": repair_cost,
-    #     "replacement_cost": replacement_cost,
-    #     "recommendation": recommendation,
-    #     "confidence_score": confidence_score,
-    #     "estimate": estimate,
-    # }
+
+
+
+        write_repair_cost(
+
+            item_id=damage_id,
+
+            claim_number=claim_number,
+
+            item_type=item_type,
+
+            material_cost=ai_costs["material_cost"],
+
+            labor_hours=ai_costs["labor_hours"],
+
+            labor_rate=ai_costs["labor_rate"],
+
+            diagnostic_fee=ai_costs["diagnostic_fee"],
+
+            urgency_factor=ai_costs["urgency_factor"],
+
+        )
+        
+        write_replacement_cost(
+
+            item_id=damage_id,
+
+            claim_number=claim_number,
+
+            item_type=item_type,
+
+            replacement_material_cost=ai_costs["replacement_material_cost"],
+
+            installation_hours=ai_costs["installation_hours"],
+
+            labor_rate=ai_costs["labor_rate"],
+
+            delivery_fee=ai_costs["delivery_fee"],
+
+            disposal_fee=ai_costs["disposal_fee"],
+
+        )
+        
+
+
+    if repair_cost > 0.6 * replacement_cost or item_age >= useful_life_remaining:
+        recommendation = "Replace"
+    else:
+        recommendation = "Repair"
+
+    # Confidence heuristic: bigger gap between costs => more confident
+    if replacement_cost > 0:
+        ratio_gap = abs(repair_cost - replacement_cost) / replacement_cost
+    else:
+        ratio_gap = 0
+    confidence_score = round(min(1.0, 0.5 + ratio_gap), 2)
+
+    estimate = write_estimate(
+        claim_number, item_type, item_age, useful_life_remaining, repair_cost, replacement_cost,
+        labor_cost, material_cost, recommendation, confidence_score,
+    )
 
     return {
-    "claim_id": claim_id,
-    "claim_number": claim_number,
-    "total_items_processed": len(results),
-    "estimates": results,
+        "claim_id": claim_id,
+        "item_type": item_type,
+        "item_age": item_age,
+        "useful_life_remaining": useful_life_remaining,
+        "repair_cost": repair_cost,
+        "replacement_cost": replacement_cost,
+        "recommendation": recommendation,
+        "confidence_score": confidence_score,
+        "estimate": estimate,
     }
-
-"""
-repair_vs_replacement_router.py
-─────────────────────────────────────
-FastAPI routes for the Repair vs Replacement MCP.
-
-Tool / Endpoint map:
-  get_estimates                GET  /api/repair_vs_replacement/estimates/{claim_id}
-  write_estimate               POST /api/repair_vs_replacement/estimates/{claim_id}
-  get_repair_cost_detail        GET  /api/repair_vs_replacement/repair_costs/{claim_id}
-  write_repair_cost             POST /api/repair_vs_replacement/repair_costs/{claim_id}
-  get_replacement_cost_detail   GET  /api/repair_vs_replacement/replacement_costs/{claim_id}
-  write_replacement_cost        POST /api/repair_vs_replacement/replacement_costs/{claim_id}
-  compare_repair_vs_replace     POST /api/repair_vs_replacement/compare/{claim_id}
-"""
-
-import logging
-from fastapi import APIRouter, HTTPException
-
-from repair_vs_replacement_mcp import handler
-from repair_vs_replacement_mcp.models import (
-    CompareRequest,
-    EstimateRequest,
-    RepairCostRequest,
-    ReplacementCostRequest,
-)
-
-log = logging.getLogger(__name__)
-
-router = APIRouter()
-
-
-@router.get(
-    "/api/repair_vs_replacement/estimates/{claim_id}",
-    operation_id="get_estimates",
-    summary="Get repair-vs-replace estimates for a claim",
-    tags=["RepairVsReplacement"],
-)
-def get_estimates(claim_id: str):
-    """Returns all estimates rows for the given claim_id."""
-    return handler.get_estimates(claim_id)
-
-
-@router.post(
-    "/api/repair_vs_replacement/estimates/{claim_id}",
-    operation_id="write_estimate",
-    summary="Write a repair-vs-replace estimate for a claim",
-    tags=["RepairVsReplacement"],
-)
-def write_estimate(claim_id: str, body: EstimateRequest):
-    """Inserts a new estimates row for the given claim_id."""
-    try:
-        return handler.write_estimate(
-            claim_id, body.item_type, body.item_age, body.useful_life_remaining, body.repair_cost,
-            body.replacement_cost, body.labor_cost, body.material_cost, body.recommendation, body.confidence_score,
-        )
-    except Exception as e:
-        log.exception("write_estimate error")
-        raise HTTPException(status_code=500, detail=str(e))
-
-
-@router.get(
-    "/api/repair_vs_replacement/repair_costs/{claim_id}",
-    operation_id="get_repair_cost_detail",
-    summary="Get repair cost details for a claim",
-    tags=["RepairVsReplacement"],
-)
-def get_repair_cost_detail(claim_id: str):
-    """Returns all repair_costs rows for the given claim_id."""
-    return handler.get_repair_cost_detail(claim_id)
-
-
-@router.post(
-    "/api/repair_vs_replacement/repair_costs/{claim_id}",
-    operation_id="write_repair_cost",
-    summary="Write a repair cost detail row for a claim",
-    tags=["RepairVsReplacement"],
-)
-def write_repair_cost(claim_id: str, body: RepairCostRequest):
-    """Inserts a repair_costs row; total_repair_estimate is computed as
-    (material_cost + labor_hours*labor_rate + diagnostic_fee) * urgency_factor."""
-    try:
-        return handler.write_repair_cost(
-            body.item_id, claim_id, body.item_type, body.material_cost, body.labor_hours,
-            body.labor_rate, body.diagnostic_fee, body.urgency_factor, body.notes,
-        )
-    except Exception as e:
-        log.exception("write_repair_cost error")
-        raise HTTPException(status_code=500, detail=str(e))
-
-
-@router.get(
-    "/api/repair_vs_replacement/replacement_costs/{claim_id}",
-    operation_id="get_replacement_cost_detail",
-    summary="Get replacement cost details for a claim",
-    tags=["RepairVsReplacement"],
-)
-def get_replacement_cost_detail(claim_id: str):
-    """Returns all replacement_costs rows for the given claim_id."""
-    return handler.get_replacement_cost_detail(claim_id)
-
-
-@router.post(
-    "/api/repair_vs_replacement/replacement_costs/{claim_id}",
-    operation_id="write_replacement_cost",
-    summary="Write a replacement cost detail row for a claim",
-    tags=["RepairVsReplacement"],
-)
-def write_replacement_cost(claim_id: str, body: ReplacementCostRequest):
-    """Inserts a replacement_costs row; total_replacement_estimate is computed as
-    replacement_material_cost + installation_hours*labor_rate + delivery_fee + disposal_fee."""
-    try:
-        return handler.write_replacement_cost(
-            body.item_id, claim_id, body.item_type, body.replacement_material_cost, body.installation_hours,
-            body.labor_rate, body.delivery_fee, body.disposal_fee, body.notes,
-        )
-    except Exception as e:
-        log.exception("write_replacement_cost error")
-        raise HTTPException(status_code=500, detail=str(e))
-
-
-@router.post(
-    "/api/repair_vs_replacement/compare/{claim_id}",
-    operation_id="compare_repair_vs_replace",
-    summary="Compare repair vs replacement for an item and recommend a course of action",
-    tags=["RepairVsReplacement"],
-)
-def compare_repair_vs_replace(claim_id: str, body: CompareRequest):
-    """
-    Looks up existing repair_costs/replacement_costs for the claim+item_type
-    (or uses an LLM to estimate plausible costs if none exist), applies the
-    rule: if repair_cost > 0.6 * replacement_cost OR item_age >=
-    useful_life_remaining then recommend "Replace" else "Repair", computes a
-    confidence_score, writes an estimates row, and returns the comparison.
-    """
-    try:
-        return handler.compare_repair_vs_replace(claim_id, body.item_age, body.useful_life_remaining)
-    except Exception as e:
-        log.exception("compare_repair_vs_replace error")
-        raise HTTPException(status_code=500, detail=str(e))
-
-
-from typing import Optional
-from pydantic import BaseModel
-
-
-class EstimateRequest(BaseModel):
-    item_type: str
-    item_age: int
-    useful_life_remaining: int
-    repair_cost: float
-    replacement_cost: float
-    labor_cost: float
-    material_cost: float
-    recommendation: str
-    confidence_score: float
-
-
-class RepairCostRequest(BaseModel):
-    item_id: str
-    item_type: str
-    material_cost: float
-    labor_hours: float
-    labor_rate: float
-    diagnostic_fee: float
-    urgency_factor: float
-    notes: Optional[str] = None
-
-
-class ReplacementCostRequest(BaseModel):
-    item_id: str
-    item_type: str
-    replacement_material_cost: float
-    installation_hours: float
-    labor_rate: float
-    delivery_fee: float
-    disposal_fee: float
-    notes: Optional[str] = None
-
-
-class CompareRequest(BaseModel):
-    # item_type: str
-    item_age: int
-    useful_life_remaining: int
-
-
 """
 server.py — Repair Vs Replacement Agent
 ───────────────────────────────────────
@@ -880,3 +668,184 @@ async def health():
 
 if __name__ == "__main__":
     uvicorn.run(app, host="0.0.0.0", port=AGENT_PORT)
+"""
+repair_vs_replacement_router.py
+─────────────────────────────────────
+FastAPI routes for the Repair vs Replacement MCP.
+
+Tool / Endpoint map:
+  get_estimates                GET  /api/repair_vs_replacement/estimates/{claim_id}
+  write_estimate               POST /api/repair_vs_replacement/estimates/{claim_id}
+  get_repair_cost_detail        GET  /api/repair_vs_replacement/repair_costs/{claim_id}
+  write_repair_cost             POST /api/repair_vs_replacement/repair_costs/{claim_id}
+  get_replacement_cost_detail   GET  /api/repair_vs_replacement/replacement_costs/{claim_id}
+  write_replacement_cost        POST /api/repair_vs_replacement/replacement_costs/{claim_id}
+  compare_repair_vs_replace     POST /api/repair_vs_replacement/compare/{claim_id}
+"""
+
+import logging
+from fastapi import APIRouter, HTTPException
+
+from repair_vs_replacement_mcp import handler
+from repair_vs_replacement_mcp.models import (
+    CompareRequest,
+    EstimateRequest,
+    RepairCostRequest,
+    ReplacementCostRequest,
+)
+
+log = logging.getLogger(__name__)
+
+router = APIRouter()
+
+
+@router.get(
+    "/api/repair_vs_replacement/estimates/{claim_id}",
+    operation_id="get_estimates",
+    summary="Get repair-vs-replace estimates for a claim",
+    tags=["RepairVsReplacement"],
+)
+def get_estimates(claim_id: str):
+    """Returns all estimates rows for the given claim_id."""
+    return handler.get_estimates(claim_id)
+
+
+@router.post(
+    "/api/repair_vs_replacement/estimates/{claim_id}",
+    operation_id="write_estimate",
+    summary="Write a repair-vs-replace estimate for a claim",
+    tags=["RepairVsReplacement"],
+)
+def write_estimate(claim_id: str, body: EstimateRequest):
+    """Inserts a new estimates row for the given claim_id."""
+    try:
+        return handler.write_estimate(
+            claim_id, body.item_type, body.item_age, body.useful_life_remaining, body.repair_cost,
+            body.replacement_cost, body.labor_cost, body.material_cost, body.recommendation, body.confidence_score,
+        )
+    except Exception as e:
+        log.exception("write_estimate error")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get(
+    "/api/repair_vs_replacement/repair_costs/{claim_id}",
+    operation_id="get_repair_cost_detail",
+    summary="Get repair cost details for a claim",
+    tags=["RepairVsReplacement"],
+)
+def get_repair_cost_detail(claim_id: str):
+    """Returns all repair_costs rows for the given claim_id."""
+    return handler.get_repair_cost_detail(claim_id)
+
+
+@router.post(
+    "/api/repair_vs_replacement/repair_costs/{claim_id}",
+    operation_id="write_repair_cost",
+    summary="Write a repair cost detail row for a claim",
+    tags=["RepairVsReplacement"],
+)
+def write_repair_cost(claim_id: str, body: RepairCostRequest):
+    """Inserts a repair_costs row; total_repair_estimate is computed as
+    (material_cost + labor_hours*labor_rate + diagnostic_fee) * urgency_factor."""
+    try:
+        return handler.write_repair_cost(
+            body.item_id, claim_id, body.item_type, body.material_cost, body.labor_hours,
+            body.labor_rate, body.diagnostic_fee, body.urgency_factor, body.notes,
+        )
+    except Exception as e:
+        log.exception("write_repair_cost error")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get(
+    "/api/repair_vs_replacement/replacement_costs/{claim_id}",
+    operation_id="get_replacement_cost_detail",
+    summary="Get replacement cost details for a claim",
+    tags=["RepairVsReplacement"],
+)
+def get_replacement_cost_detail(claim_id: str):
+    """Returns all replacement_costs rows for the given claim_id."""
+    return handler.get_replacement_cost_detail(claim_id)
+
+
+@router.post(
+    "/api/repair_vs_replacement/replacement_costs/{claim_id}",
+    operation_id="write_replacement_cost",
+    summary="Write a replacement cost detail row for a claim",
+    tags=["RepairVsReplacement"],
+)
+def write_replacement_cost(claim_id: str, body: ReplacementCostRequest):
+    """Inserts a replacement_costs row; total_replacement_estimate is computed as
+    replacement_material_cost + installation_hours*labor_rate + delivery_fee + disposal_fee."""
+    try:
+        return handler.write_replacement_cost(
+            body.item_id, claim_id, body.item_type, body.replacement_material_cost, body.installation_hours,
+            body.labor_rate, body.delivery_fee, body.disposal_fee, body.notes,
+        )
+    except Exception as e:
+        log.exception("write_replacement_cost error")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post(
+    "/api/repair_vs_replacement/compare/{claim_id}",
+    operation_id="compare_repair_vs_replace",
+    summary="Compare repair vs replacement for an item and recommend a course of action",
+    tags=["RepairVsReplacement"],
+)
+def compare_repair_vs_replace(claim_id: str, body: CompareRequest):
+    """
+    Looks up existing repair_costs/replacement_costs for the claim+item_type
+    (or uses an LLM to estimate plausible costs if none exist), applies the
+    rule: if repair_cost > 0.6 * replacement_cost OR item_age >=
+    useful_life_remaining then recommend "Replace" else "Repair", computes a
+    confidence_score, writes an estimates row, and returns the comparison.
+    """
+    try:
+        return handler.compare_repair_vs_replace(claim_id, body.item_age, body.useful_life_remaining)
+    except Exception as e:
+        log.exception("compare_repair_vs_replace error")
+        raise HTTPException(status_code=500, detail=str(e))
+from typing import Optional
+from pydantic import BaseModel
+
+
+class EstimateRequest(BaseModel):
+    item_type: str
+    item_age: int
+    useful_life_remaining: int
+    repair_cost: float
+    replacement_cost: float
+    labor_cost: float
+    material_cost: float
+    recommendation: str
+    confidence_score: float
+
+
+class RepairCostRequest(BaseModel):
+    item_id: str
+    item_type: str
+    material_cost: float
+    labor_hours: float
+    labor_rate: float
+    diagnostic_fee: float
+    urgency_factor: float
+    notes: Optional[str] = None
+
+
+class ReplacementCostRequest(BaseModel):
+    item_id: str
+    item_type: str
+    replacement_material_cost: float
+    installation_hours: float
+    labor_rate: float
+    delivery_fee: float
+    disposal_fee: float
+    notes: Optional[str] = None
+
+
+class CompareRequest(BaseModel):
+    # item_type: str
+    item_age: int
+    useful_life_remaining: int
