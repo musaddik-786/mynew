@@ -1,531 +1,497 @@
-handler.py
-"""
-handler.py — Reserve Recommendation
-──────────────────────────────────────
-Calculates a recommended financial reserve by combining loss_assessments,
-fraud_risk_score, and claim severity. Compares the recommendation against
-the adjuster's manually set adjusted_reserve.
-"""
 
-import json
-import logging
-import os
-import sys
-from typing import Optional
-
-sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "common"))
-
-from db import get_db_connection, row_to_dict  # noqa: E402
-from langchain_openai.chat_models import AzureChatOpenAI  # noqa: E402
-
-log = logging.getLogger(__name__)
-
-_SEVERITY_BUFFER = {"Critical": 0.30, "High": 0.20, "Medium": 0.10, "Low": 0.05}
-
-
-def _get_llm():
-    return AzureChatOpenAI(
-        api_key=os.getenv("AZURE_OPENAI_API_KEY"),
-        api_version=os.getenv("AZURE_OPENAI_API_VERSION"),
-        azure_deployment=os.getenv("AZURE_OPENAI_CHAT_DEPLOYMENT"),
-        azure_endpoint=os.getenv("AZURE_OPENAI_ENDPOINT"),
-    )
-
-
-def get_adjuster_findings(claim_id: str) -> Optional[dict]:
-    conn = get_db_connection()
-    try:
-        cur = conn.cursor()
-        cur.execute(
-            "SELECT * FROM adjuster_findings WHERE claim_id = %s ORDER BY id DESC LIMIT 1",
-            (claim_id,),
-        )
-        return row_to_dict(cur.fetchone())
-    finally:
-        conn.close()
-
-
-def _get_claim(claim_id: str) -> Optional[dict]:
-    conn = get_db_connection()
-    try:
-        cur = conn.cursor()
-        cur.execute("SELECT * FROM claims WHERE claim_number = %s", (claim_id,))
-        row = cur.fetchone()
-        if row:
-            return row_to_dict(row)
-        if claim_id.isdigit():
-            cur.execute("SELECT * FROM claims WHERE id = %s", (int(claim_id),))
-            return row_to_dict(cur.fetchone())
-        return None
-    finally:
-        conn.close()
-
-
-def _get_loss_assessment(claim_id: str) -> Optional[dict]:
-    conn = get_db_connection()
-    try:
-        cur = conn.cursor()
-        cur.execute(
-            "SELECT * FROM loss_assessments WHERE claim_number = %s ORDER BY id DESC LIMIT 1",
-            (claim_id,),
-        )
-        return row_to_dict(cur.fetchone())
-    finally:
-        conn.close()
-
-
-def _get_fraud_risk(claim_id: str) -> Optional[dict]:
-    conn = get_db_connection()
-    try:
-        cur = conn.cursor()
-        cur.execute(
-            "SELECT * FROM fraud_risk_snapshots WHERE claim_id = %s ORDER BY id DESC LIMIT 1",
-            (claim_id,),
-        )
-        return row_to_dict(cur.fetchone())
-    finally:
-        conn.close()
-
-
-def recommend_reserve(claim_id: str) -> dict:
-    """
-    Derives a recommended reserve from loss assessment totals, fraud risk
-    buffer, and severity adjustment. Compares to the adjuster's manually
-    set reserve and highlights significant variance.
-    """
-    claim = _get_claim(claim_id)
-    if not claim:
-        raise ValueError(f"Claim {claim_id} not found")
-
-    loss_assessment = _get_loss_assessment(claim_id)
-    fraud_snapshot = _get_fraud_risk(claim_id)
-    findings = get_adjuster_findings(claim_id)
-
-    severity = claim.get("severity") or "Medium"
-    estimated_cost = float(claim.get("estimated_cost") or 0)
-
-    if loss_assessment:
-        base_loss = float(loss_assessment.get("total_parts_cost") or 0) + \
-                    float(loss_assessment.get("total_labor_cost") or 0)
-    else:
-        base_loss = estimated_cost
-
-    fraud_score = int(fraud_snapshot.get("fraud_score") or 0) if fraud_snapshot else 0
-    fraud_buffer_pct = min(fraud_score / 1000, 0.15)
-    severity_buffer_pct = _SEVERITY_BUFFER.get(severity, 0.10)
-
-    recommended_reserve = round(base_loss * (1 + severity_buffer_pct + fraud_buffer_pct), 2)
-
-    adjuster_reserve = float(findings.get("adjusted_reserve") or 0) if findings else 0.0
-    variance_pct = round((recommended_reserve - adjuster_reserve) / adjuster_reserve * 100, 1) if adjuster_reserve > 0 else 0.0
-
-    llm = _get_llm()
-    prompt = f"""
-You are an insurance reserve specialist. Write a one-sentence rationale
-explaining the recommended reserve calculation.
-
-  severity: {severity}
-  base_loss_estimate: {base_loss}
-  severity_buffer_percent: {severity_buffer_pct * 100}%
-  fraud_risk_score: {fraud_score}
-  fraud_buffer_percent: {fraud_buffer_pct * 100:.1f}%
-  recommended_reserve: {recommended_reserve}
-  adjuster_set_reserve: {adjuster_reserve if adjuster_reserve else 'not set'}
-  variance_percent: {variance_pct}%
-
-Respond with ONLY a JSON object: {{"rationale": "..."}}
-"""
-    response = llm.invoke(prompt)
-    content = response.content.strip().strip("`")
-    if content.startswith("json"):
-        content = content[4:]
-    try:
-        rationale = json.loads(content).get("rationale", "")
-    except Exception:
-        rationale = f"Reserve based on {severity} severity buffer ({int(severity_buffer_pct * 100)}%) and fraud risk adjustment ({int(fraud_buffer_pct * 100)}%)."
-
-    conn = get_db_connection()
-    try:
-        cur = conn.cursor()
-        if findings:
-            cur.execute(
-                "UPDATE adjuster_findings SET adjusted_reserve = %s WHERE id = %s",
-                (recommended_reserve, findings["id"]),
-            )
-        else:
-            cur.execute(
-                "INSERT INTO adjuster_findings (claim_id, adjuster_name, fraud_risk, adjusted_reserve) VALUES (%s, %s, %s, %s)",
-                (claim_id, "ReserveRecommendationAgent", rationale[:100], recommended_reserve),
-            )
-        conn.commit()
-    finally:
-        conn.close()
-
-    return {
-        "claim_id": claim_id,
-        "recommended_reserve": recommended_reserve,
-        "adjuster_set_reserve": adjuster_reserve or None,
-        "variance_percent": variance_pct,
-        "severity_buffer_percent": round(severity_buffer_pct * 100, 1),
-        "fraud_buffer_percent": round(fraud_buffer_pct * 100, 1),
-        "rationale": rationale,
-    }
-
-
-JarvisClaims@JarvisClaims:~/Musaddique$ curl -s -N -X POST http://localhost:8910/chat   -H "Content-Type: application/json"   -d '{"message": "Set the initial reserve for claim CLM-2026-1001."}'   --max-time 90
-data: [Tool: recommend_reserve] Starting...
-
-data: [Tool: recommend_reserve] Done
-
-data: The
-
-data:  claim
-
-data:  CL
-
-data: M
-
-data: -
-
-data: 202
-
-data: 6
-
-data: -
-
-data: 100
-
-data: 1
-
-data:  could
-
-data:  not
-
-data:  be
-
-data:  found
-
-data:  in
-
-data:  the
-
-data:  system
-
-data: .
-
-data:  No
-
-data:  claim
-
-data:  details
-
-data:  are
-
-data:  available
-
-data: ,
-
-data:  so
-
-data:  a
-
-data:  recommended
-
-data:  reserve
-
-data:  cannot
-
-data:  be
-
-data:  set
-
-data: .
-
-
-
-data: End
-
-JarvisClaims@JarvisClaims:~/Musaddique$ (venv) JarvisClaims@JarvisClaims:~/Musaddique/Jarvis_claims_agents_v2_copy/AdjusterAgents/ReserveRecommendationAgent$ python3 server.py 
-INFO:     Started server process [6487]
-INFO:     Waiting for application startup.
-INFO:     Application startup complete.
-INFO:     Uvicorn running on http://0.0.0.0:8910 (Press CTRL+C to quit)
-2026-06-30 04:06:57,171 | INFO     | httpx | HTTP Request: POST http://localhost:5900/api/v1/reserve_recommendation/mcp "HTTP/1.1 200 OK"
-2026-06-30 04:06:57,171 | INFO     | mcp.client.streamable_http | Received session ID: 7de0869a81544527a5d7a0b83fdfe33f
-2026-06-30 04:06:57,172 | INFO     | mcp.client.streamable_http | Negotiated protocol version: 2025-11-25
-2026-06-30 04:06:57,175 | INFO     | httpx | HTTP Request: POST http://localhost:5900/api/v1/reserve_recommendation/mcp "HTTP/1.1 202 Accepted"
-2026-06-30 04:06:57,180 | INFO     | httpx | HTTP Request: POST http://localhost:5900/api/v1/reserve_recommendation/mcp "HTTP/1.1 200 OK"
-2026-06-30 04:06:57,182 | INFO     | httpx | HTTP Request: DELETE http://localhost:5900/api/v1/reserve_recommendation/mcp "HTTP/1.1 200 OK"
-2026-06-30 04:06:57,183 | INFO     | reserve_recommendation_agent | Tools loaded from MCP: ['get_adjuster_findings', 'recommend_reserve']
-2026-06-30 04:06:57,574 | WARNING  | reserve_recommendation_agent | Phoenix prompt load failed (Phoenix not configured) — using fallback prompt
-INFO:     127.0.0.1:43700 - "POST /chat HTTP/1.1" 200 OK
-2026-06-30 04:06:58,167 | INFO     | httpx | HTTP Request: POST https://azureclaimsopenai.openai.azure.com/openai/deployments/gpt-4.1-claims/chat/completions?api-version=2025-01-01-preview "HTTP/1.1 200 OK"
-2026-06-30 04:06:58,297 | INFO     | httpx | HTTP Request: POST http://localhost:5900/api/v1/reserve_recommendation/mcp "HTTP/1.1 200 OK"
-2026-06-30 04:06:58,297 | INFO     | mcp.client.streamable_http | Received session ID: 341dd85ba2614706b915cb715b96e47c
-2026-06-30 04:06:58,298 | INFO     | mcp.client.streamable_http | Negotiated protocol version: 2025-11-25
-2026-06-30 04:06:58,300 | INFO     | httpx | HTTP Request: POST http://localhost:5900/api/v1/reserve_recommendation/mcp "HTTP/1.1 202 Accepted"
-2026-06-30 04:06:58,358 | INFO     | httpx | HTTP Request: POST http://localhost:5900/api/v1/reserve_recommendation/mcp "HTTP/1.1 200 OK"
-2026-06-30 04:06:58,360 | INFO     | httpx | HTTP Request: DELETE http://localhost:5900/api/v1/reserve_recommendation/mcp "HTTP/1.1 200 OK"
-2026-06-30 04:06:59,167 | INFO     | httpx | HTTP Request: POST https://azureclaimsopenai.openai.azure.com/openai/deployments/gpt-4.1-claims/chat/completions?api-version=2025-01-01-preview "HTTP/1.1 200 OK"
-
-
-"""
-server.py — Reserve Recommendation Agent
-──────────────────────────────────────────
-LangGraph agent that computes a recommended financial reserve for a claim
-and compares it against the adjuster's manually set reserve.
-
-Port: 8910
-MCP : http://localhost:8900/api/v1/reserve_recommendation/mcp
-
-Run:
-    py -3 server.py
-"""
-
-import json
-import logging
-import os
-import sys
-import time
-import traceback
-from datetime import datetime, timedelta
-from typing import Annotated, TypedDict
-
-import uvicorn
-from dotenv import load_dotenv, find_dotenv
-from fastapi import FastAPI, Request
-from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import StreamingResponse
-from langchain_core.messages import AIMessage, SystemMessage
-from langchain_mcp_adapters.client import MultiServerMCPClient
-from langchain_openai.chat_models import AzureChatOpenAI
-from langgraph.graph import END, START, StateGraph
-from langgraph.graph.message import add_messages
-from langgraph.prebuilt import ToolNode
-
-load_dotenv(find_dotenv())
-
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s | %(levelname)-8s | %(name)s | %(message)s",
-    stream=sys.stdout,
-    force=True,
-)
-logger = logging.getLogger("reserve_recommendation_agent")
-
-PHOENIX_API_KEY = os.getenv("PHOENIX_API_KEY", "")
-PHOENIX_ENDPOINT = os.getenv("PHOENIX_ENDPOINT", "")
-MCP_URL = os.getenv("MCP_URL", "http://localhost:5900/api/v1/reserve_recommendation/mcp")
-AGENT_PORT = int(os.getenv("AGENT_PORT", "8910"))
-
-config_mcp_server = {
-    "reserve_recommendation_mcp": {
-        "url": MCP_URL,
-        "transport": "streamable_http",
-        "timeout": timedelta(seconds=120),
-        "sse_read_timeout": timedelta(seconds=600),
-    }
+## 5. Persona 2 — Claims Adjuster (15 agents)
+
+**MCP server:** port `8900`  
+**Start all Adjuster agents:**
+```powershell
+cd AdjusterAgents
+foreach ($a in @("TriageAgent","ClaimClassificationAgent","FraudScreeningAgent","DamageAssessmentAgent","EvidenceValidationAgent","ExternalDataAgent","LossAssessmentAgent","RepairVsReplacementAgent","ReserveRecommendationAgent","FinancialLeakageAgent","SettlementRecommendationAgent","PaymentEligibilityAgent","PaymentTriggerAgent","VerificationAgent","RoutingAgent")) {
+    Start-Process -WindowStyle Hidden py "-3 $a/server.py"
+    Start-Sleep 1
 }
+```
 
-app = FastAPI(title="Reserve Recommendation Agent")
+---
 
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
+### A-1 · TriageAgent · Port 8901 (actual: 8902)
 
+**Purpose:** Assess claim priority, SLA risk, and initial routing recommendation.
 
-class State(TypedDict):
-    messages: Annotated[list, add_messages]
+```powershell
+cd AdjusterAgents
+py -3 TriageAgent/server.py
+```
 
+**Test 1 — Run triage**
+```bash
+curl -s -N -X POST http://localhost:8902/chat \
+  -H "Content-Type: application/json" \
+  -d '{"message": "Run triage for claim CLM-2026-1001. The loss type is water damage from a burst pipe. Estimated cost is $8,500. Severity is Medium."}' \
+  --max-time 90
+```
 
-def router(state: State):
-    last = state["messages"][-1]
-    if isinstance(last, AIMessage) and getattr(last, "tool_calls", None):
-        return "tools"
-    if isinstance(last, AIMessage) and last.content:
-        if "Continue" in last.content:
-            return "tools"
-        if "End" in last.content:
-            return "End"
-    return "End"
+| Expected tools called | What it confirms |
+|---|---|
+| `get_claim_details` | Loads claim data |
+| `run_triage` | Computes priority score, SLA risk |
+| `save_triage_result` | Saves to claim_triage table |
+| `get_adjuster_workload` | Checks adjuster availability |
 
+**Expected response:** "Claim CLM-2026-1001 has been triaged. Priority: **Medium**. SLA risk: **Low**. Estimated resolution: 5–7 business days. Recommended routing: Standard Adjuster. No immediate escalation required."
 
-# _FALLBACK_PROMPT = """
-# You are the Reserve Recommendation Agent for an insurance claims platform,
-# assisting a Claims Adjuster.
+---
 
-# Given a claim_id, your workflow is:
+**Test 2 — Check existing triage result**
+```bash
+curl -s -N -X POST http://localhost:8902/chat \
+  -H "Content-Type: application/json" \
+  -d '{"message": "What is the triage result for claim CLM-2026-1001?"}' \
+  --max-time 60
+```
 
-# 1. Call recommend_reserve with the claim_id. This will:
-#    - Pull loss assessment totals, fraud risk score, and claim severity.
-#    - Apply severity and fraud buffers to compute a recommended reserve.
-#    - Compare against the adjuster's manually set adjusted_reserve.
-#    - Update adjuster_findings with the recommended reserve.
+| Expected tools called | What it confirms |
+|---|---|
+| `get_triage_result` | Returns existing triage from DB |
 
-# 2. Summarize for the adjuster:
-#    - The recommended reserve amount and its calculation breakdown.
-#    - The severity buffer and fraud risk buffer applied.
-#    - Variance vs. the adjuster's manual reserve (if set).
-#    - The LLM rationale.
+**Expected response:** The triage result saved in the previous test.
 
-# When you have completed the task, end your response with "End".
-# """
+---
 
+### A-2 · ClaimClassificationAgent · Port 8902 (actual varies)
 
+**Purpose:** Classify claim by type, subtype, and coverage category.
 
-_FALLBACK_PROMPT = """
-You are the Reserve Recommendation Agent for an insurance claims platform.
-Your responsibility is to recommend an appropriate financial reserve for a claim using information already available in the claims system.
-Workflow:
-1. The adjuster is only expected to provide the claim number.
-  Do NOT ask the adjuster for estimated loss, deductible, fraud score, severity, or repair costs if they already exist in the system.
-2. Call recommend_reserve with the provided claim number.
-3. The recommend_reserve tool will automatically:
-  - Retrieve the claim details from the Claims table.
-  - Retrieve the latest loss assessment, including repair costs and deductible.
-  - Retrieve the latest fraud risk score.
-  - Retrieve the current manual reserve from Adjuster Findings.
-  - Calculate the recommended reserve using the business rules.
-  - Compare the recommended reserve with the current manual reserve.
-  - Store the updated recommended reserve in Adjuster Findings.
-4. After the tool returns, summarize:
-  - Recommended reserve.
-  - Base loss used.
-  - Deductible used.
-  - Severity and severity buffer.
-  - Fraud score and fraud buffer.
-  - Current manual reserve.
-  - Variance.
-  - Business rationale.
-5. Never invent financial values.
-  If required data is unavailable in the database, clearly state which information is missing instead of making assumptions.
-End your response with "End".
-"""
+```powershell
+cd AdjusterAgents
+py -3 ClaimClassificationAgent/server.py
+```
 
-def load_prompt() -> str:
-    if not PHOENIX_ENDPOINT:
-        raise RuntimeError("Phoenix not configured")
-    from phoenix.client import Client
-    client = Client(base_url=PHOENIX_ENDPOINT, api_key=PHOENIX_API_KEY)
-    prompt = client.prompts.get(name="reserve_recommendation_agent", label="production")
-    prompt_set = prompt._template["messages"]
-    system_msg = next(
-        (item["content"][0]["text"] for item in prompt_set if item.get("role") == "system"), None
-    )
-    if not system_msg:
-        raise ValueError("System prompt is empty or missing in Phoenix")
-    return system_msg
+**Test question:**
+```bash
+curl -s -N -X POST http://localhost:<port>/chat \
+  -H "Content-Type: application/json" \
+  -d '{"message": "Classify claim CLM-2026-1001. Loss type is water damage from a burst pipe in the kitchen."}' \
+  --max-time 90
+```
 
+| Expected tools called | What it confirms |
+|---|---|
+| `get_claim_details` | Loads claim |
+| `classify_claim` | Assigns type: Plumbing / Water Damage / Property |
+| `save_classification` | Writes classification to DB |
 
-def create_graph(model, tools, prompt):
-    graph_builder = StateGraph(State)
-    llm_with_tools = model.bind_tools(tools)
+**Expected response:** "Claim CLM-2026-1001 classified as: **Type:** Property Damage · **Subtype:** Water Damage (Plumbing) · **Coverage Category:** Homeowners — Section I. AI confidence: 92%."
 
-    async def agent_node(state: State):
-        all_messages = [SystemMessage(content=prompt)] + state["messages"]
-        message = await llm_with_tools.ainvoke(all_messages)
-        return {"messages": [message]}
+---
 
-    graph_builder.add_node("agent", agent_node)
-    graph_builder.add_node("tools", ToolNode(tools=tools))
-    graph_builder.add_edge(START, "agent")
-    graph_builder.add_conditional_edges("agent", router, {"tools": "tools", "End": END})
-    graph_builder.add_edge("tools", "agent")
-    return graph_builder.compile()
+### A-3 · FraudScreeningAgent · Port 8903
 
+**Purpose:** Run AI-assisted fraud indicator analysis on a claim.
 
-async def get_tools():
-    client = MultiServerMCPClient(config_mcp_server)
-    tools = await client.get_tools()
-    logger.info("Tools loaded from MCP: %s", [t.name for t in tools])
-    return tools
+```powershell
+cd AdjusterAgents
+py -3 FraudScreeningAgent/server.py
+```
 
+**Test 1 — Run fraud screening**
+```bash
+curl -s -N -X POST http://localhost:8903/chat \
+  -H "Content-Type: application/json" \
+  -d '{"message": "Run a fraud screening check on claim CLM-2026-1001."}' \
+  --max-time 90
+```
 
-async def stream_graph(graph, initial_state, config):
-    async for event in graph.astream_events(initial_state, config=config, version="v2"):
-        kind = event.get("event", "")
-        if kind == "on_chat_model_stream":
-            chunk = event["data"].get("chunk")
-            if chunk and hasattr(chunk, "content") and chunk.content:
-                yield f"data: {chunk.content}\n\n"
-        elif kind == "on_tool_start":
-            yield f"data: [Tool: {event.get('name', 'unknown_tool')}] Starting...\n\n"
-        elif kind == "on_tool_end":
-            yield f"data: [Tool: {event.get('name', 'unknown_tool')}] Done\n\n"
+| Expected tools called | What it confirms |
+|---|---|
+| `get_claim_details` | Loads claim for LLM analysis |
+| `run_fraud_screening` | LLM analyzes 0–3 indicators, writes signals |
+| `get_fraud_flags` | Returns any active flags |
+| `get_fraud_risk_snapshot` | Returns aggregate fraud score |
 
+**Expected response:** "Fraud screening complete for CLM-2026-1001. **Fraud score: 0**. No red flags identified. No prior claims pattern detected. This claim does not require SIU referral."
 
-@app.post("/chat")
-async def chat_stream(request: Request):
-    load_dotenv(find_dotenv())
-    tools = await get_tools()
+---
 
-    model = AzureChatOpenAI(
-        api_key=os.getenv("AZURE_OPENAI_API_KEY"),
-        api_version=os.getenv("AZURE_OPENAI_API_VERSION"),
-        azure_deployment=os.getenv("AZURE_OPENAI_CHAT_DEPLOYMENT"),
-        azure_endpoint=os.getenv("AZURE_OPENAI_ENDPOINT"),
-    )
+**Test 2 — Check fraud flags only**
+```bash
+curl -s -N -X POST http://localhost:8903/chat \
+  -H "Content-Type: application/json" \
+  -d '{"message": "Are there any fraud flags on claim CLM-2026-1001?"}' \
+  --max-time 60
+```
 
-    try:
-        system_prompt = load_prompt()
-    except Exception as e:
-        logger.warning("Phoenix prompt load failed (%s) — using fallback prompt", e)
-        system_prompt = _FALLBACK_PROMPT
+| Expected tools called | What it confirms |
+|---|---|
+| `get_fraud_flags` | Returns list of fraud_flags rows |
 
-    body = await request.json()
-    user_message = body.get("message", "Recommend a reserve for this claim")
-    graph = create_graph(model=model, tools=tools, prompt=system_prompt)
+**Expected response:** "No active fraud flags found for claim CLM-2026-1001."
 
-    async def generate():
-        start = time.time()
-        last_event_at = start
-        last_tool = None
-        try:
-            async for event in stream_graph(
-                graph=graph,
-                initial_state={"messages": [user_message]},
-                config={"recursion_limit": 250},
-            ):
-                last_event_at = time.time()
-                if isinstance(event, str) and event.startswith("data: [Tool:"):
-                    try:
-                        last_tool = event.split("[Tool:", 1)[1].split("]", 1)[0]
-                    except Exception:
-                        pass
-                yield event
-        except BaseException as e:
-            elapsed = time.time() - start
-            since_last = time.time() - last_event_at
-            err = {
-                "exception_class": type(e).__name__,
-                "message": str(e),
-                "elapsed_total_seconds": round(elapsed, 2),
-                "seconds_since_last_event": round(since_last, 2),
-                "last_tool_invoked": last_tool,
-                "traceback": traceback.format_exc(),
-                "timestamp_utc": datetime.utcnow().isoformat(),
-            }
-            logger.error("AGENT_ERROR %s", json.dumps(err, default=str))
-            try:
-                yield f"data: [AGENT_ERROR] {json.dumps(err, default=str)}\n\n"
-            except Exception:
-                pass
-            import asyncio
-            if isinstance(e, asyncio.CancelledError):
-                raise
+---
 
-    return StreamingResponse(generate(), media_type="text/event-stream")
+### A-4 · DamageAssessmentAgent · Port 8907
 
+**Purpose:** Assess and itemize physical damage for a claim.
 
-@app.get("/health")
-async def health():
-    return {"status": "healthy", "agent": "reserve_recommendation_agent"}
+```powershell
+cd AdjusterAgents
+py -3 DamageAssessmentAgent/server.py
+```
 
+**Test 1 — Assess damage**
+```bash
+curl -s -N -X POST http://localhost:8907/chat \
+  -H "Content-Type: application/json" \
+  -d '{"message": "Assess the damage for claim CLM-2026-1001. Kitchen burst pipe caused flooding. The flooring, lower cabinets, and drywall are damaged. There is also plumbing repair needed."}' \
+  --max-time 90
+```
 
-if __name__ == "__main__":
-    uvicorn.run(app, host="0.0.0.0", port=AGENT_PORT)
+| Expected tools called | What it confirms |
+|---|---|
+| `get_claim_details` | Loads claim |
+| `write_damage_item` (×3–4) | Creates damage_items rows per category |
+| `get_damage_items` | Retrieves all items for summary |
 
+**Expected response:** Itemized list e.g.:
+- Flooring (Laminate) — Medium — $3,500
+- Lower Cabinets — Medium — $2,000
+- Drywall — Low — $1,000
+- Plumbing repair — Medium — $2,000
+- **Total: $8,500**
+
+---
+
+**Test 2 — Condition assessment**
+```bash
+curl -s -N -X POST http://localhost:8907/chat \
+  -H "Content-Type: application/json" \
+  -d '{"message": "Run a condition assessment for the flooring in claim CLM-2026-1001. The laminate is 4 years old and has a remaining useful life of 6 years."}' \
+  --max-time 90
+```
+
+| Expected tools called | What it confirms |
+|---|---|
+| `write_condition_assessment` | Saves structural_integrity_score, age, wear level |
+
+**Expected response:** Condition score with repair vs replacement recommendation based on age and remaining useful life.
+
+---
+
+### A-5 · EvidenceValidationAgent · Port 8904
+
+**Purpose:** Cross-validate evidence items against claim details.
+
+```powershell
+cd AdjusterAgents
+py -3 EvidenceValidationAgent/server.py
+```
+
+**Test question:**
+```bash
+curl -s -N -X POST http://localhost:<port>/chat \
+  -H "Content-Type: application/json" \
+  -d '{"message": "Validate all evidence submitted for claim CLM-2026-1001. Check if the repair estimate is consistent with the reported damage."}' \
+  --max-time 90
+```
+
+| Expected tools called | What it confirms |
+|---|---|
+| `get_claim_documents` | Loads uploaded evidence |
+| `get_damage_items` | Loads damage assessment |
+| `run_evidence_validation` | Cross-checks consistency |
+| `save_validation_result` | Writes result to DB |
+
+**Expected response:** "Evidence validation complete. 2 documents on file. The repair estimate ($950) is consistent with the plumbing damage item ($2,000) — note estimate is for pipe repair only, not full scope. Validation status: **Partially Complete**. Recommend: obtain full-scope estimate."
+
+---
+
+### A-6 · ExternalDataAgent · Port 8905
+
+**Purpose:** Pull weather data, drone imagery, and third-party verification to corroborate the claim.
+
+```powershell
+cd AdjusterAgents
+py -3 ExternalDataAgent/server.py
+```
+
+**Test question:**
+```bash
+curl -s -N -X POST http://localhost:<port>/chat \
+  -H "Content-Type: application/json" \
+  -d '{"message": "Pull external weather data for Springfield IL on 2026-05-20 to corroborate claim CLM-2026-1001 (water damage from burst pipe)."}' \
+  --max-time 90
+```
+
+| Expected tools called | What it confirms |
+|---|---|
+| `get_weather_alignment` | Checks weather event data |
+| `get_drone_authenticity` | Checks drone imagery if available |
+| `run_external_verification` | Runs full external check |
+| `save_external_verification` | Writes to external_verifications table |
+
+**Expected response:** Weather corroboration result — temperature, precipitation on date of loss. If no anomalous weather: "No weather event matches burst pipe — consistent with internal plumbing failure. External data supports claim narrative."
+
+---
+
+### A-7 · LossAssessmentAgent · Port 8906
+
+**Purpose:** Compute total loss, depreciation, deductible, and recommended settlement.
+
+```powershell
+cd AdjusterAgents
+py -3 LossAssessmentAgent/server.py
+```
+
+**Test question:**
+```bash
+curl -s -N -X POST http://localhost:<port>/chat \
+  -H "Content-Type: application/json" \
+  -d '{"message": "Run a full loss assessment for claim CLM-2026-1001. Total repair estimate is $8,500."}' \
+  --max-time 90
+```
+
+| Expected tools called | What it confirms |
+|---|---|
+| `get_claim_details` | Loads claim and coverage |
+| `get_damage_items` | Loads itemized damages |
+| `get_policy_details` | Gets deductible, coverage limit |
+| `run_loss_assessment` | Computes net_payable after deductible + depreciation |
+| `save_loss_assessment` | Saves to loss_assessments table |
+
+**Expected response:** "Loss assessment for CLM-2026-1001: Total repair: $8,500 · Depreciation (10%): -$850 · Deductible: -$1,000 · **Net payable: $6,650** · Recommendation: Repair (not replace) · Confidence: 88%."
+
+---
+
+### A-8 · RepairVsReplacementAgent · Port 8908
+
+**Purpose:** Recommend repair or replacement for each damaged item.
+
+```powershell
+cd AdjusterAgents
+py -3 RepairVsReplacementAgent/server.py
+```
+
+**Test question:**
+```bash
+curl -s -N -X POST http://localhost:<port>/chat \
+  -H "Content-Type: application/json" \
+  -d '{"message": "Should the laminate flooring in claim CLM-2026-1001 be repaired or replaced? It is 4 years old with repair cost $800 and replacement cost $3,500."}' \
+  --max-time 90
+```
+
+| Expected tools called | What it confirms |
+|---|---|
+| `get_repair_cost` | Gets repair estimate details |
+| `get_replacement_cost` | Gets replacement estimate details |
+| `run_repair_vs_replacement` | Computes recommendation based on age, cost ratio |
+| `save_repair_vs_replacement` | Saves recommendation to DB |
+
+**Expected response:** "Recommendation for laminate flooring (4 years old): **Replace**. Repair-to-replacement cost ratio: 23%. Given the age (4 of 10-year useful life) and extent of saturation, replacement is more cost-effective long-term."
+
+---
+
+### A-9 · ReserveRecommendationAgent · Port 8909
+
+**Purpose:** Set or adjust the financial reserve for a claim.
+
+```powershell
+cd AdjusterAgents
+py -3 ReserveRecommendationAgent/server.py
+```
+
+**Test question:**
+```bash
+curl -s -N -X POST http://localhost:8910/chat \
+  -H "Content-Type: application/json" \
+  -d '{"message": "Set the initial reserve for claim CLM-2026-1001. The estimated loss is $8,500 with a $1,000 deductible."}' \
+  --max-time 90
+```
+
+| Expected tools called | What it confirms |
+|---|---|
+| `get_claim_details` | Loads claim |
+| `get_loss_assessment` | Gets net_payable from assessment |
+| `run_reserve_recommendation` | Computes reserve = net payable + 15% buffer |
+| `save_reserve` | Writes reserve amount to DB |
+
+**Expected response:** "Reserve set for CLM-2026-1001: **$7,650** (net payable $6,650 + 15% buffer for supplements). Reserve is within auto-adjudication threshold ($10,000)."
+
+---
+
+### A-10 · FinancialLeakageAgent · Port 8910
+
+**Purpose:** Detect over-payments, duplicate charges, or inflated vendor costs.
+
+```powershell
+cd AdjusterAgents
+py -3 FinancialLeakageAgent/server.py
+```
+
+**Test question:**
+```bash
+curl -s -N -X POST http://localhost:<port>/chat \
+  -H "Content-Type: application/json" \
+  -d '{"message": "Run a financial leakage check on claim CLM-2026-1001. The submitted repair estimate is $8,500."}' \
+  --max-time 90
+```
+
+| Expected tools called | What it confirms |
+|---|---|
+| `get_damage_items` | Loads itemized costs |
+| `get_vendor_benchmark` | Compares costs to market benchmarks |
+| `run_leakage_detection` | Flags items above benchmark |
+| `get_cost_variance` | Returns variance analysis |
+
+**Expected response:** "Financial leakage analysis for CLM-2026-1001: No significant variances detected. All line items are within ±15% of benchmark costs. Leakage risk: **Low**."
+
+---
+
+### A-11 · SettlementRecommendationAgent · Port 8911
+
+**Purpose:** Generate a final settlement recommendation for adjuster sign-off.
+
+```powershell
+cd AdjusterAgents
+py -3 SettlementRecommendationAgent/server.py
+```
+
+**Test question:**
+```bash
+curl -s -N -X POST http://localhost:<port>/chat \
+  -H "Content-Type: application/json" \
+  -d '{"message": "Generate a settlement recommendation for claim CLM-2026-1001."}' \
+  --max-time 90
+```
+
+| Expected tools called | What it confirms |
+|---|---|
+| `get_loss_assessment` | Gets net payable |
+| `get_fraud_risk_snapshot` | Gets fraud score |
+| `get_adjuster_findings` | Gets adjuster notes |
+| `run_settlement_recommendation` | Generates final amount + rationale |
+| `save_settlement_recommendation` | Saves to DB |
+
+**Expected response:** "Settlement recommendation for CLM-2026-1001: **Approve — $6,650**. Coverage confirmed. Fraud risk: Low (score 0). Damage verified via documents. Deductible applied: $1,000. No leakage detected. Ready for payment approval."
+
+---
+
+### A-12 · PaymentEligibilityAgent · Port 8912
+
+**Purpose:** Confirm whether a claim is eligible for payment disbursement.
+
+```powershell
+cd AdjusterAgents
+py -3 PaymentEligibilityAgent/server.py
+```
+
+**Test question:**
+```bash
+curl -s -N -X POST http://localhost:<port>/chat \
+  -H "Content-Type: application/json" \
+  -d '{"message": "Is claim CLM-2026-1001 eligible for payment disbursement?"}' \
+  --max-time 90
+```
+
+| Expected tools called | What it confirms |
+|---|---|
+| `get_claim_details` | Checks claim status |
+| `get_settlement_recommendation` | Gets approved amount |
+| `check_payment_eligibility` | Verifies all approval gates are cleared |
+
+**Expected response:** "Claim CLM-2026-1001 is **eligible for payment**. Settlement: $6,650. All gates cleared: coverage confirmed ✓, fraud risk low ✓, reserve set ✓, adjuster approval pending."
+
+---
+
+### A-13 · PaymentTriggerAgent · Port 8913
+
+**Purpose:** Initiate the payment disbursement once all approvals are in place.
+
+```powershell
+cd AdjusterAgents
+py -3 PaymentTriggerAgent/server.py
+```
+
+**Test question:**
+```bash
+curl -s -N -X POST http://localhost:<port>/chat \
+  -H "Content-Type: application/json" \
+  -d '{"message": "Trigger payment for claim CLM-2026-1001. Settlement amount is $6,650. Payment method is bank transfer."}' \
+  --max-time 90
+```
+
+| Expected tools called | What it confirms |
+|---|---|
+| `get_payment_eligibility` | Confirms eligibility before triggering |
+| `trigger_payment` | Creates payment_disbursements record |
+| `update_claim_status` | Updates claim status to Payment Initiated |
+
+**Expected response:** "Payment triggered for CLM-2026-1001. **Amount: $6,650** via bank transfer. Payment ID: PAY-2026-XXXXX. Estimated processing: 2–3 business days. Claim status updated to: Payment Initiated."
+
+---
+
+### A-14 · VerificationAgent · Port 8914
+
+**Purpose:** Run external data verification checks (identity, address, prior claims).
+
+```powershell
+cd AdjusterAgents
+py -3 VerificationAgent/server.py
+```
+
+**Test question:**
+```bash
+curl -s -N -X POST http://localhost:<port>/chat \
+  -H "Content-Type: application/json" \
+  -d '{"message": "Run identity and address verification for claim CLM-2026-1001. Policyholder: John Doe, 123 Main St Springfield IL 62701."}' \
+  --max-time 90
+```
+
+| Expected tools called | What it confirms |
+|---|---|
+| `run_external_verification` | Triggers verification workflow |
+| `save_verification_result` | Writes to external_verifications |
+| `get_verification_details` | Returns field-by-field verification |
+
+**Expected response:** "Verification complete for CLM-2026-1001: Name ✓ · Address ✓ · Policy active ✓ · No prior claims mismatch. Verification status: **Passed**."
+
+---
+
+### A-15 · RoutingAgent · Port 8915
+
+**Purpose:** Route a claim to the appropriate adjuster or processing path.
+
+```powershell
+cd AdjusterAgents
+py -3 RoutingAgent/server.py
+```
+
+**Test question:**
+```bash
+curl -s -N -X POST http://localhost:<port>/chat \
+  -H "Content-Type: application/json" \
+  -d '{"message": "Route claim CLM-2026-1001 to the appropriate adjuster. It is a Medium severity water damage claim with estimated cost of $8,500."}' \
+  --max-time 90
+```
+
+| Expected tools called | What it confirms |
+|---|---|
+| `get_triage_result` | Gets priority and complexity |
+| `get_adjuster_workload` | Finds available adjuster |
+| `run_routing` | Assigns to adjuster |
+| `log_auto_assignment` | Saves routing decision |
+| `update_claim_assigned_adjuster` | Updates claims table |
+
+**Expected response:** "Claim CLM-2026-1001 routed to **Jane Smith (Adjuster ID: ADJ-003)**. Routing rationale: Medium complexity water damage, adjuster specialised in property claims, current workload: 4 active claims (within capacity). Auto-assignment logged."
+
+---
+
+## 6. Persona 3 — SIU Investigator (12 agents)
+
+**MCP server:** port `9000`  
+**Start all SIU agents:**
+```powershell
+cd SIUAgents
+foreach ($a in @("FraudRiskScoringAgent","CaseAssignmentAgent","BehavioralAnalyticsAgent","EntityRelationshipAgent","FraudPatternAgent","NetworkAnalysisAgent","EvidenceCorrelationAgent","FraudEscalationAgent","FraudResolutionAgent","LegalEscalationAgent","WatchlistUpdateAgent","SIUClosureAgent")) {
+    Start-Process -WindowStyle Hidden py "-3 $a/server.py"
+    Start-Sleep 1
+}
+```
