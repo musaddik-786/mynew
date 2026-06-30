@@ -1,4 +1,270 @@
-now check 
+now check if everything looks correct
+
+"""
+server.py — Repair Vs Replacement Agent
+───────────────────────────────────────
+LangGraph agent that compares repair vs. replacement costs for
+a damaged item and recommends a course of action.
+
+Port: 8912
+MCP : http://localhost:8900/api/v1/repair_vs_replacement/mcp
+
+Run:
+    py -3 server.py
+"""
+
+import json
+import logging
+import os
+import sys
+import time
+import traceback
+from datetime import datetime, timedelta
+from typing import Annotated, TypedDict
+
+import uvicorn
+from dotenv import load_dotenv, find_dotenv
+from fastapi import FastAPI, Request
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import StreamingResponse
+from langchain_core.messages import AIMessage, SystemMessage
+from langchain_mcp_adapters.client import MultiServerMCPClient
+from langchain_openai.chat_models import AzureChatOpenAI
+from langgraph.graph import END, START, StateGraph
+from langgraph.graph.message import add_messages
+from langgraph.prebuilt import ToolNode
+
+load_dotenv(find_dotenv())
+
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s | %(levelname)-8s | %(name)s | %(message)s",
+    stream=sys.stdout,
+    force=True,
+)
+logger = logging.getLogger("repair_vs_replacement_agent")
+
+PHOENIX_API_KEY = os.getenv("PHOENIX_API_KEY", "")
+PHOENIX_ENDPOINT = os.getenv("PHOENIX_ENDPOINT", "")
+MCP_URL = os.getenv("MCP_URL", "http://localhost:5900/api/v1/repair_vs_replacement/mcp")
+# MCP_URL =  "http://localhost:5900/api/v1/repair_vs_replacement/mcp"
+
+AGENT_PORT = int(os.getenv("AGENT_PORT", "8912"))
+
+# AGENT_PORT = "8912"
+
+config_mcp_server = {
+    "repair_vs_replacement_mcp": {
+        "url": MCP_URL,
+        "transport": "streamable_http",
+        "timeout": timedelta(seconds=120),
+        "sse_read_timeout": timedelta(seconds=600),
+    }
+}
+
+app = FastAPI(title="Repair Vs Replacement Agent")
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+
+class State(TypedDict):
+    messages: Annotated[list, add_messages]
+
+
+def router(state: State):
+    last = state["messages"][-1]
+    if isinstance(last, AIMessage) and getattr(last, "tool_calls", None):
+        return "tools"
+    if isinstance(last, AIMessage) and last.content:
+        if "Continue" in last.content:
+            return "tools"
+        if "End" in last.content:
+            return "End"
+    return "End"
+
+
+# _FALLBACK_PROMPT = """
+# You are the Repair vs Replacement Agent for an insurance claims platform,
+# assisting a Claims Adjuster.
+
+# Given a claim_number, item_type, item_age, and useful_life_remaining, your
+# workflow is:
+
+# 1. Look up the internal claim_id from the claims table.
+# 2. Retrieve any repair_costs and replacement_costs for that claim_id.
+# 3. Call compare_repair_vs_replace with these inputs. This will look up or
+#    estimate repair and replacement costs, apply the rule: if
+#    repair_cost > 0.6 * replacement_cost OR item_age >= useful_life_remaining
+#    then recommend "Replace", else "Repair", and store the result.
+# 4. Explain to the adjuster the recommendation, the repair vs replacement
+#    cost comparison, and the confidence score.
+
+# When you have completed the task, end your response with "End".
+# """
+
+
+_FALLBACK_PROMPT = 
+"""
+You are the Repair vs Replacement Agent for an insurance claims platform assisting a Claims Adjuster.
+Given a claim_number, item_age and useful_life_remaining, execute the following workflow:
+1. Look up the internal claim_id from the claims table.
+2. Check whether repair_costs and replacement_costs already exist for the claim and item.
+3. If both records exist, use the stored repair and replacement estimates.
+4. If either record is missing, estimate realistic repair and replacement costs using available claim information, then write the generated repair estimate to the repair_costs table and the generated replacement estimate to the replacement_costs table.
+5. Compare the repair and replacement costs using the business rule:
+  - If repair_cost > 60% of replacement_cost, or
+  - item_age >= useful_life_remaining,
+  recommend "Replace"; otherwise recommend "Repair".
+6. Store the final recommendation, confidence score and comparison results in the estimates table.
+7. Explain to the adjuster why the recommendation was made, including the repair cost, replacement cost and confidence score.
+When the workflow is complete, end your response with "End".
+"""
+
+def load_prompt() -> str:
+    if not PHOENIX_ENDPOINT:
+        raise RuntimeError("Phoenix not configured")
+    from phoenix.client import Client
+    client = Client(base_url=PHOENIX_ENDPOINT, api_key=PHOENIX_API_KEY)
+    prompt = client.prompts.get(name="repair_vs_replacement_agent", label="production")
+    prompt_set = prompt._template["messages"]
+    system_msg = next(
+        (item["content"][0]["text"] for item in prompt_set if item.get("role") == "system"),
+        None,
+    )
+    if not system_msg:
+        raise ValueError("System prompt is empty or missing in Phoenix")
+    return system_msg
+
+
+def create_graph(model, tools, prompt):
+    graph_builder = StateGraph(State)
+    llm_with_tools = model.bind_tools(tools)
+
+    # async def agent_node(state: State):
+    #     messages = state["messages"]
+    #     all_messages = [SystemMessage(content=prompt)] + messages
+    #     message = await llm_with_tools.ainvoke(all_messages)
+    #     return {"messages": [message]}
+
+    async def agent_node(state: State):
+        messages = state["messages"]
+        all_messages = [SystemMessage(content=prompt)] + messages
+        message = await llm_with_tools.ainvoke(all_messages)
+        logger.info("AI MESSAGE = %s", message)
+        logger.info("TOOL CALLS = %s", getattr(message, "tool_calls", None))
+        return {"messages": [message]}
+
+    graph_builder.add_node("agent", agent_node)
+    graph_builder.add_node("tools", ToolNode(tools=tools))
+    graph_builder.add_edge(START, "agent")
+    graph_builder.add_conditional_edges("agent", router, {"tools": "tools", "End": END})
+    graph_builder.add_edge("tools", "agent")
+    return graph_builder.compile()
+
+
+async def get_tools():
+    client = MultiServerMCPClient(config_mcp_server)
+    tools = await client.get_tools()
+    logger.info("Tools loaded from MCP: %s", [t.name for t in tools])
+    return tools
+
+
+async def stream_graph(graph, initial_state, config):
+    async for event in graph.astream_events(initial_state, config=config, version="v2"):
+        kind = event.get("event", "")
+
+        if kind == "on_chat_model_stream":
+            chunk = event["data"].get("chunk")
+            if chunk and hasattr(chunk, "content") and chunk.content:
+                yield f"data: {chunk.content}\n\n"
+
+        elif kind == "on_tool_start":
+            tool_name = event.get("name", "unknown_tool")
+            yield f"data: [Tool: {tool_name}] Starting...\n\n"
+
+        elif kind == "on_tool_end":
+            tool_name = event.get("name", "unknown_tool")
+            yield f"data: [Tool: {tool_name}] Done\n\n"
+
+
+@app.post("/chat")
+async def chat_stream(request: Request):
+    load_dotenv(find_dotenv())
+
+    tools = await get_tools()
+
+    model = AzureChatOpenAI(
+        api_key=os.getenv("AZURE_OPENAI_API_KEY"),
+        api_version=os.getenv("AZURE_OPENAI_API_VERSION"),
+        azure_deployment=os.getenv("AZURE_OPENAI_CHAT_DEPLOYMENT"),
+        azure_endpoint=os.getenv("AZURE_OPENAI_ENDPOINT"),
+    )
+
+    try:
+        system_prompt = load_prompt()
+    except Exception as e:
+        logger.warning("Phoenix prompt load failed (%s) — using fallback prompt", e)
+        system_prompt = _FALLBACK_PROMPT
+
+    body = await request.json()
+    user_message = body.get("message", "Recommend repair vs replacement for this item")
+
+    graph = create_graph(model=model, tools=tools, prompt=system_prompt)
+
+    async def generate():
+        start = time.time()
+        last_event_at = start
+        last_tool = None
+        try:
+            async for event in stream_graph(
+                graph=graph,
+                initial_state={"messages": [user_message]},
+                config={"recursion_limit": 250},
+            ):
+                last_event_at = time.time()
+                if isinstance(event, str) and event.startswith("data: [Tool:"):
+                    try:
+                        last_tool = event.split("[Tool:", 1)[1].split("]", 1)[0]
+                    except Exception:
+                        pass
+                yield event
+        except BaseException as e:
+            elapsed = time.time() - start
+            since_last = time.time() - last_event_at
+            err = {
+                "exception_class": type(e).__name__,
+                "message": str(e),
+                "elapsed_total_seconds": round(elapsed, 2),
+                "seconds_since_last_event": round(since_last, 2),
+                "last_tool_invoked": last_tool,
+                "traceback": traceback.format_exc(),
+                "timestamp_utc": datetime.utcnow().isoformat(),
+            }
+            logger.error("AGENT_ERROR %s", json.dumps(err, default=str))
+            try:
+                yield f"data: [AGENT_ERROR] {json.dumps(err, default=str)}\n\n"
+            except Exception:
+                pass
+            import asyncio
+            if isinstance(e, asyncio.CancelledError):
+                raise
+
+    return StreamingResponse(generate(), media_type="text/event-stream")
+
+
+@app.get("/health")
+async def health():
+    return {"status": "healthy", "agent": "repair_vs_replacement_agent"}
+
+
+if __name__ == "__main__":
+    uvicorn.run(app, host="0.0.0.0", port=AGENT_PORT)
 
 """
 handler.py — Repair vs Replacement
@@ -232,29 +498,29 @@ def _llm_estimate_costs(
 # """
 
 
-prompt = f"""
-You are an insurance claims cost estimator.
-Estimate realistic repair and replacement costs for the damaged item using the following information.
-Item Type: {item_type}
-Item Age: {item_age} years
-Damage Severity: {severity}
-Adjuster's Notes: {adjuster_notes}
-Initial Damage Estimate: ${estimated_cost}
-Return ONLY valid JSON.
-{{
-  "repair_cost": 0,
-  "replacement_cost": 0,
-  "material_cost": 0,
-  "labor_hours": 0,
-  "labor_rate": 0,
-  "diagnostic_fee": 0,
-  "urgency_factor": 1.0,
-  "replacement_material_cost": 0,
-  "installation_hours": 0,
-  "delivery_fee": 0,
-  "disposal_fee": 0
-}}
-"""
+    prompt = f"""
+    You are an insurance claims cost estimator.
+    Estimate realistic repair and replacement costs for the damaged item using the following information.
+    Item Type: {item_type}
+    Item Age: {item_age} years
+    Damage Severity: {severity}
+    Adjuster's Notes: {adjuster_notes}
+    Initial Damage Estimate: ${estimated_cost}
+    Return ONLY valid JSON.
+    {{
+    "repair_cost": 0,
+    "replacement_cost": 0,
+    "material_cost": 0,
+    "labor_hours": 0,
+    "labor_rate": 0,
+    "diagnostic_fee": 0,
+    "urgency_factor": 1.0,
+    "replacement_material_cost": 0,
+    "installation_hours": 0,
+    "delivery_fee": 0,
+    "disposal_fee": 0
+    }}
+    """
 
 
     response = llm.invoke(prompt)
@@ -287,7 +553,7 @@ def compare_repair_vs_replace(claim_number: str, item_age: int, useful_life_rema
     claim_id = get_claim_id(claim_number)
     damage = get_damage_item(claim_number)
     damage_id = damage["damage_id"]
-    # item_type = damage["category"]
+    item_type = damage["category"]
     severity = damage["severity"]
     estimated_cost = damage["estimated_cost"]
     adjuster_notes = damage["adjuster_notes"]
@@ -403,271 +669,7 @@ def compare_repair_vs_replace(claim_number: str, item_age: int, useful_life_rema
         "confidence_score": confidence_score,
         "estimate": estimate,
     }
-"""
-server.py — Repair Vs Replacement Agent
-───────────────────────────────────────
-LangGraph agent that compares repair vs. replacement costs for
-a damaged item and recommends a course of action.
 
-Port: 8912
-MCP : http://localhost:8900/api/v1/repair_vs_replacement/mcp
-
-Run:
-    py -3 server.py
-"""
-
-import json
-import logging
-import os
-import sys
-import time
-import traceback
-from datetime import datetime, timedelta
-from typing import Annotated, TypedDict
-
-import uvicorn
-from dotenv import load_dotenv, find_dotenv
-from fastapi import FastAPI, Request
-from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import StreamingResponse
-from langchain_core.messages import AIMessage, SystemMessage
-from langchain_mcp_adapters.client import MultiServerMCPClient
-from langchain_openai.chat_models import AzureChatOpenAI
-from langgraph.graph import END, START, StateGraph
-from langgraph.graph.message import add_messages
-from langgraph.prebuilt import ToolNode
-
-load_dotenv(find_dotenv())
-
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s | %(levelname)-8s | %(name)s | %(message)s",
-    stream=sys.stdout,
-    force=True,
-)
-logger = logging.getLogger("repair_vs_replacement_agent")
-
-PHOENIX_API_KEY = os.getenv("PHOENIX_API_KEY", "")
-PHOENIX_ENDPOINT = os.getenv("PHOENIX_ENDPOINT", "")
-MCP_URL = os.getenv("MCP_URL", "http://localhost:5900/api/v1/repair_vs_replacement/mcp")
-# MCP_URL =  "http://localhost:5900/api/v1/repair_vs_replacement/mcp"
-
-AGENT_PORT = int(os.getenv("AGENT_PORT", "8912"))
-
-# AGENT_PORT = "8912"
-
-config_mcp_server = {
-    "repair_vs_replacement_mcp": {
-        "url": MCP_URL,
-        "transport": "streamable_http",
-        "timeout": timedelta(seconds=120),
-        "sse_read_timeout": timedelta(seconds=600),
-    }
-}
-
-app = FastAPI(title="Repair Vs Replacement Agent")
-
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
-
-
-class State(TypedDict):
-    messages: Annotated[list, add_messages]
-
-
-def router(state: State):
-    last = state["messages"][-1]
-    if isinstance(last, AIMessage) and getattr(last, "tool_calls", None):
-        return "tools"
-    if isinstance(last, AIMessage) and last.content:
-        if "Continue" in last.content:
-            return "tools"
-        if "End" in last.content:
-            return "End"
-    return "End"
-
-
-# _FALLBACK_PROMPT = """
-# You are the Repair vs Replacement Agent for an insurance claims platform,
-# assisting a Claims Adjuster.
-
-# Given a claim_number, item_type, item_age, and useful_life_remaining, your
-# workflow is:
-
-# 1. Look up the internal claim_id from the claims table.
-# 2. Retrieve any repair_costs and replacement_costs for that claim_id.
-# 3. Call compare_repair_vs_replace with these inputs. This will look up or
-#    estimate repair and replacement costs, apply the rule: if
-#    repair_cost > 0.6 * replacement_cost OR item_age >= useful_life_remaining
-#    then recommend "Replace", else "Repair", and store the result.
-# 4. Explain to the adjuster the recommendation, the repair vs replacement
-#    cost comparison, and the confidence score.
-
-# When you have completed the task, end your response with "End".
-# """
-
-
-_FALLBACK_PROMPT = 
-"""
-You are the Repair vs Replacement Agent for an insurance claims platform assisting a Claims Adjuster.
-Given a claim_number, item_type, item_age and useful_life_remaining, execute the following workflow:
-1. Look up the internal claim_id from the claims table.
-2. Check whether repair_costs and replacement_costs already exist for the claim and item.
-3. If both records exist, use the stored repair and replacement estimates.
-4. If either record is missing, estimate realistic repair and replacement costs using available claim information, then write the generated repair estimate to the repair_costs table and the generated replacement estimate to the replacement_costs table.
-5. Compare the repair and replacement costs using the business rule:
-  - If repair_cost > 60% of replacement_cost, or
-  - item_age >= useful_life_remaining,
-  recommend "Replace"; otherwise recommend "Repair".
-6. Store the final recommendation, confidence score and comparison results in the estimates table.
-7. Explain to the adjuster why the recommendation was made, including the repair cost, replacement cost and confidence score.
-When the workflow is complete, end your response with "End".
-"""
-
-def load_prompt() -> str:
-    if not PHOENIX_ENDPOINT:
-        raise RuntimeError("Phoenix not configured")
-    from phoenix.client import Client
-    client = Client(base_url=PHOENIX_ENDPOINT, api_key=PHOENIX_API_KEY)
-    prompt = client.prompts.get(name="repair_vs_replacement_agent", label="production")
-    prompt_set = prompt._template["messages"]
-    system_msg = next(
-        (item["content"][0]["text"] for item in prompt_set if item.get("role") == "system"),
-        None,
-    )
-    if not system_msg:
-        raise ValueError("System prompt is empty or missing in Phoenix")
-    return system_msg
-
-
-def create_graph(model, tools, prompt):
-    graph_builder = StateGraph(State)
-    llm_with_tools = model.bind_tools(tools)
-
-    # async def agent_node(state: State):
-    #     messages = state["messages"]
-    #     all_messages = [SystemMessage(content=prompt)] + messages
-    #     message = await llm_with_tools.ainvoke(all_messages)
-    #     return {"messages": [message]}
-
-    async def agent_node(state: State):
-        messages = state["messages"]
-        all_messages = [SystemMessage(content=prompt)] + messages
-        message = await llm_with_tools.ainvoke(all_messages)
-        logger.info("AI MESSAGE = %s", message)
-        logger.info("TOOL CALLS = %s", getattr(message, "tool_calls", None))
-        return {"messages": [message]}
-
-    graph_builder.add_node("agent", agent_node)
-    graph_builder.add_node("tools", ToolNode(tools=tools))
-    graph_builder.add_edge(START, "agent")
-    graph_builder.add_conditional_edges("agent", router, {"tools": "tools", "End": END})
-    graph_builder.add_edge("tools", "agent")
-    return graph_builder.compile()
-
-
-async def get_tools():
-    client = MultiServerMCPClient(config_mcp_server)
-    tools = await client.get_tools()
-    logger.info("Tools loaded from MCP: %s", [t.name for t in tools])
-    return tools
-
-
-async def stream_graph(graph, initial_state, config):
-    async for event in graph.astream_events(initial_state, config=config, version="v2"):
-        kind = event.get("event", "")
-
-        if kind == "on_chat_model_stream":
-            chunk = event["data"].get("chunk")
-            if chunk and hasattr(chunk, "content") and chunk.content:
-                yield f"data: {chunk.content}\n\n"
-
-        elif kind == "on_tool_start":
-            tool_name = event.get("name", "unknown_tool")
-            yield f"data: [Tool: {tool_name}] Starting...\n\n"
-
-        elif kind == "on_tool_end":
-            tool_name = event.get("name", "unknown_tool")
-            yield f"data: [Tool: {tool_name}] Done\n\n"
-
-
-@app.post("/chat")
-async def chat_stream(request: Request):
-    load_dotenv(find_dotenv())
-
-    tools = await get_tools()
-
-    model = AzureChatOpenAI(
-        api_key=os.getenv("AZURE_OPENAI_API_KEY"),
-        api_version=os.getenv("AZURE_OPENAI_API_VERSION"),
-        azure_deployment=os.getenv("AZURE_OPENAI_CHAT_DEPLOYMENT"),
-        azure_endpoint=os.getenv("AZURE_OPENAI_ENDPOINT"),
-    )
-
-    try:
-        system_prompt = load_prompt()
-    except Exception as e:
-        logger.warning("Phoenix prompt load failed (%s) — using fallback prompt", e)
-        system_prompt = _FALLBACK_PROMPT
-
-    body = await request.json()
-    user_message = body.get("message", "Recommend repair vs replacement for this item")
-
-    graph = create_graph(model=model, tools=tools, prompt=system_prompt)
-
-    async def generate():
-        start = time.time()
-        last_event_at = start
-        last_tool = None
-        try:
-            async for event in stream_graph(
-                graph=graph,
-                initial_state={"messages": [user_message]},
-                config={"recursion_limit": 250},
-            ):
-                last_event_at = time.time()
-                if isinstance(event, str) and event.startswith("data: [Tool:"):
-                    try:
-                        last_tool = event.split("[Tool:", 1)[1].split("]", 1)[0]
-                    except Exception:
-                        pass
-                yield event
-        except BaseException as e:
-            elapsed = time.time() - start
-            since_last = time.time() - last_event_at
-            err = {
-                "exception_class": type(e).__name__,
-                "message": str(e),
-                "elapsed_total_seconds": round(elapsed, 2),
-                "seconds_since_last_event": round(since_last, 2),
-                "last_tool_invoked": last_tool,
-                "traceback": traceback.format_exc(),
-                "timestamp_utc": datetime.utcnow().isoformat(),
-            }
-            logger.error("AGENT_ERROR %s", json.dumps(err, default=str))
-            try:
-                yield f"data: [AGENT_ERROR] {json.dumps(err, default=str)}\n\n"
-            except Exception:
-                pass
-            import asyncio
-            if isinstance(e, asyncio.CancelledError):
-                raise
-
-    return StreamingResponse(generate(), media_type="text/event-stream")
-
-
-@app.get("/health")
-async def health():
-    return {"status": "healthy", "agent": "repair_vs_replacement_agent"}
-
-
-if __name__ == "__main__":
-    uvicorn.run(app, host="0.0.0.0", port=AGENT_PORT)
 """
 repair_vs_replacement_router.py
 ─────────────────────────────────────
@@ -789,7 +791,7 @@ def write_replacement_cost(claim_id: str, body: ReplacementCostRequest):
 
 
 @router.post(
-    "/api/repair_vs_replacement/compare/{claim_id}",
+    "/api/repair_vs_replacement/compare/{claim_number}",
     operation_id="compare_repair_vs_replace",
     summary="Compare repair vs replacement for an item and recommend a course of action",
     tags=["RepairVsReplacement"],
@@ -807,6 +809,7 @@ def compare_repair_vs_replace(claim_id: str, body: CompareRequest):
     except Exception as e:
         log.exception("compare_repair_vs_replace error")
         raise HTTPException(status_code=500, detail=str(e))
+
 from typing import Optional
 from pydantic import BaseModel
 
