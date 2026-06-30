@@ -1,12 +1,264 @@
-JarvisClaims@JarvisClaims:~/Musaddique$ curl -X POST "http://localhost:5900/api/v1/repair_vs_replacement/api/repair_vs_replacement/compare/CLM-2026-1001" \
+JarvisClaims@JarvisClaims:~/Musaddique$ curl -X POST "http://localhost:8912/chat" \
 -H "Content-Type: application/json" \
 -d '{
- "item_age": 5,
- "useful_life_remaining": 8
+ "message": "Compare repair vs replacement for claim CLM-2026-1001. Item age is 5 years and useful life remaining is 8 years."
 }'
-{"claim_id":32,"item_type":"Flooring","item_age":5,"useful_life_remaining":8,"repair_cost":2695.0,"replacement_cost":2970.0,"recommendation":"Replace","confidence_score":0.59,"estimate":{"id":0,"claim_id":32,"item_type":"Flooring","item_age":5,"useful_life_remaining":8,"repair_cost":2695.0,"replacement_cost":2970.0,"labor_cost":1170.0,"material_cost":1450.0,"recommendation":"Replace","confidence_score":0.59}}JarvisClaims@JarvisClaims:~/Musaddique$ 
+data: [Tool: compare_repair_vs_replace] Starting...
+
+data: [Tool: compare_repair_vs_replace] Done
+
+data: Recommendation
+
+data: :
+
+data:  Repair
+
+data: 
 
 
-http://localhost:5900/api/v1/repair_vs_replacement/docs
 
-yes bith these worked
+data: -
+
+data:  Repair
+
+data:  cost
+
+data: :
+
+data:  $
+
+data: 600
+
+data: .
+
+data: 00
+
+data: 
+
+
+data: -
+
+data:  Replacement
+
+data:  cost
+
+data: :
+
+data:  $
+
+data: 1
+
+data: ,
+
+data: 900
+
+data: .
+
+data: 00
+
+data: 
+
+
+data: -
+
+data:  Item
+
+data:  type
+
+data: :
+
+data:  Cabinet
+
+data: ry
+
+data: 
+
+
+data: -
+
+data:  Item
+
+data:  age
+
+data: :
+
+data:  
+
+data: 5
+
+data:  years
+
+data: 
+
+
+data: -
+
+data:  Useful
+
+data:  life
+
+data:  remaining
+
+data: :
+
+data:  
+
+data: 8
+
+data:  years
+
+data: 
+
+
+data: -
+
+data:  Confidence
+
+data:  score
+
+data: :
+
+data:  
+
+data: 1
+
+data: .
+
+data: 0
+
+data: 
+
+
+
+data: Reason
+
+data: ing
+
+data: :
+
+data:  The
+
+data:  repair
+
+data:  cost
+
+data:  ($
+
+data: 600
+
+data: .
+
+data: 00
+
+data: )
+
+data:  is
+
+data:  less
+
+data:  than
+
+data:  
+
+data: 60
+
+data: %
+
+data:  of
+
+data:  the
+
+data:  replacement
+
+data:  cost
+
+data:  ($
+
+data: 1
+
+data: ,
+
+data: 900
+
+data: .
+
+data: 00
+
+data: ),
+
+data:  and
+
+data:  the
+
+data:  item
+
+data:  age
+
+data:  (
+
+data: 5
+
+data:  years
+
+data: )
+
+data:  is
+
+data:  less
+
+data:  than
+
+data:  the
+
+data:  useful
+
+data:  life
+
+data:  remaining
+
+data:  (
+
+data: 8
+
+data:  years
+
+data: ).
+
+data:  Based
+
+data:  on
+
+data:  these
+
+data:  business
+
+data:  rules
+
+data: ,
+
+data:  repair
+
+data:  is
+
+data:  the
+
+data:  most
+
+data:  cost
+
+data: -effective
+
+data:  and
+
+data:  justified
+
+data:  option
+
+data: .
+
+
+
+data: End
+
+JarvisClaims@JarvisClaims:~/Musaddique$ 
+
