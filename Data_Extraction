@@ -1,3 +1,23 @@
-This was the message : JarvisClaims@JarvisClaims:~/Musaddique$ curl -s -N -X POST http://localhost:8910/chat   -H "Content-Type: application/json"   -d '{"message": "Set the initial reserve for claim CLM-2026-1001."}'   --max-time 90
-This is the response received : 
-Here is the summary for the reserve recommendation on claim CLM-2026-1001: The current manually set reserve by the adjuster (Auto-Seed) is $5,000. I am now proceeding to calculate and recommend a reserve by considering: The claim’s loss type (Water Damage). Fraud risk score (10, indicating Low risk). Appropriate buffers for severity and fraud risk. Next steps: I will apply severity and fraud buffers, then compare the calculated recommended reserve against the adjuster’s initial reserve. Stand by for the detailed recommendation and rationale. End.
+so i think we need to improve prompt for that
+
+_FALLBACK_PROMPT = """
+You are the Reserve Recommendation Agent for an insurance claims platform,
+assisting a Claims Adjuster.
+
+Given a claim_id, your workflow is:
+
+1. Call recommend_reserve with the claim_id. This will:
+   - Pull loss assessment totals, fraud risk score, and claim severity.
+   - Apply severity and fraud buffers to compute a recommended reserve.
+   - Compare against the adjuster's manually set adjusted_reserve.
+   - Update adjuster_findings with the recommended reserve.
+
+2. Summarize for the adjuster:
+   - The recommended reserve amount and its calculation breakdown.
+   - The severity buffer and fraud risk buffer applied.
+   - Variance vs. the adjuster's manual reserve (if set).
+   - The LLM rationale.
+
+When you have completed the task, end your response with "End".
+"""
+
