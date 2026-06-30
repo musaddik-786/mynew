@@ -1,4 +1,5 @@
-this is my handler 
+so now is this correct?
+
 """
 handler.py — Repair vs Replacement
 ───────────────────────────────────────
@@ -50,16 +51,15 @@ def get_damage_item(claim_number: str) -> dict:
            SELECT *
            FROM damage_items
            WHERE claim_number = %s
-           LIMIT 1
            """,
            (claim_number,),
        )
-       row = row_to_dict(cur.fetchone())
+       rows = row_to_dict(cur.fetchone())
        if not row:
            raise ValueError(
                f"No damage item found for claim '{claim_number}'"
            )
-       return row
+       return rows
    finally:
        conn.close()
 
@@ -193,7 +193,14 @@ def write_replacement_cost(item_id: str, claim_number: str, item_type: str, repl
         conn.close()
 
 
-def _llm_estimate_costs(item_type: str, item_age: int) -> dict:
+# def _llm_estimate_costs(item_type: str, item_age: int) -> dict:
+def _llm_estimate_costs(
+   item_type: str,
+   item_age: int,
+   severity: str,
+   estimated_cost: float,
+   adjuster_notes: str,
+) -> dict:
     llm = _get_llm()
 #     prompt = f"""
 # You are a claims adjuster's assistant. Estimate plausible repair and
@@ -203,25 +210,52 @@ def _llm_estimate_costs(item_type: str, item_age: int) -> dict:
 # """
 
 
+# prompt = f"""
+# You are an insurance claims cost estimator.
+# Estimate realistic repair and replacement costs for a damaged "{item_type}"
+# that is {item_age} years old.
+# Return ONLY valid JSON.
+# {{
+#    "repair_cost": 0,
+#    "replacement_cost": 0,
+#    "material_cost": 0,
+#    "labor_hours": 0,
+#    "labor_rate": 0,
+#    "diagnostic_fee": 0,
+#    "urgency_factor": 1.0,
+#    "replacement_material_cost": 0,
+#    "installation_hours": 0,
+#    "delivery_fee": 0,
+#    "disposal_fee": 0
+# }}
+# """
+
+
 prompt = f"""
 You are an insurance claims cost estimator.
-Estimate realistic repair and replacement costs for a damaged "{item_type}"
-that is {item_age} years old.
+Estimate realistic repair and replacement costs for the damaged item using the following information.
+Item Type: {item_type}
+Item Age: {item_age} years
+Damage Severity: {severity}
+Adjuster's Notes: {adjuster_notes}
+Initial Damage Estimate: ${estimated_cost}
 Return ONLY valid JSON.
 {{
-   "repair_cost": 0,
-   "replacement_cost": 0,
-   "material_cost": 0,
-   "labor_hours": 0,
-   "labor_rate": 0,
-   "diagnostic_fee": 0,
-   "urgency_factor": 1.0,
-   "replacement_material_cost": 0,
-   "installation_hours": 0,
-   "delivery_fee": 0,
-   "disposal_fee": 0
+  "repair_cost": 0,
+  "replacement_cost": 0,
+  "material_cost": 0,
+  "labor_hours": 0,
+  "labor_rate": 0,
+  "diagnostic_fee": 0,
+  "urgency_factor": 1.0,
+  "replacement_material_cost": 0,
+  "installation_hours": 0,
+  "delivery_fee": 0,
+  "disposal_fee": 0
 }}
 """
+
+
     response = llm.invoke(prompt)
     content = response.content.strip()
     if content.startswith("```"):
@@ -232,115 +266,166 @@ Return ONLY valid JSON.
         return json.loads(content)
     except Exception:
         log.warning("Could not parse LLM JSON, defaulting: %s", content)
-        return {"repair_cost": 500, "replacement_cost": 1000, "labor_cost": 200, "material_cost": 300}
+        # return {"repair_cost": 500, "replacement_cost": 1000, "labor_cost": 200, "material_cost": 300}
+        return {
+        "repair_cost": 500,
+        "replacement_cost": 1000,
+        "material_cost": 300,
+        "labor_hours": 2,
+        "labor_rate": 100,
+        "diagnostic_fee": 50,
+        "urgency_factor": 1.0,
+        "replacement_material_cost": 700,
+        "installation_hours": 3,
+        "delivery_fee": 50,
+        "disposal_fee": 25,
+        }
 
-
-def compare_repair_vs_replace(claim_number: str, item_type: str, item_age: int, useful_life_remaining: int) -> dict:
+def compare_repair_vs_replace(claim_number: str, item_age: int, useful_life_remaining: int) -> dict:
     # Look up existing repair_costs/replacement_costs for this claim+item_type, if present
     claim_id = get_claim_id(claim_number)
-    damage = get_damage_item(claim_number)
-    damage_id = damage["damage_id"]
-    item_type = damage["category"]
-    conn = get_db_connection()
-    try:
-        cur = conn.cursor()
-        cur.execute(
-            "SELECT * FROM repair_costs WHERE claim_id = %s AND item_type = %s ORDER BY id DESC LIMIT 1",
-            (claim_id, item_type),
+    damage= get_damage_item(claim_number)
+    
+
+    results = []
+
+    for damage in damage_items:
+
+        damage_id = damage["damage_id"]
+
+        item_type = damage["category"]
+
+        severity = damage["severity"]
+
+        estimated_cost = damage["estimated_cost"]
+
+        adjuster_notes = damage["adjuster_notes"]
+    
+
+
+        damage_id = damage["damage_id"]
+        # item_type = damage["category"]
+        severity = damage["severity"]
+        estimated_cost = damage["estimated_cost"]
+        adjuster_notes = damage["adjuster_notes"]
+        conn = get_db_connection()
+        try:
+            cur = conn.cursor()
+            cur.execute(
+                "SELECT * FROM repair_costs WHERE claim_id = %s AND item_type = %s ORDER BY id DESC LIMIT 1",
+                (claim_id, item_type),
+            )
+            repair_row = row_to_dict(cur.fetchone())
+            cur.execute(
+                "SELECT * FROM replacement_costs WHERE claim_id = %s AND item_type = %s ORDER BY id DESC LIMIT 1",
+                (claim_id, item_type),
+            )
+            replacement_row = row_to_dict(cur.fetchone())
+        finally:
+            conn.close()
+
+        if repair_row and replacement_row:
+            repair_cost = float(repair_row["total_repair_estimate"])
+            replacement_cost = float(replacement_row["total_replacement_estimate"])
+            labor_cost = float(repair_row.get("labor_hours") or 0) * float(repair_row.get("labor_rate") or 0)
+            material_cost = float(repair_row.get("material_cost") or 0)
+        else:
+            # ai_costs = _llm_estimate_costs(item_type, item_age)
+            ai_costs = _llm_estimate_costs(
+            item_type,
+            item_age,
+            severity,
+            estimated_cost,
+            adjuster_notes,
+            )
+            repair_cost = float(ai_costs.get("repair_cost", 500))
+            replacement_cost = float(ai_costs.get("replacement_cost", 1000))
+            # labor_cost = float(ai_costs.get("labor_cost", 200))
+            labor_cost = (
+            float(ai_costs["labor_hours"]) *
+            float(ai_costs["labor_rate"])
+            )
+            material_cost = float(ai_costs.get("material_cost", 300))
+
+
+
+
+            write_repair_cost(
+
+                item_id=damage_id,
+
+                claim_number=claim_number,
+
+                item_type=item_type,
+
+                material_cost=ai_costs["material_cost"],
+
+                labor_hours=ai_costs["labor_hours"],
+
+                labor_rate=ai_costs["labor_rate"],
+
+                diagnostic_fee=ai_costs["diagnostic_fee"],
+
+                urgency_factor=ai_costs["urgency_factor"],
+
+            )
+            
+            write_replacement_cost(
+
+                item_id=damage_id,
+
+                claim_number=claim_number,
+
+                item_type=item_type,
+
+                replacement_material_cost=ai_costs["replacement_material_cost"],
+
+                installation_hours=ai_costs["installation_hours"],
+
+                labor_rate=ai_costs["labor_rate"],
+
+                delivery_fee=ai_costs["delivery_fee"],
+
+                disposal_fee=ai_costs["disposal_fee"],
+
+            )
+            
+
+
+        if repair_cost > 0.6 * replacement_cost or item_age >= useful_life_remaining:
+            recommendation = "Replace"
+        else:
+            recommendation = "Repair"
+
+        # Confidence heuristic: bigger gap between costs => more confident
+        if replacement_cost > 0:
+            ratio_gap = abs(repair_cost - replacement_cost) / replacement_cost
+        else:
+            ratio_gap = 0
+        confidence_score = round(min(1.0, 0.5 + ratio_gap), 2)
+
+        estimate = write_estimate(
+            claim_number, item_type, item_age, useful_life_remaining, repair_cost, replacement_cost,
+            labor_cost, material_cost, recommendation, confidence_score,
         )
-        repair_row = row_to_dict(cur.fetchone())
-        cur.execute(
-            "SELECT * FROM replacement_costs WHERE claim_id = %s AND item_type = %s ORDER BY id DESC LIMIT 1",
-            (claim_id, item_type),
-        )
-        replacement_row = row_to_dict(cur.fetchone())
-    finally:
-        conn.close()
 
-    if repair_row and replacement_row:
-        repair_cost = float(repair_row["total_repair_estimate"])
-        replacement_cost = float(replacement_row["total_replacement_estimate"])
-        labor_cost = float(repair_row.get("labor_hours") or 0) * float(repair_row.get("labor_rate") or 0)
-        material_cost = float(repair_row.get("material_cost") or 0)
-    else:
-        ai_costs = _llm_estimate_costs(item_type, item_age)
-        repair_cost = float(ai_costs.get("repair_cost", 500))
-        replacement_cost = float(ai_costs.get("replacement_cost", 1000))
-        labor_cost = float(ai_costs.get("labor_cost", 200))
-        material_cost = float(ai_costs.get("material_cost", 300))
+        results.append(estimate)
 
-
-
-
-        write_repair_cost(
-
-            item_id=damage_id,
-
-            claim_number=claim_number,
-
-            item_type=item_type,
-
-            material_cost=ai_costs["material_cost"],
-
-            labor_hours=ai_costs["labor_hours"],
-
-            labor_rate=ai_costs["labor_rate"],
-
-            diagnostic_fee=ai_costs["diagnostic_fee"],
-
-            urgency_factor=ai_costs["urgency_factor"],
-
-        )
-        
-        write_replacement_cost(
-
-            item_id=damage_id,
-
-            claim_number=claim_number,
-
-            item_type=item_type,
-
-            replacement_material_cost=ai_costs["replacement_material_cost"],
-
-            installation_hours=ai_costs["installation_hours"],
-
-            labor_rate=ai_costs["labor_rate"],
-
-            delivery_fee=ai_costs["delivery_fee"],
-
-            disposal_fee=ai_costs["disposal_fee"],
-
-        )
-        
-
-
-    if repair_cost > 0.6 * replacement_cost or item_age >= useful_life_remaining:
-        recommendation = "Replace"
-    else:
-        recommendation = "Repair"
-
-    # Confidence heuristic: bigger gap between costs => more confident
-    if replacement_cost > 0:
-        ratio_gap = abs(repair_cost - replacement_cost) / replacement_cost
-    else:
-        ratio_gap = 0
-    confidence_score = round(min(1.0, 0.5 + ratio_gap), 2)
-
-    estimate = write_estimate(
-        claim_number, item_type, item_age, useful_life_remaining, repair_cost, replacement_cost,
-        labor_cost, material_cost, recommendation, confidence_score,
-    )
+    # return {
+    #     "claim_id": claim_id,
+    #     "item_type": item_type,
+    #     "item_age": item_age,
+    #     "useful_life_remaining": useful_life_remaining,
+    #     "repair_cost": repair_cost,
+    #     "replacement_cost": replacement_cost,
+    #     "recommendation": recommendation,
+    #     "confidence_score": confidence_score,
+    #     "estimate": estimate,
+    # }
 
     return {
-        "claim_id": claim_id,
-        "item_type": item_type,
-        "item_age": item_age,
-        "useful_life_remaining": useful_life_remaining,
-        "repair_cost": repair_cost,
-        "replacement_cost": replacement_cost,
-        "recommendation": recommendation,
-        "confidence_score": confidence_score,
-        "estimate": estimate,
+    "claim_id": claim_id,
+    "claim_number": claim_number,
+    "total_items_processed": len(results),
+    "estimates": results,
     }
-
-
