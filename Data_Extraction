@@ -1,87 +1,11 @@
-(venv) JarvisClaims@JarvisClaims:~/Musaddique/Jarvis_claims_agents_v2_copy/AdjusterAgents/RepairVsReplacementAgent$ python3 server.py 
-INFO:     Started server process [69442]
-INFO:     Waiting for application startup.
-INFO:     Application startup complete.
-INFO:     Uvicorn running on http://0.0.0.0:8912 (Press CTRL+C to quit)
-2026-06-30 13:01:30,869 | INFO     | httpx | HTTP Request: POST http://localhost:5900/api/v1/repair_vs_replacement/mcp "HTTP/1.1 200 OK"
-2026-06-30 13:01:30,869 | INFO     | mcp.client.streamable_http | Received session ID: 1e4bf86a1e344febb2f9913a740fd2f5
-2026-06-30 13:01:30,870 | INFO     | mcp.client.streamable_http | Negotiated protocol version: 2025-11-25
-2026-06-30 13:01:30,874 | INFO     | httpx | HTTP Request: POST http://localhost:5900/api/v1/repair_vs_replacement/mcp "HTTP/1.1 202 Accepted"
-2026-06-30 13:01:30,880 | INFO     | httpx | HTTP Request: POST http://localhost:5900/api/v1/repair_vs_replacement/mcp "HTTP/1.1 200 OK"
-2026-06-30 13:01:30,883 | INFO     | httpx | HTTP Request: DELETE http://localhost:5900/api/v1/repair_vs_replacement/mcp "HTTP/1.1 200 OK"
-2026-06-30 13:01:30,885 | INFO     | repair_vs_replacement_agent | Tools loaded from MCP: ['get_estimates', 'write_estimate', 'get_repair_cost_detail', 'write_repair_cost', 'get_replacement_cost_detail', 'write_replacement_cost', 'compare_repair_vs_replace']
-2026-06-30 13:01:31,284 | WARNING  | repair_vs_replacement_agent | Phoenix prompt load failed (Phoenix not configured) — using fallback prompt
-INFO:     127.0.0.1:33696 - "POST /chat HTTP/1.1" 200 OK
-2026-06-30 13:01:32,927 | INFO     | httpx | HTTP Request: POST https://azureclaimsopenai.openai.azure.com/openai/deployments/gpt-4.1-claims/chat/completions?api-version=2025-01-01-preview "HTTP/1.1 200 OK"
-2026-06-30 13:01:33,496 | INFO     | repair_vs_replacement_agent | AI MESSAGE = content='' additional_kwargs={} response_metadata={'finish_reason': 'tool_calls', 'model_name': 'gpt-4.1-2025-04-14', 'system_fingerprint': 'fp_dc49d4fcba', 'service_tier': 'default', 'model_provider': 'openai'} id='lc_run--019f189e-d924-7282-b6a0-9e4435cd8e16' tool_calls=[{'name': 'get_estimates', 'args': {'claim_id': 'CLM-2026-1101'}, 'id': 'call_hfDXGWI9eKt6EEwW5Z2IqeAK', 'type': 'tool_call'}] invalid_tool_calls=[] usage_metadata={'input_tokens': 1017, 'output_tokens': 24, 'total_tokens': 1041, 'input_token_details': {'audio': 0, 'cache_read': 0}, 'output_token_details': {'audio': 0, 'reasoning': 0}}
-2026-06-30 13:01:33,496 | INFO     | repair_vs_replacement_agent | TOOL CALLS = [{'name': 'get_estimates', 'args': {'claim_id': 'CLM-2026-1101'}, 'id': 'call_hfDXGWI9eKt6EEwW5Z2IqeAK', 'type': 'tool_call'}]
-2026-06-30 13:01:33,540 | INFO     | httpx | HTTP Request: POST http://localhost:5900/api/v1/repair_vs_replacement/mcp "HTTP/1.1 200 OK"
-2026-06-30 13:01:33,541 | INFO     | mcp.client.streamable_http | Received session ID: b80527252dac4f8798747e71fccb7015
-2026-06-30 13:01:33,541 | INFO     | mcp.client.streamable_http | Negotiated protocol version: 2025-11-25
-2026-06-30 13:01:33,544 | INFO     | httpx | HTTP Request: POST http://localhost:5900/api/v1/repair_vs_replacement/mcp "HTTP/1.1 202 Accepted"
-2026-06-30 13:01:33,653 | INFO     | httpx | HTTP Request: POST http://localhost:5900/api/v1/repair_vs_replacement/mcp "HTTP/1.1 200 OK"
-2026-06-30 13:01:33,656 | INFO     | httpx | HTTP Request: POST http://localhost:5900/api/v1/repair_vs_replacement/mcp "HTTP/1.1 200 OK"
-2026-06-30 13:01:33,659 | INFO     | httpx | HTTP Request: DELETE http://localhost:5900/api/v1/repair_vs_replacement/mcp "HTTP/1.1 200 OK"
-2026-06-30 13:01:34,419 | INFO     | httpx | HTTP Request: POST https://azureclaimsopenai.openai.azure.com/openai/deployments/gpt-4.1-claims/chat/completions?api-version=2025-01-01-preview "HTTP/1.1 200 OK"
-2026-06-30 13:01:34,548 | INFO     | repair_vs_replacement_agent | AI MESSAGE = content='' additional_kwargs={} response_metadata={'finish_reason': 'tool_calls', 'model_name': 'gpt-4.1-2025-04-14', 'system_fingerprint': 'fp_41479f4876', 'service_tier': 'default', 'model_provider': 'openai'} id='lc_run--019f189e-e25d-77f1-8227-b377018964ba' tool_calls=[{'name': 'get_repair_cost_detail', 'args': {'claim_id': 'CLM-2026-1101'}, 'id': 'call_LDWZCNTj6Lx7igu7P15yOApq', 'type': 'tool_call'}] invalid_tool_calls=[] usage_metadata={'input_tokens': 1050, 'output_tokens': 26, 'total_tokens': 1076, 'input_token_details': {'audio': 0, 'cache_read': 0}, 'output_token_details': {'audio': 0, 'reasoning': 0}}
-2026-06-30 13:01:34,548 | INFO     | repair_vs_replacement_agent | TOOL CALLS = [{'name': 'get_repair_cost_detail', 'args': {'claim_id': 'CLM-2026-1101'}, 'id': 'call_LDWZCNTj6Lx7igu7P15yOApq', 'type': 'tool_call'}]
-2026-06-30 13:01:34,591 | INFO     | httpx | HTTP Request: POST http://localhost:5900/api/v1/repair_vs_replacement/mcp "HTTP/1.1 200 OK"
-2026-06-30 13:01:34,591 | INFO     | mcp.client.streamable_http | Received session ID: fdd813c7ebfe4e1c9b4b173e92024edb
-2026-06-30 13:01:34,592 | INFO     | mcp.client.streamable_http | Negotiated protocol version: 2025-11-25
-2026-06-30 13:01:34,594 | INFO     | httpx | HTTP Request: POST http://localhost:5900/api/v1/repair_vs_replacement/mcp "HTTP/1.1 202 Accepted"
-2026-06-30 13:01:34,701 | INFO     | httpx | HTTP Request: POST http://localhost:5900/api/v1/repair_vs_replacement/mcp "HTTP/1.1 200 OK"
-2026-06-30 13:01:34,704 | INFO     | httpx | HTTP Request: POST http://localhost:5900/api/v1/repair_vs_replacement/mcp "HTTP/1.1 200 OK"
-2026-06-30 13:01:34,707 | INFO     | httpx | HTTP Request: DELETE http://localhost:5900/api/v1/repair_vs_replacement/mcp "HTTP/1.1 200 OK"
-2026-06-30 13:01:35,873 | INFO     | httpx | HTTP Request: POST https://azureclaimsopenai.openai.azure.com/openai/deployments/gpt-4.1-claims/chat/completions?api-version=2025-01-01-preview "HTTP/1.1 200 OK"
-2026-06-30 13:01:35,939 | INFO     | repair_vs_replacement_agent | AI MESSAGE = content='' additional_kwargs={} response_metadata={'finish_reason': 'tool_calls', 'model_name': 'gpt-4.1-2025-04-14', 'system_fingerprint': 'fp_dc49d4fcba', 'service_tier': 'default', 'model_provider': 'openai'} id='lc_run--019f189e-e675-79a2-93a8-8d1c544253bd' tool_calls=[{'name': 'get_replacement_cost_detail', 'args': {'claim_id': 'CLM-2026-1101'}, 'id': 'call_Dx3BAZt2pVAJjxlQ8ny9qoYg', 'type': 'tool_call'}] invalid_tool_calls=[] usage_metadata={'input_tokens': 1087, 'output_tokens': 26, 'total_tokens': 1113, 'input_token_details': {'audio': 0, 'cache_read': 0}, 'output_token_details': {'audio': 0, 'reasoning': 0}}
-2026-06-30 13:01:35,939 | INFO     | repair_vs_replacement_agent | TOOL CALLS = [{'name': 'get_replacement_cost_detail', 'args': {'claim_id': 'CLM-2026-1101'}, 'id': 'call_Dx3BAZt2pVAJjxlQ8ny9qoYg', 'type': 'tool_call'}]
-2026-06-30 13:01:35,982 | INFO     | httpx | HTTP Request: POST http://localhost:5900/api/v1/repair_vs_replacement/mcp "HTTP/1.1 200 OK"
-2026-06-30 13:01:35,982 | INFO     | mcp.client.streamable_http | Received session ID: 4b65dec1397d4190b367aa8ec37fb84e
-2026-06-30 13:01:35,983 | INFO     | mcp.client.streamable_http | Negotiated protocol version: 2025-11-25
-2026-06-30 13:01:35,985 | INFO     | httpx | HTTP Request: POST http://localhost:5900/api/v1/repair_vs_replacement/mcp "HTTP/1.1 202 Accepted"
-2026-06-30 13:01:36,090 | INFO     | httpx | HTTP Request: POST http://localhost:5900/api/v1/repair_vs_replacement/mcp "HTTP/1.1 200 OK"
-2026-06-30 13:01:36,094 | INFO     | httpx | HTTP Request: POST http://localhost:5900/api/v1/repair_vs_replacement/mcp "HTTP/1.1 200 OK"
-2026-06-30 13:01:36,096 | INFO     | httpx | HTTP Request: DELETE http://localhost:5900/api/v1/repair_vs_replacement/mcp "HTTP/1.1 200 OK"
-2026-06-30 13:01:37,269 | INFO     | httpx | HTTP Request: POST https://azureclaimsopenai.openai.azure.com/openai/deployments/gpt-4.1-claims/chat/completions?api-version=2025-01-01-preview "HTTP/1.1 200 OK"
-2026-06-30 13:01:37,515 | INFO     | repair_vs_replacement_agent | AI MESSAGE = content='Damage Assessment has not yet been completed for claim CLM-2026-1101. Please ensure the damaged item is documented before proceeding with a repair vs replacement comparison.\n\nEnd' additional_kwargs={} response_metadata={'finish_reason': 'stop', 'model_name': 'gpt-4.1-2025-04-14', 'system_fingerprint': 'fp_dc49d4fcba', 'service_tier': 'default', 'model_provider': 'openai'} id='lc_run--019f189e-ebe3-7ee3-af20-c6fd43697214' tool_calls=[] invalid_tool_calls=[] usage_metadata={'input_tokens': 1124, 'output_tokens': 37, 'total_tokens': 1161, 'input_token_details': {'audio': 0, 'cache_read': 0}, 'output_token_details': {'audio': 0, 'reasoning': 0}}
-2026-06-30 13:01:37,515 | INFO     | repair_vs_replacement_agent | TOOL CALLS = []
-
-
-
 JarvisClaims@JarvisClaims:~/Musaddique$ curl -X POST "http://localhost:8912/chat" -H "Content-Type: application/json" -d '{
  "message": "Compare repair vs replacement for claim CLM-2026-1101. Item age is 5 years and useful life remaining is 8 years."
 }'
-data: [Tool: get_estimates] Starting...
+data: [Tool: compare_repair_vs_replace] Starting...
 
-data: [Tool: get_estimates] Done
+data: [Tool: compare_repair_vs_replace] Done
 
-data: [Tool: get_repair_cost_detail] Starting...
-
-data: [Tool: get_repair_cost_detail] Done
-
-data: [Tool: get_replacement_cost_detail] Starting...
-
-data: [Tool: get_replacement_cost_detail] Done
-
-data: [Tool: get_estimates] Starting...
-
-data: [Tool: get_estimates] Done
-
-data: Damage
-
-data:  Assessment
-
-data:  has
-
-data:  not
-
-data:  yet
-
-data:  been
-
-data:  completed
-
-data:  for
+data: For
 
 data:  claim
 
@@ -103,39 +27,11 @@ data: 1
 
 data: ,
 
-data:  as
-
-data:  no
-
-data:  damage
-
-data:  item
-
-data:  exists
-
-data:  in
-
-data:  the
-
-data:  system
-
-data: .
-
-data:  Please
-
-data:  ensure
-
-data:  the
-
-data:  damage
-
-data:  item
+data:  here
 
 data:  is
 
-data:  added
-
-data:  before
+data:  the
 
 data:  repair
 
@@ -143,13 +39,250 @@ data:  vs
 
 data:  replacement
 
-data:  comparison
+data:  analysis
 
-data:  can
+data:  for
 
-data:  be
+data:  the
 
-data:  made
+data:  flooring
+
+data: :
+
+
+
+data: -
+
+data:  Repair
+
+data:  Cost
+
+data: :
+
+data:  $
+
+data: 0
+
+data: .
+
+data: 00
+
+data: 
+
+
+data: -
+
+data:  Replacement
+
+data:  Cost
+
+data: :
+
+data:  $
+
+data: 3
+
+data: ,
+
+data: 200
+
+data: .
+
+data: 00
+
+data: 
+
+
+data: -
+
+data:  Confidence
+
+data:  Score
+
+data: :
+
+data:  
+
+data: 1
+
+data: .
+
+data: 0
+
+data: 
+
+
+
+data: Recommendation
+
+data: :
+
+data:  Repair
+
+data: 
+
+
+
+data: Explanation
+
+data: :
+
+
+data: The
+
+data:  repair
+
+data:  cost
+
+data:  for
+
+data:  the
+
+data:  damaged
+
+data:  flooring
+
+data:  is
+
+data:  $
+
+data: 0
+
+data: .
+
+data: 00
+
+data: ,
+
+data:  which
+
+data:  is
+
+data:  significantly
+
+data:  less
+
+data:  than
+
+data:  
+
+data: 60
+
+data: %
+
+data:  of
+
+data:  the
+
+data:  replacement
+
+data:  cost
+
+data:  ($
+
+data: 1
+
+data: ,
+
+data: 920
+
+data: .
+
+data: 00
+
+data:  is
+
+data:  the
+
+data:  
+
+data: 60
+
+data: %
+
+data:  threshold
+
+data: ).
+
+data:  Additionally
+
+data: ,
+
+data:  the
+
+data:  item
+
+data:  age
+
+data:  (
+
+data: 5
+
+data:  years
+
+data: )
+
+data:  is
+
+data:  less
+
+data:  than
+
+data:  the
+
+data:  useful
+
+data:  life
+
+data:  remaining
+
+data:  (
+
+data: 8
+
+data:  years
+
+data: ).
+
+data:  Based
+
+data:  on
+
+data:  these
+
+data:  factors
+
+data: ,
+
+data:  the
+
+data:  recommendation
+
+data:  is
+
+data:  to
+
+data:  proceed
+
+data:  with
+
+data:  repair
+
+data: ,
+
+data:  with
+
+data:  very
+
+data:  high
+
+data:  confidence
+
+data:  in
+
+data:  this
+
+data:  decision
 
 data: .
 
@@ -158,3 +291,5 @@ data: .
 data: End
 
 JarvisClaims@JarvisClaims:~/Musaddique$ 
+
+what do you think it worked if yes tell me what tables shouldi check to verify?
