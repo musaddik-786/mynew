@@ -1,390 +1,892 @@
-JarvisClaims@JarvisClaims:~/Musaddique$ curl -X POST "http://localhost:8912/chat" -H "Content-Type: application/json" -d '{
- "message": "Compare repair vs replacement for claim CLM-2026-1101. Item age is 5 years and useful life remaining is 8 years."
-}'
-data: [Tool: compare_repair_vs_replace] Starting...
+ok before doing that i want in detail workflow of how it is working lets have samplke example same as i was testing and repair, replacement , estimates tables to be empty
+
+"""
+server.py — Repair Vs Replacement Agent
+───────────────────────────────────────
+LangGraph agent that compares repair vs. replacement costs for
+a damaged item and recommends a course of action.
+
+Port: 8912
+MCP : http://localhost:8900/api/v1/repair_vs_replacement/mcp
+
+Run:
+    py -3 server.py
+"""
+
+import json
+import logging
+import os
+import sys
+import time
+import traceback
+from datetime import datetime, timedelta
+from typing import Annotated, TypedDict
+
+import uvicorn
+from dotenv import load_dotenv, find_dotenv
+from fastapi import FastAPI, Request
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import StreamingResponse
+from langchain_core.messages import AIMessage, SystemMessage
+from langchain_mcp_adapters.client import MultiServerMCPClient
+from langchain_openai.chat_models import AzureChatOpenAI
+from langgraph.graph import END, START, StateGraph
+from langgraph.graph.message import add_messages
+from langgraph.prebuilt import ToolNode
+
+load_dotenv(find_dotenv())
+
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s | %(levelname)-8s | %(name)s | %(message)s",
+    stream=sys.stdout,
+    force=True,
+)
+logger = logging.getLogger("repair_vs_replacement_agent")
+
+PHOENIX_API_KEY = os.getenv("PHOENIX_API_KEY", "")
+PHOENIX_ENDPOINT = os.getenv("PHOENIX_ENDPOINT", "")
+MCP_URL = os.getenv("MCP_URL", "http://localhost:5900/api/v1/repair_vs_replacement/mcp")
+# MCP_URL =  "http://localhost:5900/api/v1/repair_vs_replacement/mcp"
+
+AGENT_PORT = int(os.getenv("AGENT_PORT", "8912"))
+
+# AGENT_PORT = "8912"
+
+config_mcp_server = {
+    "repair_vs_replacement_mcp": {
+        "url": MCP_URL,
+        "transport": "streamable_http",
+        "timeout": timedelta(seconds=120),
+        "sse_read_timeout": timedelta(seconds=600),
+    }
+}
+
+app = FastAPI(title="Repair Vs Replacement Agent")
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+
+class State(TypedDict):
+    messages: Annotated[list, add_messages]
+
+
+def router(state: State):
+    last = state["messages"][-1]
+    if isinstance(last, AIMessage) and getattr(last, "tool_calls", None):
+        return "tools"
+    if isinstance(last, AIMessage) and last.content:
+        if "Continue" in last.content:
+            return "tools"
+        if "End" in last.content:
+            return "End"
+    return "End"
+
+
+# _FALLBACK_PROMPT = """
+# You are the Repair vs Replacement Agent for an insurance claims platform,
+# assisting a Claims Adjuster.
+
+# Given a claim_number, item_type, item_age, and useful_life_remaining, your
+# workflow is:
+
+# 1. Look up the internal claim_id from the claims table.
+# 2. Retrieve any repair_costs and replacement_costs for that claim_id.
+# 3. Call compare_repair_vs_replace with these inputs. This will look up or
+#    estimate repair and replacement costs, apply the rule: if
+#    repair_cost > 0.6 * replacement_cost OR item_age >= useful_life_remaining
+#    then recommend "Replace", else "Repair", and store the result.
+# 4. Explain to the adjuster the recommendation, the repair vs replacement
+#    cost comparison, and the confidence score.
+
+# When you have completed the task, end your response with "End".
+# """
+
+
+_FALLBACK_PROMPT = """
+You are the Repair vs Replacement Agent for an insurance claims platform assisting a Claims Adjuster.
+Given a claim_number, item_age and useful_life_remaining, execute the following workflow:
+1. Look up the internal claim_id from the claims table.
+If the claim does not exist, immediately inform the adjuster that the claim number is invalid and stop.
+Do not call any other tools.
+2. Retrieve the damage item.
+If no damage item exists, inform the adjuster that Damage Assessment has not yet been completed.
+Stop immediately.
+Do not call any additional tools.
+3. Check whether repair_costs and replacement_costs already exist for the claim and item.
+4. If both records exist, use the stored repair and replacement estimates.
+5. If either record is missing, estimate realistic repair and replacement costs using available claim information, then write the generated repair estimate to the repair_costs table and the generated replacement estimate to the replacement_costs table.
+6. Compare the repair and replacement costs using the business rule:
+  - If repair_cost > 60% of replacement_cost, or
+  - item_age >= useful_life_remaining,
+  recommend "Replace"; otherwise recommend "Repair".
+7. Store the final recommendation, confidence score and comparison results in the estimates table.
+8. Explain to the adjuster why the recommendation was made, including the repair cost, replacement cost and confidence score.
+When the workflow is complete, end your response with "End".
+"""
+
+def load_prompt() -> str:
+    if not PHOENIX_ENDPOINT:
+        raise RuntimeError("Phoenix not configured")
+    from phoenix.client import Client
+    client = Client(base_url=PHOENIX_ENDPOINT, api_key=PHOENIX_API_KEY)
+    prompt = client.prompts.get(name="repair_vs_replacement_agent", label="production")
+    prompt_set = prompt._template["messages"]
+    system_msg = next(
+        (item["content"][0]["text"] for item in prompt_set if item.get("role") == "system"),
+        None,
+    )
+    if not system_msg:
+        raise ValueError("System prompt is empty or missing in Phoenix")
+    return system_msg
+
+
+def create_graph(model, tools, prompt):
+    graph_builder = StateGraph(State)
+    llm_with_tools = model.bind_tools(tools)
+
+    # async def agent_node(state: State):
+    #     messages = state["messages"]
+    #     all_messages = [SystemMessage(content=prompt)] + messages
+    #     message = await llm_with_tools.ainvoke(all_messages)
+    #     return {"messages": [message]}
+
+    async def agent_node(state: State):
+        messages = state["messages"]
+        all_messages = [SystemMessage(content=prompt)] + messages
+        message = await llm_with_tools.ainvoke(all_messages)
+        logger.info("AI MESSAGE = %s", message)
+        logger.info("TOOL CALLS = %s", getattr(message, "tool_calls", None))
+        return {"messages": [message]}
+
+    graph_builder.add_node("agent", agent_node)
+    graph_builder.add_node("tools", ToolNode(tools=tools))
+    graph_builder.add_edge(START, "agent")
+    graph_builder.add_conditional_edges("agent", router, {"tools": "tools", "End": END})
+    graph_builder.add_edge("tools", "agent")
+    return graph_builder.compile()
+
+
+async def get_tools():
+    client = MultiServerMCPClient(config_mcp_server)
+    tools = await client.get_tools()
+    logger.info("Tools loaded from MCP: %s", [t.name for t in tools])
+    return tools
+
+
+async def stream_graph(graph, initial_state, config):
+    async for event in graph.astream_events(initial_state, config=config, version="v2"):
+        kind = event.get("event", "")
+
+        if kind == "on_chat_model_stream":
+            chunk = event["data"].get("chunk")
+            if chunk and hasattr(chunk, "content") and chunk.content:
+                yield f"data: {chunk.content}\n\n"
+
+        elif kind == "on_tool_start":
+            tool_name = event.get("name", "unknown_tool")
+            yield f"data: [Tool: {tool_name}] Starting...\n\n"
+
+        elif kind == "on_tool_end":
+            tool_name = event.get("name", "unknown_tool")
+            yield f"data: [Tool: {tool_name}] Done\n\n"
+
+
+@app.post("/chat")
+async def chat_stream(request: Request):
+    load_dotenv(find_dotenv())
+
+    tools = await get_tools()
+
+    model = AzureChatOpenAI(
+        api_key=os.getenv("AZURE_OPENAI_API_KEY"),
+        api_version=os.getenv("AZURE_OPENAI_API_VERSION"),
+        azure_deployment=os.getenv("AZURE_OPENAI_CHAT_DEPLOYMENT"),
+        azure_endpoint=os.getenv("AZURE_OPENAI_ENDPOINT"),
+    )
+
+    try:
+        system_prompt = load_prompt()
+    except Exception as e:
+        logger.warning("Phoenix prompt load failed (%s) — using fallback prompt", e)
+        system_prompt = _FALLBACK_PROMPT
+
+    body = await request.json()
+    user_message = body.get("message", "Recommend repair vs replacement for this item")
+
+    graph = create_graph(model=model, tools=tools, prompt=system_prompt)
+
+    async def generate():
+        start = time.time()
+        last_event_at = start
+        last_tool = None
+        try:
+            async for event in stream_graph(
+                graph=graph,
+                initial_state={"messages": [user_message]},
+                config={"recursion_limit": 250},
+            ):
+                last_event_at = time.time()
+                if isinstance(event, str) and event.startswith("data: [Tool:"):
+                    try:
+                        last_tool = event.split("[Tool:", 1)[1].split("]", 1)[0]
+                    except Exception:
+                        pass
+                yield event
+        except BaseException as e:
+            elapsed = time.time() - start
+            since_last = time.time() - last_event_at
+            err = {
+                "exception_class": type(e).__name__,
+                "message": str(e),
+                "elapsed_total_seconds": round(elapsed, 2),
+                "seconds_since_last_event": round(since_last, 2),
+                "last_tool_invoked": last_tool,
+                "traceback": traceback.format_exc(),
+                "timestamp_utc": datetime.utcnow().isoformat(),
+            }
+            logger.error("AGENT_ERROR %s", json.dumps(err, default=str))
+            try:
+                yield f"data: [AGENT_ERROR] {json.dumps(err, default=str)}\n\n"
+            except Exception:
+                pass
+            import asyncio
+            if isinstance(e, asyncio.CancelledError):
+                raise
+
+    return StreamingResponse(generate(), media_type="text/event-stream")
+
+
+@app.get("/health")
+async def health():
+    return {"status": "healthy", "agent": "repair_vs_replacement_agent"}
+
+
+if __name__ == "__main__":
+    uvicorn.run(app, host="0.0.0.0", port=AGENT_PORT)
+
+
+
+
+"""
+handler.py — Repair vs Replacement
+───────────────────────────────────────
+Compares repair vs. replacement costs for a damaged item and recommends a
+course of action based on a cost-ratio / useful-life rule.
+"""
+
+import json
+import logging
+import os
+import sys
+from typing import Optional
+
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "common"))
+
+from db import get_db_connection, row_to_dict  # noqa: E402
+from langchain_openai.chat_models import AzureChatOpenAI  # noqa: E402
+
+log = logging.getLogger(__name__)
+
+
+def get_claim_id(claim_number: str) -> int:
+#    claim_id = get_claim_id(claim_number)
+   conn = get_db_connection()
+   try:
+       cur = conn.cursor()
+       cur.execute(
+           """
+           SELECT id
+           FROM claims
+           WHERE claim_number = %s
+           """,
+           (claim_number,),
+       )
+       row = row_to_dict(cur.fetchone())
+       if not row:
+           raise ValueError(f"Claim '{claim_number}' not found")
+       return row["id"]
+   finally:
+       conn.close()
+
+
+def get_damage_item(claim_number: str) -> dict:
+   conn = get_db_connection()
+   try:
+       cur = conn.cursor()
+       cur.execute(
+           """
+           SELECT *
+           FROM damage_items
+           WHERE claim_number = %s
+           LIMIT 1
+           """,
+           (claim_number,),
+       )
+       row = row_to_dict(cur.fetchone())
+    #    if not row:
+    #        raise ValueError(
+    #            f"No damage item found for claim '{claim_number}'"
+    #        )
+       if not row:
+          raise ValueError(
+            f"Damage assessment has not been completed for claim {claim_number}. "
+            "Repair vs Replacement cannot be performed until damage items are available."
+           )
+       return row
+   finally:
+       conn.close()
+
+def _get_llm():
+    return AzureChatOpenAI(
+        api_key=os.getenv("AZURE_OPENAI_API_KEY"),
+        api_version=os.getenv("AZURE_OPENAI_API_VERSION"),
+        azure_deployment=os.getenv("AZURE_OPENAI_CHAT_DEPLOYMENT"),
+        azure_endpoint=os.getenv("AZURE_OPENAI_ENDPOINT"),
+    )
+
+
+def get_estimates(claim_number: str) -> list:
+    claim_id = get_claim_id(claim_number)
+    conn = get_db_connection()
+    try:
+        cur = conn.cursor()
+        cur.execute("SELECT * FROM estimates WHERE claim_id = %s ORDER BY id DESC", (claim_id,))
+        return row_to_dict(cur.fetchall())
+    finally:
+        conn.close()
+
+
+def write_estimate(claim_number: str, item_type: str, item_age: int, useful_life_remaining: int,
+                    repair_cost: float, replacement_cost: float, labor_cost: float, material_cost: float,
+                    recommendation: str, confidence_score: float) -> dict:
+    claim_id = get_claim_id(claim_number)
+    conn = get_db_connection()
+    try:
+        cur = conn.cursor()
+        cur.execute(
+            """
+            INSERT INTO estimates (
+                claim_id, item_type, item_age, useful_life_remaining, repair_cost, replacement_cost,
+                labor_cost, material_cost, recommendation, confidence_score
+            ) VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
+            """,
+            (claim_id, item_type, item_age, useful_life_remaining, repair_cost, replacement_cost,
+             labor_cost, material_cost, recommendation, confidence_score),
+        )
+        conn.commit()
+        return {
+            "id": cur.lastrowid, "claim_id": claim_id, "item_type": item_type, "item_age": item_age,
+            "useful_life_remaining": useful_life_remaining, "repair_cost": repair_cost,
+            "replacement_cost": replacement_cost, "labor_cost": labor_cost, "material_cost": material_cost,
+            "recommendation": recommendation, "confidence_score": confidence_score,
+        }
+    finally:
+        conn.close()
+
+
+def get_repair_cost_detail(claim_number: str) -> list:
+    claim_id = get_claim_id(claim_number)
+    conn = get_db_connection()
+    try:
+        cur = conn.cursor()
+        cur.execute("SELECT * FROM repair_costs WHERE claim_id = %s ORDER BY id DESC", (claim_id,))
+        return row_to_dict(cur.fetchall())
+    finally:
+        conn.close()
+
+
+def write_repair_cost(item_id: str, claim_number: str, item_type: str, material_cost: float, labor_hours: float,
+                       labor_rate: float, diagnostic_fee: float, urgency_factor: float, notes: Optional[str] = None) -> dict:
+    total_repair_estimate = round((material_cost + labor_hours * labor_rate + diagnostic_fee) * (urgency_factor or 1.0), 2)
+    claim_id = get_claim_id(claim_number)
+    conn = get_db_connection()
+    
+    try:
+        cur = conn.cursor()
+        cur.execute(
+            """
+            INSERT INTO repair_costs (
+                item_id, claim_id, item_type, material_cost, labor_hours, labor_rate,
+                diagnostic_fee, urgency_factor, total_repair_estimate, notes
+            ) VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
+            """,
+            (item_id, claim_id, item_type, material_cost, labor_hours, labor_rate,
+             diagnostic_fee, urgency_factor, total_repair_estimate, notes),
+        )
+        conn.commit()
+        return {
+            "id": cur.lastrowid, "item_id": item_id, "claim_id": claim_id, "item_type": item_type,
+            "material_cost": material_cost, "labor_hours": labor_hours, "labor_rate": labor_rate,
+            "diagnostic_fee": diagnostic_fee, "urgency_factor": urgency_factor,
+            "total_repair_estimate": total_repair_estimate, "notes": notes,
+        }
+    finally:
+        conn.close()
+
+
+def get_replacement_cost_detail(claim_number: str) -> list:
+    claim_id = get_claim_id(claim_number)
+    conn = get_db_connection()
+    try:
+        cur = conn.cursor()
+        cur.execute("SELECT * FROM replacement_costs WHERE claim_id = %s ORDER BY id DESC", (claim_id,))
+        return row_to_dict(cur.fetchall())
+    finally:
+        conn.close()
+
+
+def write_replacement_cost(item_id: str, claim_number: str, item_type: str, replacement_material_cost: float,
+                            installation_hours: float, labor_rate: float, delivery_fee: float, disposal_fee: float,
+                            notes: Optional[str] = None) -> dict:
+    total_replacement_estimate = round(
+        replacement_material_cost + installation_hours * labor_rate + delivery_fee + disposal_fee, 2
+    )
+    claim_id = get_claim_id(claim_number)
+    conn = get_db_connection()
+    try:
+        cur = conn.cursor()
+        cur.execute(
+            """
+            INSERT INTO replacement_costs (
+                item_id, claim_id, item_type, replacement_material_cost, installation_hours, labor_rate,
+                delivery_fee, disposal_fee, total_replacement_estimate, notes
+            ) VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
+            """,
+            (item_id, claim_id, item_type, replacement_material_cost, installation_hours, labor_rate,
+             delivery_fee, disposal_fee, total_replacement_estimate, notes),
+        )
+        conn.commit()
+        return {
+            "id": cur.lastrowid, "item_id": item_id, "claim_id": claim_id, "item_type": item_type,
+            "replacement_material_cost": replacement_material_cost, "installation_hours": installation_hours,
+            "labor_rate": labor_rate, "delivery_fee": delivery_fee, "disposal_fee": disposal_fee,
+            "total_replacement_estimate": total_replacement_estimate, "notes": notes,
+        }
+    finally:
+        conn.close()
+
+
+# def _llm_estimate_costs(item_type: str, item_age: int) -> dict:
+def _llm_estimate_costs(
+   item_type: str,
+   item_age: int,
+   severity: str,
+   estimated_cost: float,
+   adjuster_notes: str,
+) -> dict:
+    llm = _get_llm()
+#     prompt = f"""
+# You are a claims adjuster's assistant. Estimate plausible repair and
+# replacement costs in USD for a "{item_type}" that is {item_age} years old.
+# Respond with ONLY a JSON object:
+# {{"repair_cost": 0, "replacement_cost": 0, "labor_cost": 0, "material_cost": 0}}
+# """
+
+
+# prompt = f"""
+# You are an insurance claims cost estimator.
+# Estimate realistic repair and replacement costs for a damaged "{item_type}"
+# that is {item_age} years old.
+# Return ONLY valid JSON.
+# {{
+#    "repair_cost": 0,
+#    "replacement_cost": 0,
+#    "material_cost": 0,
+#    "labor_hours": 0,
+#    "labor_rate": 0,
+#    "diagnostic_fee": 0,
+#    "urgency_factor": 1.0,
+#    "replacement_material_cost": 0,
+#    "installation_hours": 0,
+#    "delivery_fee": 0,
+#    "disposal_fee": 0
+# }}
+# """
+
+
+    prompt = f"""
+    You are an insurance claims cost estimator.
+    Estimate realistic repair and replacement costs for the damaged item using the following information.
+    Item Type: {item_type}
+    Item Age: {item_age} years
+    Damage Severity: {severity}
+    Adjuster's Notes: {adjuster_notes}
+    Initial Damage Estimate: ${estimated_cost}
+    Return ONLY valid JSON.
+    {{
+    "repair_cost": 0,
+    "replacement_cost": 0,
+    "material_cost": 0,
+    "labor_hours": 0,
+    "labor_rate": 0,
+    "diagnostic_fee": 0,
+    "urgency_factor": 1.0,
+    "replacement_material_cost": 0,
+    "installation_hours": 0,
+    "delivery_fee": 0,
+    "disposal_fee": 0
+    }}
+    """
+
+
+    response = llm.invoke(prompt)
+    content = response.content.strip()
+    if content.startswith("```"):
+        content = content.strip("`")
+        if content.startswith("json"):
+            content = content[4:]
+    try:
+        return json.loads(content)
+    except Exception:
+        log.warning("Could not parse LLM JSON, defaulting: %s", content)
+        # return {"repair_cost": 500, "replacement_cost": 1000, "labor_cost": 200, "material_cost": 300}
+        return {
+        "repair_cost": 500,
+        "replacement_cost": 1000,
+        "material_cost": 300,
+        "labor_hours": 2,
+        "labor_rate": 100,
+        "diagnostic_fee": 50,
+        "urgency_factor": 1.0,
+        "replacement_material_cost": 700,
+        "installation_hours": 3,
+        "delivery_fee": 50,
+        "disposal_fee": 25,
+        }
+
+def compare_repair_vs_replace(claim_number: str, item_age: int, useful_life_remaining: int) -> dict:
+    # Look up existing repair_costs/replacement_costs for this claim+item_type, if present
+    claim_id = get_claim_id(claim_number)
+    damage = get_damage_item(claim_number)
+    damage_id = damage["damage_id"]
+    item_type = damage["category"]
+    severity = damage["severity"]
+    estimated_cost = damage["estimated_cost"]
+    adjuster_notes = damage["adjuster_notes"]
+    conn = get_db_connection()
+    try:
+        cur = conn.cursor()
+        cur.execute(
+            "SELECT * FROM repair_costs WHERE claim_id = %s AND item_type = %s ORDER BY id DESC LIMIT 1",
+            (claim_id, item_type),
+        )
+        repair_row = row_to_dict(cur.fetchone())
+        cur.execute(
+            "SELECT * FROM replacement_costs WHERE claim_id = %s AND item_type = %s ORDER BY id DESC LIMIT 1",
+            (claim_id, item_type),
+        )
+        replacement_row = row_to_dict(cur.fetchone())
+    finally:
+        conn.close()
+
+    if repair_row and replacement_row:
+        repair_cost = float(repair_row["total_repair_estimate"])
+        replacement_cost = float(replacement_row["total_replacement_estimate"])
+        labor_cost = float(repair_row.get("labor_hours") or 0) * float(repair_row.get("labor_rate") or 0)
+        material_cost = float(repair_row.get("material_cost") or 0)
+    else:
+        # ai_costs = _llm_estimate_costs(item_type, item_age)
+        ai_costs = _llm_estimate_costs(
+        item_type,
+        item_age,
+        severity,
+        estimated_cost,
+        adjuster_notes,
+        )
+        repair_cost = float(ai_costs.get("repair_cost", 500))
+        replacement_cost = float(ai_costs.get("replacement_cost", 1000))
+        # labor_cost = float(ai_costs.get("labor_cost", 200))
+        labor_cost = (
+        float(ai_costs["labor_hours"]) *
+        float(ai_costs["labor_rate"])
+        )
+        material_cost = float(ai_costs.get("material_cost", 300))
+
+
+
+
+        repair_result = write_repair_cost(
+
+            item_id=damage_id,
+
+            claim_number=claim_number,
+
+            item_type=item_type,
+
+            material_cost=ai_costs["material_cost"],
+
+            labor_hours=ai_costs["labor_hours"],
+
+            labor_rate=ai_costs["labor_rate"],
+
+            diagnostic_fee=ai_costs["diagnostic_fee"],
+
+            urgency_factor=ai_costs["urgency_factor"],
+
+        )
+        
+        repair_cost = repair_result["total_repair_estimate"]
+
+
+        replacement_result = write_replacement_cost(
+
+            item_id=damage_id,
+
+            claim_number=claim_number,
+
+            item_type=item_type,
+
+            replacement_material_cost=ai_costs["replacement_material_cost"],
+
+            installation_hours=ai_costs["installation_hours"],
+
+            labor_rate=ai_costs["labor_rate"],
+
+            delivery_fee=ai_costs["delivery_fee"],
+
+            disposal_fee=ai_costs["disposal_fee"],
+
+        )
+        replacement_cost = replacement_result["total_replacement_estimate"]
+ 
+
+
+    if repair_cost > 0.6 * replacement_cost or item_age >= useful_life_remaining:
+        recommendation = "Replace"
+    else:
+        recommendation = "Repair"
+
+    # Confidence heuristic: bigger gap between costs => more confident
+    if replacement_cost > 0:
+        ratio_gap = abs(repair_cost - replacement_cost) / replacement_cost
+    else:
+        ratio_gap = 0
+    confidence_score = round(min(1.0, 0.5 + ratio_gap), 2)
+
+    estimate = write_estimate(
+        claim_number, item_type, item_age, useful_life_remaining, repair_cost, replacement_cost,
+        labor_cost, material_cost, recommendation, confidence_score,
+    )
+
+    return {
+        "claim_id": claim_id,
+        "item_type": item_type,
+        "item_age": item_age,
+        "useful_life_remaining": useful_life_remaining,
+        "repair_cost": repair_cost,
+        "replacement_cost": replacement_cost,
+        "recommendation": recommendation,
+        "confidence_score": confidence_score,
+        "estimate": estimate,
+    }
+
+
+"""
+repair_vs_replacement_router.py
+─────────────────────────────────────
+FastAPI routes for the Repair vs Replacement MCP.
+
+Tool / Endpoint map:
+  get_estimates                GET  /api/repair_vs_replacement/estimates/{claim_id}
+  write_estimate               POST /api/repair_vs_replacement/estimates/{claim_id}
+  get_repair_cost_detail        GET  /api/repair_vs_replacement/repair_costs/{claim_id}
+  write_repair_cost             POST /api/repair_vs_replacement/repair_costs/{claim_id}
+  get_replacement_cost_detail   GET  /api/repair_vs_replacement/replacement_costs/{claim_id}
+  write_replacement_cost        POST /api/repair_vs_replacement/replacement_costs/{claim_id}
+  compare_repair_vs_replace     POST /api/repair_vs_replacement/compare/{claim_id}
+"""
+
+import logging
+from fastapi import APIRouter, HTTPException
+
+from repair_vs_replacement_mcp import handler
+from repair_vs_replacement_mcp.models import (
+    CompareRequest,
+    EstimateRequest,
+    RepairCostRequest,
+    ReplacementCostRequest,
+)
+
+log = logging.getLogger(__name__)
+
+router = APIRouter()
+
+
+@router.get(
+    "/api/repair_vs_replacement/estimates/{claim_id}",
+    operation_id="get_estimates",
+    summary="Get repair-vs-replace estimates for a claim",
+    tags=["RepairVsReplacement"],
+)
+def get_estimates(claim_id: str):
+    """Returns all estimates rows for the given claim_id."""
+    return handler.get_estimates(claim_id)
+
+
+@router.post(
+    "/api/repair_vs_replacement/estimates/{claim_id}",
+    operation_id="write_estimate",
+    summary="Write a repair-vs-replace estimate for a claim",
+    tags=["RepairVsReplacement"],
+)
+def write_estimate(claim_id: str, body: EstimateRequest):
+    """Inserts a new estimates row for the given claim_id."""
+    try:
+        return handler.write_estimate(
+            claim_id, body.item_type, body.item_age, body.useful_life_remaining, body.repair_cost,
+            body.replacement_cost, body.labor_cost, body.material_cost, body.recommendation, body.confidence_score,
+        )
+    except Exception as e:
+        log.exception("write_estimate error")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get(
+    "/api/repair_vs_replacement/repair_costs/{claim_id}",
+    operation_id="get_repair_cost_detail",
+    summary="Get repair cost details for a claim",
+    tags=["RepairVsReplacement"],
+)
+def get_repair_cost_detail(claim_id: str):
+    """Returns all repair_costs rows for the given claim_id."""
+    return handler.get_repair_cost_detail(claim_id)
+
+
+@router.post(
+    "/api/repair_vs_replacement/repair_costs/{claim_id}",
+    operation_id="write_repair_cost",
+    summary="Write a repair cost detail row for a claim",
+    tags=["RepairVsReplacement"],
+)
+def write_repair_cost(claim_id: str, body: RepairCostRequest):
+    """Inserts a repair_costs row; total_repair_estimate is computed as
+    (material_cost + labor_hours*labor_rate + diagnostic_fee) * urgency_factor."""
+    try:
+        return handler.write_repair_cost(
+            body.item_id, claim_id, body.item_type, body.material_cost, body.labor_hours,
+            body.labor_rate, body.diagnostic_fee, body.urgency_factor, body.notes,
+        )
+    except Exception as e:
+        log.exception("write_repair_cost error")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get(
+    "/api/repair_vs_replacement/replacement_costs/{claim_id}",
+    operation_id="get_replacement_cost_detail",
+    summary="Get replacement cost details for a claim",
+    tags=["RepairVsReplacement"],
+)
+def get_replacement_cost_detail(claim_id: str):
+    """Returns all replacement_costs rows for the given claim_id."""
+    return handler.get_replacement_cost_detail(claim_id)
+
+
+@router.post(
+    "/api/repair_vs_replacement/replacement_costs/{claim_id}",
+    operation_id="write_replacement_cost",
+    summary="Write a replacement cost detail row for a claim",
+    tags=["RepairVsReplacement"],
+)
+def write_replacement_cost(claim_id: str, body: ReplacementCostRequest):
+    """Inserts a replacement_costs row; total_replacement_estimate is computed as
+    replacement_material_cost + installation_hours*labor_rate + delivery_fee + disposal_fee."""
+    try:
+        return handler.write_replacement_cost(
+            body.item_id, claim_id, body.item_type, body.replacement_material_cost, body.installation_hours,
+            body.labor_rate, body.delivery_fee, body.disposal_fee, body.notes,
+        )
+    except Exception as e:
+        log.exception("write_replacement_cost error")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post(
+    "/api/repair_vs_replacement/compare/{claim_number}",
+    operation_id="compare_repair_vs_replace",
+    summary="Compare repair vs replacement for an item and recommend a course of action",
+    tags=["RepairVsReplacement"],
+)
+def compare_repair_vs_replace(claim_number: str, body: CompareRequest):
+    """
+    Looks up existing repair_costs/replacement_costs for the claim+item_type
+    (or uses an LLM to estimate plausible costs if none exist), applies the
+    rule: if repair_cost > 0.6 * replacement_cost OR item_age >=
+    useful_life_remaining then recommend "Replace" else "Repair", computes a
+    confidence_score, writes an estimates row, and returns the comparison.
+    """
+    try:
+        return handler.compare_repair_vs_replace(claim_number, body.item_age, body.useful_life_remaining)
+    except Exception as e:
+        log.exception("compare_repair_vs_replace error")
+        raise HTTPException(status_code=500, detail=str(e))
+
+from typing import Optional
+from pydantic import BaseModel
+
+
+class EstimateRequest(BaseModel):
+    item_type: str
+    item_age: int
+    useful_life_remaining: int
+    repair_cost: float
+    replacement_cost: float
+    labor_cost: float
+    material_cost: float
+    recommendation: str
+    confidence_score: float
+
+
+class RepairCostRequest(BaseModel):
+    item_id: str
+    item_type: str
+    material_cost: float
+    labor_hours: float
+    labor_rate: float
+    diagnostic_fee: float
+    urgency_factor: float
+    notes: Optional[str] = None
+
+
+class ReplacementCostRequest(BaseModel):
+    item_id: str
+    item_type: str
+    replacement_material_cost: float
+    installation_hours: float
+    labor_rate: float
+    delivery_fee: float
+    disposal_fee: float
+    notes: Optional[str] = None
+
+
+class CompareRequest(BaseModel):
+    # item_type: str
+    item_age: int
+    useful_life_remaining: int
+
+repair_vs_replacement_app = _make_cors_app(
+    title="repair_vs_replacement_agent_mcps",
+    description="MCP tools for repair-vs-replacement cost comparison and recommendations.",
+)
+repair_vs_replacement_app.include_router(repair_vs_replacement_router)
+FastApiMCP(
+    repair_vs_replacement_app,
+    include_operations=[
+        # "get_estimates",
+        # "write_estimate",
+        # "get_repair_cost_detail",
+        # "write_repair_cost",
+        # "get_replacement_cost_detail",
+        # "write_replacement_cost",
+        "compare_repair_vs_replace",
+    ],
+).mount_http()
+app.mount("/api/v1/repair_vs_replacement", repair_vs_replacement_app)
 
-data: [Tool: compare_repair_vs_replace] Done
-
-data: Recommendation
-
-data: :
-
-data:  Replace
-
-data: 
-
-
-
-data: The
-
-data:  claim
-
-data:  CL
-
-data: M
-
-data: -
-
-data: 202
-
-data: 6
-
-data: -
-
-data: 110
-
-data: 1
-
-data:  has
-
-data:  a
-
-data:  damaged
-
-data:  item
-
-data:  of
-
-data:  type
-
-data:  "
-
-data: Floor
-
-data: ing
-
-data: "
-
-data:  with
-
-data:  an
-
-data:  age
-
-data:  of
-
-data:  
-
-data: 5
-
-data:  years
-
-data:  and
-
-data:  a
-
-data:  useful
-
-data:  life
-
-data:  remaining
-
-data:  of
-
-data:  
-
-data: 8
-
-data:  years
-
-data: .
-
-data:  The
-
-data:  estimated
-
-data:  repair
-
-data:  cost
-
-data:  is
-
-data:  $
-
-data: 3
-
-data: ,
-
-data: 344
-
-data: .
-
-data: 00
-
-data: ,
-
-data:  while
-
-data:  the
-
-data:  replacement
-
-data:  cost
-
-data:  is
-
-data:  $
-
-data: 3
-
-data: ,
-
-data: 000
-
-data: .
-
-data: 00
-
-data: .
-
-data:  According
-
-data:  to
-
-data:  the
-
-data:  business
-
-data:  rule
-
-data: ,
-
-data:  since
-
-data:  the
-
-data:  repair
-
-data:  cost
-
-data:  ($
-
-data: 3
-
-data: ,
-
-data: 344
-
-data: .
-
-data: 00
-
-data: )
-
-data:  exceeds
-
-data:  
-
-data: 60
-
-data: %
-
-data:  of
-
-data:  the
-
-data:  replacement
-
-data:  cost
-
-data:  ($
-
-data: 3
-
-data: ,
-
-data: 000
-
-data: .
-
-data: 00
-
-data: ),
-
-data:  replacement
-
-data:  is
-
-data:  recommended
-
-data: .
-
-data:  The
-
-data:  confidence
-
-data:  score
-
-data:  for
-
-data:  this
-
-data:  recommendation
-
-data:  is
-
-data:  
-
-data: 0
-
-data: .
-
-data: 61
-
-data: .
-
-
-
-data: Summary
-
-data:  of
-
-data:  comparison
-
-data: :
-
-
-data: -
-
-data:  Repair
-
-data:  Cost
-
-data: :
-
-data:  $
-
-data: 3
-
-data: ,
-
-data: 344
-
-data: .
-
-data: 00
-
-data: 
-
-
-data: -
-
-data:  Replacement
-
-data:  Cost
-
-data: :
-
-data:  $
-
-data: 3
-
-data: ,
-
-data: 000
-
-data: .
-
-data: 00
-
-data: 
-
-
-data: -
-
-data:  Recommendation
-
-data: :
-
-data:  Replace
-
-data: 
-
-
-data: -
-
-data:  Confidence
-
-data:  Score
-
-data: :
-
-data:  
-
-data: 0
-
-data: .
-
-data: 61
-
-data: 
-
-
-
-data: The
-
-data:  primary
-
-data:  reason
-
-data:  for
-
-data:  recommending
-
-data:  replacement
-
-data:  is
-
-data:  that
-
-data:  the
-
-data:  repair
-
-data:  cost
-
-data:  is
-
-data:  not
-
-data:  economical
-
-data:  compared
-
-data:  to
-
-data:  replacement
-
-data: .
-
-
-
-data: End
-
-JarvisClaims@JarvisClaims:~/Musaddique$ (venv) JarvisClaims@JarvisClaims:~/Musaddique/Jarvis_claims_agents_v2_copy/AdjusterAgents/RepairVsReplacementAgent$ python3 server.py 
-INFO:     Started server process [71113]
-INFO:     Waiting for application startup.
-INFO:     Application startup complete.
-INFO:     Uvicorn running on http://0.0.0.0:8912 (Press CTRL+C to quit)
-2026-06-30 13:20:20,101 | INFO     | httpx | HTTP Request: POST http://localhost:5900/api/v1/repair_vs_replacement/mcp "HTTP/1.1 200 OK"
-2026-06-30 13:20:20,101 | INFO     | mcp.client.streamable_http | Received session ID: 98c940cf58d048e388e6d23e80f0d82a
-2026-06-30 13:20:20,102 | INFO     | mcp.client.streamable_http | Negotiated protocol version: 2025-11-25
-2026-06-30 13:20:20,106 | INFO     | httpx | HTTP Request: POST http://localhost:5900/api/v1/repair_vs_replacement/mcp "HTTP/1.1 202 Accepted"
-2026-06-30 13:20:20,111 | INFO     | httpx | HTTP Request: POST http://localhost:5900/api/v1/repair_vs_replacement/mcp "HTTP/1.1 200 OK"
-2026-06-30 13:20:20,113 | INFO     | httpx | HTTP Request: DELETE http://localhost:5900/api/v1/repair_vs_replacement/mcp "HTTP/1.1 200 OK"
-2026-06-30 13:20:20,114 | INFO     | repair_vs_replacement_agent | Tools loaded from MCP: ['compare_repair_vs_replace']
-2026-06-30 13:20:20,512 | WARNING  | repair_vs_replacement_agent | Phoenix prompt load failed (Phoenix not configured) — using fallback prompt
-INFO:     127.0.0.1:39342 - "POST /chat HTTP/1.1" 200 OK
-2026-06-30 13:20:21,643 | INFO     | httpx | HTTP Request: POST https://azureclaimsopenai.openai.azure.com/openai/deployments/gpt-4.1-claims/chat/completions?api-version=2025-01-01-preview "HTTP/1.1 200 OK"
-2026-06-30 13:20:21,994 | INFO     | repair_vs_replacement_agent | AI MESSAGE = content='' additional_kwargs={} response_metadata={'finish_reason': 'tool_calls', 'model_name': 'gpt-4.1-2025-04-14', 'system_fingerprint': 'fp_dc49d4fcba', 'service_tier': 'default', 'model_provider': 'openai'} id='lc_run--019f18b0-142a-75e3-9809-867db4666991' tool_calls=[{'name': 'compare_repair_vs_replace', 'args': {'claim_number': 'CLM-2026-1101', 'item_age': 5, 'useful_life_remaining': 8}, 'id': 'call_abVtMpgAK7ytSxJRXNTQ7UaN', 'type': 'tool_call'}] invalid_tool_calls=[] usage_metadata={'input_tokens': 495, 'output_tokens': 39, 'total_tokens': 534, 'input_token_details': {'audio': 0, 'cache_read': 0}, 'output_token_details': {'audio': 0, 'reasoning': 0}}
-2026-06-30 13:20:21,994 | INFO     | repair_vs_replacement_agent | TOOL CALLS = [{'name': 'compare_repair_vs_replace', 'args': {'claim_number': 'CLM-2026-1101', 'item_age': 5, 'useful_life_remaining': 8}, 'id': 'call_abVtMpgAK7ytSxJRXNTQ7UaN', 'type': 'tool_call'}]
-2026-06-30 13:20:22,038 | INFO     | httpx | HTTP Request: POST http://localhost:5900/api/v1/repair_vs_replacement/mcp "HTTP/1.1 200 OK"
-2026-06-30 13:20:22,038 | INFO     | mcp.client.streamable_http | Received session ID: ec21238ffd614c38b16907e728ed92ed
-2026-06-30 13:20:22,038 | INFO     | mcp.client.streamable_http | Negotiated protocol version: 2025-11-25
-2026-06-30 13:20:22,042 | INFO     | httpx | HTTP Request: POST http://localhost:5900/api/v1/repair_vs_replacement/mcp "HTTP/1.1 202 Accepted"
-2026-06-30 13:20:24,059 | INFO     | httpx | HTTP Request: POST http://localhost:5900/api/v1/repair_vs_replacement/mcp "HTTP/1.1 200 OK"
-2026-06-30 13:20:24,063 | INFO     | httpx | HTTP Request: POST http://localhost:5900/api/v1/repair_vs_replacement/mcp "HTTP/1.1 200 OK"
-2026-06-30 13:20:24,065 | INFO     | httpx | HTTP Request: DELETE http://localhost:5900/api/v1/repair_vs_replacement/mcp "HTTP/1.1 200 OK"
-2026-06-30 13:20:25,608 | INFO     | httpx | HTTP Request: POST https://azureclaimsopenai.openai.azure.com/openai/deployments/gpt-4.1-claims/chat/completions?api-version=2025-01-01-preview "HTTP/1.1 200 OK"
-2026-06-30 13:20:27,495 | INFO     | repair_vs_replacement_agent | AI MESSAGE = content='Recommendation: Replace\n\nThe claim CLM-2026-1101 has a damaged item of type "Flooring" with an age of 5 years and a useful life remaining of 8 years. The estimated repair cost is $3,344.00, while the replacement cost is $3,000.00. According to the business rule, since the repair cost ($3,344.00) exceeds 60% of the replacement cost ($3,000.00), replacement is recommended. The confidence score for this recommendation is 0.61.\n\nSummary of comparison:\n- Repair Cost: $3,344.00\n- Replacement Cost: $3,000.00\n- Recommendation: Replace\n- Confidence Score: 0.61\n\nThe primary reason for recommending replacement is that the repair cost is not economical compared to replacement.\n\nEnd' additional_kwargs={} response_metadata={'finish_reason': 'stop', 'model_name': 'gpt-4.1-2025-04-14', 'system_fingerprint': 'fp_dc49d4fcba', 'service_tier': 'default', 'model_provider': 'openai'} id='lc_run--019f18b0-2204-70d2-aadb-feb69812c126' tool_calls=[] invalid_tool_calls=[] usage_metadata={'input_tokens': 730, 'output_tokens': 174, 'total_tokens': 904, 'input_token_details': {'audio': 0, 'cache_read': 0}, 'output_token_details': {'audio': 0, 'reasoning': 0}}
-2026-06-30 13:20:27,496 | INFO     | repair_vs_replacement_agent | TOOL CALLS = []
