@@ -1,0 +1,143 @@
+LLM WORKFLOWS:-
+
+1) Prompt Chianing
+GATE MEANS -> CHECKS
+In---> LLMCall1 ---> OUTPUT1 ---> Gate ---> Pass ---> LLMCall2 ---> OUTPUT2 ---> LLMCALL3 --->OUTPUT3 
+
+2) Routing
+CONDITIONS (Decesion maker)
+IN ---> LLMCALLROUTER ---> LLMCALL1, LLLMCALL2, LLMCALL3 ---> OUTPUT
+
+
+3) Parallelization
+eg: youtube checks your uploading video whther sexual content, corrupt content , harmful content etc  at the same time it knows which llm does what
+IN --- > LLMCALL2, LLMCALL2, LLMCALL3 ---> AGGREGATE ---> OUTPUT
+
+
+4) Orchestration Workers
+
+It is same as prallelization but here orchestrator does not know what llm1,2,3 will do what is its work 
+so wny llm can be called paralelly 
+IN --- > ORCHESTRATOR --->LLMCALL1, LLMCALL2, LLMCALL3 ---> SYNTHESIZER ---> OUTPUT
+
+
+5) Evaluator Optimizer
+
+IN --- > LLM CALL GENERATOR ---(SOLUTION) --- LLM CALL EVALUATOR ---> ACCEPTED OUTPUT 
+                 |____________________________________|               
+                        (REJECTED + FEEDBACK)
+
+
+
+
+NODE - PYTHON FUNCTION (TASK)
+
+EDGES - NEXT NODE EXECUTION
+1)SEQUENSTION EDGES
+2)PARALLEL EDGES
+3)CONDITIONAL EDGES(BRANCHING)
+4)LOOP
+
+STATE:- it is dict
+it is a shared memory that flows through your workflow it holds all the data being passed between nodes as your graph runs
+it is mutable (any node can change the state)
+accessible to all nodes
+
+Reducers:-
+it manages states : whether states should update, replace, add, or merge 
+ie, as we know state can updated by any node and once it is updated the earlier changes is lost 
+so we need Reducers
+
+Reducers in the Lnaggraph defines how updates from nodes are applied to the shared state
+Each key(in dict) in the state can have its own reducer which determines whether new data replaces, merges or adds to the existing value
+
+
+Langgraph Execution Model  (how langgraph runs)
+1)Grpah definition
+State schema (type dict)
+Nodes (function that perform tasks)
+Edges (which node connects to which)
+
+2)Compilation
+you call .compile() in the StateGrpah
+This checks the graph strucutre and prepares it for execution (ie to check if the grpah strucutre is logically correct or not)
+ie there shouldnt be a node that is not connected to any other node
+
+3)Invocation
+Execution starts
+you run the graph with .invoke(inital_state)
+ie we pass the initial state to the first node
+Langgraph sends the initial state as a message to the entry node
+ie the first node gets activated the function associated with it gets called and does a partial update on state and that state is passed to the next node and so on..,
+
+(first level nodes(ie lvl0 and lvl1) | then next levels of nodesie lvl1 and lvl2), etc are called as seperstep)
+
+4)Super step begines
+
+All active nodes(those that received messages) run in Parallelization
+each returns as update(message) to the state
+
+5) Message passing & Node Activation
+The messages are passed to downstream nodes via Edges
+Nodes that receive messages become active for the next round
+
+6)Halting Condition
+Execution stops when:
+No nodes are active and 
+No messages are in transit
+
+
+
+Subgraphs
+A Subgraph in Langgraph usually means a graph that is embedded and executed as a node inside another graph
+ie as there are nodes in a graph that node is replaced with a subgraph(ie a mini graph)
+
+eg there is a 
+
+                   TL (agent)  
+              ___________________
+              |                 |
+Backent Team(agent)   Frontend Team(agent)
+              ___________________
+                       |           
+              Test Team(agent)
+
+so as the Backend Team is a node imagine replacing that node with a mini graph which has many other things that it can do
+like
+Tool Calls
+RAG
+Conditional Routing
+Retries
+memory
+HITL
+Evaluation
+Guardrails
+
+
+Subgraph:
+Modularity
+Reusibility
+Maintainability
+
+Langgraph specific benifits of using Subgraph
+1)Failure Isolation (if a node failure and you are using subgraph then it wont affect the other subgraphs or nodes)
+2)State separation (as each graph has its own state if there will be no subgraph then it will have only one state which would be complex and may mismatch)
+3)Observability
+
+
+When adding subgraphs, you need to define how the parent graph and the subgraph communicate:
+1)Invoke a graph from a node — subgraphs are called from inside a node in the parent graph
+here there is a separate states for both graphs
+
+2)Add a graph as a node — a subgraph is added directly as a node in the parent and shares state keys with the parent
+here there is a shared state
+
+
+Not sure but my understanding:
+
+When the parent graph and subgraph share schema keys. In this case, you can add nodes with the compiled subgraph.
+When the parent graph and subgraph have different schemas. In this case, you need to add a node function that calls the subgraph.
+
+
+
+

@@ -1,0 +1,30 @@
+#insert python library 
+#from eligibility_data_filler
+langchain-mcp-adapters
+python-dotenv
+fastapi
+pandas
+openpyxl
+azure-keyvault-secrets
+azure-identity
+routers
+
+
+requests
+python-dotenv
+uvicorn
+azure-storage-blob
+aiohttp
+
+
+uvicorn
+pydantic
+sqlmodel
+sqlalchemy
+psycopg[binary]
+python-dotenv
+aiofiles==23.2.1
+fastapi==0.118.3
+fastapi_mcp==0.4.0
+
+

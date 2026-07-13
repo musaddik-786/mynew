@@ -1,0 +1,362 @@
+Good. We’ll do Option 2: Prompt-only boundary.
+
+That means:
+	•	✅ All tools exposed to agent
+	•	✅ No manual filtering
+	•	✅ Prompt strictly controls tool usage
+	•	✅ Clean termination (no infinite loop)
+
+I’ll now give you FULL corrected files for both agents.
+
+You can copy-paste and run.
+
+⸻
+
+🔥 WHAT WE ARE FIXING
+	1.	Remove manual filtering
+	2.	Fix infinite loop
+	3.	Ensure clean termination
+	4.	Keep prompt-only control
+
+⸻
+
+✅ 1️⃣ EMAIL INTENT AGENT — FINAL PROMPT-ONLY VERSION
+
+⸻
+
+📂 email_intent_agent/langgraph_client.py
+
+import asyncio
+from typing import TypedDict, Annotated
+
+from langgraph.graph import StateGraph, START, END
+from langgraph.graph.message import add_messages
+from langgraph.prebuilt import ToolNode
+from langchain_core.messages import AIMessage, SystemMessage
+
+from langchain_mcp_adapters.client import MultiServerMCPClient
+from langchain_openai.chat_models import AzureChatOpenAI
+
+
+# -------------------------
+# STATE
+# -------------------------
+class State(TypedDict):
+    messages: Annotated[list, add_messages]
+
+
+# -------------------------
+# ROUTER
+# -------------------------
+def router(state: State):
+    last = state["messages"][-1]
+
+    if isinstance(last, AIMessage) and last.tool_calls:
+        return "tools"
+
+    if isinstance(last, AIMessage) and last.content:
+        content = last.content.strip()
+        if content == "Continue":
+            return "agent"
+        if content == "End":
+            return "end"
+
+    return "end"
+
+
+# -------------------------
+# PROMPT LOADER
+# -------------------------
+def load_prompt():
+    with open("prompt_email.txt", "r", encoding="utf-8") as f:
+        return f.read()
+
+
+# -------------------------
+# BUILD GRAPH
+# -------------------------
+async def build_email_intent_graph():
+
+    mcp_client = MultiServerMCPClient({
+        "dummy_mcp": {
+            "url": "http://localhost:9000/mcp",
+            "transport": "streamable_http",
+        }
+    })
+
+    # 🔥 NO TOOL FILTERING
+    all_tools = await mcp_client.get_tools()
+
+    model = AzureChatOpenAI(
+        api_key="YOUR_KEY",
+        api_version="YOUR_VERSION",
+        azure_deployment="YOUR_DEPLOYMENT",
+        azure_endpoint="YOUR_ENDPOINT",
+    )
+
+    llm = model.bind_tools(all_tools)
+    prompt = load_prompt()
+
+    async def agent_node(state: State):
+        system = SystemMessage(content=prompt)
+        response = await llm.ainvoke([system] + state["messages"])
+        return {"messages": [response]}
+
+    graph = StateGraph(State)
+
+    graph.add_node("agent", agent_node)
+    graph.add_node("tools", ToolNode(all_tools))
+
+    graph.add_edge(START, "agent")
+
+    graph.add_conditional_edges(
+        "agent",
+        router,
+        {
+            "tools": "tools",
+            "agent": "agent",
+            "end": END,
+        },
+    )
+
+    graph.add_edge("tools", "agent")
+
+    return graph.compile()
+
+
+# -------------------------
+# RUN
+# -------------------------
+async def main():
+    graph = await build_email_intent_graph()
+
+    async for step in graph.astream(
+        {"messages": ["Start email workflow"]},
+        config={"recursion_limit": 40},
+    ):
+        print(step)
+
+
+if __name__ == "__main__":
+    asyncio.run(main())
+
+
+⸻
+
+📂 email_intent_agent/prompt_email.txt
+
+⚠️ IMPORTANT: Final step must return End
+
+You are EmailIntentAgent in an insurance underwriting system.
+
+You MUST strictly follow this workflow:
+
+1. Call email_reader_mcp
+   - If email is NOT related to insurance → End
+   - If related → Continue
+
+2. Call write_email_to_excel
+   - Continue
+
+3. Call email_attachment_mcp
+   - Continue
+
+4. Call layout_detection_mcp ONLY for attachments containing 'accord' OR 'quote'
+   - Continue
+
+5. Call document_extract_mcp ONLY for ACORD documents
+   - If confidence < 0.90 → End
+   - Else → Continue
+
+6. Call query_pdf_vectorizer_mcp
+   - Continue
+
+7. Call attachment_summary_mcp
+   - End
+
+IMPORTANT:
+- Respond ONLY with Continue or End
+- Do NOT explain
+- Do NOT add punctuation
+
+
+⸻
+
+✅ 2️⃣ ELIGIBILITY AGENT — PROMPT ONLY VERSION
+
+⸻
+
+📂 eligibility_agent/langgraph_client.py
+
+import asyncio
+from typing import TypedDict, Annotated
+
+from langgraph.graph import StateGraph, START, END
+from langgraph.graph.message import add_messages
+from langgraph.prebuilt import ToolNode
+from langchain_core.messages import AIMessage, SystemMessage
+
+from langchain_mcp_adapters.client import MultiServerMCPClient
+from langchain_openai.chat_models import AzureChatOpenAI
+
+
+class State(TypedDict):
+    messages: Annotated[list, add_messages]
+
+
+def router(state: State):
+    last = state["messages"][-1]
+
+    if isinstance(last, AIMessage) and last.tool_calls:
+        return "tools"
+
+    if isinstance(last, AIMessage) and last.content:
+        content = last.content.strip()
+        if content == "Continue":
+            return "agent"
+        if content == "End":
+            return "end"
+
+    return "end"
+
+
+def load_prompt():
+    with open("prompt_eligibility.txt", "r", encoding="utf-8") as f:
+        return f.read()
+
+
+async def build_eligibility_graph():
+
+    mcp_client = MultiServerMCPClient({
+        "dummy_mcp": {
+            "url": "http://localhost:9000/mcp",
+            "transport": "streamable_http",
+        }
+    })
+
+    # 🔥 NO TOOL FILTERING
+    all_tools = await mcp_client.get_tools()
+
+    model = AzureChatOpenAI(
+        api_key="YOUR_KEY",
+        api_version="YOUR_VERSION",
+        azure_deployment="YOUR_DEPLOYMENT",
+        azure_endpoint="YOUR_ENDPOINT",
+    )
+
+    llm = model.bind_tools(all_tools)
+    prompt = load_prompt()
+
+    async def agent_node(state: State):
+        system = SystemMessage(content=prompt)
+        response = await llm.ainvoke([system] + state["messages"])
+        return {"messages": [response]}
+
+    graph = StateGraph(State)
+
+    graph.add_node("agent", agent_node)
+    graph.add_node("tools", ToolNode(all_tools))
+
+    graph.add_edge(START, "agent")
+
+    graph.add_conditional_edges(
+        "agent",
+        router,
+        {
+            "tools": "tools",
+            "agent": "agent",
+            "end": END,
+        },
+    )
+
+    graph.add_edge("tools", "agent")
+
+    return graph.compile()
+
+
+async def main():
+    graph = await build_eligibility_graph()
+
+    async for step in graph.astream(
+        {"messages": ["Start eligibility workflow"]},
+        config={"recursion_limit": 40},
+    ):
+        print(step)
+
+
+if __name__ == "__main__":
+    asyncio.run(main())
+
+
+⸻
+
+📂 eligibility_agent/prompt_eligibility.txt
+
+⚠️ Final step must return End
+
+You are EligibilityAgent in an insurance underwriting system.
+
+You MUST strictly follow this workflow:
+
+1. Call risk_type_checker_MCP
+   - If Line of Business is Commercial Property → Continue
+   - Else → End
+
+2. Call renewal_checker_mcp
+   - Continue
+
+3. Call Licensing_and_Sanction_Checker_MCP
+   - If is_Sanctioned is False → Continue
+   - If is_Sanctioned is True → End
+
+4. Call Json_Reader_Read
+   - End
+
+IMPORTANT:
+- Respond ONLY with Continue or End
+- Do NOT explain
+- Do NOT add punctuation
+
+
+⸻
+
+🚀 HOW TO RUN
+
+Terminal 1
+
+python main.py
+
+Terminal 2
+
+cd email_intent_agent
+python langgraph_client.py
+
+Terminal 3
+
+cd eligibility_agent
+python langgraph_client.py
+
+
+⸻
+
+🎯 EXPECTED RESULT
+
+Email Agent:
+	•	Calls all correct tools
+	•	Ends cleanly
+	•	No infinite loop
+
+Eligibility Agent:
+	•	Calls risk tools only (because prompt restricts it)
+	•	Ends cleanly
+
+⸻
+
+If eligibility still calls email tools,
+
+Then I will show you how to hard-enforce tool usage via structured prompting (stronger method without filtering).
+
+⸻
+
+Tell me what happens when you run it.
+

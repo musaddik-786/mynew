@@ -1,0 +1,143 @@
+{
+  "LineOfBusiness": {
+    "BLANKET SUMMARY": {
+      "BLKT 1": "1, confidence - 0.93",
+      "AMOUNT 1": "80000000, confidence - 0.73",
+      "AMOUNT 2": "16000000\n7000000, confidence - 0.17",
+      "TYPE 1": "Multiple Locations, confidence - 0.89",
+      "total_confidence": 0.555
+    },
+    "SUBJECT OF INSURANCE": {
+      "SUBJECT OF INSURANCE 1": "Earthquake\nFire, confidence - 0.49",
+      "SUBJECT OF INSURANCE 2": "Flood, confidence - 0.31",
+      "AMOUNT 1": "12000000, confidence - 0.52",
+      "SOI 1": "Fire, confidence - 0.33",
+      "total_confidence": 0.41
+    },
+    "BUSINESS INCOME/EXTRA EXPENSE": {
+      "BUSINESS INCOME/EXTRA EXPENSE - ATTACH ACORD 810": ":unselected:, confidence - 0.69",
+      "VALUE REPORTING INFORMATION - ATTACH ACORD 811": ":unselected:, confidence - 0.75",
+      "total_confidence": 0.72
+    },
+    "Special Coverages": {
+      "SPOILAGE/COVERAGE": "N, confidence - 0.22",
+      "REFRIGMAINT AGREEMENT": "N, confidence - 0.13",
+      "BREAKDOWN OR CONTAMINATION": ":unselected:, confidence - 0.96",
+      "POWER OUTAGE": ":unselected:, confidence - 0.49",
+      "SELLING PRICE": ":unselected:, confidence - 0.80",
+      "SINKHOLE ACCEPT COVERAGE": ":unselected:, confidence - 0.49",
+      "SINKHOLE REJECT COVERAGE": ":unselected:, confidence - 0.50",
+      "MINE SUBSIDENCE ACCEPT COVERAGE": ":unselected:, confidence - 0.56",
+      "MINE SUBSIDENCE REJECT COVERAGE": ":unselected:, confidence - 0.29",
+      "MINE SUBSIDENCE COVERAGE ACCEPTANCE COVERAGE": ":unselected:, confidence - 0.41",
+      "MINE SUBSIDENCE COVERAGE REJECT COVERAGE AI": ":unselected:, confidence - 0.43",
+      "MINE SUBSIDENCE COVERAGE LIMIT AI": "$, confidence - 0.81",
+      "total_confidence": 0.52
+    }
+  },
+  "Policy": {
+    "AGENCY CUSTOMER ID": "542198, confidence - 0.97",
+    "DATE": "07/15/2025, confidence - 0.93",
+    "CARRIER": "Phoenix Insurers Ltd., confidence - 0.88",
+    "total_confidence": 0.93
+  },
+  "Broker": {
+    "PRODUCER'S SIGNATURE": "William Grey, confidence - 0.59",
+    "PRODUCER'S NAME PLEASE PRINT": "William Grey, confidence - 0.37",
+    "agency name": "Prime Brokers Ltd., confidence - 0.30",
+    "NATIONAL PRODUCER NUMBER 2": "100-002541, confidence - 0.97",
+    "total_confidence": 0.56
+  },
+  "Premises": {
+    "PREMISES": "1, confidence - 0.83",
+    "BUILDING": "NB01, confidence - 0.97",
+    "BLDG DESCRIPTION": "Commercial Offices, confidence - 0.97",
+    "CONSTRUCTION TYPE": "Fire Resistive (Steel,Reinforced), confidence - 0.62",
+    "CONSTRUCTION TYPE 2": "Fire Resistive (Steel,Reinforced), confidence - 0.51",
+    "YR BUILT": "2012, confidence - 0.49",
+    "STORIES 2": "15, confidence - 0.24",
+    "BASMTS": "2, confidence - 0.23",
+    "TOTAL AREA": "250000 sq.ft, confidence - 0.43",
+    "TOTAL AREA 2": "170000 sq.ft, confidence - 0.47",
+    "DISTANCE TO HYDRANT": "20 FT, confidence - 0.30",
+    "DISTANCE FROM HYDRANT": "20 FT, confidence - 0.26",
+    "FIRE DISTRICT": "3 MI, confidence - 0.12",
+    "DISTANCE FROM FIRE STATION": "2, confidence - 0.17",
+    "PROT CL": "25, confidence - 0.55",
+    "PROPERTY HAS BEEN DESIGNATED LANDMARK": ":unselected:, confidence - 0.71",
+    "total_confidence": 0.48
+  },
+  "BuildingImprovements": {
+    "WIRING IMPROVMENT": ":selected:, confidence - 0.70",
+    "WIRING YEAR": "2012, confidence - 0.43",
+    "WIRING REWORK YEAR": "2018, confidence - 0.68",
+    "ROOFING IMROVEMENT": ":selected:, confidence - 0.77",
+    "ROOFING YEAR 2": "2018, confidence - 0.43",
+    "PLUMBING IMPROVEMENTS": ":unselected:, confidence - 0.82",
+    "PLUMBING IMPROVEMENTS 2": ":selected:, confidence - 0.81",
+    "PLUMBING YEAR 2": "2018, confidence - 0.59",
+    "HEATING IMROVEMENTS": ":unselected:, confidence - 0.69",
+    "HEATING IMPROVEMENTS 2": ":unselected:, confidence - 0.71",
+    "HEATING YEAR": "2012, confidence - 0.53",
+    "OTHER IMPROVEMENTS": ":unselected:, confidence - 0.43",
+    "OTHER FIELD BUILDING IMPROVEMENTS": "PRIMARY HEAT, confidence - 0.29",
+    "BUILDING IMPROVEMENT OTHER": ":unselected:, confidence - 0.41",
+    "total_confidence": 0.61
+  },
+  "WindClass": {
+    "WIND CLASS RESISTIVE": ":selected:, confidence - 0.44",
+    "WIND CLASS SEMI-RESISTIVE": ":unselected:, confidence - 0.63",
+    "WIND CLASS OTHER": ":unselected:, confidence - 0.37",
+    "WIND CLASS RESISTIVE 2": ":unselected:, confidence - 0.34",
+    "WIND CLASS SEMI-RESISTIVE 2": ":unselected:, confidence - 0.56",
+    "WIND CLASS OTHER 2": ":unselected:, confidence - 0.59",
+    "total_confidence": 0.49
+  },
+  "Heating": {
+    "HEATING SOURCE INCL WOODBURNING STOVE OR FIREPLACE INSERT": ":unselected:, confidence - 0.58",
+    "PRIMARY HEAT BOILER": ":unselected:, confidence - 0.81",
+    "PRIMARY HEAT SOLID FUEL": ":unselected:, confidence - 0.89",
+    "PRIMARY HEAT OTHER": ":unselected:, confidence - 0.83",
+    "IF BOILER, IS INSURANCE PLACED ELSEWHERE?": "N Y/N, confidence - 0.57",
+    "SECONDARY HEAT BOILER": ":unselected:, confidence - 0.85",
+    "SECONDARY HEAT SOLID FUEL": ":unselected:, confidence - 0.81",
+    "SECONDARY HEAT IF BOILER, IS INSURANCE PLACED ELSEWHERE?": "N Y/N, confidence - 0.79",
+    "IS INSURANCE PLACED ELSEWHERE?": "N, confidence - 0.83",
+    "INSURANCE PLACED ELSEWHERE?": "N Y/N, confidence - 0.60",
+    "total_confidence": 0.75
+  },
+  "AlarmAndProtection": {
+    "BURGLAR ALARM TYPE": "2 Automatic Alarms on each floor, confidence - 0.43",
+    "BURGLAR ALARM TYPE 2": "2 Automatic Alarms on each floor, confidence - 0.51",
+    "BURGLAR ALARM INSTALLED AND SERVICED BY": "Secure Tech Services Ltd., confidence - 0.48",
+    "CENTRAL STATION": ":unselected:, confidence - 0.83",
+    "CENTRAL STATION 2": ":unselected:, confidence - 0.78",
+    "CENTRAL STATION 3": ":unselected:, confidence - 0.45",
+    "LOCAL GONG": ":unselected:, confidence - 0.80",
+    "LOCAL GONG 3": ":unselected:, confidence - 0.63",
+    "WITH KEYS": ":unselected:, confidence - 0.65",
+    "CLOCK HOURLY": ":unselected:, confidence - 0.67",
+    "GAURDS FIELD": ":unselected:, confidence - 0.25",
+    "GUARDS FIELD VALUE": "22, confidence - 0.45",
+    "PREMISES FIRE PROTECTION": "Sprinklers on all floors, confidence - 0.50",
+    "PREMISES FIRE PROTECTION 2": "Sprinklers on all floors and Basement, confidence - 0.51",
+    "CENTRAL STATION FIRE": ":unselected:, confidence - 0.61",
+    "total_confidence": 0.61
+  },
+  "Applicant": {
+    "APPLICANT'S SIGNATURE 2": "Berkshire Hathway, confidence - 0.96",
+    "DATE 2": "07/15/2025, confidence - 0.57",
+    "total_confidence": 0.76
+  },
+  "New": {
+    "Owner Name": "Berkshire Hathaway, confidence - 0.41",
+    "total_confidence": 0.41
+  },
+  "Address": {
+    "STREET ADDRESS": "123 Penny Lane, Springfield, Illinois, confidence - 0.93",
+    "NAME AND ADDRESS EVIDENCE CERTIFICATE": ":unselected:, confidence - 0.44",
+    "total_confidence": 0.69
+  },
+  "overall_total_confidence": 0.61,
+  "Document_Confidence_Score": 0.607
+}

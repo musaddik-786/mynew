@@ -1,0 +1,278 @@
+import requests
+
+BASE_URL = "https://pc-sandbox-gwcpdev.hexaware.zeta1-andromeda.guidewire.net/rest/"  # Replace with your actual API base URL
+
+headers = {
+    # 'Content-Type': 'application/json',
+    # # Add authorization headers if needed, e.g.
+    # # 'Authorization': 'Bearer YOUR_ACCESS_TOKEN'
+
+    'accpet': 'application/json',
+    # Add authorization headers here if needed, e.g.
+    'authorization': 'Basic c3U6Z3c=',
+    'Content-Type' : 'application/json'
+}
+
+# def post_request(uri, body):
+#     url = BASE_URL + uri
+#     response = requests.post(url, json=body, headers=headers)
+#     response.raise_for_status()  # Raises HTTPError if the response was an error
+#     return response.json()
+
+def post_request(uri, body=None):
+    url = BASE_URL + uri
+    if body is not None:
+        response = requests.post(url, json=body, headers=headers)
+    else:
+        response = requests.post(url, headers=headers)
+    response.raise_for_status()
+    return response.json()
+
+# 1. Create Account
+account_body = {
+    "data": {
+        "attributes": {
+            "initialAccountHolder": {
+                "contactSubtype": "Company",
+                "companyName": "Hexa Tester",
+                "primaryAddress": {
+                    "addressLine1": "2850 S. Delaware St.",
+                    "city": "San Mateo",
+                    "postalCode": "94403",
+                    "state": {"code": "CA"}
+                }
+            },
+            "initialPrimaryLocation": {
+                "addressLine1": "2850 S. Delaware St.",
+                "city": "San Mateo",
+                "postalCode": "94403",
+                "state": {"code": "CA"}
+            },
+            "producerCodes": [{"id": "pc:6"}],
+            "organizationType": {"code": "llc"}
+        }
+    }
+}
+
+account_response = post_request("/account/v1/accounts", account_body)
+
+# Extract variables from account response
+account_id = account_response['data']['attributes']['id']
+driver_id = account_response['data']['attributes']['accountHolder']['id']
+primary_location_id = account_response['data']['attributes']['primaryLocation']['id']
+
+print(f"Account ID: {account_id}")
+print(f"Driver ID: {driver_id}")
+print(f"Primary Location ID: {primary_location_id}")
+
+# 2. Create Job Submission
+job_submission_body = {
+    "data": {
+        "attributes": {
+            "account": {"id": account_id},
+            "baseState": {"code": "CA"},
+            "jobEffectiveDate": "2025-07-16",
+            "product": {"id": "GoCommercialProp"},
+            "producerCode": {"id": "pc:6"}
+        }
+    }
+}
+
+job_submission_response = post_request("/job/v1/submissions", job_submission_body)
+
+# Extract jobId
+job_id = job_submission_response['data']['attributes']['id']
+print(f"Job ID: {job_id}")
+
+# 3. Create Location for Job
+location_body = {
+    "data": {
+        "attributes": {
+            "addressLine1": "Address Line 1",
+            "city": "San Mateo",
+            "coverableJurisdiction": {
+                "code": "CA",
+                "name": "California"
+            },
+            "postalCode": "94404",
+            "state": {"code": "CA"}
+        }
+    }
+}
+
+location_uri = f"/job/v1/jobs/{job_id}/lines/GOCommercialLine/locations"
+location_response = post_request(location_uri, location_body)
+
+# Extract locationId
+location_id = location_response['data']['attributes']['id']
+print(f"Location ID: {location_id}")
+
+# Continue with further requests similarly:
+# Use job_id and other extracted variables to build URIs and bodies for the next calls.
+
+# Example for the next coverage post (you can loop or write individually)
+# coverage_body_example = {
+#     "data": {
+#         "attributes": {
+#             "clauseType": "coverage",
+#             "id": "GCPPropertyOffPrem",
+#             "pattern": {"id": "GCPPropertyOffPrem"},
+#             "terms": {
+#                 "GCPPropertyOffPremDeductible": {"directValue": "50000.00"},
+#                 "GCPPropertyOffPremInterContinent": {"directValue": "50000.00"},
+#                 "GCPPropertyOffPremLimit": {"directValue": "400000.00"},
+#                 "GCPPropertyOffPremWithinTerrLimit": {"directValue": "25000.00"}
+#             }
+#         }
+#     }
+# }
+
+
+
+coverages = [
+    {
+        "clauseType": "coverage",
+        "id": "GCPPropertyOffPrem",
+        "pattern": {"id": "GCPPropertyOffPrem"},
+        "terms": {
+            "GCPPropertyOffPremDeductible": {"directValue": "50000.00"},
+            "GCPPropertyOffPremInterContinent": {"directValue": "50000.00"},
+            "GCPPropertyOffPremLimit": {"directValue": "400000.00"},
+            "GCPPropertyOffPremWithinTerrLimit": {"directValue": "25000.00"}
+        }
+    },
+    {
+        "clauseType": "coverage",
+        "id": "GCPNewlyAcquiredBuildProp",
+        "pattern": {"id": "GCPNewlyAcquiredBuildProp"},
+        "terms": {}
+    },
+    {
+        "clauseType": "coverage",
+        "id": "GCPOutsideObjs",
+        "pattern": {"id": "GCPOutsideObjs"},
+        "terms": {
+            "GCPOutsideObjsDeductible": {"directValue": "1.00"},
+            "GCPOutsideObjsLimit": {"directValue": "2.00"}
+        }
+    },
+    {
+        "clauseType": "coverage",
+        "id": "GCPContentsOtherStruct",
+        "pattern": {"id": "GCPContentsOtherStruct"},
+        "terms": {
+            "GCPContentsOtherStructDeductible": {},
+            "GCPContentsOtherStructLimit": {
+                "typekeyValue": {
+                    "code": "TwoPercent",
+                    "name": "2%"
+                }
+            }
+        }
+    },
+    {
+        "clauseType": "coverage",
+        "id": "GCPTerrorism",
+        "pattern": {"id": "GCPTerrorism"},
+        "terms": {}
+    },
+    {
+        "clauseType": "coverage",
+        "id": "GCPFungus",
+        "pattern": {"id": "GCPFungus"},
+        "terms": {
+            "GCPFungusLimit": {"directValue": "20000.00"}
+        }
+    },
+    {
+        "clauseType": "coverage",
+        "id": "GCPDebrisRem",
+        "pattern": {"id": "GCPDebrisRem"},
+        "terms": {
+            "GCPDebrisRemInsuredPropLimit": {"choiceValue": {"code": "100kusd"}},
+            "GCPDebrisRemInsuredPropPercent": {"typekeyValue": {"code": "25Percent"}},
+            "GCPDebrisRemOtherPropertyLimit": {"choiceValue": {"code": "200kusd"}}
+        }
+    },
+# ]
+
+# coverage_uri = f"/job/v1/jobs/{job_id}/lines/GOCommercialLine/coverages"
+
+# for coverage in coverages:
+#     coverage_body = {"data": {"attributes": coverage}}
+#     coverage_response = post_request(coverage_uri, coverage_body)
+#     print(f"Added coverage {coverage['id']}: {coverage_response}")
+
+# print("All coverages added successfully.")
+
+# # Repeat for other coverage entries similarly.
+
+
+        # Newly added coverages
+        {
+            "clauseType": "coverage",
+            "id": "GCPDeferredPay",
+            "pattern": {"id": "GCPDeferredPay"},
+            "terms": {
+                "GCPDeferredPayLimit": {"choiceValue": {"code": "100kusd"}}
+            }
+        },
+        {
+            "clauseType": "coverage",
+            "id": "GCPExtraExp",
+            "pattern": {"id": "GCPExtraExp"},
+            "terms": {
+                "GCPExtraExpLimit": {"choiceValue": {"code": "75kusd"}}
+            }
+        },
+        {
+            "clauseType": "coverage",
+            "id": "GCPFireorPolice",
+            "pattern": {"id": "GCPFireorPolice"},
+            "terms": {
+                "GCPFireorPoliceLimit": {"choiceValue": {"code": "75kusd"}}
+            }
+        },
+        {
+            "clauseType": "coverage",
+            "id": "GCPFireProtEquip",
+            "pattern": {"id": "GCPFireProtEquip"},
+            "terms": {
+                "GCPFireProtEquipLimit": {"choiceValue": {"code": "50kusd"}}
+            }
+        },
+        {
+            "clauseType": "coverage",
+            "id": "GCPFlucRawMat",
+            "pattern": {"id": "GCPFlucRawMat"},
+            "terms": {
+                "GCPFlucRawMatLimit": {"choiceValue": {"code": "400kusd"}}
+            }
+        }
+    ]
+
+coverage_uri = f"/job/v1/jobs/{job_id}/lines/GOCommercialLine/coverages"
+for coverage in coverages:
+    coverage_body = {"data": {"attributes": coverage}}
+    coverage_response = post_request(coverage_uri, coverage_body)
+    print(f"Added coverage {coverage['id']}")
+
+    # 5. Quote the job
+quote_uri = f"/job/v1/jobs/{job_id}/quote"
+quote_response = post_request(quote_uri)
+print("Quote response:")
+print(quote_response)
+
+    # 6. (Optional) Retrieve selections if needed
+    # Example: Get account info
+account_selection_uri = f"/account/v1/accounts/{account_id}"
+account_info = requests.get(BASE_URL + account_selection_uri, headers=headers)
+print("Account info retrieved:", account_info.json())
+
+    # Example: Get job info
+job_selection_uri = f"/job/v1/jobs/{job_id}"
+job_info = requests.get(BASE_URL + job_selection_uri, headers=headers)
+print("Job info retrieved:", job_info.json())
+
+if __name__ == "__main__":
+    main()

@@ -1,0 +1,224 @@
+Retrieval just means:
+Find relevant context before asking LLM
+There are 5 main retrieval approaches engineers use:
+1 Similarity search (you know this)
+2 MMR retrieval (diverse retrieval)
+3 Metadata filtering
+4 Hybrid search (vector + keyword)
+5 Multi-query retrieval
+These cover almost all real RAG systems.
+Let’s go one by one.
+⸻
+2️⃣ Similarity Search (what you already use)
+Concept:
+Query → embedding → compare vectors → top matches
+Code:
+results = vectordb.similarity_search(
+   query,
+   k=5
+)
+This uses:
+Cosine similarity.
+Problem:
+May return similar chunks that repeat same info.
+Example:
+5 chunks about same paragraph.
+Not diverse.
+⸻
+3️⃣ MMR Retrieval (Max Marginal Relevance)
+This is very important and used in production.
+Concept:
+Instead of:
+Most similar chunks
+MMR finds:
+Similar + diverse chunks
+Meaning:
+Avoid duplicates.
+Better coverage.
+⸻
+Example problem similarity search causes:
+Query:
+House construction details
+Similarity may return:
+Construction paragraph 1
+Construction paragraph 2
+Construction paragraph 3
+Construction paragraph 4
+Construction paragraph 5
+All same topic.
+Bad coverage.
+⸻
+MMR instead returns:
+Construction paragraph
+Roof paragraph
+Foundation paragraph
+Renovation paragraph
+Materials paragraph
+Better context.
+⸻
+MMR code
+results = vectordb.max_marginal_relevance_search(
+   query,
+   k=5,
+   fetch_k=20
+)
+Meaning:
+Fetch 20 candidates.
+Return best 5 diverse ones.
+⸻
+Using retriever interface:
+retriever = vectordb.as_retriever(
+   search_type="mmr",
+   search_kwargs={
+       "k":5,
+       "fetch_k":20
+   }
+)
+results = retriever.invoke(query)
+
+⸻
+4️⃣ Metadata Filtering (very important)
+Instead of searching whole DB.
+Search subset.
+Example:
+Only property section.
+Example metadata:
+Document(
+page_content="Year built 1998",
+metadata={"section":"property"}
+)
+Query:
+Only property:
+results = vectordb.similarity_search(
+   query,
+   filter={"section":"property"}
+)
+This is used heavily in enterprise RAG.
+Example use:
+Filter:
+policy type
+document type
+customer id
+date
+region
+
+⸻
+5️⃣ Hybrid Search (vector + keyword)
+Similarity search misses exact matches sometimes.
+Example:
+Query:
+Policy ABC123
+Embedding may miss.
+Keyword search finds instantly.
+Hybrid combines:
+Vector search + BM25 keyword search
+LangChain example:
+retriever = vectordb.as_retriever(
+   search_type="similarity_score_threshold",
+   search_kwargs={
+       "score_threshold":0.5
+   }
+)
+Or using hybrid retrievers (advanced).
+Most enterprise RAG uses hybrid.
+⸻
+6️⃣ Multi Query Retrieval (very powerful)
+Instead of 1 query:
+Generate multiple query versions.
+Example:
+User asks:
+Year built
+LLM generates:
+construction year
+house built date
+property age
+year of construction
+Then searches all.
+Improves recall.
+⸻
+Code example:
+from langchain.retrievers.multi_query import MultiQueryRetriever
+retriever = MultiQueryRetriever.from_llm(
+   vectordb.as_retriever(),
+   llm
+)
+results = retriever.invoke(query)
+This improves retrieval accuracy significantly.
+⸻
+7️⃣ Parent Document Retriever (advanced RAG)
+Problem:
+Small chunks lose context.
+Solution:
+Store:
+Small chunks → retrieve → return larger parent doc.
+Example:
+Store:
+200 char chunks.
+Return:
+Full section.
+Concept:
+Chunk retrieval
+      ↓
+Map to parent document
+      ↓
+Return full context
+Used in enterprise RAG.
+⸻
+8️⃣ Contextual Compression Retriever
+Instead of returning raw chunks:
+LLM compresses chunks.
+Example:
+Chunk:
+Large paragraph
+Retriever returns:
+Only relevant sentences.
+Code:
+from langchain.retrievers import ContextualCompressionRetriever
+This is advanced optimization.
+⸻
+9️⃣ Real RAG retrieval strategies engineers choose
+Most real systems choose:
+Basic RAG:
+Similarity search
+Better RAG:
+MMR search
+Production RAG:
+Hybrid search
+Advanced RAG:
+Multi-query + MMR
+
+⸻
+10️⃣ Complete retrieval architecture (real RAG)
+Real pipeline:
+User Query
+    ↓
+Query rewriting (optional)
+    ↓
+Retriever (vector search)
+    ↓
+Filter results
+    ↓
+Rank results
+    ↓
+Context building
+    ↓
+LLM answer
+Retrieval is not just search.
+It is:
+Search + filtering + ranking
+⸻
+11️⃣ What you should actually master (important)
+If you master these 4 you understand RAG retrieval:
+1 similarity search ✔
+2 MMR search
+3 metadata filtering
+4 multi query retrieval
+This covers 95% of systems.
+⸻
+12️⃣ Practical recommendation for you (based on your current stage)
+You should next implement in your project:
+First:
+MMR retrieval.
+Then:
+Multi-query retrieval.
+This gives immediate learning.

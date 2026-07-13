@@ -1,0 +1,736 @@
+async def bind_and_issue_policy(job_id: str) -> dict:
+    """
+    Binds and issues a commercial property policy in Guidewire PolicyCenter
+    using an existing Job ID.
+
+    This service is responsible ONLY for triggering the Bind & Issue
+    action on a previously quoted submission.
+
+    It does NOT:
+    - Create Account
+    - Create Submission
+    - Create Location
+    - Add Coverages
+    - Generate Quote
+    - Perform document parsing or validation
+
+    The provided Job ID must already exist in Guidewire and must be in a
+    valid state (typically quoted and eligible for binding).
+
+    API Invoked:
+        POST /job/v1/jobs/{job_id}/bind-and-issue
+
+    Flow:
+
+    1. Accept Job ID as input.
+    2. Invoke Guidewire PolicyCenter Bind & Issue API.
+    3. Return policy issuance response if successful.
+    4. Return structured error response if the API call fails.
+
+    Args:
+        job_id (str):
+            The Guidewire Job ID returned from the submission creation process.
+            Example: "pc:10234"
+
+    Returns:
+        dict:
+
+        Success Example:
+        {
+            "status": True,
+            "jobId": "pc:10234",
+            "policyResponse": { ... Guidewire response ... }
+        }
+
+        Failure Example:
+        {
+            "status": False,
+            "error": "Failed to create policy using GW API: <error message>"
+        }
+
+    Notes:
+        - The Job must already be quoted successfully.
+        - If the Job is not in a bindable state, Guidewire will return an error.
+        - This service acts as a thin orchestration layer over the Guidewire API.
+    """
+
+Perfect 👍 this is clean architecture already.
+
+Now you want:
+	•	A new independent flow
+	•	Takes job_id as input
+	•	Has its own:
+	•	main.py
+	•	router.py
+	•	handler.py
+	•	test_script.py
+	•	Handler should:
+	•	Have a function
+	•	Hit:
+
+POST /job/v1/jobs/{job_id}/bind-and-issue
+
+
+	•	Proper docstrings
+	•	Proper error handling
+
+We will NOT disturb your existing integration flow.
+
+⸻
+
+✅ New Folder Structure (Separate Service)
+
+Create a new folder parallel to guidewire_integration
+
+guidewire_bind_issue/
+│
+├── main.py
+├── router.py
+├── handler.py
+├── test_script.py
+│
+└── clients/
+    └── guidewire_client.py
+
+We will reuse your post() logic.
+
+⸻
+
+📄 clients/guidewire_client.py
+
+(Same structure, clean reusable client)
+
+import requests
+
+BASE_URL = "https://pc-sandbox-g"
+
+HEADERS = {
+    "Content-Type": "application/json",
+    "accept": "application/json",
+    "authorization": "Bearer YOUR_TOKEN"
+}
+
+def post(uri: str, body: dict):
+    """
+    Sends a POST request to Guidewire PolicyCenter API.
+
+    Args:
+        uri (str): API endpoint URI.
+        body (dict): JSON payload body.
+
+    Returns:
+        dict: Parsed JSON response.
+
+    Raises:
+        requests.HTTPError: If API returns error status.
+    """
+    response = requests.post(BASE_URL + uri, json=body, headers=HEADERS)
+    response.raise_for_status()
+    return response.json()
+
+
+⸻
+
+📄 handler.py
+
+Clean. Focused. Production-ready.
+
+from clients.guidewire_client import post
+
+
+async def bind_and_issue_policy(job_id: str) -> dict:
+    """
+    Binds and issues a policy in Guidewire for the given Job ID.
+
+    This function calls the Guidewire API endpoint:
+        POST /job/v1/jobs/{job_id}/bind-and-issue
+
+    Args:
+        job_id (str): The Job ID returned from submission creation.
+
+    Returns:
+        dict: Response containing success status and API result.
+
+    Example:
+        {
+            "status": True,
+            "jobId": "pc:123",
+            "policyResponse": {...}
+        }
+
+    Error Response Example:
+        {
+            "status": False,
+            "error": "Failed to create policy using GW API: ..."
+        }
+    """
+    try:
+        policy_resp = post(f"/job/v1/jobs/{job_id}/bind-and-issue", {})
+
+        return {
+            "status": True,
+            "jobId": job_id,
+            "policyResponse": policy_resp
+        }
+
+    except Exception as e:
+        return {
+            "status": False,
+            "error": f"Failed to create policy using GW API: {str(e)}"
+        }
+
+
+⸻
+
+📄 router.py
+
+from fastapi import APIRouter
+from pydantic import BaseModel
+from handler import bind_and_issue_policy
+
+router = APIRouter()
+
+
+class BindIssueRequest(BaseModel):
+    job_id: str
+
+
+@router.post("/Bind_And_Issue", operation_id="Bind_And_Issue")
+async def bind_and_issue(request: BindIssueRequest):
+    """
+    API endpoint to bind and issue a policy using job ID.
+    """
+    return await bind_and_issue_policy(request.job_id)
+
+
+⸻
+
+📄 main.py
+
+from fastapi import FastAPI
+from router import router
+
+app = FastAPI()
+app.include_router(router, prefix="/api/v1/bind")
+
+if __name__ == "__main__":
+    import uvicorn
+    uvicorn.run(app, host="0.0.0.0", port=8701)
+
+
+⸻
+
+📄 test_script.py
+
+import requests
+
+URL = "http://localhost:8701/api/v1/bind/Bind_And_Issue"
+
+payload = {
+    "job_id": "pc:12345"
+}
+
+resp = requests.post(URL, json=payload, timeout=120)
+print(resp.json())
+
+
+⸻
+
+🚀 How This Flow Works
+	1.	You already created job using your first service.
+	2.	That returns:
+
+{
+  "jobId": "pc:10234"
+}
+
+	3.	You pass that jobId into this new service.
+	4.	This service:
+	•	Calls /bind-and-issue
+	•	Returns policy creation result.
+
+⸻
+
+🧠 Why Separate Service?
+
+This gives:
+	•	Clear responsibility separation
+	•	Microservice-style design
+	•	Easier debugging
+	•	Cleaner production scaling
+	•	Reusable bind API for:
+	•	UI
+	•	Batch jobs
+	•	Retry mechanism
+	•	Admin tool
+
+⸻
+
+🔥 Clean Production-Level Improvement (Optional)
+
+If you want even cleaner structure later:
+	•	Move guidewire_client to shared library
+	•	Add logging
+	•	Add structured error mapping
+	•	Add retry mechanism
+
+⸻
+
+If you want next level:
+
+👉 I can now show you how to chain:
+
+Submission → Quote → Bind & Issue
+
+in one controlled orchestration service with proper state handling.
+
+Just tell me.
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+This is my code which passes multimple things in the response including job id so i need to creat a new one which takes the below job id as input and lets have it s own router, main, handler, testscript,and in handler
+lets have a function and in it lets hit this api , have good docstrings
+try:
+        policy_resp = post(f"/job/v1/jobs/{job_id}/bind-and-issue", {})
+    except Exception as e:
+        return {"status": False, "error": f"Failed to create policy using GW API: {e}"}
+
+
+
+Folder Structure (same, simple inside)
+
+guidewire_integration/
+│
+├── main.py
+├── router.py
+├── handler.py
+│
+├── service.py
+├── storage_utils.py
+│
+├── models/
+│   └── canonical_model.py
+│
+├── mappers/
+│   └── document_mapper.py
+│
+├── payload_builders/
+│   ├── account_payload.py
+│   ├── job_payload.py
+│   ├── location_payload.py
+│   └── coverage_payloads.py
+│
+├── clients/
+│   └── guidewire_client.py
+│
+├── input/
+└── test_script.py
+
+
+⸻
+
+📄 models/canonical_model.py
+
+(unchanged)
+
+from dataclasses import dataclass
+
+@dataclass
+class CanonicalQuoteData:
+    company_name: str
+    organization_type: str
+
+    address_line1: str
+    city: str
+    state: str
+    postal_code: str
+
+    producer_code: str
+    job_effective_date: str
+
+
+⸻
+
+📄 mappers/document_mapper.py
+
+(unchanged)
+
+from models.canonical_model import CanonicalQuoteData
+
+def map_document_to_canonical(doc: dict) -> CanonicalQuoteData:
+    insured = doc.get("Insured Information", {})
+    broker = doc.get("Broker and Producer Information", {})
+    location = doc.get("Property Location", {})
+    policy = doc.get("Coverage and Policy Details", {})
+
+    return CanonicalQuoteData(
+        company_name=insured.get("Named Insured (Company Name)"),
+        organization_type=insured.get("Organization Type", "").lower(),
+
+        address_line1=location.get("Address Line 1"),
+        city=location.get("City"),
+        state=location.get("State"),
+        postal_code=location.get("Zip Code"),
+
+        producer_code=broker.get("Producer Code"),
+        job_effective_date=policy.get("Effective Date"),
+    )
+
+
+⸻
+
+📄 payload_builders/account_payload.py
+
+✅ Simplified (NO shared address object)
+
+✅ API-exact
+
+from models.canonical_model import CanonicalQuoteData
+
+def build_account_payload(data: CanonicalQuoteData) -> dict:
+    return {
+        "data": {
+            "attributes": {
+                "initialAccountHolder": {
+                    "contactSubtype": "Company",
+                    "companyName": data.company_name,
+                    "primaryAddress": {
+                        "addressLine1": data.address_line1,
+                        "city": data.city,
+                        "postalCode": data.postal_code,
+                        "state": {
+                            "code": data.state[:2].upper()
+                        }
+                    }
+                },
+                "initialPrimaryLocation": {
+                    "addressLine1": data.address_line1,
+                    "city": data.city,
+                    "postalCode": data.postal_code,
+                    "state": {
+                        "code": data.state[:2].upper()
+                        }
+                },
+                "producerCodes": [
+                    {"id": f"pc:{data.producer_code}"}
+                ],
+                "organizationType": {
+                    "code": data.organization_type
+                }
+            }
+        }
+    }
+
+👍 Much clearer, reviewer-friendly.
+
+⸻
+
+📄 payload_builders/job_payload.py
+
+(already simple, unchanged)
+
+from models.canonical_model import CanonicalQuoteData
+
+def build_job_payload(account_id: str, data: CanonicalQuoteData) -> dict:
+    return {
+        "data": {
+            "attributes": {
+                "account": {
+                    "id": account_id
+                },
+                "baseState": {
+                    "code": data.state[:2].upper()
+                },
+                "jobEffectiveDate": data.job_effective_date,
+                "product": {
+                    "id": "GoCommercialProp"
+                },
+                "producerCode": {
+                    "id": f"pc:{data.producer_code}"
+                }
+            }
+        }
+    }
+
+
+⸻
+
+📄 payload_builders/location_payload.py
+
+✅ Simplified, no reuse
+
+from models.canonical_model import CanonicalQuoteData
+
+def build_location_payload(data: CanonicalQuoteData) -> dict:
+    return {
+        "data": {
+            "attributes": {
+                "addressLine1": data.address_line1,
+                "city": data.city,
+                "postalCode": data.postal_code,
+                "state": {
+                    "code": data.state[:2].upper()
+                },
+                "coverableJurisdiction": {
+                    "code": data.state[:2].upper(),
+                    "name": data.state
+                }
+            }
+        }
+    }
+
+
+⸻
+
+📄 payload_builders/coverage_payloads.py
+
+(unchanged, already simple & API-faithful)
+
+def get_coverages():
+    return [
+        {
+            "clauseType": "coverage",
+            "id": "GCPPropertyOffPrem",
+            "pattern": {"id": "GCPPropertyOffPrem"},
+            "terms": {
+                "GCPPropertyOffPremDeductible": {"directValue": "50000.00"},
+                "GCPPropertyOffPremInterContinent": {"directValue": "50000.00"},
+                "GCPPropertyOffPremLimit": {"directValue": "400000.00"},
+                "GCPPropertyOffPremWithinTerrLimit": {"directValue": "25000.00"}
+            }
+        },
+        {
+            "clauseType": "coverage",
+            "id": "GCPNewlyAcquiredBuildProp",
+            "pattern": {"id": "GCPNewlyAcquiredBuildProp"},
+            "terms": {}
+        },
+        {
+            "clauseType": "coverage",
+            "id": "GCPOutsideObjs",
+            "pattern": {"id": "GCPOutsideObjs"},
+            "terms": {
+                "GCPOutsideObjsDeductible": {"directValue": "1.00"},
+                "GCPOutsideObjsLimit": {"directValue": "2.00"}
+            }
+        },
+        {
+            "clauseType": "coverage",
+            "id": "GCPContentsOtherStruct",
+            "pattern": {"id": "GCPContentsOtherStruct"},
+            "terms": {
+                "GCPContentsOtherStructDeductible": {},
+                "GCPContentsOtherStructLimit": {
+                    "typekeyValue": {"code": "TwoPercent", "name": "2%"}
+                }
+            }
+        },
+        {
+            "clauseType": "coverage",
+            "id": "GCPTerrorism",
+            "pattern": {"id": "GCPTerrorism"},
+            "terms": {}
+        },
+        {
+            "clauseType": "coverage",
+            "id": "GCPFungus",
+            "pattern": {"id": "GCPFungus"},
+            "terms": {
+                "GCPFungusLimit": {"directValue": "20000.00"}
+            }
+        },
+        {
+            "clauseType": "coverage",
+            "id": "GCPDebrisRem",
+            "pattern": {"id": "GCPDebrisRem"},
+            "terms": {
+                "GCPDebrisRemInsuredPropLimit": {"choiceValue": {"code": "100kusd"}},
+                "GCPDebrisRemInsuredPropPercent": {"typekeyValue": {"code": "25Percent"}},
+                "GCPDebrisRemOtherPropertyLimit": {"choiceValue": {"code": "200kusd"}}
+            }
+        },
+        {
+            "clauseType": "coverage",
+            "id": "GCPDeferredPay",
+            "pattern": {"id": "GCPDeferredPay"},
+            "terms": {
+                "GCPDeferredPayLimit": {"choiceValue": {"code": "100kusd"}}
+            }
+        },
+        {
+            "clauseType": "coverage",
+            "id": "GCPExtraExp",
+            "pattern": {"id": "GCPExtraExp"},
+            "terms": {
+                "GCPExtraExpLimit": {"choiceValue": {"code": "75kusd"}}
+            }
+        },
+        {
+            "clauseType": "coverage",
+            "id": "GCPFireorPolice",
+            "pattern": {"id": "GCPFireorPolice"},
+            "terms": {
+                "GCPFireorPoliceLimit": {"choiceValue": {"code": "75kusd"}}
+            }
+        },
+        {
+            "clauseType": "coverage",
+            "id": "GCPFireProtEquip",
+            "pattern": {"id": "GCPFireProtEquip"},
+            "terms": {
+                "GCPFireProtEquipLimit": {"choiceValue": {"code": "50kusd"}}
+            }
+        },
+        {
+            "clauseType": "coverage",
+            "id": "GCPFlucRawMat",
+            "pattern": {"id": "GCPFlucRawMat"},
+            "terms": {
+                "GCPFlucRawMatLimit": {"choiceValue": {"code": "400kusd"}}
+            }
+        }
+    ]
+
+
+⸻
+
+📄 clients/guidewire_client.py
+
+import requests
+
+BASE_URL = "https://pc-sandbox-g"
+
+HEADERS = {
+    "Content-Type": "application/json",
+    "accept": "application/json",
+    "authorization": "Bearer YOUR_TOKEN"
+}
+
+def post(uri: str, body: dict):
+    response = requests.post(BASE_URL + uri, json=body, headers=HEADERS)
+    response.raise_for_status()
+    return response.json()
+
+
+⸻
+
+📄 handler.py
+
+✅ Clean, readable orchestration
+
+import json
+from storage_utils import download_blob_to_input_folder
+from mappers.document_mapper import map_document_to_canonical
+from payload_builders.account_payload import build_account_payload
+from payload_builders.job_payload import build_job_payload
+from payload_builders.location_payload import build_location_payload
+from payload_builders.coverage_payloads import get_coverages
+from clients.guidewire_client import post
+
+INPUT_FOLDER = "input"
+
+def load_json(path: str) -> dict:
+    with open(path, "r", encoding="utf-8") as f:
+        return json.load(f)
+
+async def classify_blob_pdf_layout(blob_url: str):
+    local_file = await download_blob_to_input_folder(blob_url, INPUT_FOLDER)
+    document = load_json(local_file)
+
+    canonical = map_document_to_canonical(document)
+
+    account_resp = post("/account/v1/accounts", build_account_payload(canonical))
+    account_id = account_resp["data"]["attributes"]["id"]
+
+    job_resp = post("/job/v1/submissions", build_job_payload(account_id, canonical))
+    job_id = job_resp["data"]["attributes"]["id"]
+
+    location_resp = post(
+        f"/job/v1/jobs/{job_id}/lines/GOCommercialLine/locations",
+        build_location_payload(canonical)
+    )
+    location_id = location_resp["data"]["attributes"]["id"]
+
+    for coverage in get_coverages():
+        post(
+            f"/job/v1/jobs/{job_id}/lines/GOCommercialLine/coverages",
+            {"data": {"attributes": coverage}}
+        )
+
+    quote_resp = post(f"/job/v1/jobs/{job_id}/quote", {})
+
+    return {
+        "status": True,
+        "accountId": account_id,
+        "jobId": job_id,
+        "locationId": location_id,
+        "quote": quote_resp
+    }
+
+
+⸻
+
+📄 router.py
+
+from fastapi import APIRouter
+from pydantic import BaseModel
+from handler import classify_blob_pdf_layout
+
+router = APIRouter()
+
+class LayoutDetectRequest(BaseModel):
+    attachment_url: str
+
+@router.post("/Guidewire_Integration", operation_id="Guidewire_Integration")
+async def detect_layout(request: LayoutDetectRequest):
+    return await classify_blob_pdf_layout(request.attachment_url)
+
+
+⸻
+
+📄 main.py
+
+from fastapi import FastAPI
+from router import router
+
+app = FastAPI()
+app.include_router(router, prefix="/api/v1/layout")
+
+if __name__ == "__main__":
+    import uvicorn
+    uvicorn.run(app, host="0.0.0.0", port=8601)
+
+
+⸻
+
+📄 test_script.py
+
+import requests
+
+URL = "http://localhost:8601/api/v1/layout/Guidewire_Integration"
+
+payload = {
+    "attachment_url": "https://agenticai1.blob.core.windows.net/quote-extraction-results/sample.json"
+}
+
+resp = requests.post(URL, json=payload, timeout=120)
+print(resp.json())
+
+
+
+
+
+

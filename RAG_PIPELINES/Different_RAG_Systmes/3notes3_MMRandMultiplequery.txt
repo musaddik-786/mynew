@@ -1,0 +1,130 @@
+The simplest way to understand the difference
+Multi-Query answers:
+“What different ways could the user ask this question?”
+MMR answers:
+“Which retrieved chunks should I keep so they are not repetitive?”
+So:
+MultiQuery → works on queries
+MMR → works on retrieved chunks
+Different layers.
+⸻
+Where they sit in the RAG pipeline
+A realistic pipeline:
+User Query
+↓
+MultiQuery (generate variations)
+↓
+Similarity search
+↓
+MMR (remove redundant chunks)
+↓
+Final chunks
+↓
+LLM answer
+So:
+MultiQuery happens before retrieval
+MMR happens after retrieval
+⸻
+1️⃣ What MultiQuery does (query expansion)
+Example:
+User asks:
+When was this house constructed?
+MultiQuery generates:
+construction year
+year built
+building year
+property construction date
+So instead of searching once:
+Search 1 query
+It searches:
+Search multiple queries
+Goal:
+Improve recall (don’t miss relevant chunks)
+⸻
+2️⃣ What MMR does (result diversification)
+After retrieval you might get:
+Chunk 1 → Property Overview
+Chunk 2 → Property Overview (similar)
+Chunk 3 → Property Overview (similar)
+Chunk 4 → Construction Notes
+Chunk 5 → Claims
+MMR changes it to:
+Chunk 1 → Property Overview
+Chunk 2 → Construction Notes
+Chunk 3 → Claims
+Chunk 4 → Security
+Chunk 5 → Broker
+Goal:
+Reduce redundancy, increase diversity
+⸻
+Side-by-side comparison
+Feature MultiQuery MMR
+Works on Queries Retrieved chunks
+Goal Improve recall Improve diversity
+Uses LLM Yes No
+Happens Before search After search
+Problem solved Missed matches Duplicate chunks
+
+⸻
+Analogy (simple)
+Imagine searching books in a library.
+MultiQuery:
+Instead of searching:
+construction year
+You also search:
+year built
+building date
+construction date
+More search attempts.
+⸻
+MMR:
+After finding books, you remove:
+5 books saying same thing
+And keep:
+Different useful books.
+Less repetition.
+⸻
+Why we often use both together
+Because they solve different problems:
+MultiQuery prevents:
+Missing relevant chunks
+MMR prevents:
+Too many similar chunks
+Together:
+Better retrieval quality.
+⸻
+Your code actually used both
+You wrote:
+base_retriever = vectordb.as_retriever(
+   search_type="mmr"
+)
+This enables MMR.
+Then:
+MultiQueryRetriever.from_llm(...)
+This adds MultiQuery.
+So your pipeline became:
+MultiQuery → MMR → Results
+Which is correct.
+⸻
+Quick mental rule to remember
+If problem is:
+User phrasing issues → MultiQuery
+Too many similar chunks → MMR
+Different problems.
+⸻
+Your real learning status now
+You now understand:
+✔ Similarity search
+✔ MMR retrieval
+✔ MultiQuery retrieval
+Next missing:
+✔ Metadata retrieval
+✔ Hybrid retrieval
+You are following correct progression.
+⸻
+Next logical learning step
+Now comes something that will actually make your document AI feel much more powerful:
+Metadata filtering retrieval
+(This is what real document AI systems rely on heavily.)
+If ready we continue:
+“Start metadata retrieval deep dive”

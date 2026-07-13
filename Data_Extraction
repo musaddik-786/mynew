@@ -1,0 +1,569 @@
+This is actually the right approach. Looking at all the agents you’ve shared (Fraud Screening, Loss Assessment, Repair vs Replacement, Reserve Recommendation, Settlement Recommendation, Coverage Verification, etc.), I’ve noticed that many business rules are assumed in the code rather than documented. As a developer, you shouldn’t be expected to infer whether these rules are correct—you should get them validated by the business team.
+
+For the Version 2 Reserve Recommendation Agent, I would ask the following questions during the requirement validation session.
+
+⸻
+
+1. Overall Business Objective
+
+Q1.
+
+What is the primary business objective of the Reserve Recommendation Agent?
+
+* Is it only to recommend a reserve?
+* Should it automatically update the claim reserve?
+* Or should it only assist the adjuster in making the decision?
+
+⸻
+
+Q2.
+
+Is the AI-recommended reserve advisory only, or can it eventually become the official claim reserve?
+
+Currently the system stores
+
+* adjusted_reserve
+* system_recommended_reserve
+
+Should these always remain separate?
+
+⸻
+
+2. Data Source Validation
+
+Q3.
+
+What should be considered the source of truth for reserve calculation?
+
+Currently the code prefers
+
+loss_assessments.total_parts_cost
++
+loss_assessments.total_labor_cost
+
+and ignores
+
+claims.estimated_cost
+
+if a loss assessment exists.
+
+Is this the intended business behavior?
+
+⸻
+
+Q4.
+
+If multiple loss assessments exist,
+
+ORDER BY id DESC LIMIT 1
+
+is used.
+
+Should the latest assessment always be used?
+
+Or
+
+* approved assessment
+* highest assessment
+* adjuster-approved assessment
+* latest completed assessment
+
+⸻
+
+Q5.
+
+If no loss assessment exists,
+
+the system falls back to
+
+estimated_cost
+
+Is this acceptable?
+
+Or should reserve recommendation fail until a loss assessment is completed?
+
+⸻
+
+3. Severity Rules
+
+Q6.
+
+Current mapping is
+
+Severity	Buffer
+Critical	30%
+High	20%
+Medium	10%
+Low	5%
+
+Are these business-approved percentages?
+
+Or are they temporary POC values?
+
+⸻
+
+Q7.
+
+Why exactly were these percentages selected?
+
+Is there any actuarial or underwriting basis?
+
+Or were they chosen only for demonstration?
+
+⸻
+
+Q8.
+
+Should severity always come from
+
+claims.severity
+
+or should another agent determine severity dynamically?
+
+⸻
+
+4. Fraud Buffer Rules
+
+This is probably the most important discussion.
+
+⸻
+
+Q9.
+
+Current formula
+
+fraud_buffer_pct =
+min(fraud_score / 1000,0.15)
+
+Who defined this formula?
+
+Business?
+
+Actuarial team?
+
+POC developer?
+
+⸻
+
+Q10.
+
+Why divide by
+
+1000
+
+instead of
+
+100
+
+or
+
+500
+
+What business reasoning supports this scaling?
+
+⸻
+
+Q11.
+
+Why is the fraud buffer capped at
+
+15%
+
+Why not
+
+* 10%
+* 20%
+* 25%
+
+What is the business justification?
+
+⸻
+
+Q12.
+
+What is the valid fraud score range?
+
+Is it
+
+0-100
+
+or
+
+0-1000
+
+or something else?
+
+⸻
+
+Q13.
+
+If fraud score exceeds the expected range,
+
+what should happen?
+
+Reject?
+
+Clamp?
+
+Use maximum?
+
+Raise an error?
+
+⸻
+
+Q14.
+
+Should fraud always increase reserve?
+
+Could some fraud scenarios require
+
+* investigation instead of reserve increase?
+
+⸻
+
+5. Reserve Formula
+
+Q15.
+
+Current formula
+
+Reserve
+=
+Base Loss
+×
+(
+1
++
+Severity Buffer
++
+Fraud Buffer
+)
+
+Is this the approved business formula?
+
+⸻
+
+Q16.
+
+Should severity and fraud simply be added?
+
+Or should one take precedence?
+
+⸻
+
+Q17.
+
+Should reserve ever exceed policy limit?
+
+Currently the Reserve Recommendation Agent does not check policy limits.
+
+Should it?
+
+⸻
+
+Q18.
+
+Should deductibles affect reserve?
+
+Currently deductibles are ignored.
+
+Is that expected?
+
+⸻
+
+Q19.
+
+Should depreciation be considered?
+
+⸻
+
+Q20.
+
+Should taxes be included?
+
+⸻
+
+Q21.
+
+Should reserve include
+
+* legal expenses
+* investigation costs
+* rental reimbursement
+* towing
+* temporary accommodation
+* expert inspection fees
+
+or only repair costs?
+
+⸻
+
+6. Adjuster Comparison
+
+Q22.
+
+Current comparison
+
+variance =
+recommended
+-
+manual
+
+Is percentage variance sufficient?
+
+Or should absolute difference also be shown?
+
+⸻
+
+Q23.
+
+If manual reserve is
+
+NULL
+
+or
+
+0
+
+Current code returns
+
+variance = 0
+
+Should this instead display
+
+Not Applicable
+
+⸻
+
+Q24.
+
+If AI reserve is lower than adjuster reserve,
+
+should the system recommend reducing reserve?
+
+Or only increasing it?
+
+⸻
+
+7. Database Behaviour
+
+Q25.
+
+Current implementation updates
+
+system_recommended_reserve
+
+only.
+
+Should
+
+adjusted_reserve
+
+ever be updated automatically?
+
+⸻
+
+Q26.
+
+Should every recommendation be stored historically?
+
+Or should only the latest recommendation remain?
+
+⸻
+
+Q27.
+
+Should reserve recommendation be recalculated whenever
+
+* fraud score changes
+* severity changes
+* loss assessment changes
+
+⸻
+
+8. Workflow Validation
+
+Q28.
+
+Should Reserve Recommendation always run after
+
+Loss Assessment
+
+or can it execute independently?
+
+⸻
+
+Q29.
+
+Should Fraud Screening always complete before Reserve Recommendation?
+
+⸻
+
+Q30.
+
+Can Reserve Recommendation execute before Repair vs Replacement?
+
+⸻
+
+Q31.
+
+Can Reserve Recommendation be rerun after settlement recommendation?
+
+⸻
+
+9. Exception Handling
+
+Q32.
+
+If
+
+loss_assessment
+
+is missing,
+
+what is the expected business behavior?
+
+⸻
+
+Q33.
+
+If
+
+fraud_score
+
+is unavailable,
+
+should
+
+fraud_buffer = 0%
+
+or should the process stop?
+
+⸻
+
+Q34.
+
+If
+
+severity
+
+is missing,
+
+the code defaults to
+
+Medium
+
+Is this approved?
+
+⸻
+
+Q35.
+
+If all financial inputs are zero,
+
+should reserve become
+
+0
+
+or should minimum reserve exist?
+
+⸻
+
+10. AI / LLM Validation
+
+Q36.
+
+Should the LLM generate only the rationale?
+
+Or can it also influence the reserve amount?
+
+(Currently Python calculates the reserve and the LLM only explains it.)
+
+⸻
+
+Q37.
+
+Should the rationale follow a standard business template?
+
+⸻
+
+Q38.
+
+Should the rationale be saved in the database?
+
+Currently it is not.
+
+⸻
+
+11. Future Scalability
+
+Q39.
+
+Should these business constants be configurable?
+
+Currently hardcoded values include
+
+* Severity buffers
+* Fraud cap (15%)
+* Fraud scaling (/1000)
+
+Should these come from
+
+* configuration file
+* database
+* business rules engine
+
+instead of source code?
+
+⸻
+
+Q40.
+
+Will different insurance products (Auto, Property, Commercial, Marine, etc.) require different reserve formulas?
+
+⸻
+
+12. Integration with Other Agents
+
+Q41.
+
+Should the Settlement Recommendation Agent always use the AI reserve?
+
+Or only the manual reserve?
+
+⸻
+
+Q42.
+
+If the adjuster changes the reserve after the AI recommendation,
+
+should the Settlement Recommendation Agent use
+
+* the updated manual reserve,
+* the AI recommendation,
+* or whichever is latest?
+
+⸻
+
+Q43.
+
+Should the Reserve Recommendation Agent receive additional inputs from other agents in future (for example, coverage verification, financial leakage detection, litigation prediction, or catastrophe indicators) to refine the reserve?
+
+⸻
+
+My Top 10 Questions to Prioritize
+
+If management doesn’t have time for all 43 questions, these are the ones I’d prioritize:
+
+1. What is the official business objective of the Reserve Recommendation Agent?
+2. Why is the reserve formula Base Loss × (1 + Severity Buffer + Fraud Buffer) used?
+3. Who defined the severity buffer percentages (30%, 20%, 10%, 5%)?
+4. Why is the fraud buffer calculated as fraud_score / 1000?
+5. Why is the fraud buffer capped at 15%?
+6. Should the reserve calculation always use the latest loss assessment, or only approved assessments?
+7. Should reserve recommendations ever be constrained by policy coverage limits?
+8. Under what conditions should the reserve be recalculated after the initial recommendation?
+9. Should business constants (severity buffers and fraud cap) be configurable rather than hardcoded?
+10. What is the expected interaction between the AI-recommended reserve and the adjuster’s manually entered reserve, and which value should downstream agents use?
+
+These questions focus on the areas where your current implementation contains implicit assumptions. Getting them answered will give you documented business requirements rather than requiring you to infer the intent from the code.

@@ -1,0 +1,134 @@
+I am getting error in these lines
+ "info": {
+    "_postman_id": "d4617e03-dea1-495d-9a86-eee819f66d56",
+    "name": "Commercial Property",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
+    "_exporter_id": "25147181",
+    "_collection_link": "https://warped-water-476728.postman.co/workspace/Personal-Workspace~accc8ce9-5ac0-4f3f-bbbc-105049f12d83/collection/25147181-d4617e03-dea1-495d-9a86-eee819f66d56?action=share&source=collection_link&creator=25147181"
+  },
+
+colon expected
+below is the json
+
+
+{
+  "info": {
+    "_postman_id": "d4617e03-dea1-495d-9a86-eee819f66d56",
+    "name": "Commercial Property",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
+    "_exporter_id": "25147181",
+    "_collection_link": "https://warped-water-476728.postman.co/workspace/Personal-Workspace~accc8ce9-5ac0-4f3f-bbbc-105049f12d83/collection/25147181-d4617e03-dea1-495d-9a86-eee819f66d56?action=share&source=collection_link&creator=25147181"
+  },
+  "item": [
+    {
+      "name": "Composite-Commercial",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "let response = pm.response.json();\r",
+              "const jobId = response.selections[1].body.data.attributes.id;\r",
+              "const jobNumber = response.selections[1].body.data.attributes.jobNumber;\r",
+              "pm.collectionVariables.set('jobId', jobId);\r",
+              "pm.collectionVariables.set('jobNumber', jobNumber);\r",
+              ""
+            ],
+            "type": "text/javascript",
+            "packages": {},
+            "requests": {}
+          }
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "accept",
+            "value": "application/json"
+          },
+          {
+            "key": "authorization",
+            "value": "Basic c3U6Z3c="
+          },
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\r\n    \"requests\": [\r\n        {\r\n            \"method\": \"post\",\r\n            \"uri\": \"/account/v1/accounts\",\r\n            \"body\": {\r\n                \"data\": {\r\n                    \"attributes\": {\r\n                        \"initialAccountHolder\": {\r\n                            \"contactSubtype\": \"Company\",\r\n                            \"companyName\": \"Hexa Tester\",\r\n                            \"primaryAddress\": {\r\n                                \"addressLine1\": \"2850 S. Delaware St.\",\r\n                                \"city\": \"San Mateo\",\r\n                                \"postalCode\": \"94403\",\r\n                                \"state\": {\r\n                                    \"code\": \"CA\"\r\n                                }\r\n                            }\r\n                        },\r\n                        \"initialPrimaryLocation\": {\r\n                            \"addressLine1\": \"2850 S. Delaware St.\",\r\n                            \"city\": \"San Mateo\",\r\n                            \"postalCode\": \"94403\",\r\n                            \"state\": {\r\n                                \"code\": \"CA\"\r\n                            }\r\n                        },\r\n                        \"producerCodes\": [\r\n                            {\r\n                                \"id\": \"pc:6\"\r\n                            }\r\n                        ],\r\n                        \"organizationType\": {\r\n                            \"code\": \"llc\"\r\n                        }\r\n                    }\r\n                }\r\n            },\r\n            \"includeResponse\": false,\r\n            \"vars\": [\r\n                {\r\n                    \"name\": \"accountId\",\r\n                    \"path\": \"$.data.attributes.id\"\r\n                },\r\n                {\r\n                    \"name\": \"driverId\",\r\n                    \"path\": \"$.data.attributes.accountHolder.id\"\r\n                },\r\n                {\r\n                    \"name\": \"primaryLocationId\",\r\n                    \"path\": \"$.data.attributes.primaryLocation.id\"\r\n                }\r\n            ]\r\n        },\r\n        {\r\n            \"method\": \"POST\",\r\n            \"uri\": \"/job/v1/submissions\",\r\n            \"body\": {\r\n                \"data\": {\r\n                    \"attributes\": {\r\n                        \"account\": {\r\n                            \"id\": \"${accountId}\"\r\n                        },\r\n                        \"baseState\": {\r\n                            \"code\": \"CA\"\r\n                        },\r\n                        \"jobEffectiveDate\": \"2025-07-16\",\r\n                        \"product\": {\r\n                            \"id\": \"GoCommercialProp\"\r\n                        },\r\n                        \"producerCode\": {\r\n                            \"id\": \"pc:6\"\r\n                        }\r\n                    }\r\n                }\r\n            },\r\n            \"includeResponse\": false,\r\n            \"vars\": [\r\n                {\r\n                    \"name\": \"jobId\",\r\n                    \"path\": \"$.data.attributes.id\"\r\n                }\r\n            ]\r\n        },\r\n        {\r\n            \"method\": \"POST\",\r\n            \"uri\": \"/job/v1/jobs/${jobId}/lines/GOCommercialLine/locations\",\r\n            \"body\": {\r\n                \"data\": {\r\n                    \"attributes\": {\r\n                        \"addressLine1\": \"Address Line 1\",\r\n                        \"city\": \"San Mateo\",\r\n                        \"coverableJurisdiction\": {\r\n                            \"code\": \"CA\",\r\n                            \"name\": \"California\"\r\n                        },\r\n                        \"postalCode\": \"94404\",\r\n                        \"state\": {\r\n                            \"code\": \"CA\"\r\n                        }\r\n                    }\r\n                }\r\n            },\r\n            \"includeResponse\": false,\r\n            \"vars\": [\r\n                {\r\n                    \"name\": \"locationId\",\r\n                    \"path\": \"$.data.attributes.id\"\r\n                }\r\n            ]\r\n        },\r\n        {\r\n            \"method\": \"POST\",\r\n            \"uri\": \"/job/v1/jobs/${jobId}/lines/GOCommercialLine/coverages\",\r\n            \"body\": {\r\n                \"data\": {\r\n                    \"attributes\": {\r\n                        \"clauseType\": \"coverage\",\r\n                        \"id\": \"GCPPropertyOffPrem\",\r\n                        \"pattern\": {\r\n                            \"id\": \"GCPPropertyOffPrem\"\r\n                        },\r\n                        \"terms\": {\r\n                            \"GCPPropertyOffPremDeductible\": {\r\n                                \"directValue\": \"50000.00\"\r\n                            },\r\n                            \"GCPPropertyOffPremInterContinent\": {\r\n                                \"directValue\": \"50000.00\"\r\n                            },\r\n                            \"GCPPropertyOffPremLimit\": {\r\n                                \"directValue\": \"400000.00\"\r\n                            },\r\n                            \"GCPPropertyOffPremWithinTerrLimit\": {\r\n                                \"directValue\": \"25000.00\"\r\n                            }\r\n                        }\r\n                    }\r\n                }\r\n            },\r\n            \"includeResponse\": false,\r\n            \"vars\": []\r\n        },\r\n        {\r\n            \"method\": \"POST\",\r\n            \"uri\": \"/job/v1/jobs/${jobId}/lines/GOCommercialLine/coverages\",\r\n            \"body\": {\r\n                \"data\": {\r\n                    \"attributes\": {\r\n                        \"clauseType\": \"coverage\",\r\n                        \"id\": \"GCPNewlyAcquiredBuildProp\",\r\n                        \"pattern\": {\r\n                            \"id\": \"GCPNewlyAcquiredBuildProp\"\r\n                        },\r\n                        \"terms\": {}\r\n                    }\r\n                }\r\n            },\r\n            \"includeResponse\": false,\r\n            \"vars\": []\r\n        },\r\n        {\r\n            \"method\": \"POST\",\r\n            \"uri\": \"/job/v1/jobs/${jobId}/lines/GOCommercialLine/coverages\",\r\n            \"body\": {\r\n                \"data\": {\r\n                    \"attributes\": {\r\n                        \"clauseType\": \"coverage\",\r\n                        \"id\": \"GCPOutsideObjs\",\r\n                        \"pattern\": {\r\n                            \"id\": \"GCPOutsideObjs\"\r\n                        },\r\n                        \"terms\": {\r\n                            \"GCPOutsideObjsDeductible\": {\r\n                                \"directValue\": \"1.00\"\r\n                            },\r\n                            \"GCPOutsideObjsLimit\": {\r\n                                \"directValue\": \"2.00\"\r\n                            }\r\n                        }\r\n                    }\r\n                }\r\n            },\r\n            \"includeResponse\": false,\r\n            \"vars\": []\r\n        },\r\n        {\r\n            \"method\": \"POST\",\r\n            \"uri\": \"/job/v1/jobs/${jobId}/lines/GOCommercialLine/coverages\",\r\n            \"body\": {\r\n                \"data\": {\r\n                    \"attributes\": {\r\n                        \"clauseType\": \"coverage\",\r\n                        \"id\": \"GCPContentsOtherStruct\",\r\n                        \"pattern\": {\r\n                            \"id\": \"GCPContentsOtherStruct\"\r\n                        },\r\n                        \"terms\": {\r\n                            \"GCPContentsOtherStructDeductible\": {},\r\n                            \"GCPContentsOtherStructLimit\": {\r\n                                \"typekeyValue\": {\r\n                                    \"code\": \"TwoPercent\",\r\n                                    \"name\": \"2%\"\r\n                                }\r\n                            }\r\n                        }\r\n                    }\r\n                }\r\n            },\r\n            \"includeResponse\": false,\r\n            \"vars\": []\r\n        },\r\n        {\r\n            \"method\": \"POST\",\r\n            \"uri\": \"/job/v1/jobs/${jobId}/lines/GOCommercialLine/coverages\",\r\n            \"body\": {\r\n                \"data\": {\r\n                    \"attributes\": {\r\n                        \"clauseType\": \"coverage\",\r\n                        \"id\": \"GCPTerrorism\",\r\n                        \"pattern\": {\r\n                            \"id\": \"GCPTerrorism\"\r\n                        },\r\n                        \"terms\": {}\r\n                    }\r\n                }\r\n            },\r\n            \"includeResponse\": false,\r\n            \"vars\": []\r\n        },\r\n        {\r\n            \"method\": \"POST\",\r\n            \"uri\": \"/job/v1/jobs/${jobId}/lines/GOCommercialLine/coverages\",\r\n            \"body\": {\r\n                \"data\": {\r\n                    \"attributes\": {\r\n                        \"clauseType\": \"coverage\",\r\n                        \"id\": \"GCPFungus\",\r\n                        \"pattern\": {\r\n                            \"id\": \"GCPFungus\"\r\n                        },\r\n                        \"terms\": {\r\n                            \"GCPFungusLimit\": {\r\n                                \"directValue\": \"20000.00\"\r\n                            }\r\n                        }\r\n                    }\r\n                }\r\n            },\r\n            \"includeResponse\": false,\r\n            \"vars\": []\r\n        },\r\n        {\r\n            \"method\": \"POST\",\r\n            \"uri\": \"/job/v1/jobs/${jobId}/lines/GOCommercialLine/coverages\",\r\n            \"body\": {\r\n                \"data\": {\r\n                    \"attributes\": {\r\n                        \"clauseType\": \"coverage\",\r\n                        \"id\": \"GCPDebrisRem\",\r\n                        \"pattern\": {\r\n                            \"id\": \"GCPDebrisRem\"\r\n                        },\r\n                        \"terms\": {\r\n                            \"GCPDebrisRemInsuredPropLimit\": {\r\n                                \"choiceValue\": {\r\n                                    \"code\": \"100kusd\"\r\n                                }\r\n                            },\r\n                            \"GCPDebrisRemInsuredPropPercent\": {\r\n                                \"typekeyValue\": {\r\n                                    \"code\": \"25Percent\"\r\n                                }\r\n                            },\r\n                            \"GCPDebrisRemOtherPropertyLimit\": {\r\n                                \"choiceValue\": {\r\n                                    \"code\": \"200kusd\"\r\n                                }\r\n                            }\r\n                        }\r\n                    }\r\n                }\r\n            },\r\n            \"includeResponse\": false,\r\n            \"vars\": []\r\n        },\r\n        {\r\n            \"method\": \"POST\",\r\n            \"uri\": \"/job/v1/jobs/${jobId}/lines/GOCommercialLine/coverages\",\r\n            \"body\": {\r\n                \"data\": {\r\n                    \"attributes\": {\r\n                        \"clauseType\": \"coverage\",\r\n                        \"id\": \"GCPDeferredPay\",\r\n                        \"pattern\": {\r\n                            \"id\": \"GCPDeferredPay\"\r\n                        },\r\n                        \"terms\": {\r\n                            \"GCPDeferredPayLimit\": {\r\n                                \"choiceValue\": {\r\n                                    \"code\": \"100kusd\"\r\n                                }\r\n                            }\r\n                        }\r\n                    }\r\n                }\r\n            },\r\n            \"includeResponse\": false,\r\n            \"vars\": []\r\n        },\r\n        {\r\n            \"method\": \"POST\",\r\n            \"uri\": \"/job/v1/jobs/${jobId}/lines/GOCommercialLine/coverages\",\r\n            \"body\": {\r\n                \"data\": {\r\n                    \"attributes\": {\r\n                        \"clauseType\": \"coverage\",\r\n                        \"id\": \"GCPExtraExp\",\r\n                        \"pattern\": {\r\n                            \"id\": \"GCPExtraExp\"\r\n                        },\r\n                        \"terms\": {\r\n                            \"GCPExtraExpLimit\": {\r\n                                \"choiceValue\": {\r\n                                    \"code\": \"75kusd\"\r\n                                }\r\n                            }\r\n                        }\r\n                    }\r\n                }\r\n            },\r\n            \"includeResponse\": false,\r\n            \"vars\": []\r\n        },\r\n        {\r\n            \"method\": \"POST\",\r\n            \"uri\": \"/job/v1/jobs/${jobId}/lines/GOCommercialLine/coverages\",\r\n            \"body\": {\r\n                \"data\": {\r\n                    \"attributes\": {\r\n                        \"clauseType\": \"coverage\",\r\n                        \"id\": \"GCPFireorPolice\",\r\n                        \"pattern\": {\r\n                            \"id\": \"GCPFireorPolice\"\r\n                        },\r\n                        \"terms\": {\r\n                            \"GCPFireorPoliceLimit\": {\r\n                                \"choiceValue\": {\r\n                                    \"code\": \"75kusd\"\r\n                                }\r\n                            }\r\n                        }\r\n                    }\r\n                }\r\n            },\r\n            \"includeResponse\": false,\r\n            \"vars\": []\r\n        },\r\n        {\r\n            \"method\": \"POST\",\r\n            \"uri\": \"/job/v1/jobs/${jobId}/lines/GOCommercialLine/coverages\",\r\n            \"body\": {\r\n                \"data\": {\r\n                    \"attributes\": {\r\n                        \"clauseType\": \"coverage\",\r\n                        \"id\": \"GCPFireProtEquip\",\r\n                        \"pattern\": {\r\n                            \"id\": \"GCPFireProtEquip\"\r\n                        },\r\n                        \"terms\": {\r\n                            \"GCPFireProtEquipLimit\": {\r\n                                \"choiceValue\": {\r\n                                    \"code\": \"50kusd\"\r\n                                }\r\n                            }\r\n                        }\r\n                    }\r\n                }\r\n            },\r\n            \"includeResponse\": false,\r\n            \"vars\": []\r\n        },\r\n        {\r\n            \"method\": \"POST\",\r\n            \"uri\": \"/job/v1/jobs/${jobId}/lines/GOCommercialLine/coverages\",\r\n            \"body\": {\r\n                \"data\": {\r\n                    \"attributes\": {\r\n                        \"clauseType\": \"coverage\",\r\n                        \"id\": \"GCPFlucRawMat\",\r\n                        \"pattern\": {\r\n                            \"id\": \"GCPFlucRawMat\"\r\n                        },\r\n                        \"terms\": {\r\n                            \"GCPFlucRawMatLimit\": {\r\n                                \"choiceValue\": {\r\n                                    \"code\": \"400kusd\"\r\n                                }\r\n                            }\r\n                        }\r\n                    }\r\n                }\r\n            },\r\n            \"includeResponse\": false,\r\n            \"vars\": []\r\n        },\r\n        {\r\n            \"method\": \"post\",\r\n            \"uri\": \"/job/v1/jobs/${jobId}/quote\"\r\n        }\r\n    ],\r\n    \"selections\": [\r\n        {\r\n            \"uri\": \"/account/v1/accounts/${accountId}\"\r\n        },\r\n        {\r\n            \"uri\": \"/job/v1/jobs/${jobId}\"\r\n        }\r\n    ]\r\n}"
+        },
+        "url": {
+          "raw": "https://pc-sandbox-gwcpdev.hexaware.zeta1-andromeda.guidewire.net/rest/composite/v1/composite",
+          "protocol": "https",
+          "host": [
+            "pc-sandbox-gwcpdev",
+            "hexaware",
+            "zeta1-andromeda",
+            "guidewire",
+            "net"
+          ],
+          "path": [
+            "rest",
+            "composite",
+            "v1",
+            "composite"
+          ]
+        }
+      },
+      "response": []
+    },
+    {
+      "name": "bind and issue",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "accept",
+            "value": "application/json"
+          },
+          {
+            "key": "authorization",
+            "value": "Basic c3U6Z3c="
+          },
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "url": {
+          "raw": "https://pc-sandbox-gwcpdev.hexaware.zeta1-andromeda.guidewire.net/rest/job/v1/jobs/{{jobId}}/bind-and-issue",
+          "protocol": "https",
+          "host": [
+            "pc-sandbox-gwcpdev",
+            "hexaware",
+            "zeta1-andromeda",
+            "guidewire",
+            "net"
+          ],
+          "path": [
+            "rest",
+            "job",
+            "v1",
+            "jobs",
+            "{{jobId}}",
+            "bind-and-issue"
+          ]
+        }
+      },
+      "response": []
+    }
+  ],
+  "variable": [
+    {
+      "key": "jobId",
+      "value": ""
+    },
+    {
+      "key": "jobNumber",
+      "value": ""
+    }
+  ]
+}

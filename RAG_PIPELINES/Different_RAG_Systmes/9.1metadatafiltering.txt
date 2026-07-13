@@ -1,0 +1,161 @@
+Step 1 — The real problem we solve
+Your document contains sections like:
+Policyholder Details
+Property Overview
+Claims History
+Construction Notes
+Security Features
+But currently chunks only have:
+metadata={"doc_type":"insurance"}
+We want:
+metadata={
+"doc_type":"insurance",
+"section":"property"
+}
+So retrieval becomes:
+filter={"section":"property"}
+This is powerful.
+⸻
+Step 2 — Simple engineer approach (how companies actually start)
+Engineers don’t start with ML.
+They start simple:
+Rule based section detection
+Example rule:
+If chunk contains "Property Overview" → section=property
+If contains "Claims History" → section=claims
+If contains "Security Features" → section=security
+Simple and effective.
+We will do that.
+⸻
+Step 3 — Modify ingestion code
+Modify your ingestion script.
+Replace your metadata block with this:
+# Add metadata automatically based on section
+for chunk in chunks:
+   text = chunk.page_content.lower()
+   chunk.metadata["doc_type"] = "insurance"
+   chunk.metadata["source_file"] = "mytext.txt"
+
+   # SECTION DETECTION RULES
+   if "property overview" in text:
+       chunk.metadata["section"] = "property"
+
+   elif "claims history" in text:
+       chunk.metadata["section"] = "claims"
+
+   elif "construction" in text:
+       chunk.metadata["section"] = "construction"
+
+   elif "security features" in text:
+       chunk.metadata["section"] = "security"
+
+   elif "policyholder" in text:
+       chunk.metadata["section"] = "policyholder"
+
+   else:
+       chunk.metadata["section"] = "general"
+This is how most production systems begin.
+⸻
+Step 4 — Verify tagging works
+Add debug:
+print("\nMetadata check:\n")
+for chunk in chunks:
+   print(chunk.metadata)
+Expected:
+{'doc_type':'insurance','section':'property'}
+{'doc_type':'insurance','section':'claims'}
+{'doc_type':'insurance','section':'construction'}
+
+⸻
+Step 5 — Rebuild vector DB
+Again:
+Delete:
+input folder
+Then run:
+python 4.embeddings_my_querytopdf.py
+Always rebuild after metadata change.
+⸻
+Step 6 — Use section filtering in retrieval
+Now modify your retrieval:
+Instead of:
+filter={"doc_type":"insurance"}
+Use:
+filter={
+   "doc_type":"insurance",
+   "section":"property"
+}
+Example:
+relevant_chunks = vectordb.similarity_search(
+   user_query,
+   k=5,
+   filter={
+       "doc_type":"insurance",
+       "section":"property"
+   }
+)
+Now you search only property section.
+⸻
+Step 7 — Test it
+Change query:
+user_query="Give me the Year Built"
+Property section contains Year Built.
+Should still work.
+Now try:
+filter={"section":"claims"}
+Then query:
+"What was the claim amount?"
+You will see different chunks retrieved.
+This proves filtering works.
+⸻
+Step 8 — What real systems improve next
+Real systems then make section detection smarter:
+Instead of:
+simple keyword rules
+They move to:
+Regex detection
+Heading parsing
+PDF structure extraction
+LLM classification
+But rules first.
+Always.
+⸻
+Step 9 — What you just learned (important milestone)
+You now understand:
+✔ Metadata tagging
+✔ Section detection
+✔ Structured retrieval
+✔ Section filtering
+This is already enterprise RAG foundation.
+Most tutorials never reach this.
+⸻
+Step 10 — What real engineers build next
+Now RAG starts getting interesting.
+Next real upgrades engineers add:
+Next possible steps:
+1️⃣ Dynamic metadata filtering (detect section from query)
+Example:
+Query:
+Claim amount
+System automatically chooses:
+filter={"section":"claims"}
+This is very realistic.
+⸻
+2️⃣ Hybrid retrieval (vector + keyword)
+Very important for:
+Policy numbers
+IDs
+Addresses
+⸻
+3️⃣ Context compression
+Reduce tokens before LLM.
+⸻
+Correct next step for YOU
+Since you are building underwriting AI, the most logical next step is:
+Dynamic section selection from query
+Meaning:
+User asks:
+Year built
+System automatically decides:
+section="property"
+No manual filter.
+This is how real document agents work.

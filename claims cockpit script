@@ -1,0 +1,45 @@
+Meet our Fleet Manager, logging in to the platform and landing on the Home Page, where he
+gets an overview of tasks based on his role. Since he is a Fleet Manager, it shows the tasks he needs to focus on today. He can also create a task.
+He goes to the Client Management page, where he can create new client and can view the client’s details, where he can see the Total Associated Fleets.
+If required, he can also remove the client.
+He then proceeds to Carrier Management Page where he can create a new carrier and can
+view the carrier details, where Total Associated Products, details can be viewed.
+If required, he can also remove the carrier.
+Similarly, under Product Management, he can view all the products and can add, remove, or edit a product if required.
+He views the list of products to see all product-related details and associated technical covers.
+He clicks on Edit Product, where he can update product-related details, and add or remove technical covers if required.
+Now, he begins with Fleet. He can create a new fleet and assign Vehicle and Driver and add multiple Coverages.
+Now He proceeds with Managing the Fleet, where he can adds or remove vehicles and drivers,and Coverages if required.
+He then searches for Uber, and clicks on the View Fleet icon for Uber East Coast Fleet 2 to view the fleet details.
+He now clicks on Carrier Recommendation, where an AI-driven model predicts and recommends the best Carrier Match as per the client’s fleet requirements.
+He can now add the corresponding Frame Contract from here or from the Frame Contract Management screen.
+He proceeds to create a Frame Contract, where he selects:
+Client Name: Uber Technologies
+Carrier Name: AXA XL
+Contract Type: Standard
+Along with other basic details, including the AON Personnel associated with the contract,.
+He fills in the Financial Terms like commission rate and other necessary details. 
+and, now heads to the Matching Products & Fleets tab, where the AI-driven logic pulls the products matching the client and carrier names and other criteria.
+
+He selects the product AXA Standard EU Medium Fleet, and the corresponding Technical Coverages appear.
+He can add a new technical cover or delete one if required.
+Matching Fleets also appear.
+He selects one or more matching fleets and completes contract creation by clicking Create Frame Contract.
+He can view all the Frame Contract details, and also edit or remove them if required.
+Now, proceeds with Vehicle Management, where he can Add and Remove single Vehicle and can also Import multiple Vehicles using an AI-Driven Model which accepts files in any format and shows an Import Preview before uploading the vehicles.
+He also has the option to bulk-delete vehicles.
+Now, he proceeds with Driver Management where he can Add and remove single Driver and can bulk upload and bulk-delete Drivers.
+He now goes to the Reporting Dashboard, as he wants to view details related to:
+Profitability
+Coverage Distribution
+Premium Performance Reports
+He also views AI Analytics that provide analytical insights like:
+Profitability Forecast
+Renewal Likelihood
+AI-Detected Risk Indicators such as:
+Whether the client is expanding in high-risk zones and the potential exposure and probability.
+Financial impact and probability due to increased weather-related claims.
+Potential policy cancellation rate due to new competitor offerings.
+From client management to contract creation and advanced reporting, the Fleet Manager now operates with precision, insight, and speed—powered by a platform built for smarter decisions.
+
+

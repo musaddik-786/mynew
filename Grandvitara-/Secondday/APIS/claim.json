@@ -1,0 +1,72 @@
+[
+   {
+       "claim_number": "CLM-1001",
+       "customer_name": "Musaddique",
+       "amount": 25000,
+       "status": "Open",
+       "policy_type": "Auto"
+   },
+   {
+       "claim_number": "CLM-1002",
+       "customer_name": "John Smith",
+       "amount": 120000,
+       "status": "Approved",
+       "policy_type": "Home"
+   },
+   {
+       "claim_number": "CLM-1003",
+       "customer_name": "Sarah Johnson",
+       "amount": 45000,
+       "status": "Rejected",
+       "policy_type": "Health"
+   },
+   {
+       "claim_number": "CLM-1004",
+       "customer_name": "Rahul Sharma",
+       "amount": 18000,
+       "status": "Pending",
+       "policy_type": "Auto"
+   },
+   {
+       "claim_number": "CLM-1005",
+       "customer_name": "Emily Davis",
+       "amount": 76000,
+       "status": "Approved",
+       "policy_type": "Travel"
+   },
+   {
+       "claim_number": "CLM-1006",
+       "customer_name": "Amit Verma",
+       "amount": 9500,
+       "status": "Open",
+       "policy_type": "Health"
+   },
+   {
+       "claim_number": "CLM-1007",
+       "customer_name": "David Wilson",
+       "amount": 150000,
+       "status": "Investigation",
+       "policy_type": "Commercial"
+   },
+   {
+       "claim_number": "CLM-1008",
+       "customer_name": "Priya Patel",
+       "amount": 32000,
+       "status": "Closed",
+       "policy_type": "Life"
+   },
+   {
+       "claim_number": "CLM-1009",
+       "customer_name": "Michael Brown",
+       "amount": 87000,
+       "status": "Approved",
+       "policy_type": "Home"
+   },
+   {
+       "claim_number": "CLM-1010",
+       "customer_name": "Neha Kapoor",
+       "amount": 21000,
+       "status": "Pending",
+       "policy_type": "Auto"
+   }
+]

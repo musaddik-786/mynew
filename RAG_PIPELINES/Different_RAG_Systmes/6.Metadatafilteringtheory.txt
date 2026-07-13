@@ -1,0 +1,394 @@
+First we must understand one fundamental thing:
+Step 1 — What metadata actually is in LangChain
+When you load a document, LangChain does NOT just store text.
+It stores a Document object.
+A Document looks like this internally:
+Document(
+   page_content="Year Built 1998...",
+   metadata={"source":"mytext.txt"}
+)
+So every chunk has:
+1 page_content → actual text
+2 metadata → information about the text
+This is critical.
+⸻
+Step 2 — What metadata is used for
+Metadata is used to answer:
+Where did this chunk come from?
+Which section?
+Which page?
+Which document?
+Which type?
+Example:
+Instead of just:
+Year Built 1998
+We store:
+Document(
+   page_content="Year Built 1998",
+   metadata={
+       "section":"property",
+       "document":"submission",
+       "page":2
+   }
+)
+Now retrieval can filter:
+Search only property section.
+This is extremely powerful.
+⸻
+Step 3 — Why metadata is powerful
+Right now your retrieval does:
+Search whole document.
+With metadata you can do:
+Search only:
+Property section
+Claims section
+Construction section
+Example:
+User asks:
+Year Built
+Instead of searching everything:
+System does:
+Filter section = property
+Then search.
+This improves:
+✔ Speed
+✔ Precision
+✔ Accuracy
+✔ Cost
+This is why production document AI relies heavily on metadata.
+⸻
+Step 4 — Where metadata comes from
+Metadata is usually added during:
+Chunking stage
+Right now your ingestion:
+chunks = text_splitter.split_documents(documents)
+Already creates metadata automatically like:
+metadata={
+  "source":"mytext.txt"
+}
+But we can add more.
+⸻
+Step 5 — Let’s inspect your current metadata
+Add this in your ingestion script after chunking:
+for chunk in chunks:
+   print(chunk.metadata)
+You will likely see:
+{'source': 'C:\\Users\\...\\mytext.txt'}
+This proves metadata already exists.
+⸻
+Step 6 — Adding custom metadata (simple example)
+We can manually add metadata like this:
+Example:
+for chunk in chunks:
+   chunk.metadata["document_type"]="insurance_submission"
+   chunk.metadata["category"]="underwriting"
+Now metadata becomes:
+{
+'source':'mytext.txt',
+'document_type':'insurance_submission',
+'category':'underwriting'
+}
+Very simple.
+⸻
+Step 7 — Why this matters later
+Because later we can retrieve like:
+vectordb.similarity_search(
+   query,
+   filter={"document_type":"insurance_submission"}
+)
+Meaning:
+Search only this type.
+This is real enterprise retrieval.
+⸻
+Step 8 — First practical step we will implement
+We will now add:
+Simple metadata tagging
+Example:
+All chunks belong to:
+Document type = insurance
+Then we test filtering.
+This is first step.
+⸻
+Step 9 — Modify your ingestion code
+In 4.embeddings_my_querytopdf.py
+After:
+chunks = text_splitter.split_documents(documents)
+Add:
+for chunk in chunks:
+   chunk.metadata["doc_type"]="insurance"
+   chunk.metadata["source_file"]="mytext.txt"
+That’s it.
+Now chunks contain metadata.
+⸻
+Step 10 — Rebuild vector DB (important)
+Because metadata is stored with vectors.
+Delete:
+input folder
+Then rerun ingestion:
+python 4.embeddings_my_querytopdf.py
+Always rebuild when metadata changes.
+⸻
+Step 11 — Verify metadata stored
+Add temporary debug:
+for chunk in chunks:
+   print(chunk.metadata)
+You should see:
+{'source':'mytext.txt','doc_type':'insurance','source_file':'mytext.txt'}
+Good.
+⸻
+Step 12 — Next step (what we will do next)
+Now we have metadata stored.
+Next lesson we will learn:
+How to filter retrieval using metadata.
+Example:
+vectordb.similarity_search(
+   query,
+   filter={"doc_type":"insurance"}
+)
+This is where metadata becomes powerful.
+⸻
+Important note
+We are going slowly because this concept becomes foundation for:
+Agents
+Extraction pipelines
+Document routing
+Memory systems
+Tool selection
+Metadata is everywhere in agent systems.
+⸻
+Where you are now
+You now understand:
+✔ Document has page_content
+✔ Document has metadata
+✔ Metadata travels with chunks
+✔ Metadata stored in vector DB
+Next we use it.
+⸻
+Next step (we continue building)
+Next we implement:
+Metadata filtering retrieval (actual usage)
+We will modify your retriever to filter using metadata.
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+------------------------------------------------------------------------------------------------------------------------------------------------------
+
+4.embeddings_my_querytopdf.py (FULL CODE – ingestion)
+Copy completely:
+from langchain_chroma import Chroma
+from langchain_openai import AzureOpenAIEmbeddings
+from langchain_community.document_loaders import TextLoader
+from langchain_text_splitters import RecursiveCharacterTextSplitter
+from dotenv import load_dotenv
+import os
+load_dotenv()
+# Embedding model
+embeddings = AzureOpenAIEmbeddings(
+   azure_deployment=os.getenv("AZURE_OPENAI_EMBEDDING_DEPLOYMENT_NAME"),
+   openai_api_key=os.getenv("AZURE_OPENAI_API_KEY"),
+   openai_api_version=os.getenv("AZURE_OPENAI_API_VERSION"),
+   azure_endpoint=os.getenv("AZURE_OPENAI_ENDPOINT"),
+   chunk_size=1024
+)
+# Text splitter
+text_splitter = RecursiveCharacterTextSplitter(
+   chunk_size=800,
+   chunk_overlap=100
+)
+# Load document
+loader = TextLoader(
+   r"C:\Users\2000137378\Desktop\newproject\RAG_PIPELINES\mytext.txt",
+   encoding="utf-8"
+)
+documents = loader.load()
+# Split into chunks
+chunks = text_splitter.split_documents(documents)
+# ADD METADATA HERE
+for chunk in chunks:
+   chunk.metadata["doc_type"] = "insurance"
+   chunk.metadata["category"] = "underwriting"
+   chunk.metadata["source_file"] = "mytext.txt"
+
+# Directory to store vectors
+my_dir = os.path.join(
+   os.path.dirname(os.path.abspath(__file__)),
+   "input"
+)
+# Create vector DB
+vectorstore = Chroma.from_documents(
+   documents=chunks,
+   embedding=embeddings,
+   collection_name="my_collection",
+   persist_directory=my_dir
+)
+print("\nTotal chunks:",len(chunks))
+print("\nFirst chunk text:")
+print(chunks[0].page_content[:150])
+print("\nFirst chunk metadata:")
+print(chunks[0].metadata)
+
+⸻
+IMPORTANT STEP (DO THIS)
+Delete your vector DB first:
+Delete folder:
+RAG_PIPELINES/input
+Then run:
+python 4.embeddings_my_querytopdf.py
+You should see metadata printed.
+⸻
+6.retriever.py (FULL CODE – metadata filtering retrieval)
+Copy fully:
+from langchain_chroma import Chroma
+from langchain_openai import AzureOpenAIEmbeddings, AzureChatOpenAI
+from langchain_core.prompts import PromptTemplate
+from langchain_classic.chains.llm import LLMChain
+from dotenv import load_dotenv
+import os
+import asyncio
+load_dotenv()
+# Embeddings
+embeddings = AzureOpenAIEmbeddings(
+   azure_deployment=os.getenv("AZURE_OPENAI_EMBEDDING_DEPLOYMENT_NAME"),
+   openai_api_key=os.getenv("AZURE_OPENAI_API_KEY"),
+   openai_api_version=os.getenv("AZURE_OPENAI_API_VERSION"),
+   azure_endpoint=os.getenv("AZURE_OPENAI_ENDPOINT"),
+   chunk_size=1024
+)
+
+def query_documents(vectordb, user_query):
+   print("\nProcessing query:",user_query)
+   llm = AzureChatOpenAI(
+       openai_api_key=os.getenv("AZURE_OPENAI_API_KEY"),
+       azure_endpoint=os.getenv("AZURE_OPENAI_ENDPOINT"),
+       openai_api_version=os.getenv("AZURE_OPENAI_API_VERSION"),
+       deployment_name=os.getenv("AZURE_OPENAI_CHAT_DEPLOYMENT"),
+       temperature=0
+   )
+   print("\nPerforming metadata filtered search...")
+   # METADATA FILTER HERE
+   relevant_chunks = vectordb.similarity_search(
+       user_query,
+       k=5,
+       filter={"doc_type":"insurance"}
+   )
+   print("\nChunks retrieved:",len(relevant_chunks))
+   if not relevant_chunks:
+       return "No relevant information found"
+   # Print metadata to confirm filtering
+   print("\nMetadata of retrieved chunks:")
+   for chunk in relevant_chunks:
+       print(chunk.metadata)
+   # Build context
+   context = "\n".join(
+       chunk.page_content for chunk in relevant_chunks
+   )
+   # Prompt
+   qa_prompt = PromptTemplate(
+       input_variables=["context","question"],
+       template="""
+Answer the question using only the context.
+QUESTION:
+{question}
+CONTEXT:
+{context}
+ANSWER:
+"""
+   )
+   chain = LLMChain(
+       llm=llm,
+       prompt=qa_prompt
+   )
+   answer = chain.run({
+       "context":context,
+       "question":user_query
+   })
+   return answer
+
+async def process_query():
+   vector_db_path = r"C:\Users\2000137378\Desktop\newproject\RAG_PIPELINES\input"
+   vectordb = Chroma(
+       embedding_function=embeddings,
+       persist_directory=vector_db_path,
+       collection_name="my_collection"
+   )
+   answer = query_documents(
+       vectordb,
+       "Give me the Year Built"
+   )
+   print("\nFinal Answer:\n")
+   print(answer)
+
+if __name__ == "__main__":
+   asyncio.run(process_query())
+
+⸻
+Expected output
+You should see:
+Processing query: Give me the Year Built
+Performing metadata filtered search...
+Chunks retrieved: 5
+Metadata:
+{'doc_type':'insurance',...}
+Final Answer:
+Year Built: 1998 (renovations 2019, 2023)
+
+⸻
+What you just built (important)
+You now have:
+Document
+↓
+Chunking
+↓
+Metadata tagging
+↓
+Vector storage
+↓
+Metadata filtered retrieval
+↓
+LLM answer
+This is real production RAG structure.
+⸻
+Next real upgrade (what engineers do next)
+Next powerful step would be:
+Automatic section detection
+Example:
+Chunk contains:
+Claims History
+Metadata becomes:
+section = claims
+Then retrieval becomes:
+filter={"section":"claims"}
+This is how document AI becomes structured.
+⸻
+If you want next real engineer step:
+“Next automatic section metadata tagging”
+(This is where your underwriting AI starts becoming truly intelligent.)

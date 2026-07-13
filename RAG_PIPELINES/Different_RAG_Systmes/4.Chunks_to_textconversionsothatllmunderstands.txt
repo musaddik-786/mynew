@@ -1,0 +1,124 @@
+No.
+LLM never sees vectors. LLM only sees normal text chunks.
+⸻
+What format chunks exist in (two versions)
+Every chunk actually exists in two forms in your system:
+When you created vector DB:
+Chunk text:
+"The building was constructed in 1930"
+Chunk vector:
+[0.21, 0.77, 0.33, 0.91]
+So internally database stores:
+TEXT  +  VECTOR
+But they are used for different purposes.
+⸻
+Who uses what
+Embedding search uses:
+Vectors only
+LLM uses:
+Text only
+So flow is:
+Text chunk → converted to vector → stored
+Query → converted to vector → compared
+Matching chunks found
+Then:
+Vector DB returns TEXT (not vectors)
+Important:
+Vector DB returns:
+chunk.page_content
+Which is text.
+⸻
+Proof from your code
+Look here:
+context = "\n".join(
+   [chunk.page_content for chunk in relevant_chunks]
+)
+Notice:
+chunk.page_content
+This is text.
+Not vector.
+If it was vector it would look like:
+[0.21,0.33,0.87]
+But it is:
+"The building was constructed in 1930"
+
+⸻
+What LLM actually receives
+Your LLM gets:
+QUESTION:
+When was building made?
+CONTEXT:
+The building was constructed in 1930.
+Construction completed in 1931.
+No numbers.
+No vectors.
+Only readable text.
+⸻
+Why LLM cannot read vectors
+LLMs are trained on:
+Language
+Words
+Sentences
+Documents
+Not on:
+[0.231,0.445,0.991]
+Vectors are mathematical representation only for similarity math.
+LLM works on language.
+⸻
+Simple analogy
+Think like this:
+Vector DB = Google search
+LLM = ChatGPT
+Google finds pages using math.
+ChatGPT reads pages using language.
+ChatGPT does not see Google’s ranking math.
+Same here.
+⸻
+Very clean mental model
+Remember this forever:
+Vectors are only for FINDING
+Text is for UNDERSTANDING
+OR even simpler:
+Vectors → search
+Text → answer
+
+⸻
+Full pipeline with formats
+Your pipeline actually looks like this:
+User query (TEXT)
+       ↓
+Embedding model
+       ↓
+Query vector (NUMBERS)
+       ↓
+Vector similarity search
+       ↓
+Matching chunk vectors
+       ↓
+Corresponding chunk TEXT returned
+       ↓
+LLM reads TEXT
+       ↓
+Answer generated
+Important transition:
+VECTOR → TEXT transition happens before LLM
+
+⸻
+One line answer
+Your question:
+chunks that llm sees are they in vector form?
+Answer:
+No. LLM only sees the chunk text, never the vectors.
+Vectors are only used temporarily to find which chunks to send.
+⸻
+One small extra insight (useful later in your Omnicore project)
+When people say:
+“LLM reads embeddings”
+That is technically wrong.
+Correct is:
+“Embeddings help select text that LLM reads.”
+⸻
+If you want, next I can show you something that suddenly makes RAG crystal clear for most engineers:
+Why RAG is basically just a smart prompt builder (nothing more).
+That realization usually removes the remaining confusion.Good question. This is exactly where many beginners get confused.
+Short answer:

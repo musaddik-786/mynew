@@ -1,0 +1,564 @@
+That’s completely normal.
+
+You understood the theory flow, but now when you open the code, you see:
+
+async def run_mcp(...)
+ingest(...)
+process_retrieval_pg(...)
+execute_values(...)
+
+and it feels disconnected from the diagram.
+
+The problem is that you are trying to map:
+
+Theory
+↓
+Entire Codebase
+
+in one jump.
+
+Instead let’s map one box of the RAG diagram to one function in the code.
+
+⸻
+
+Step 1: Start from run_mcp()
+
+Forget every other file.
+
+Imagine somebody calls:
+
+await run_mcp(
+    reference_id="REF123",
+    document_type="accord",
+    blob_url="blob_url_here",
+    blob_name=None
+)
+
+Question:
+
+What is run_mcp actually doing?
+
+Answer:
+
+async def run_mcp(...)
+
+is the conductor of the orchestra.
+
+It doesn’t do the work.
+
+It tells others what to do.
+
+Like:
+
+Manager
+ |
+ +--> Employee 1
+ |
+ +--> Employee 2
+ |
+ +--> Employee 3
+
+Look at this:
+
+account, container, blob = resolve_blob(blob_url, blob_name)
+
+Then
+
+ingest(reference_id, account, container, blob)
+
+Then
+
+insert_attachment_info(...)
+
+Then
+
+process_retrieval_pg(...)
+
+So visually:
+
+run_mcp
+ |
+ +--> resolve_blob
+ |
+ +--> ingest
+ |
+ +--> insert_attachment_info
+ |
+ +--> process_retrieval_pg
+
+Notice:
+
+run_mcp itself does almost nothing.
+
+It just coordinates.
+
+⸻
+
+Step 2: What does resolve_blob() do?
+
+Look at:
+
+account, container, blob = resolve_blob(blob_url, blob_name)
+
+Suppose blob url is:
+
+https://storage.blob.core.windows.net/docs/file.txt
+
+Inside:
+
+split_blob_url(blob_url)
+
+returns:
+
+account_url = "https://storage.blob.core.windows.net"
+container = "docs"
+blob_name = "file.txt"
+
+So after this line:
+
+account, container, blob = resolve_blob(...)
+
+variables become:
+
+account   = https://storage.blob.core.windows.net
+container = docs
+blob      = file.txt
+
+Nothing magical.
+
+Just string parsing.
+
+⸻
+
+Step 3: Then run_mcp calls ingest()
+
+Now we enter:
+
+ingest(
+    reference_id,
+    account,
+    container,
+    blob
+)
+
+The theory said:
+
+Blob
+ ↓
+Text
+ ↓
+Chunks
+ ↓
+Embeddings
+ ↓
+PGVector
+
+Let’s find those exact lines.
+
+⸻
+
+Blob → Text
+
+This line:
+
+text = read_txt_from_blob(
+    account_url,
+    container,
+    blob_name
+)
+
+Suppose blob contains:
+
+Policy Number: POL123
+Named Insured: ABC Corp
+
+After execution:
+
+text =
+"""
+Policy Number: POL123
+Named Insured: ABC Corp
+"""
+
+Now theory:
+
+Blob
+ ↓
+Text
+
+Code:
+
+text = read_txt_from_blob(...)
+
+Direct mapping.
+
+⸻
+
+Step 4: Text → Chunks
+
+Theory:
+
+Text
+ ↓
+Chunks
+
+Code:
+
+chunks = chunk_text(text)
+
+Suppose text is:
+
+Policy Number: POL123
+Named Insured: ABC Corp
+Coverage Limit: 1M
+
+chunk_text() returns:
+
+[
+   (1,0,"Policy Number: POL123"),
+   (1,1,"Named Insured: ABC Corp"),
+   (1,2,"Coverage Limit: 1M")
+]
+
+Let’s understand tuple.
+
+One chunk:
+
+(1,0,"Policy Number: POL123")
+
+means:
+
+page = 1
+chunk_index = 0
+chunk_content =
+"Policy Number: POL123"
+
+⸻
+
+Step 5: Chunks → Embeddings
+
+Theory:
+
+Chunk
+ ↓
+Embedding
+
+Code:
+
+embeddings = embed_texts(
+    [c[2] for c in chunks]
+)
+
+This line confuses many beginners.
+
+Let’s break it.
+
+Suppose:
+
+chunks =
+[
+   (1,0,"Policy Number"),
+   (1,1,"Named Insured")
+]
+
+Then:
+
+[c[2] for c in chunks]
+
+becomes:
+
+[
+   "Policy Number",
+   "Named Insured"
+]
+
+Then:
+
+embed_texts(...)
+
+calls Azure OpenAI.
+
+Returns:
+
+[
+   [0.12,0.34,0.89...],
+   [0.77,0.21,0.44...]
+]
+
+Now:
+
+chunk 1
+↔
+embedding 1
+chunk 2
+↔
+embedding 2
+
+⸻
+
+Step 6: Embeddings → Database
+
+Theory:
+
+Embedding
+ ↓
+Vector DB
+
+Code:
+
+Eventually reaches:
+
+execute_values(...)
+
+Inside rows_to_insert:
+
+(
+    doc_id,
+    source,
+    page,
+    idx,
+    chunk_content,
+    content_hash,
+    vec(emb),
+    metadata,
+    reference_id,
+    attachment_id
+)
+
+Imagine:
+
+(
+ "abc123",
+ "file.txt",
+ 1,
+ 0,
+ "Policy Number: POL123",
+ "HASH123",
+ "[0.12,0.44,0.78]",
+ '{"chunk":0}',
+ "REF123",
+ "file.txt"
+)
+
+Inserted into PGVector table.
+
+Now theory:
+
+Blob
+ ↓
+Text
+ ↓
+Chunks
+ ↓
+Embeddings
+ ↓
+PGVector
+
+matches exactly:
+
+read_txt_from_blob()
+chunk_text()
+embed_texts()
+execute_values()
+
+⸻
+
+Step 7: Now Retrieval Starts
+
+Back in:
+
+run_mcp()
+
+next line:
+
+process_retrieval_pg(...)
+
+Now we enter Retrieval Phase.
+
+Theory:
+
+Question
+ ↓
+Embedding
+ ↓
+Similarity Search
+ ↓
+Relevant Chunks
+ ↓
+LLM
+ ↓
+Answer
+
+But your project doesn’t use user questions.
+
+Instead it uses attributes.
+
+Example:
+
+{
+  "policy_number": {},
+  "named_insured": {},
+  "coverage_limit": {}
+}
+
+Each attribute behaves like a question.
+
+⸻
+
+Step 8: Attribute = Question
+
+Suppose:
+
+attr = "policy_number"
+
+Think of it as:
+
+Question:
+"What is the policy number?"
+
+Now:
+
+vectordb.similarity_search(
+    attr,
+    k
+)
+
+runs.
+
+⸻
+
+Step 9: similarity_search()
+
+This is the most important RAG function.
+
+Look:
+
+vec = self.embeddings.embed_query(query)
+
+Suppose:
+
+query = "policy_number"
+
+becomes:
+
+[0.88,0.12,0.77...]
+
+Query embedding generated.
+
+⸻
+
+Then:
+
+ORDER BY embedding <=> query_vector
+
+This means:
+
+Find nearest chunks
+
+inside PGVector.
+
+⸻
+
+Suppose database contains:
+
+Chunk A:
+Named Insured ABC
+Chunk B:
+Policy Number POL123
+Chunk C:
+Coverage Limit 1M
+
+Distances:
+
+Chunk A → 0.8
+Chunk B → 0.1
+Chunk C → 0.7
+
+PGVector returns:
+
+Chunk B
+
+because it is closest.
+
+⸻
+
+Step 10: Why attribute_contexts exists
+
+After retrieval:
+
+attribute_contexts
+
+becomes:
+
+{
+   "policy_number":
+   {
+      "instruction":"Extract policy number",
+      "context":"Policy Number POL123"
+   },
+   "named_insured":
+   {
+      "instruction":"Extract insured",
+      "context":"ABC Corp"
+   }
+}
+
+Now you have gathered evidence.
+
+Think:
+
+Retriever finished work.
+
+⸻
+
+Step 11: One Big LLM Call
+
+Now:
+
+json.dumps(attribute_contexts)
+
+is sent to:
+
+chain.invoke(...)
+
+Prompt receives:
+
+{
+   "policy_number":
+   {
+      "context":"Policy Number POL123"
+   }
+}
+
+LLM returns:
+
+{
+   "policy_number":"POL123"
+}
+
+That’s the answer generation step of RAG.
+
+⸻
+
+The Most Important Mapping
+
+Whenever you forget the code, remember this table:
+
+Theory	Code
+Document	Blob Storage
+Read Document	read_txt_from_blob()
+Chunking	chunk_text()
+Embeddings	embed_texts()
+Vector DB	pgvector table
+Store vectors	execute_values()
+Question	attribute
+Query embedding	embed_query()
+Similarity search	similarity_search()
+Retrieved chunks	docs
+Context creation	attribute_contexts
+LLM generation	chain.invoke()
+Final JSON	extracted
+
+This table is the bridge between the RAG theory and your code.
+
+The next step would be to open only one function — similarity_search() — and explain every single line (including the SQL query, vector creation, <=> operator, and returned Document objects) because that function is the heart of retrieval and usually where people get lost.

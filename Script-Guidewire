@@ -1,0 +1,51 @@
+
+Musaddique Lalkot
+0 minutes 9 seconds0:09
+Musaddique Lalkot 0 minutes 9 seconds
+Now let's see the agentic underwriting process flow with guide wire.
+Musaddique Lalkot 0 minutes 15 seconds
+The process starts from when the broker sends the submission e-mail with the attachments to the and that mail now comes to the insurer's mailbox.
+Musaddique Lalkot 0 minutes 26 seconds
+The e-mail intent agent gets triggered where it checks the intent of the e-mail based on the subject and the body.
+Musaddique Lalkot 0 minutes 36 seconds
+Duplicate check is performed and if there is no duplicate attachments, only then the attachments are downloaded.
+Musaddique Lalkot 0 minutes 47 seconds
+After which data is extracted from those particular attachments and the JSON is passed to the eligibility check agent, which determines if the risk qualifies for the underwriting.
+Musaddique Lalkot 1 minute 4 seconds
+Now risk assessment agent comes into the picture where it evaluates the risks and classifies them using some key attributes.
+Musaddique Lalkot 1 minute 17 seconds
+Also, the summary of the risk is generated through the risk summarization.
+Musaddique Lalkot 1 minute 26 seconds
+Which also provides the chat based Q&A to the underwriter.
+Musaddique Lalkot 1 minute 36 seconds
+Now the Jason is passed.
+Musaddique Lalkot 1 minute 40 seconds
+The Guidewire Rising engine.
+Musaddique Lalkot 1 minute 45 seconds
+After which?
+Musaddique Lalkot 2 minutes 10 seconds
+After which it is passed to the Guidewire policy admin system where Guidewire.
+Musaddique Lalkot 2 minutes 19 seconds
+Generates the code and a code document is created.
+Musaddique Lalkot 2 minutes 27 seconds
+Now the code document along with refill e-mail body is sent to the brokers mailbox.
+Musaddique Lalkot 2 minutes 47 seconds
+Sorry, now the code document along with the pre-filled e-mail body is sent to the draft folder of the insurer, after which the underwriter decide whether to send the code.
+Musaddique Lalkot 3 minutes 3 seconds
+The broker.
+Musaddique Lalkot 3 minutes 6 seconds
+Once broker confirms the code acceptance, then writing key through the mail.
+Musaddique Lalkot 3 minutes 13 seconds
+And once the mail comes to the insurer's mailbox now.
+Musaddique Lalkot 3 minutes 23 seconds
+The policy admin system of the Guidewire generates a policy document and now the submission is bound.
+Musaddique Lalkot 3 minutes 35 seconds
+The policy documents are issued and shared and a payment is requested through the payment gateway. The policy will successfully be activated.
+Musaddique Lalkot 3 minutes 47 seconds
+After the payment.
+Musaddique Lalkot 3 minutes 51 seconds
+So this is how our AI agent tech workflow.
+Musaddique Lalkot 3 minutes 58 seconds
+Of the underwriting process.
+Musaddique Lalkot 4 minutes 2 seconds
+Is with the guide wire.

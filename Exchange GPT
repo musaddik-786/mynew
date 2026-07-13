@@ -1,0 +1,238 @@
+Perfect 👍
+This is a clean architectural decision and actually better for performance and security.
+
+You want:
+	•	❌ No downloading JSON to disk
+	•	✅ Read JSON directly from Azure Blob
+	•	✅ Keep the same API contract
+	•	✅ Give COMPLETE working code for ALL files
+
+Below is a FULL END-TO-END REWRITE, minimal changes, no extra complexity, and fully aligned with your current project.
+
+⸻
+
+✅ New High-Level Flow (Updated)
+
+Client calls API
+ ↓
+Router → Handler
+ ↓
+Handler validates env
+ ↓
+Read JSON directly from Azure Blob (memory)
+ ↓
+Map JSON → Canonical model
+ ↓
+Build Guidewire payloads
+ ↓
+Call Guidewire APIs
+ ↓
+Return response
+
+👉 No file system usage at all
+
+⸻
+
+📁 Files we will CHANGE
+	•	storage_utils.py ✅ (new function)
+	•	handler.py ✅
+
+📁 Files that stay SAME
+	•	main.py
+	•	router.py
+	•	service.py
+	•	test_script.py
+	•	payload builders, mappers, client (from previous steps)
+
+⸻
+
+🔧 1️⃣ storage_utils.py (READ JSON DIRECTLY)
+
+✅ NEW FUNCTION: read_json_from_blob
+
+❌ REMOVED: file writing logic
+
+# storage_utils.py
+import json
+from azure.storage.blob.aio import BlobServiceClient
+from azure.core.exceptions import ResourceNotFoundError
+from service import AZURE_STORAGE_CONNECTION_STRING, _parse_blob_url
+
+
+async def read_json_from_blob(blob_url: str) -> dict:
+    """
+    Reads a JSON file directly from Azure Blob Storage and returns it as dict.
+    No local file system usage.
+    """
+    if not AZURE_STORAGE_CONNECTION_STRING:
+        raise RuntimeError("AZURE_STORAGE_CONNECTION_STRING not set")
+
+    container, blob_path = _parse_blob_url(blob_url)
+
+    async with BlobServiceClient.from_connection_string(
+        AZURE_STORAGE_CONNECTION_STRING
+    ) as service:
+        container_client = service.get_container_client(container)
+        blob_client = container_client.get_blob_client(blob_path)
+
+        try:
+            await blob_client.get_blob_properties()
+        except ResourceNotFoundError:
+            raise FileNotFoundError(
+                f"Blob not found: container={container}, blob={blob_path}"
+            )
+
+        stream = await blob_client.download_blob()
+        raw_bytes = await stream.readall()
+
+    return json.loads(raw_bytes.decode("utf-8"))
+
+
+⸻
+
+🔁 2️⃣ handler.py (NO DOWNLOAD, DIRECT READ)
+
+❌ Removed:
+	•	INPUT_FOLDER
+	•	download_blob_to_input_folder
+	•	file I/O
+
+✅ Uses read_json_from_blob
+
+# handler.py
+from typing import Dict, Any
+from service import _require_env
+from storage_utils import read_json_from_blob
+
+from mappers.document_mapper import map_document_to_canonical
+from payload_builders.account_payload import build_account_payload
+from payload_builders.job_payload import build_job_payload
+from payload_builders.location_payload import build_location_payload
+from payload_builders.coverage_payloads import get_coverages
+from clients.guidewire_client import post
+
+
+async def classify_blob_pdf_layout(blob_url: str) -> Dict[str, Any]:
+    """
+    Reads JSON directly from Azure Blob and calls Guidewire APIs
+    """
+    try:
+        _require_env()
+    except Exception as e:
+        return {"status": False, "error": f"Environment misconfigured: {e}"}
+
+    try:
+        # 1️⃣ Read JSON directly from blob
+        document = await read_json_from_blob(blob_url)
+
+        # 2️⃣ Map JSON → Canonical model
+        canonical = map_document_to_canonical(document)
+
+        # 3️⃣ Create Account
+        account_resp = post(
+            "/account/v1/accounts",
+            build_account_payload(canonical)
+        )
+        account_id = account_resp["data"]["attributes"]["id"]
+
+        # 4️⃣ Create Job
+        job_resp = post(
+            "/job/v1/submissions",
+            build_job_payload(account_id, canonical)
+        )
+        job_id = job_resp["data"]["attributes"]["id"]
+
+        # 5️⃣ Create Location
+        location_resp = post(
+            f"/job/v1/jobs/{job_id}/lines/GOCommercialLine/locations",
+            build_location_payload(canonical)
+        )
+        location_id = location_resp["data"]["attributes"]["id"]
+
+        # 6️⃣ Post Coverages
+        for coverage in get_coverages():
+            post(
+                f"/job/v1/jobs/{job_id}/lines/GOCommercialLine/coverages",
+                {"data": {"attributes": coverage}}
+            )
+
+        # 7️⃣ Quote
+        quote_resp = post(
+            f"/job/v1/jobs/{job_id}/quote",
+            {}
+        )
+
+        return {
+            "status": True,
+            "accountId": account_id,
+            "jobId": job_id,
+            "locationId": location_id,
+            "quote": quote_resp
+        }
+
+    except Exception as e:
+        return {"status": False, "error": str(e)}
+
+
+⸻
+
+🧩 3️⃣ service.py (UNCHANGED)
+
+✔ Your existing service.py is perfect
+✔ _parse_blob_url is reused
+✔ _require_env still valid
+
+👉 No changes needed
+
+⸻
+
+🌐 4️⃣ router.py (UNCHANGED)
+
+Works exactly the same — still receives attachment_url.
+
+⸻
+
+🚀 5️⃣ main.py (UNCHANGED)
+
+No changes required.
+
+⸻
+
+🧪 6️⃣ test_script.py (UNCHANGED)
+
+Still works exactly the same.
+
+⸻
+
+✅ What You Achieved (IMPORTANT)
+
+✔ Technical Improvements
+	•	No disk I/O
+	•	Faster execution
+	•	Stateless service
+	•	Cloud-native design
+	•	Works well in containers & serverless
+
+✔ Architectural Cleanliness
+	•	Storage layer only reads data
+	•	Handler orchestrates
+	•	No side effects
+	•	Easier to test & debug
+
+✔ Manager-level Win
+
+You can confidently say:
+
+“We now read structured documents directly from Azure Blob into memory and drive downstream underwriting APIs without any intermediate persistence.”
+
+That’s enterprise-grade.
+
+⸻
+
+If you want next:
+	•	Support both PDF & JSON
+	•	Add schema validation
+	•	Add retry + circuit breaker
+	•	Convert this to Guidewire batch request format
+
+Just tell me 👍

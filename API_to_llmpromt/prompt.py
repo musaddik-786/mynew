@@ -1,0 +1,117 @@
+import os
+from dotenv import load_dotenv
+from pypdf import PdfReader
+
+from langchain_openai import AzureChatOpenAI, AzureOpenAIEmbeddings
+from langchain_chroma import Chroma
+from langchain_text_splitters import RecursiveCharacterTextSplitter
+from langchain_core.prompts import ChatPromptTemplate
+from langchain_core.runnables import RunnablePassthrough
+
+# -------------------------------------------------
+# Load environment variables (ONCE)
+# -------------------------------------------------
+load_dotenv()
+
+AZURE_OPENAI_API_KEY = os.getenv("AZURE_OPENAI_API_KEY")
+AZURE_OPENAI_ENDPOINT = os.getenv("AZURE_OPENAI_ENDPOINT")
+AZURE_OPENAI_API_VERSION = os.getenv("AZURE_OPENAI_API_VERSION")
+
+CHAT_DEPLOYMENT = os.getenv("AZURE_OPENAI_CHAT_DEPLOYMENT")
+EMBED_DEPLOYMENT = os.getenv("AZURE_OPENAI_EMBEDDING_DEPLOYMENT_NAME")
+
+# Hard fail early if config is wrong
+assert EMBED_DEPLOYMENT, "Embedding deployment name missing"
+assert CHAT_DEPLOYMENT, "Chat deployment name missing"
+
+# -------------------------------------------------
+# PDF Reader
+# -------------------------------------------------
+def read_pdf_text(pdf_path: str) -> str:
+    reader = PdfReader(pdf_path)
+    text = ""
+    for page in reader.pages:
+        text += page.extract_text() or ""
+    return text
+
+# -------------------------------------------------
+# Chunking
+# -------------------------------------------------
+def create_documents(text: str):
+    splitter = RecursiveCharacterTextSplitter(
+        chunk_size=1000,
+        chunk_overlap=200
+    )
+    return splitter.create_documents([text])
+
+# -------------------------------------------------
+# Main RAG
+# -------------------------------------------------
+def rag_chat(pdf_path: str):
+    print("📄 Reading PDF...")
+    text = read_pdf_text(pdf_path)
+
+    print("✂️ Splitting text...")
+    documents = create_documents(text)
+
+    print("🔢 Initializing Azure embeddings...")
+    embeddings = AzureOpenAIEmbeddings(
+        azure_deployment=EMBED_DEPLOYMENT,   # ✅ DEPLOYMENT NAME
+        openai_api_key=AZURE_OPENAI_API_KEY,
+        azure_endpoint=AZURE_OPENAI_ENDPOINT,
+        openai_api_version=AZURE_OPENAI_API_VERSION,
+        chunk_size=1024
+    )
+
+    print("📦 Creating vector store...")
+    vectorstore = Chroma.from_documents(
+        documents=documents,
+        embedding=embeddings,
+        persist_directory="./chroma_db"
+    )
+
+    retriever = vectorstore.as_retriever(search_kwargs={"k": 4})
+
+    print("🤖 Initializing chat model...")
+    llm = AzureChatOpenAI(
+        deployment_name=CHAT_DEPLOYMENT,
+        openai_api_key=AZURE_OPENAI_API_KEY,
+        azure_endpoint=AZURE_OPENAI_ENDPOINT,
+        openai_api_version=AZURE_OPENAI_API_VERSION,
+        temperature=0
+    )
+
+    prompt = ChatPromptTemplate.from_template(
+        """You are a helpful assistant.
+Use ONLY the context below to answer the question.
+If the answer is not in the context, then you can use your understanding to answer the question".
+
+Context:
+{context}
+
+Question:
+{question}
+"""
+    )
+
+    def format_docs(docs):
+        return "\n\n".join(doc.page_content for doc in docs)
+
+    rag_chain = (
+        {
+            "context": retriever | format_docs,
+            "question": RunnablePassthrough(),
+        }
+        | prompt
+        | llm
+    )
+
+    print("\n✅ RAG chat started (type 'exit')\n")
+
+    while True:
+        query = input("Question: ")
+        if query.lower() == "exit":
+            break
+
+        response = rag_chain.invoke(query)
+        print("\nAnswer:\n", response.content, "\n")

@@ -1,0 +1,69 @@
+this is my quote response looks good right?
+HTTP Status: 200
+{
+    "jsonrpc": "2.0",
+    "id": 1,
+    "result": {
+        "status": true,
+        "jobId": "pc:S1LF2pHIWNxDzBiswleQE",
+        "quote": {
+            "data": {
+                "attributes": {
+                    "account": {
+                        "displayName": "0670827233",
+                        "id": "pc:SPgD6JmdQkwS32HJOQ-R6",
+                        "type": "Account",
+                        "uri": "/account/v1/accounts/pc:SPgD6JmdQkwS32HJOQ-R6"
+                    },
+                    "baseState": {
+                        "code": "FL",
+                        "name": "Florida"
+                    },
+                    "createdDate": "2026-02-18T05:33:57.993Z",
+                    "editLocked": true,
+                    "id": "pc:S1LF2pHIWNxDzBiswleQE",
+                    "jobEffectiveDate": "2026-01-01T05:01:00.000Z",
+                    "jobNumber": "0037909394",
+                    "jobStatus": {
+                        "code": "Quoted",
+                        "name": "Quoted"
+                    },
+                    "jobType": {
+                        "code": "Submission",
+                        "name": "Submission"
+                    },
+                    "organization": {
+                        "displayName": "Armstrong and Company",
+                        "id": "pc:1",
+                        "type": "Organization",
+                        "uri": "/admin/v1/organizations/pc:1"
+                    },
+                    "organizationOfService": {
+                        "displayName": "Armstrong and Company",
+                        "id": "pc:1",
+                        "type": "Organization",
+                        "uri": "/admin/v1/organizations/pc:1"
+                    },
+                    "periodEnd": "2027-01-01T05:01:00.000Z",
+                    "periodStart": "2026-01-01T05:01:00.000Z",
+                    "policyAddress": {
+                        "addressLine1": "100 Harbor View Drive",
+                        "addressType": {
+                            "code": "business",
+                            "name": "Business"
+                        },
+                        "city": "Daytona Beach",
+                        "country": "US",
+                        "displayName": "100 Harbor View Drive, Daytona Beach, FL 32118",
+                        "id": "384",
+                        "postalCode": "32118",
+                        "primaryNamedInsuredAddress": {
+                            "displayName": "100 Harbor View Drive, Daytona Beach, FL 32118",
+                            "id": "pc:SlIH8af-gG-tg_-vl4kYG"
+                        },
+                        "state": {
+
+but for binad and issue it looks like this which does not look good
+{'status': True, 'jobId': 'pc:S1LF2pHIWNxDzBiswleQE', 'policyResponse': {'data': {'attributes': {'account': {'displayName': '0670827233', 'id': 'pc:SPgD6JmdQkwS32HJOQ-R6', 'type': 'Account', 'uri': '/account/v1/accounts/pc:SPgD6JmdQkwS32HJOQ-R6'}, 'baseState': {'code': 'FL', 'name': 'Florida'}, 'closeDate': '2026-02-18T05:35:41.112Z', 'createdDate': '2026-02-18T05:33:57.993Z', 'id': 'pc:S1LF2pHIWNxDzBiswleQE', 'jobEffectiveDate': '2026-01-01T05:01:00.000Z', 'jobNumber': '0037909394', 'jobStatus': {'code': 'Bound', 'name': 'Bound'}, 'jobType': {'code': 'Submission', 'name': 'Submission'}, 'organization': {'displayName': 'Armstrong and Company', 'id': 'pc:1', 'type': 'Organization', 'uri': '/admin/v1/organizations/pc:1'}, 'organizationOfService': {'displayName': 'Armstrong and Company', 'id': 'pc:1', 'type': 'Organization', 'uri': '/admin/v1/organizations/pc:1'}, 'periodEnd': '2027-01-01T05:01:00.000Z', 'periodStart': '2026-01-01T05:01:00.000Z', 'policy': {'displayName': '9895471310', 'id': 'pc:SvwqFgRQ60LmL9KRfoR0I', 'type': 'Policy', 'uri': '/policy/v1/policies/pc:SvwqFgRQ60LmL9KRfoR0I'}, 'policyAddress': {'addressLine1': '100 Harbor View Drive', 'addressType': {'code': 'business', 'name': 'Business'}, 'city': 'Daytona Beach', 'country': 'US', 'displayName': '100 Harbor View Drive, Daytona Beach, FL 32118', 'id': '384', 'postalCode': '32118', 'primaryNamedInsuredAddress': {'displayName': '100 Harbor View Drive, Daytona Beach, FL 32118', 'id': 'pc:SlIH8af-gG-tg_-vl4kYG'}, 'state': {'code': 'FL', 'name': 'Florida'}}, 'policyNumber': '9895471310', 'preferredCoverageCurrency': {'code': 'usd', 'name': 'USD'}, 'preferredSettlementCurrency': {'code': 'usd', 'name': 'USD'}, 'primaryInsured': {'displayName': 'Sunflower Hotel Group LLC', 'id': 'pc:SNrh6h1V_0DtRNda5mapE', 'type': 'PolicyContact', 'uri': '/job/v1/jobs/pc:S1LF2pHIWNxDzBiswleQE/contacts/pc:SNrh6h1V_0DtRNda5mapE'}, 'primaryLocation': {'displayName': '1: 100 Harbor View Drive, Daytona Beach, FL', 'id': '704', 'type': 'PolicyLocation', 'uri': '/job/v1/jobs/pc:S1LF2pHIWNxDzBiswleQE/locations/704'}, 'producerCode': {'code': '100-002541', 'displayName': '100-002541', 'id': 'pc:6', 'type': 'ProducerCode', 'uri': '/admin/v1/producer-codes/pc:6'}, 'producerCodeOfService': {'code': '100-002541', 'displayName': '100-002541', 'id': 'pc:6', 'type': 'ProducerCode', 'uri': '/admin/v1/producer-codes/pc:6'}, 'product': {'displayName': 'GoCommercialProp', 'id': 'GoCommercialProp'}, 'quoteType': {'code': 'Full', 'name': 'Full Application'}, 'rateAsOfDate': '2026-02-18T05:33:58.694Z', 'taxesAndSurcharges': {'amount': '0.00', 'currency': 'usd'}, 'termNumber': 1, 'termType': {'code': 'Annual', 'name': 'Annual'}, 'totalCost': {'amount': '1696.13', 'currency': 'usd'}, 'totalPremium': {'amount': '1696.13', 'currency': 'usd'}, 'uwCompany': {'code': {'code': 'default', 'name': 'Default'}, 'displayName': 'Default', 'id': 'apd:1'}}, 'checksum': '04f53ae6d41d255e8ee72930301bdbde', 'links': {'activities': {'href': '/job/v1/jobs/pc:S1LF2pHIWNxDzBiswleQE/activities', 'methods': ['get', 'post']}, 'activity-assignees': {'href': '/job/v1/jobs/pc:S1LF2pHIWNxDzBiswleQE/activity-assignees', 'methods': ['get']}, 'activity-patterns': {'href': '/job/v1/jobs/pc:S1LF2pHIWNxDzBiswleQE/activity-patterns', 'methods': ['get']}, 'additional-named-insureds': {'href': '/job/v1/jobs/pc:S1LF2pHIWNxDzBiswleQE/additional-named-insureds', 'methods': ['get']}, 'assessment-summaries': {'href': '/job/v1/jobs/pc:S1LF2pHIWNxDzBiswleQE/assessment-summaries', 'methods': ['get']}, 'async-quote-issues': {'href': '/job/v1/jobs/pc:S1LF2pHIWNxDzBiswleQE/async-quote-issues', 'methods': ['get']}, 'coinsurance-agreements': {'href': '/job/v1/jobs/pc:S1LF2pHIWNxDzBiswleQE/coinsurance-agreements', 'methods': ['get']}, 'contacts': {'href': '/job/v1/jobs/pc:S1LF2pHIWNxDzBiswleQE/contacts', 'methods': ['get']}, 'contingencies': {'href': '/job/v1/jobs/pc:S1LF2pHIWNxDzBiswleQE/contingencies', 'methods': ['get']}, 'copy-submission': {'href': '/job/v1/jobs/pc:S1LF2pHIWNxDzBiswleQE/copy-submission', 'methods': ['post']}, 'costs': {'href': '/job/v1/jobs/pc:S1LF2pHIWNxDzBiswleQE/costs', 'methods': ['get']}, 'documents': {'href': '/job/v1/jobs/pc:S1LF2pHIWNxDzBiswleQE/documents', 'methods': ['get', 'post']}, 'foreign-exchange-rates': {'href': '/job/v1/jobs/pc:S1LF2pHIWNxDzBiswleQE/foreign-exchange-rates', 'methods': ['get']}, 'forms': {'href': '/job/v1/jobs/pc:S1LF2pHIWNxDzBiswleQE/forms', 'methods': ['get']}, 'history-events': {'href': '/job/v1/jobs/pc:S1LF2pHIWNxDzBiswleQE/history-events', 'methods': ['get']}, 'lines': {'href': '/job/v1/jobs/pc:S1LF2pHIWNxDzBiswleQE/lines', 'methods': ['get']}, 'locations': {'href': '/job/v1/jobs/pc:S1LF2pHIWNxDzBiswleQE/locations', 'methods': ['get']}, 'loss-history': {'href': '/job/v1/jobs/pc:S1LF2pHIWNxDzBiswleQE/loss-history', 'methods': ['get']}, 'modifiers': {'href': '/job/v1/jobs/pc:S1LF2pHIWNxDzBiswleQE/modifiers', 'methods': ['get']}, 'notes': {'href': '/job/v1/jobs/pc:S1LF2pHIWNxDzBiswleQE/notes', 'methods': ['get', 'post']}, 'oos-conflicts': {'href': '/job/v1/jobs/pc:S1LF2pHIWNxDzBiswleQE/oos-conflicts', 'methods': ['get']}, 'payment-info': {'href': '/job/v1/jobs/pc:S1LF2pHIWNxDzBiswleQE/payment-info', 'methods': ['get']}, 'payment-plans': {'href': '/job/v1/jobs/pc:S1LF2pHIWNxDzBiswleQE/payment-plans', 'methods': ['get']}, 'policy-sections': {'href': '/job/v1/jobs/pc:S1LF2pHIWNxDzBiswleQE/policy-sections', 'methods': ['get']}, 'prior-policies': {'href': '/job/v1/jobs/pc:S1LF2pHIWNxDzBiswleQE/prior-policies', 'methods': ['get']}, 'questions': {'href': '/job/v1/jobs/pc:S1LF2pHIWNxDzBiswleQE/questions', 'methods': ['get']}, 'rate-capping-groups': {'href': '/job/v1/jobs/pc:S1LF2pHIWNxDzBiswleQE/rate-capping-groups', 'methods': ['get']}, 'reinsurables': {'href': '/job/v1/jobs/pc:S1LF2pHIWNxDzBiswleQE/reinsurables', 'methods': ['get']}, 'self': {'href': '/job/v1/jobs/pc:S1LF2pHIWNxDzBiswleQE', 'methods': ['get']}, 'towers': {'href': '/job/v1/jobs/pc:S1LF2pHIWNxDzBiswleQE/towers', 'methods': ['get']}, 'transactions': {'href': '/job/v1/jobs/pc:S1LF2pHIWNxDzBiswleQE/transactions', 'methods': ['get']}, 'user-roles': {'href': '/job/v1/jobs/pc:S1LF2pHIWNxDzBiswleQE/user-roles', 'methods': ['get']}, 'uw-issues': {'href': '/job/v1/jobs/pc:S1LF2pHIWNxDzBiswleQE/uw-issues',
+(venv) Jarvis@JarvisPhase2:~/Musaddique/Guidewire_Integration_bind_and_Issue$ 
+

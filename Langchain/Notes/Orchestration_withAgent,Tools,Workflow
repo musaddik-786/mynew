@@ -1,0 +1,673 @@
+Nice, let’s put everything together in one mini “Omni-system”:
+• Tool calling
+• Agent
+• Workflow / pipeline
+• Orchestration (top-level control)
+All inside one file, with the same LLM and same tools, so you can feel the difference.
+⸻
+🧾 File structure
+Create folder:
+orchestration_full_demo/
+└── omni_demo.py
+.env (in same folder):
+OPENAI_API_KEY=your_key_here
+Install (if not already):
+pip install langchain langchain-openai langchain-core langchain-community python-dotenv
+
+⸻
+🧠 omni_demo.py — Full Example
+# omni_demo.py
+import os
+from dotenv import load_dotenv
+from langchain_openai import ChatOpenAI
+from langchain_core.tools import tool
+from langchain_core.prompts import ChatPromptTemplate
+from langchain_core.output_parsers import StrOutputParser
+from langchain_core.runnables import RunnableLambda
+from langchain.agents import create_openai_functions_agent, AgentExecutor
+load_dotenv()
+# =====================================================
+# SHARED: LLM
+# =====================================================
+llm = ChatOpenAI(
+   model="gpt-4o-mini",
+   temperature=0
+)
+# =====================================================
+# TOOLS (Plain Python functions turned into tools)
+# =====================================================
+@tool
+def calculator(expression: str) -> str:
+   """Evaluate a math expression, e.g. '10 + 20 * 3'."""
+   try:
+       result = eval(expression)
+       return str(result)
+   except Exception as e:
+       return f"Error: {e}"
+
+@tool
+def risk_score(age: int, sum_insured: int) -> str:
+   """
+   Very simple fake risk score:
+   score = age * 2 + sum_insured / 100000
+   """
+   try:
+       score = age * 2 + (sum_insured / 100000)
+       return str(score)
+   except Exception as e:
+       return f"Error: {e}"
+
+TOOLS = [calculator, risk_score]
+
+# =====================================================
+# 1) PURE TOOL CALLING CHAIN (no agent, no workflow)
+# =====================================================
+def build_tool_calling_chain():
+   """
+   This is a SIMPLE chain:
+     user input -> prompt -> LLM+tools (ONE shot) -> string
+   LLM can choose ANY of the bound tools, but there is
+   no multi-step loop here. One pass, then done.
+   """
+   prompt = ChatPromptTemplate.from_template(
+       """
+You are a helpful assistant. When the user asks you
+to calculate something, use the calculator tool.
+User question: {input}
+"""
+   )
+   llm_with_tools = llm.bind_tools([calculator])
+   chain = prompt | llm_with_tools | StrOutputParser()
+   return chain
+
+# =====================================================
+# 2) AGENT (multi-step, multi-tool reasoning)
+# =====================================================
+def build_agent():
+   """
+   This agent can:
+     - think in steps
+     - call calculator and risk_score multiple times
+     - decide sequence dynamically
+   """
+   prompt = ChatPromptTemplate.from_messages([
+       ("system",
+        "You are an underwriting helper. "
+        "You can use tools like calculator and risk_score "
+        "multiple times to figure things out."),
+       ("human", "{input}")
+   ])
+   agent_core = create_openai_functions_agent(
+       llm=llm,
+       tools=TOOLS,
+       prompt=prompt
+   )
+   agent_executor = AgentExecutor(
+       agent=agent_core,
+       tools=TOOLS,
+       verbose=True  # see tool calls & thoughts
+   )
+   return agent_executor
+
+# =====================================================
+# 3) WORKFLOW / PIPELINE (fixed sequence)
+# =====================================================
+def build_underwriting_workflow(agent_executor: AgentExecutor):
+   """
+   A FIXED pipeline for underwriting-style tasks:
+     1) Clean text
+     2) Ask agent to reason & use tools
+     3) Normalize the final answer
+   """
+   # Step 1: Clean text (pure Python)
+   def clean_text(text: str) -> str:
+       return " ".join(text.strip().split())
+   clean_step = RunnableLambda(clean_text)
+   # Step 2: Call agent in a fixed way
+   def run_agent_on_text(text: str) -> str:
+       """
+       This function calls the agent_executor in a fixed manner.
+       The agent inside can still do dynamic multi-tool reasoning,
+       but the workflow step itself is fixed.
+       """
+       result = agent_executor.invoke({"input": text})
+       # AgentExecutor returns a dict with key "output"
+       return result["output"]
+   agent_step = RunnableLambda(run_agent_on_text)
+   # Step 3: Normalize/format output (LLM or Python; here use LLM)
+   format_prompt = ChatPromptTemplate.from_template(
+       """
+You are formatting an underwriting result.
+Original result:
+{raw_result}
+Rewrite it as a short, clear decision for the user.
+"""
+   )
+   format_step = format_prompt | llm | StrOutputParser()
+   # FINAL WORKFLOW:
+   # input_text -> clean_step -> agent_step -> format_step
+   workflow = clean_step | agent_step | format_step
+   return workflow
+
+# =====================================================
+# 4) ORCHESTRATOR (top-level brain)
+# =====================================================
+def classify_request(user_input: str) -> str:
+   """
+   Very simple classifier:
+     - if "sum insured" or "age" present -> underwriting
+     - if it looks like pure math -> math
+     - else -> default agent
+   """
+   text = user_input.lower()
+   if "sum insured" in text or "sum assured" in text or "age" in text:
+       return "underwriting"
+   if any(op in text for op in ["+", "-", "*", "/"]):
+       return "math"
+   return "agent"
+
+def run_orchestrator():
+   """
+   THIS is orchestration:
+   1) Decide which path to use (math, underwriting, or general agent)
+   2) Call the appropriate chain / workflow / agent
+   3) Return the result to the user
+   It controls WHEN to use:
+     - direct tool calling chain
+     - workflow
+     - agent
+   """
+   tool_chain = build_tool_calling_chain()
+   agent_executor = build_agent()
+   workflow = build_underwriting_workflow(agent_executor)
+   print("\n=== ORCHESTRATED SYSTEM ===")
+   print("You can try examples like:")
+   print("  - 'Add 10 and 20'")
+   print("  - 'Customer age is 45, sum insured 500000, what is risk?'")
+   print("  - 'Help me understand risk scoring in simple terms'\n")
+   print("Type 'exit' to quit.\n")
+   while True:
+       user_input = input("You: ").strip()
+       if user_input.lower() in ("exit", "quit"):
+           break
+       route = classify_request(user_input)
+       if route == "math":
+           print("[Orchestrator] Route = TOOL CALLING (math)")
+           answer = tool_chain.invoke({"input": user_input})
+       elif route == "underwriting":
+           print("[Orchestrator] Route = WORKFLOW (underwriting pipeline)")
+           answer = workflow.invoke(user_input)
+       else:
+           print("[Orchestrator] Route = AGENT (general reasoning)")
+           result = agent_executor.invoke({"input": user_input})
+           answer = result["output"]
+       print("\nAI:", answer)
+       print("-" * 70)
+
+# =====================================================
+# MAIN
+# =====================================================
+if __name__ == "__main__":
+   run_orchestrator()
+
+⸻
+🧩 NOW — Where is what?
+Let’s map this to the 4 concepts:
+⸻
+🧷 1) Tool Calling (single-step, no loop)
+def build_tool_calling_chain():
+   prompt = ChatPromptTemplate.from_template(...)
+   llm_with_tools = llm.bind_tools([calculator])
+   chain = prompt | llm_with_tools | StrOutputParser()
+   return chain
+• This is not an agent.
+• Just one LLM call with a tool bound.
+• Meant for simple math queries.
+When the orchestrator routes to "math", it uses this chain:
+answer = tool_chain.invoke({"input": user_input})
+
+⸻
+🤖 2) Agent (multi-step, tool-using brain)
+def build_agent():
+   prompt = ChatPromptTemplate.from_messages([...])
+   agent_core = create_openai_functions_agent(
+       llm=llm,
+       tools=TOOLS,
+       prompt=prompt
+   )
+   agent_executor = AgentExecutor(
+       agent=agent_core,
+       tools=TOOLS,
+       verbose=True
+   )
+   return agent_executor
+• Here, agent_executor owns the loop:
+• think → tool → think → tool → final answer
+• It can call calculator and risk_score multiple times.
+The orchestrator uses it in two ways:
+• directly (for general queries):
+result = agent_executor.invoke({"input": user_input})
+answer = result["output"]
+
+• inside the workflow (see next).
+⸻
+🛤 3) Workflow / Pipeline (fixed sequence, developer-controlled)
+def build_underwriting_workflow(agent_executor: AgentExecutor):
+   clean_step = RunnableLambda(clean_text)
+   agent_step = RunnableLambda(run_agent_on_text)
+   format_step = format_prompt | llm | StrOutputParser()
+   workflow = clean_step | agent_step | format_step
+   return workflow
+This workflow is deterministic:
+1. clean_step → cleans user text
+2. agent_step → always calls the agent in a fixed way
+3. format_step → always formats result
+Order cannot change.
+LLM cannot decide to skip or reorder steps.
+Inside agent_step, the agent still has its own internal dynamic tool logic — but the outer pipeline order is fixed.
+The orchestrator uses this workflow when route == "underwriting":
+answer = workflow.invoke(user_input)
+
+⸻
+🎬 4) Orchestration (top-level brain)
+This is the director that decides which “actor” to use.
+Classifier:
+def classify_request(user_input: str) -> str:
+   text = user_input.lower()
+   if "sum insured" in text or "sum assured" in text or "age" in text:
+       return "underwriting"
+   if any(op in text for op in ["+", "-", "*", "/"]):
+       return "math"
+   return "agent"
+Orchestrator:
+def run_orchestrator():
+   tool_chain = build_tool_calling_chain()
+   agent_executor = build_agent()
+   workflow = build_underwriting_workflow(agent_executor)
+   while True:
+       user_input = input("You: ").strip()
+       route = classify_request(user_input)
+       if route == "math":
+           # → TOOL CALLING
+           answer = tool_chain.invoke({"input": user_input})
+       elif route == "underwriting":
+           # → WORKFLOW (which internally uses AGENT)
+           answer = workflow.invoke(user_input)
+       else:
+           # → AGENT
+           result = agent_executor.invoke({"input": user_input})
+           answer = result["output"]
+Here you see:
+• Orchestration is not a LangChain class.
+• It’s your own Python control logic that decides:
+• which chain to run
+• when to call an agent
+• when to call pure tools
+• when to run a workflow
+This is exactly what a real system (like your future Omnicore) does.
+⸻
+🧠 How to play with it
+Run:
+python omni_demo.py
+Try inputs:
+1. Math (Tool Calling path)
+• "Add 10 and 20"
+• "What is 50 - 5 * 2?"
+2. Underwriting (Workflow path)
+• "Customer age is 45, sum insured 500000, what is the risk?"
+• "Age 30, sum insured 1000000, please evaluate risk."
+3. General reasoning (Agent path)
+• "Explain how risk score works in simple terms."
+• "First calculate 10 + 20, then use that as an age and see risk for sum insured 300000."
+Watch the stdout:
+• It prints which route was chosen (tool, workflow, agent).
+• In agent cases, verbose=True will show tool calls and thoughts.
+⸻
+🎯 What you’ve learned here
+In one integrated demo, you now see:
+• Tool calling → direct bind_tools chain
+• Agent → create_openai_functions_agent + AgentExecutor
+• Workflow → clean_step | agent_step | format_step pipeline
+• Orchestration → Python logic choosing between them based on input
+This is exactly how real-world GenAI systems are structured.
+If you want next, we can:
+• Map this pattern to your insurance / Omnicore idea explicitly, or
+• Move further in the LangChain list (Model switching, Document processing, API calling), or
+• Start introducing LangGraph, which is basically a more powerful, graph-based orchestrator built on top of exactly these ideas.
+You tell me what you want next.Nice, let’s put everything together in one mini “Omni-system”:
+• Tool calling
+• Agent
+• Workflow / pipeline
+• Orchestration (top-level control)
+All inside one file, with the same LLM and same tools, so you can feel the difference.
+⸻
+🧾 File structure
+Create folder:
+orchestration_full_demo/
+└── omni_demo.py
+.env (in same folder):
+OPENAI_API_KEY=your_key_here
+Install (if not already):
+pip install langchain langchain-openai langchain-core langchain-community python-dotenv
+
+⸻
+🧠 omni_demo.py — Full Example
+# omni_demo.py
+import os
+from dotenv import load_dotenv
+from langchain_openai import ChatOpenAI
+from langchain_core.tools import tool
+from langchain_core.prompts import ChatPromptTemplate
+from langchain_core.output_parsers import StrOutputParser
+from langchain_core.runnables import RunnableLambda
+from langchain.agents import create_openai_functions_agent, AgentExecutor
+load_dotenv()
+# =====================================================
+# SHARED: LLM
+# =====================================================
+llm = ChatOpenAI(
+   model="gpt-4o-mini",
+   temperature=0
+)
+# =====================================================
+# TOOLS (Plain Python functions turned into tools)
+# =====================================================
+@tool
+def calculator(expression: str) -> str:
+   """Evaluate a math expression, e.g. '10 + 20 * 3'."""
+   try:
+       result = eval(expression)
+       return str(result)
+   except Exception as e:
+       return f"Error: {e}"
+
+@tool
+def risk_score(age: int, sum_insured: int) -> str:
+   """
+   Very simple fake risk score:
+   score = age * 2 + sum_insured / 100000
+   """
+   try:
+       score = age * 2 + (sum_insured / 100000)
+       return str(score)
+   except Exception as e:
+       return f"Error: {e}"
+
+TOOLS = [calculator, risk_score]
+
+# =====================================================
+# 1) PURE TOOL CALLING CHAIN (no agent, no workflow)
+# =====================================================
+def build_tool_calling_chain():
+   """
+   This is a SIMPLE chain:
+     user input -> prompt -> LLM+tools (ONE shot) -> string
+   LLM can choose ANY of the bound tools, but there is
+   no multi-step loop here. One pass, then done.
+   """
+   prompt = ChatPromptTemplate.from_template(
+       """
+You are a helpful assistant. When the user asks you
+to calculate something, use the calculator tool.
+User question: {input}
+"""
+   )
+   llm_with_tools = llm.bind_tools([calculator])
+   chain = prompt | llm_with_tools | StrOutputParser()
+   return chain
+
+# =====================================================
+# 2) AGENT (multi-step, multi-tool reasoning)
+# =====================================================
+def build_agent():
+   """
+   This agent can:
+     - think in steps
+     - call calculator and risk_score multiple times
+     - decide sequence dynamically
+   """
+   prompt = ChatPromptTemplate.from_messages([
+       ("system",
+        "You are an underwriting helper. "
+        "You can use tools like calculator and risk_score "
+        "multiple times to figure things out."),
+       ("human", "{input}")
+   ])
+   agent_core = create_openai_functions_agent(
+       llm=llm,
+       tools=TOOLS,
+       prompt=prompt
+   )
+   agent_executor = AgentExecutor(
+       agent=agent_core,
+       tools=TOOLS,
+       verbose=True  # see tool calls & thoughts
+   )
+   return agent_executor
+
+# =====================================================
+# 3) WORKFLOW / PIPELINE (fixed sequence)
+# =====================================================
+def build_underwriting_workflow(agent_executor: AgentExecutor):
+   """
+   A FIXED pipeline for underwriting-style tasks:
+     1) Clean text
+     2) Ask agent to reason & use tools
+     3) Normalize the final answer
+   """
+   # Step 1: Clean text (pure Python)
+   def clean_text(text: str) -> str:
+       return " ".join(text.strip().split())
+   clean_step = RunnableLambda(clean_text)
+   # Step 2: Call agent in a fixed way
+   def run_agent_on_text(text: str) -> str:
+       """
+       This function calls the agent_executor in a fixed manner.
+       The agent inside can still do dynamic multi-tool reasoning,
+       but the workflow step itself is fixed.
+       """
+       result = agent_executor.invoke({"input": text})
+       # AgentExecutor returns a dict with key "output"
+       return result["output"]
+   agent_step = RunnableLambda(run_agent_on_text)
+   # Step 3: Normalize/format output (LLM or Python; here use LLM)
+   format_prompt = ChatPromptTemplate.from_template(
+       """
+You are formatting an underwriting result.
+Original result:
+{raw_result}
+Rewrite it as a short, clear decision for the user.
+"""
+   )
+   format_step = format_prompt | llm | StrOutputParser()
+   # FINAL WORKFLOW:
+   # input_text -> clean_step -> agent_step -> format_step
+   workflow = clean_step | agent_step | format_step
+   return workflow
+
+# =====================================================
+# 4) ORCHESTRATOR (top-level brain)
+# =====================================================
+def classify_request(user_input: str) -> str:
+   """
+   Very simple classifier:
+     - if "sum insured" or "age" present -> underwriting
+     - if it looks like pure math -> math
+     - else -> default agent
+   """
+   text = user_input.lower()
+   if "sum insured" in text or "sum assured" in text or "age" in text:
+       return "underwriting"
+   if any(op in text for op in ["+", "-", "*", "/"]):
+       return "math"
+   return "agent"
+
+def run_orchestrator():
+   """
+   THIS is orchestration:
+   1) Decide which path to use (math, underwriting, or general agent)
+   2) Call the appropriate chain / workflow / agent
+   3) Return the result to the user
+   It controls WHEN to use:
+     - direct tool calling chain
+     - workflow
+     - agent
+   """
+   tool_chain = build_tool_calling_chain()
+   agent_executor = build_agent()
+   workflow = build_underwriting_workflow(agent_executor)
+   print("\n=== ORCHESTRATED SYSTEM ===")
+   print("You can try examples like:")
+   print("  - 'Add 10 and 20'")
+   print("  - 'Customer age is 45, sum insured 500000, what is risk?'")
+   print("  - 'Help me understand risk scoring in simple terms'\n")
+   print("Type 'exit' to quit.\n")
+   while True:
+       user_input = input("You: ").strip()
+       if user_input.lower() in ("exit", "quit"):
+           break
+       route = classify_request(user_input)
+       if route == "math":
+           print("[Orchestrator] Route = TOOL CALLING (math)")
+           answer = tool_chain.invoke({"input": user_input})
+       elif route == "underwriting":
+           print("[Orchestrator] Route = WORKFLOW (underwriting pipeline)")
+           answer = workflow.invoke(user_input)
+       else:
+           print("[Orchestrator] Route = AGENT (general reasoning)")
+           result = agent_executor.invoke({"input": user_input})
+           answer = result["output"]
+       print("\nAI:", answer)
+       print("-" * 70)
+
+# =====================================================
+# MAIN
+# =====================================================
+if __name__ == "__main__":
+   run_orchestrator()
+
+⸻
+🧩 NOW — Where is what?
+Let’s map this to the 4 concepts:
+⸻
+🧷 1) Tool Calling (single-step, no loop)
+def build_tool_calling_chain():
+   prompt = ChatPromptTemplate.from_template(...)
+   llm_with_tools = llm.bind_tools([calculator])
+   chain = prompt | llm_with_tools | StrOutputParser()
+   return chain
+• This is not an agent.
+• Just one LLM call with a tool bound.
+• Meant for simple math queries.
+When the orchestrator routes to "math", it uses this chain:
+answer = tool_chain.invoke({"input": user_input})
+
+⸻
+🤖 2) Agent (multi-step, tool-using brain)
+def build_agent():
+   prompt = ChatPromptTemplate.from_messages([...])
+   agent_core = create_openai_functions_agent(
+       llm=llm,
+       tools=TOOLS,
+       prompt=prompt
+   )
+   agent_executor = AgentExecutor(
+       agent=agent_core,
+       tools=TOOLS,
+       verbose=True
+   )
+   return agent_executor
+• Here, agent_executor owns the loop:
+• think → tool → think → tool → final answer
+• It can call calculator and risk_score multiple times.
+The orchestrator uses it in two ways:
+• directly (for general queries):
+result = agent_executor.invoke({"input": user_input})
+answer = result["output"]
+
+• inside the workflow (see next).
+⸻
+🛤 3) Workflow / Pipeline (fixed sequence, developer-controlled)
+def build_underwriting_workflow(agent_executor: AgentExecutor):
+   clean_step = RunnableLambda(clean_text)
+   agent_step = RunnableLambda(run_agent_on_text)
+   format_step = format_prompt | llm | StrOutputParser()
+   workflow = clean_step | agent_step | format_step
+   return workflow
+This workflow is deterministic:
+1. clean_step → cleans user text
+2. agent_step → always calls the agent in a fixed way
+3. format_step → always formats result
+Order cannot change.
+LLM cannot decide to skip or reorder steps.
+Inside agent_step, the agent still has its own internal dynamic tool logic — but the outer pipeline order is fixed.
+The orchestrator uses this workflow when route == "underwriting":
+answer = workflow.invoke(user_input)
+
+⸻
+🎬 4) Orchestration (top-level brain)
+This is the director that decides which “actor” to use.
+Classifier:
+def classify_request(user_input: str) -> str:
+   text = user_input.lower()
+   if "sum insured" in text or "sum assured" in text or "age" in text:
+       return "underwriting"
+   if any(op in text for op in ["+", "-", "*", "/"]):
+       return "math"
+   return "agent"
+Orchestrator:
+def run_orchestrator():
+   tool_chain = build_tool_calling_chain()
+   agent_executor = build_agent()
+   workflow = build_underwriting_workflow(agent_executor)
+   while True:
+       user_input = input("You: ").strip()
+       route = classify_request(user_input)
+       if route == "math":
+           # → TOOL CALLING
+           answer = tool_chain.invoke({"input": user_input})
+       elif route == "underwriting":
+           # → WORKFLOW (which internally uses AGENT)
+           answer = workflow.invoke(user_input)
+       else:
+           # → AGENT
+           result = agent_executor.invoke({"input": user_input})
+           answer = result["output"]
+Here you see:
+• Orchestration is not a LangChain class.
+• It’s your own Python control logic that decides:
+• which chain to run
+• when to call an agent
+• when to call pure tools
+• when to run a workflow
+This is exactly what a real system (like your future Omnicore) does.
+⸻
+🧠 How to play with it
+Run:
+python omni_demo.py
+Try inputs:
+1. Math (Tool Calling path)
+• "Add 10 and 20"
+• "What is 50 - 5 * 2?"
+2. Underwriting (Workflow path)
+• "Customer age is 45, sum insured 500000, what is the risk?"
+• "Age 30, sum insured 1000000, please evaluate risk."
+3. General reasoning (Agent path)
+• "Explain how risk score works in simple terms."
+• "First calculate 10 + 20, then use that as an age and see risk for sum insured 300000."
+Watch the stdout:
+• It prints which route was chosen (tool, workflow, agent).
+• In agent cases, verbose=True will show tool calls and thoughts.
+⸻
+🎯 What you’ve learned here
+In one integrated demo, you now see:
+• Tool calling → direct bind_tools chain
+• Agent → create_openai_functions_agent + AgentExecutor
+• Workflow → clean_step | agent_step | format_step pipeline
+• Orchestration → Python logic choosing between them based on input
+This is exactly how real-world GenAI systems are structured.
+If you want next, we can:
+• Map this pattern to your insurance / Omnicore idea explicitly, or
+• Move further in the LangChain list (Model switching, Document processing, API calling), or
+• Start introducing LangGraph, which is basically a more powerful, graph-based orchestrator built on top of exactly these ideas.
+You tell me what you want next.

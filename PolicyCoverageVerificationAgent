@@ -1,0 +1,256 @@
+policycoveragemcp
+handler.py
+"""
+handler.py — Policy Coverage Verification (placeholder, local-DB version)
+────────────────────────────────────────────────────────────────────────
+TODO: Coverage-vs-loss verification logic (comparing the reported loss
+against policy coverage terms, exclusions, deductibles, and limits) needs
+to be designed for this local-DB platform. The Guidewire-based
+implementation in Jarvis_claims_agents/PolicyCoverageVerificationAgent is a
+separate, Guidewire-specific agent and is not reused here.
+
+Only a real read of policy_details is implemented below.
+"""
+
+import logging
+import os
+import sys
+
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "common"))
+
+from db import get_db_connection, row_to_dict  # noqa: E402
+
+log = logging.getLogger(__name__)
+
+
+def get_policy_details_stub(policy_id: str):
+    conn = get_db_connection()
+    try:
+        cur = conn.cursor()
+        cur.execute("SELECT * FROM policy_details WHERE policy_id = ?", (policy_id,))
+        return row_to_dict(cur.fetchone())
+    finally:
+        conn.close()
+
+policycoveragemcp
+policy_coverage_router.py
+"""
+policy_coverage_router.py — PLACEHOLDER
+─────────────────────────────────────────
+Local-DB Policy Coverage Verification MCP. Only get_policy_details_stub is
+implemented (real read of policy_details). Full coverage-vs-loss
+verification logic is TODO — see policy_coverage_mcp/handler.py.
+
+Tool / Endpoint map:
+  get_policy_details_stub  GET /api/policy_coverage/policy/{policy_id}
+"""
+
+import logging
+from fastapi import APIRouter, HTTPException
+
+from policy_coverage_mcp import handler
+
+log = logging.getLogger(__name__)
+
+router = APIRouter()
+
+
+@router.get(
+    "/api/policy_coverage/policy/{policy_id}",
+    operation_id="get_policy_details_stub",
+    summary="[PLACEHOLDER] Read policy_details for a policy_id",
+    tags=["PolicyCoverage"],
+)
+def get_policy_details_stub(policy_id: str):
+    """
+    Real read of policy_details for the given policy_id.
+
+    TODO: This agent is a placeholder. Coverage-vs-loss verification logic
+    (comparing reported loss type/cause against policy coverage_type,
+    deductible, limit, and exclusions) needs to be designed for the local-DB
+    platform.
+    """
+    record = handler.get_policy_details_stub(policy_id)
+    if not record:
+        return {"status": "not_implemented", "note": "Policy not found, and coverage-vs-loss verification logic is not yet designed for this platform."}
+    return {"status": "not_implemented", "note": "Coverage-vs-loss verification logic is not yet designed for this platform.", "policy_details": record}
+
+
+Policy verification agent 
+server.py
+"""
+server.py — Policy Coverage Verification Agent (PLACEHOLDER, local-DB version)
+─────────────────────────────────────────────────────────────────────────────
+This is a minimal placeholder pending full design. It exposes only a
+trivial agent/tools loop wired to the get_policy_details_stub MCP tool.
+
+TODO: Coverage-vs-loss verification logic (comparing the reported loss
+against policy coverage_type, deductible, limit, and exclusions) needs to
+be designed for this local-DB platform. The Guidewire-based agent in
+Jarvis_claims_agents/PolicyCoverageVerificationAgent is separate and not
+reused here.
+
+Port: 8807
+MCP : http://0.0.0.0:8800/api/v1/policy_coverage/mcp
+
+Run:
+    py -3 server.py
+"""
+
+import logging
+import os
+import sys
+import time
+from datetime import timedelta
+from typing import Annotated, TypedDict
+
+import uvicorn
+from dotenv import load_dotenv
+from fastapi import FastAPI, Request
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import StreamingResponse
+from langchain_core.messages import AIMessage, SystemMessage
+from langchain_mcp_adapters.client import MultiServerMCPClient
+from langchain_openai.chat_models import AzureChatOpenAI
+from langgraph.graph import END, START, StateGraph
+from langgraph.graph.message import add_messages
+from langgraph.prebuilt import ToolNode
+
+load_dotenv()
+
+logging.basicConfig(level=logging.INFO, stream=sys.stdout, force=True)
+logger = logging.getLogger("policy_coverage_agent_placeholder")
+
+PHOENIX_API_KEY = os.getenv("PHOENIX_API_KEY", "")
+PHOENIX_ENDPOINT = os.getenv("PHOENIX_ENDPOINT", "")
+MCP_URL = os.getenv("MCP_URL", "http://0.0.0.0:8800/api/v1/policy_coverage/mcp")
+AGENT_PORT = int(os.getenv("AGENT_PORT", "8807"))
+
+config_mcp_server = {
+    "policy_coverage_mcp": {
+        "url": MCP_URL,
+        "transport": "streamable_http",
+        "timeout": timedelta(seconds=120),
+        "sse_read_timeout": timedelta(seconds=600),
+    }
+}
+
+app = FastAPI(title="Policy Coverage Verification Agent (Placeholder)")
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+
+class State(TypedDict):
+    messages: Annotated[list, add_messages]
+
+
+def router(state: State):
+    last = state["messages"][-1]
+    if isinstance(last, AIMessage) and getattr(last, "tool_calls", None):
+        return "tools"
+    return "End"
+
+
+_FALLBACK_PROMPT = """
+You are the Policy Coverage Verification Agent (Policyholder, local-DB
+version) for an insurance claims platform.
+
+THIS AGENT IS A PLACEHOLDER PENDING FULL DESIGN.
+
+Currently the only available tool is get_policy_details_stub, which reads
+the policy_details table for a given policy_id.
+
+TODO (not yet implemented):
+- Coverage-vs-loss verification logic comparing the reported loss type/
+  cause against the policy's coverage_type, deductible, limit, and any
+  exclusions.
+
+If asked about coverage verification, call get_policy_details_stub with the
+policy_id and explain to the user that full coverage verification logic for
+this platform is still being designed; only the raw policy_details record
+is available for now.
+"""
+
+
+def create_graph(model, tools, prompt):
+    graph_builder = StateGraph(State)
+    llm_with_tools = model.bind_tools(tools)
+
+    async def agent_node(state: State):
+        all_messages = [SystemMessage(content=prompt)] + state["messages"]
+        message = await llm_with_tools.ainvoke(all_messages)
+        return {"messages": [message]}
+
+    graph_builder.add_node("agent", agent_node)
+    graph_builder.add_node("tools", ToolNode(tools=tools))
+    graph_builder.add_edge(START, "agent")
+    graph_builder.add_conditional_edges("agent", router, {"tools": "tools", "End": END})
+    graph_builder.add_edge("tools", "agent")
+    return graph_builder.compile()
+
+
+async def get_tools():
+    client = MultiServerMCPClient(config_mcp_server)
+    tools = await client.get_tools()
+    logger.info("Tools loaded from MCP: %s", [t.name for t in tools])
+    return tools
+
+
+async def stream_graph(graph, initial_state, config):
+    async for event in graph.astream_events(initial_state, config=config, version="v2"):
+        kind = event.get("event", "")
+        if kind == "on_chat_model_stream":
+            chunk = event["data"].get("chunk")
+            if chunk and hasattr(chunk, "content") and chunk.content:
+                yield f"data: {chunk.content}\n\n"
+        elif kind == "on_tool_start":
+            yield f"data: [Tool: {event.get('name', 'unknown_tool')}] Starting...\n\n"
+        elif kind == "on_tool_end":
+            yield f"data: [Tool: {event.get('name', 'unknown_tool')}] Done\n\n"
+
+
+@app.post("/chat")
+async def chat_stream(request: Request):
+    load_dotenv()
+    tools = await get_tools()
+
+    model = AzureChatOpenAI(
+        api_key=os.getenv("AZURE_OPENAI_API_KEY"),
+        api_version=os.getenv("AZURE_OPENAI_API_VERSION"),
+        azure_deployment=os.getenv("AZURE_OPENAI_CHAT_DEPLOYMENT"),
+        azure_endpoint=os.getenv("AZURE_OPENAI_ENDPOINT"),
+    )
+
+    body = await request.json()
+    user_message = body.get("message", "Verify policy coverage")
+
+    graph = create_graph(model=model, tools=tools, prompt=_FALLBACK_PROMPT)
+
+    async def generate():
+        try:
+            async for event in stream_graph(
+                graph=graph,
+                initial_state={"messages": [user_message]},
+                config={"recursion_limit": 50},
+            ):
+                yield event
+        except Exception as e:
+            logger.exception("agent error")
+            yield f"data: [AGENT_ERROR] {str(e)}\n\n"
+
+    return StreamingResponse(generate(), media_type="text/event-stream")
+
+
+@app.get("/health")
+async def health():
+    return {"status": "healthy", "agent": "policy_coverage_agent_placeholder", "note": "placeholder pending full design"}
+
+
+if __name__ == "__main__":
+    uvicorn.run(app, host="0.0.0.0", port=AGENT_PORT)

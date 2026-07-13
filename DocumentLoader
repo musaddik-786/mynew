@@ -1,0 +1,91 @@
+Perfect. This confirms the issue 100%.
+
+Your query shows:
+
+Column	Value
+data_type	integer
+numeric_precision	32
+numeric_scale	0
+
+An integer column cannot store decimal values.
+
+So when Python sends
+
+confidence_score = 0.56
+
+PostgreSQL stores it as
+
+1
+
+(or rounds it depending on how PostgreSQL casts it).
+
+⸻
+
+Step 2 — Change the datatype
+
+Run this SQL:
+
+ALTER TABLE estimates
+ALTER COLUMN confidence_score
+TYPE NUMERIC(4,2)
+USING confidence_score::NUMERIC(4,2);
+
+Why NUMERIC(4,2)?
+
+It allows values like:
+
+0.56
+0.61
+0.95
+1.00
+
+which is exactly the range your confidence score uses (0.00–1.00).
+
+⸻
+
+Step 3 — Verify the change
+
+After running the ALTER TABLE, execute the same query again:
+
+SELECT
+    column_name,
+    data_type,
+    numeric_precision,
+    numeric_scale
+FROM information_schema.columns
+WHERE table_name = 'estimates'
+AND column_name = 'confidence_score';
+
+You should now see something similar to:
+
+column_name	data_type	numeric_precision	numeric_scale
+confidence_score	numeric	4	2
+
+⸻
+
+Step 4 — Test
+
+Once the datatype has changed:
+
+1. Delete the latest row from estimates for claim 37 (or clear the table if you’re just testing).
+2. Run your curl command again.
+3. Query the latest row:
+
+SELECT *
+FROM estimates
+ORDER BY id DESC
+LIMIT 1;
+
+You should now see:
+
+confidence_score
+----------------
+0.56
+
+instead of
+
+1
+
+⸻
+
+This is the only schema change needed. Your Python code does not need any modification because it is already calculating and passing the correct decimal value (0.56). The problem is solely that the database column is defined as an INTEGER.

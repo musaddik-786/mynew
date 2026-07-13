@@ -1,0 +1,11 @@
+langchain-core
+langchain
+langchain_community
+pypdf
+
+langchain-chroma
+langchain-openai
+
+
+azure-core
+
