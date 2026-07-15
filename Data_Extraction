@@ -1,3 +1,123 @@
+from fastapi import APIRouter
+from fastapi.responses import JSONResponse
+
+from .handler import bind_and_issue_policy
+from .models import BindIssueRequest
+
+router = APIRouter()
+
+
+@router.post(
+    "/guidewire_bind_and_issue_mcp",
+    operation_id="guidewire_bind_and_issue_mcp",
+)
+async def bind_and_issue(request: BindIssueRequest):
+    """
+    Bind and issue a commercial property policy in Guidewire PolicyCenter
+    using an existing quoted Job ID.
+
+    This service is responsible for:
+
+    1. Accepting the Guidewire Job ID returned from the Quote MCP.
+    2. Accepting the Quote MCP output_blob_url.
+    3. Invoking the Guidewire Bind & Issue API.
+    4. Persisting the Guidewire API response to Azure Blob Storage.
+    5. Creating the Azure Blob container if it does not already exist.
+    6. Returning both the Guidewire response and the newly created
+       bind_and_issue_blob_url.
+
+    Guidewire API
+    -------------
+        POST /job/v1/jobs/{job_id}/bind-and-issue
+
+    Input
+    -----
+    job_id : str
+        Guidewire Job ID returned from the guidewire_quote_mcp operation.
+
+    output_blob_url : str
+        Azure Blob URL returned from the guidewire_quote_mcp operation.
+
+        Example:
+
+        https://agenticai1.blob.core.windows.net/guidewire-quote/
+        19F64D19C34B9B1C_Quote_Report_20260715_081238_mail.json
+
+    Processing
+    ----------
+    The service stores the Bind & Issue response in the
+    'guidewire_bind_and_issue' container.
+
+    Blob naming convention
+
+    Input
+
+        19F64D19C34B9B1C_Quote_Report_20260715_081238_mail.json
+
+    Output
+
+        19F64D19C34B9B1C_bind_and_issue_Report_20260715_081238_mail.json
+
+    Returns
+    -------
+    Success
+
+    {
+        "status": True,
+        "jobId": "pc:10234",
+        "bind_and_issue_blob_url":
+        "https://.../guidewire_bind_and_issue/19F64D19C34B9B1C_bind_and_issue_Report_20260715_081238_mail.json",
+        "policyResponse": {
+            ...
+        }
+    }
+
+    Failure
+
+    {
+        "status": False,
+        "error": "Failed to bind and issue policy using Guidewire API: ..."
+    }
+
+    Notes
+    -----
+    - The Job must already be successfully quoted.
+    - The Job must be in a bindable state.
+    - The Quote MCP output_blob_url is used only for generating the
+      Bind & Issue blob filename.
+    - The Bind & Issue response is stored in Azure Blob Storage before
+      being returned to the caller.
+    """
+
+    try:
+        result = await bind_and_issue_policy(
+            job_id=request.job_id,
+            output_blob_url=request.output_blob_url,
+        )
+
+        return JSONResponse(
+            content={
+                "jsonrpc": "2.0",
+                "id": 1,
+                "result": result,
+            },
+            status_code=200,
+        )
+
+    except Exception as e:
+        return JSONResponse(
+            content={
+                "jsonrpc": "2.0",
+                "id": 1,
+                "result": {
+                    "status": False,
+                    "error": str(e),
+                },
+            },
+            status_code=200,
+        )
+
+
 
 
 
