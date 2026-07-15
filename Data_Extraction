@@ -1,638 +1,336 @@
-"""
-handler.py — Repair vs Replacement
-───────────────────────────────────────
-Compares repair vs. replacement costs for a damaged item and recommends a
-course of action based on a cost-ratio / useful-life rule.
-"""
+This is my new mcp Guidewire bind and issue
 
+handler.py
+import logging
+
+from .clients.guidewire_clients import post
+
+logger = logging.getLogger(__name__)
+
+
+async def bind_and_issue_policy(job_id: str) -> dict:
+    """
+    Binds and issues a policy in Guidewire for the given Job ID.
+ 
+    This function calls the Guidewire API endpoint:
+        POST /job/v1/jobs/{job_id}/bind-and-issue
+ 
+    Args:
+        job_id (str): The Job ID returned from submission creation.
+ 
+    Returns:
+        dict: Response containing success status and API result.
+ 
+    Example:
+        {
+            "status": True,
+            "jobId": "pc:123",
+            "policyResponse": {...}
+        }
+ 
+    Error Response Example:
+        {
+            "status": False,
+            "error": "Failed to create policy using GW API: ..."
+        }
+    """
+    try:
+        policy_resp = post(f"/job/v1/jobs/{job_id}/bind-and-issue", {})
+ 
+        # return {
+        #     "status": True,
+        #     "jobId": job_id,
+        #     "policyResponse": policy_resp
+        # }
+ 
+    except Exception as e:
+        return {
+            "status": False,
+            "error": f"Failed to create policy using GW API: {str(e)}"
+        }
+ 
+    return {
+            "status": True,
+            "jobId": job_id,
+            "policyResponse": policy_resp
+        }
+
+
+
+class BindIssueRequest(BaseModel):
+    job_id: str = Field(..., description="This is a Job_id that is required to call the api of Guidewire for Issue and Binding the Policy.")
+
+
+
+router.py
+ 
+@router.post("/guidewire_bind_and_issue_mcp", operation_id="guidewire_bind_and_issue_mcp")
+async def bind_and_issue(request: BindIssueRequest):
+    """
+    Binds and issues a commercial property policy in Guidewire PolicyCenter
+    using an existing jobID.
+ 
+    This service is responsible ONLY for triggering the Bind & Issue
+    action on a previously quoted submission.
+ 
+    The `jobID` provided to this service must be the Job ID returned
+    from the `guidewire_quote_mcp` operation.
+ 
+    API Invoked:
+        POST /job/v1/jobs/{job_id}/bind-and-issue
+ 
+    Flow:
+ 
+    1. Accept job_id as input.
+    2. Invoke Guidewire PolicyCenter Bind & Issue API.
+    3. Return policy issuance response if successful.
+    4. Return structured error response if the API call fails.
+ 
+    Args:
+        job_id (str):
+            The Guidewire Job ID returned from the submission creation process.
+            Example: "pc:10234"
+ 
+    Returns:
+        dict:
+ 
+        Success Example:
+        {
+            "status": True,
+            "jobId": "pc:10234",
+            "policyResponse": { ... Guidewire response ... }
+        }
+ 
+        Failure Example:
+        {
+            "status": False,
+            "error": "Failed to create policy using GW API: <error message>"
+        }
+ 
+    Notes:
+        - The Job must already be quoted successfully.
+        - If the Job is not in a bindable state, Guidewire will return an error.
+        - This service acts as a thin orchestration layer over the Guidewire API.
+    """
+
+    try:
+        result = await bind_and_issue_policy(request.job_id)
+        return JSONResponse(content={"jsonrpc": "2.0", "id": 1, "result": result}, status_code=200)
+    except Exception as e:
+        return JSONResponse(content={"jsonrpc": "2.0", "id": 1,
+                                     "result": {"status": False, "error": str(e)}}, status_code=200)
+ 
+ 
+so currently we are only getting job id as input to this mcp tool but now along with this job id we also have to get 
+output_blob_url as input which is similarly returned
+    from the `guidewire_quote_mcp` operation.
+
+and now for eg "output_blob_url": "https://agenticai1.blob.core.windows.net/guidewire-quote/19F64D19C34B9B1C_Quote_Report_20260715_081238_mail.json"
+then now we have to add such a functionality in the code such that
+now whatever response we get from this api  POST /job/v1/jobs/{job_id}/bind-and-issue that has to be stored in azure blob storage under container
+guidewire_bind_and_issue (create this container if it does not exists) and it should be stored in this naming convention
+ that for eg "output_blob_url": "https://agenticai1.blob.core.windows.net/guidewire-quote/19F64D19C34B9B1C_Quote_Report_20260715_081238_mail.json"
+then bind_and_issue_blob_url : "https://agenticai1.blob.core.windows.net/guidewire-quote/19F64D19C34B9B1C_bind_and_issue_Report_20260715_081238_mail.json"
+and this bind_and_issue_blob_url should be returned in the response of this mcp tool as well
+
+i am providing you a code for another mcp tool which had some similar functionlity refer that code which is below
+service.py
+
+
+import os
+import psycopg2
+from urllib.parse import urlparse, unquote
+from dotenv import load_dotenv
+
+load_dotenv()
+
+AZURE_STORAGE_CONNECTION_STRING = os.environ.get("AZURE_STORAGE_CONNECTION_STRING", "")
+
+def _require_env() -> None:
+    """Ensure required environment variables exist."""
+    if not AZURE_STORAGE_CONNECTION_STRING:
+        raise RuntimeError("Missing AZURE_STORAGE_CONNECTION_STRING in environment/.env")
+
+
+def get_db_connection():
+    """
+    Open and return a psycopg2 connection using environment variables:
+    DB_HOST, DB_PORT (default 5432), DB_NAME, DB_USER, DB_PASSWORD.
+
+    Raises
+    ------
+    KeyError – if any required DB environment variable is missing.
+    """
+    return psycopg2.connect(
+        host=os.environ["PGHOST"],
+        port=int(os.environ.get("PGPORT", 5432)),
+        dbname=os.environ["PGDATABASE"],
+        user=os.environ["PGUSER"],
+        password=os.environ["PGPASSWORD"],
+    )
+
+
+def _extract_ref_id_and_name(blob_path: str) -> tuple[str, str]:
+    """
+    Extract ref_id and name from blob_path.
+    Handles both Submission_Document and Submission_Report formats.
+    
+    Example blob_paths:
+      19C1DD3DD82FAE03_attachment_SunflowerHotels_Submission_Document_extraction_20260202_101302.json
+      19C1CED913B33B27_Submission_Report_extraction_20260319_150725.json
+    
+    Returns:
+      ref_id = part before "_Submission_"
+      name = part after "_Submission_" (including Document/Report)
+    """
+    parts = blob_path.split('_Submission_', 1)
+    if len(parts) != 2:
+        raise ValueError("blob_path format unexpected, missing '_Submission_' separator")
+    ref_id = parts[0]
+    name = parts[1]
+    return ref_id, name
+
+def _ref_parse_blob_url(url: str) -> tuple[str, str, str, str]:
+    """
+    Parse an Azure Blob URL and return (container_name, blob_path, ref_id, name).
+    
+    Handles both Submission_Document and Submission_Report blob formats.
+    
+    Example URLs:
+      https://account.blob.core.windows.net/output-results/19C1DD3DD82FAE03_attachment_SunflowerHotels_Submission_Document_extraction_20260202_101302.json
+      https://account.blob.core.windows.net/output-results/19C1CED913B33B27_Submission_Report_extraction_20260319_150725.json
+    
+    Returns:
+      ("output-results", "blob_path", "ref_id", "name")
+    """
+    parsed = urlparse(url)
+    if not parsed.scheme.startswith("http"):
+        raise ValueError("url must be a valid http(s) Azure Blob URL.")
+
+    path = parsed.path.lstrip("/")
+    if "/" not in path:
+        raise ValueError("url must include both container and blob path.")
+    parts = path.split("/", 1)
+    container = parts[0]
+    blob_path = parts[1]
+    ref_id, name = _extract_ref_id_and_name(unquote(blob_path))
+    return unquote(container), blob_path, ref_id, name
+
+
+def _parse_blob_url(url: str) -> tuple[str, str]:
+    """
+    Parse an Azure Blob URL and return (container_name, blob_path).
+    Example URL:
+      https://account.blob.core.windows.net/output-results/folder/name.pdf
+    Returns:
+      ("output-results", "folder/name.pdf")
+    """
+    parsed = urlparse(url)
+    if not parsed.scheme.startswith("http"):
+        raise ValueError("url must be a valid http(s) Azure Blob URL.")
+
+    path = parsed.path.lstrip("/")
+    if "/" not in path:
+        raise ValueError("url must include both container and blob path.")
+    parts = path.split("/", 1)
+    container = parts[0]
+    blob_path = parts[1]
+    return unquote(container), unquote(blob_path)
+
+
+storage_utils.py
+
+# storage_utils.py
 import json
 import logging
 import os
-import sys
-from typing import Optional
+from azure.storage.blob.aio import BlobServiceClient
+from azure.core.exceptions import ResourceNotFoundError
+from .service import AZURE_STORAGE_CONNECTION_STRING, _parse_blob_url
 
-sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "common"))
-
-from db import get_db_connection, row_to_dict  # noqa: E402
-from langchain_openai.chat_models import AzureChatOpenAI  # noqa: E402
+logger = logging.getLogger(__name__)
 
 
-from datetime import datetime
-import pytz
-
-
-log = logging.getLogger(__name__)
-
-
-def get_claim_id(claim_number: str) -> int:
-#    claim_id = get_claim_id(claim_number)
-   conn = get_db_connection()
-   try:
-       cur = conn.cursor()
-       cur.execute(
-           """
-           SELECT id
-           FROM claims
-           WHERE claim_number = %s
-           """,
-           (claim_number,),
-       )
-       row = row_to_dict(cur.fetchone())
-       if not row:
-           raise ValueError(f"Claim '{claim_number}' not found")
-       return row["id"]
-   finally:
-       conn.close()
-
-
-def get_damage_item(claim_number: str) -> dict:
-   conn = get_db_connection()
-   try:
-       cur = conn.cursor()
-       cur.execute(
-           """
-           SELECT *
-           FROM damage_items
-           WHERE claim_number = %s
-           LIMIT 1
-           """,
-           (claim_number,),
-       )
-       row = row_to_dict(cur.fetchone())
-    #    if not row:
-    #        raise ValueError(
-    #            f"No damage item found for claim '{claim_number}'"
-    #        )
-       if not row:
-          raise ValueError(
-            f"Damage assessment has not been completed for claim {claim_number}. "
-            "Repair vs Replacement cannot be performed until damage items are available."
-           )
-       return row
-   finally:
-       conn.close()
-
-def _get_llm():
-    return AzureChatOpenAI(
-        api_key=os.getenv("AZURE_OPENAI_API_KEY"),
-        api_version=os.getenv("AZURE_OPENAI_API_VERSION"),
-        azure_deployment=os.getenv("AZURE_OPENAI_CHAT_DEPLOYMENT"),
-        azure_endpoint=os.getenv("AZURE_OPENAI_ENDPOINT"),
-    )
-
-
-def get_estimates(claim_number: str) -> list:
-    claim_id = get_claim_id(claim_number)
-    conn = get_db_connection()
-    try:
-        cur = conn.cursor()
-        cur.execute("SELECT * FROM estimates WHERE claim_id = %s ORDER BY id DESC", (claim_id,))
-        return row_to_dict(cur.fetchall())
-    finally:
-        conn.close()
-
-
-def write_estimate(claim_number: str, item_type: str, item_age: int, useful_life_remaining: int,
-                    repair_cost: float, replacement_cost: float, labor_cost: float, material_cost: float,
-                    recommendation: str, confidence_score: float) -> dict:
-    claim_id = get_claim_id(claim_number)
-    conn = get_db_connection()
-    try:
-        cur = conn.cursor()
-        cur.execute(
-            """
-            INSERT INTO estimates (
-                claim_id, item_type, item_age, useful_life_remaining, repair_cost, replacement_cost,
-                labor_cost, material_cost, recommendation, confidence_score
-            ) VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
-            """,
-            (claim_id, item_type, item_age, useful_life_remaining, repair_cost, replacement_cost,
-             labor_cost, material_cost, recommendation, confidence_score),
-        )
-        conn.commit()
-        return {
-            "id": cur.lastrowid, "claim_id": claim_id, "item_type": item_type, "item_age": item_age,
-            "useful_life_remaining": useful_life_remaining, "repair_cost": repair_cost,
-            "replacement_cost": replacement_cost, "labor_cost": labor_cost, "material_cost": material_cost,
-            "recommendation": recommendation, "confidence_score": confidence_score,
-        }
-    finally:
-        conn.close()
-
-
-def get_repair_cost_detail(claim_number: str) -> list:
-    claim_id = get_claim_id(claim_number)
-    conn = get_db_connection()
-    try:
-        cur = conn.cursor()
-        cur.execute("SELECT * FROM repair_costs WHERE claim_id = %s ORDER BY id DESC", (claim_id,))
-        return row_to_dict(cur.fetchall())
-    finally:
-        conn.close()
-
-
-def write_repair_cost(item_id: str, claim_number: str, item_type: str, material_cost: float, labor_hours: float,
-                       labor_rate: float, diagnostic_fee: float, urgency_factor: float, notes: Optional[str] = None) -> dict:
-    total_repair_estimate = round((material_cost + labor_hours * labor_rate + diagnostic_fee) * (urgency_factor or 1.0), 2)
-    claim_id = get_claim_id(claim_number)
-    conn = get_db_connection()
-    
-    try:
-        cur = conn.cursor()
-        cur.execute(
-            """
-            INSERT INTO repair_costs (
-                item_id, claim_id, item_type, material_cost, labor_hours, labor_rate,
-                diagnostic_fee, urgency_factor, total_repair_estimate, notes
-            ) VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
-            """,
-            (item_id, claim_id, item_type, material_cost, labor_hours, labor_rate,
-             diagnostic_fee, urgency_factor, total_repair_estimate, notes),
-        )
-        conn.commit()
-        return {
-            "id": cur.lastrowid, "item_id": item_id, "claim_id": claim_id, "item_type": item_type,
-            "material_cost": material_cost, "labor_hours": labor_hours, "labor_rate": labor_rate,
-            "diagnostic_fee": diagnostic_fee, "urgency_factor": urgency_factor,
-            "total_repair_estimate": total_repair_estimate, "notes": notes,
-        }
-    finally:
-        conn.close()
-
-
-def get_replacement_cost_detail(claim_number: str) -> list:
-    claim_id = get_claim_id(claim_number)
-    conn = get_db_connection()
-    try:
-        cur = conn.cursor()
-        cur.execute("SELECT * FROM replacement_costs WHERE claim_id = %s ORDER BY id DESC", (claim_id,))
-        return row_to_dict(cur.fetchall())
-    finally:
-        conn.close()
-
-
-def write_replacement_cost(item_id: str, claim_number: str, item_type: str, replacement_material_cost: float,
-                            installation_hours: float, labor_rate: float, delivery_fee: float, disposal_fee: float,
-                            notes: Optional[str] = None) -> dict:
-    total_replacement_estimate = round(
-        replacement_material_cost + installation_hours * labor_rate + delivery_fee + disposal_fee, 2
-    )
-    claim_id = get_claim_id(claim_number)
-    conn = get_db_connection()
-    try:
-        cur = conn.cursor()
-        cur.execute(
-            """
-            INSERT INTO replacement_costs (
-                item_id, claim_id, item_type, replacement_material_cost, installation_hours, labor_rate,
-                delivery_fee, disposal_fee, total_replacement_estimate, notes
-            ) VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
-            """,
-            (item_id, claim_id, item_type, replacement_material_cost, installation_hours, labor_rate,
-             delivery_fee, disposal_fee, total_replacement_estimate, notes),
-        )
-        conn.commit()
-        return {
-            "id": cur.lastrowid, "item_id": item_id, "claim_id": claim_id, "item_type": item_type,
-            "replacement_material_cost": replacement_material_cost, "installation_hours": installation_hours,
-            "labor_rate": labor_rate, "delivery_fee": delivery_fee, "disposal_fee": disposal_fee,
-            "total_replacement_estimate": total_replacement_estimate, "notes": notes,
-        }
-    finally:
-        conn.close()
-
-
-
-
-
-
-# def update_repair_vs_replacement_decision(
-#     claim_number: str,
-#     decision: str,
-# ) -> dict:
-#     if decision not in ["Repair", "Replace"]:
-#         raise ValueError(
-#             "Decision must be either 'Repair' or 'Replace'."
-#         )
-#     conn = get_db_connection()
-#     try:
-#         cur = conn.cursor()
-#         # Verify recommendation row exists
-#         cur.execute(
-#             """
-#             SELECT *
-#             FROM repair_vs_replacement_decisions
-#             WHERE claim_id = %s
-#             """,
-#             (claim_number,),
-#         )
-#         row = row_to_dict(cur.fetchone())
-#         if not row:
-#             raise ValueError(
-#                 f"No Repair vs Replacement recommendation exists for claim '{claim_number}'."
-#             )
-#         cur.execute(
-#             """
-#             UPDATE repair_vs_replacement_decisions
-#             SET decision = %s
-#             WHERE claim_id = %s
-#             """,
-#             (
-#                 decision,
-#                 claim_number,
-#             ),
-#         )
-#         conn.commit()
-#         return {
-#             "claim_number": claim_number,
-#             "decision": decision,
-#             "message": "Adjuster decision recorded successfully."
-#         }
-#     finally:
-#         conn.close()
-
-
-
-
-
-
-def update_repair_vs_replacement_decision(
-    claim_number: str,
-    decision: str,
-) -> dict:
-    decision = decision.strip().capitalize()
-    if decision not in ["Repair", "Replace"]:
-        raise ValueError(
-            "Decision must be either 'Repair' or 'Replace'."
-        )
-    conn = get_db_connection()
-    try:
-        cur = conn.cursor()
-        cur.execute(
-            """
-            SELECT id
-            FROM repair_vs_replacement_decisions
-            WHERE claim_id=%s
-            """,
-            (claim_number,),
-        )
-        row = row_to_dict(cur.fetchone())
-        if not row:
-            raise ValueError(
-                f"No recommendation exists for claim '{claim_number}'."
-            )
-        ist = pytz.timezone("Asia/Kolkata")
-        current_time = datetime.now(ist)
-        cur.execute(
-            """
-            UPDATE repair_vs_replacement_decisions
-            SET
-                decision=%s,
-                timestamp=%s
-            WHERE claim_id=%s
-            """,
-            (
-                decision,
-                current_time,
-                claim_number,
-            ),
-        )
-        conn.commit()
-        return {
-            "claim_number": claim_number,
-            "decision": decision,
-            "message": "Adjuster decision recorded successfully."
-        }
-    finally:
-        conn.close()
-
-
-
-
-
-
-
-def write_repair_vs_replacement_decision(
-    claim_number: str,
-    recommended_action: str,
-    ai_generated_message: str,
-) -> dict:
-    conn = get_db_connection()
-    try:
-        cur = conn.cursor()
-        # Verify claim exists and fetch policyholder
-        cur.execute(
-            """
-            SELECT
-                claim_number,
-                policyholder_name
-            FROM claims
-            WHERE claim_number = %s
-            """,
-            (claim_number,),
-        )
-        row = row_to_dict(cur.fetchone())
-        if not row:
-            raise ValueError(f"Claim '{claim_number}' not found")
-        ist = pytz.timezone("Asia/Kolkata")
-        current_time = datetime.now(ist)
-        
-        
-
-
-
-
-
-        cur.execute(
-            """
-            SELECT id
-            FROM repair_vs_replacement_decisions
-            WHERE claim_id=%s
-            """,
-            (claim_number,),
-        )
-        existing = row_to_dict(cur.fetchone())
-        if existing:
-            return {
-                "status" : "already_exists",
-                "claim_number": claim_number,
-                "message": "Recommendation already recorded."
-            }
-
-
-
-
-        cur.execute(
-            """
-            INSERT INTO repair_vs_replacement_decisions
-            (
-                claim_id,
-                customer_name,
-                communication_type,
-                ai_generated_message,
-                recommended_action,
-                sent_method,
-                timestamp,
-                decision
-            )
-            VALUES
-            (
-                %s,%s,%s,%s,%s,%s,%s,%s
-            )
-            """,
-            (
-                row["claim_number"],
-                row["policyholder_name"],
-                "email",
-                ai_generated_message,
-                recommended_action,
-                "email",
-                current_time,
-                "Adjuster review",
-            ),
-        )
-        conn.commit()
-        return {
-            "claim_number": row["claim_number"],
-            "customer_name": row["policyholder_name"],
-            "recommended_action": recommended_action,
-        }
-    finally:
-        conn.close()
-
-
-
-# def _llm_estimate_costs(item_type: str, item_age: int) -> dict:
-def _llm_estimate_costs(
-   item_type: str,
-   item_age: int,
-   severity: str,
-   estimated_cost: float,
-   adjuster_notes: str,
-) -> dict:
-    llm = _get_llm()
-#     prompt = f"""
-# You are a claims adjuster's assistant. Estimate plausible repair and
-# replacement costs in USD for a "{item_type}" that is {item_age} years old.
-# Respond with ONLY a JSON object:
-# {{"repair_cost": 0, "replacement_cost": 0, "labor_cost": 0, "material_cost": 0}}
-# """
-
-
-# prompt = f"""
-# You are an insurance claims cost estimator.
-# Estimate realistic repair and replacement costs for a damaged "{item_type}"
-# that is {item_age} years old.
-# Return ONLY valid JSON.
-# {{
-#    "repair_cost": 0,
-#    "replacement_cost": 0,
-#    "material_cost": 0,
-#    "labor_hours": 0,
-#    "labor_rate": 0,
-#    "diagnostic_fee": 0,
-#    "urgency_factor": 1.0,
-#    "replacement_material_cost": 0,
-#    "installation_hours": 0,
-#    "delivery_fee": 0,
-#    "disposal_fee": 0
-# }}
-# """
-
-
-    prompt = f"""
-    You are an insurance claims cost estimator.
-    Estimate realistic repair and replacement costs for the damaged item using the following information.
-    Item Type: {item_type}
-    Item Age: {item_age} years
-    Damage Severity: {severity}
-    Adjuster's Notes: {adjuster_notes}
-    Initial Damage Estimate: ${estimated_cost}
-    Return ONLY valid JSON.
-    {{
-    "repair_cost": 0,
-    "replacement_cost": 0,
-    "material_cost": 0,
-    "labor_hours": 0,
-    "labor_rate": 0,
-    "diagnostic_fee": 0,
-    "urgency_factor": 1.0,
-    "replacement_material_cost": 0,
-    "installation_hours": 0,
-    "delivery_fee": 0,
-    "disposal_fee": 0
-    }}
+async def read_json_from_blob(blob_url: str) -> dict:
     """
+    Reads a JSON file directly from Azure Blob Storage and returns it as dict.
+    No local file system usage.
+    """
+    if not AZURE_STORAGE_CONNECTION_STRING:
+        raise RuntimeError("AZURE_STORAGE_CONNECTION_STRING not set")
 
+#working code
+    container, blob_path = _parse_blob_url(blob_url)
+    logger.info("Container: %s, Blob_path: %s", container, blob_path)
 
-    response = llm.invoke(prompt)
-    content = response.content.strip()
-    if content.startswith("```"):
-        content = content.strip("`")
-        if content.startswith("json"):
-            content = content[4:]
-    try:
-        return json.loads(content)
-    except Exception:
-        log.warning("Could not parse LLM JSON, defaulting: %s", content)
-        # return {"repair_cost": 500, "replacement_cost": 1000, "labor_cost": 200, "material_cost": 300}
-        return {
-        "repair_cost": 500,
-        "replacement_cost": 1000,
-        "material_cost": 300,
-        "labor_hours": 2,
-        "labor_rate": 100,
-        "diagnostic_fee": 50,
-        "urgency_factor": 1.0,
-        "replacement_material_cost": 700,
-        "installation_hours": 3,
-        "delivery_fee": 50,
-        "disposal_fee": 25,
-        }
+    # container, blob_path, ref_id, name = _parse_blob_url(blob_url)
+    # print("Container:", container)
+    # print("Blob_path:", blob_path)
+    # print("Ref_id:", ref_id)
+    # print("Name:", name)
 
-def compare_repair_vs_replace(claim_number: str, item_age: int, useful_life_remaining: int) -> dict:
-    # Look up existing repair_costs/replacement_costs for this claim+item_type, if present
-    claim_id = get_claim_id(claim_number)
-    damage = get_damage_item(claim_number)
-    damage_id = damage["damage_id"]
-    item_type = damage["category"]
-    severity = damage["severity"]
-    estimated_cost = damage["estimated_cost"]
-    adjuster_notes = damage["adjuster_notes"]
-    conn = get_db_connection()
-    try:
-        cur = conn.cursor()
-        cur.execute(
-            "SELECT * FROM repair_costs WHERE claim_id = %s AND item_type = %s ORDER BY id DESC LIMIT 1",
-            (claim_id, item_type),
-        )
-        repair_row = row_to_dict(cur.fetchone())
-        cur.execute(
-            "SELECT * FROM replacement_costs WHERE claim_id = %s AND item_type = %s ORDER BY id DESC LIMIT 1",
-            (claim_id, item_type),
-        )
-        replacement_row = row_to_dict(cur.fetchone())
-    finally:
-        conn.close()
+    async with BlobServiceClient.from_connection_string(
+        AZURE_STORAGE_CONNECTION_STRING
+    ) as service:
+        container_client = service.get_container_client(container)
+        blob_client = container_client.get_blob_client(blob_path)
 
-    if repair_row and replacement_row:
-        repair_cost = float(repair_row["total_repair_estimate"])
-        replacement_cost = float(replacement_row["total_replacement_estimate"])
-        labor_cost = float(repair_row.get("labor_hours") or 0) * float(repair_row.get("labor_rate") or 0)
-        material_cost = float(repair_row.get("material_cost") or 0)
-    else:
-        # ai_costs = _llm_estimate_costs(item_type, item_age)
-        ai_costs = _llm_estimate_costs(
-        item_type,
-        item_age,
-        severity,
-        estimated_cost,
-        adjuster_notes,
-        )
-        repair_cost = float(ai_costs.get("repair_cost", 500))
-        replacement_cost = float(ai_costs.get("replacement_cost", 1000))
-        # labor_cost = float(ai_costs.get("labor_cost", 200))
-        labor_cost = (
-        float(ai_costs["labor_hours"]) *
-        float(ai_costs["labor_rate"])
-        )
-        material_cost = float(ai_costs.get("material_cost", 300))
+        try:
+            await blob_client.get_blob_properties()
+        except ResourceNotFoundError:
+            raise FileNotFoundError(
+                f"Blob not found: container={container}, blob={blob_path}"
+            )
+
+        stream = await blob_client.download_blob()
+        raw_bytes = await stream.readall()
+
+    return json.loads(raw_bytes.decode("utf-8"))
 
 
 
 
-        repair_result = write_repair_cost(
+GUIDEWIRE_QUOTE_CONTAINER = os.environ.get("GUIDEWIRE_QUOTE_CONTAINER")
 
-            item_id=damage_id,
+async def save_json_output_to_blob(ref_id: str, name: str, quote_resp: dict):
+    """
+    Save quote_resp JSON to Azure Blob Storage in the container specified by GUIDEWIRE_QUOTE_CONTAINER,
+    with blob name formatted as "{ref_id}_Quote_{name}".
+    """
+    if not AZURE_STORAGE_CONNECTION_STRING:
+        raise RuntimeError("AZURE_STORAGE_CONNECTION_STRING not set")
 
-            claim_number=claim_number,
+    blob_name = f"{ref_id}_Quote_{name}"
 
-            item_type=item_type,
+    # Serialize quote_resp dict to JSON string
+    json_data = json.dumps(quote_resp, indent=2)
 
-            material_cost=ai_costs["material_cost"],
+    async with BlobServiceClient.from_connection_string(
+        AZURE_STORAGE_CONNECTION_STRING
+    ) as service:
+        container_client = service.get_container_client(GUIDEWIRE_QUOTE_CONTAINER)
 
-            labor_hours=ai_costs["labor_hours"],
+        # Create container if not exists (optional)
+        try:
+            await container_client.get_container_properties()
+        except Exception as e:
+            logger.warning("Container does not exist, creating: %s", e)
+            await container_client.create_container()
 
-            labor_rate=ai_costs["labor_rate"],
+        blob_client = container_client.get_blob_client(blob_name)
 
-            diagnostic_fee=ai_costs["diagnostic_fee"],
+        # Upload JSON string as bytes
+        await blob_client.upload_blob(json_data.encode("utf-8"), overwrite=True)
 
-            urgency_factor=ai_costs["urgency_factor"],
+        return blob_client.url
 
-        )
-        
-        repair_cost = repair_result["total_repair_estimate"]
+# def output_blob_url(container : str, blob_path: str, ref_id: str, name: str):
+#     """
+#     Creates a output blob url so that it can be sent in the response 
+#     """
+#     output_url = container+blob_path+ref_id+name
 
+#     return output_url
 
-        replacement_result = write_replacement_cost(
-
-            item_id=damage_id,
-
-            claim_number=claim_number,
-
-            item_type=item_type,
-
-            replacement_material_cost=ai_costs["replacement_material_cost"],
-
-            installation_hours=ai_costs["installation_hours"],
-
-            labor_rate=ai_costs["labor_rate"],
-
-            delivery_fee=ai_costs["delivery_fee"],
-
-            disposal_fee=ai_costs["disposal_fee"],
-
-        )
-        replacement_cost = replacement_result["total_replacement_estimate"]
- 
-
-
-    if repair_cost > 0.6 * replacement_cost or item_age >= useful_life_remaining:
-        recommendation = "Replace"
-    else:
-        recommendation = "Repair"
-
-    # Confidence heuristic: bigger gap between costs => more confident
-    if replacement_cost > 0:
-        ratio_gap = abs(repair_cost - replacement_cost) / replacement_cost
-    else:
-        ratio_gap = 0
-    confidence_score = round(min(1.0, 0.5 + ratio_gap), 2)
-
-    estimate = write_estimate(
-        claim_number, item_type, item_age, useful_life_remaining, repair_cost, replacement_cost,
-        labor_cost, material_cost, recommendation, confidence_score,
-    )
-
-
-
-
-    ai_message = (
-        f"For claim {claim_number}, the recommendation is to "
-        f"{recommendation} the damaged item of type {item_type}. "
-        f"The item age is {item_age} years with "
-        f"{useful_life_remaining} years of useful life remaining. "
-        f"The estimated repair cost is ${repair_cost:,.2f} while "
-        f"the replacement cost is ${replacement_cost:,.2f}. "
-        f"The confidence score is {confidence_score}. "
-        f"The recommendation is based on the insurer's repair-vs-replacement business rule."
-    )
-    # write_repair_vs_replacement_decision(
-    #     claim_number=claim_number,
-    #     recommended_action=recommendation,
-    #     ai_generated_message=ai_message,
-    # )
-
-
-    return {
-        "claim_id": claim_id,
-        "item_type": item_type,
-        "item_age": item_age,
-        "useful_life_remaining": useful_life_remaining,
-        "repair_cost": repair_cost,
-        "replacement_cost": replacement_cost,
-        "recommendation": recommendation,
-        "confidence_score": confidence_score,
-        "estimate": estimate,
-        "ai_generated_message":ai_message,
-    }
+so now make required code changes and make new files for service.py and storageutils.py for our bind and issue mcp tool 
+and give me code for all the files so that i can copy paste also please change the docstring as per the additional changes as well 
