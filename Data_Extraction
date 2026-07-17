@@ -1,298 +1,239 @@
-Reserve recommendation agent i upadted few things here lets call this version 3
+JarvisClaims@JarvisClaims:~/rohan$ curl -X POST http://localhost:8910/chat -H "Content-Type: application/json" -d '{"message":"Set the initial reserve for claim CLM-2026-4511"}'
+data: [Tool: recommend_reserve] Starting...
+
+data: [Tool: recommend_reserve] Done
+
+data: I
+
+data:  attempted
+
+data:  to
+
+data:  set
+
+data:  the
+
+data:  initial
+
+data:  reserve
+
+data:  for
+
+data:  claim
+
+data:  CL
+
+data: M
+
+data: -
+
+data: 202
+
+data: 6
+
+data: -
+
+data: 451
+
+data: 1
+
+data: ,
+
+data:  but
+
+data:  there
+
+data:  was
+
+data:  an
+
+data:  error
+
+data:  retrieving
+
+data:  the
+
+data:  required
+
+data:  claim
+
+data:  data
+
+data: .
+
+data:  The
+
+data:  system
+
+data:  returned
+
+data:  an
+
+data:  error
+
+data:  regarding
+
+data:  an
+
+data:  invalid
+
+data:  format
+
+data:  spec
+
+data: ifier
+
+data: ,
+
+data:  which
+
+data:  suggests
+
+data:  a
+
+data:  technical
+
+data:  issue
+
+data:  with
+
+data:  processing
+
+data:  this
+
+data:  claim
+
+data:  ID
+
+data: .
 
 
 
-"""
-server.py — Reserve Recommendation Agent
-──────────────────────────────────────────
-LangGraph agent that computes a recommended financial reserve for a claim
-and compares it against the adjuster's manually set reserve.
+data: Please
 
-Port: 8910
-MCP : http://localhost:8900/api/v1/reserve_recommendation/mcp
+data:  verify
 
-Run:
-    py -3 server.py
-"""
+data:  that
 
-import json
-import logging
-import os
-import sys
-import time
-import traceback
-from datetime import datetime, timedelta
-from typing import Annotated, TypedDict
+data:  the
 
-import uvicorn
-from dotenv import load_dotenv, find_dotenv
-from fastapi import FastAPI, Request
-from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import StreamingResponse
-from langchain_core.messages import AIMessage, SystemMessage
-from langchain_mcp_adapters.client import MultiServerMCPClient
-from langchain_openai.chat_models import AzureChatOpenAI
-from langgraph.graph import END, START, StateGraph
-from langgraph.graph.message import add_messages
-from langgraph.prebuilt import ToolNode
+data:  claim
 
-load_dotenv(find_dotenv())
+data:  ID
 
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s | %(levelname)-8s | %(name)s | %(message)s",
-    stream=sys.stdout,
-    force=True,
-)
-logger = logging.getLogger("reserve_recommendation_agent")
+data:  is
 
-PHOENIX_API_KEY = os.getenv("PHOENIX_API_KEY", "")
-PHOENIX_ENDPOINT = os.getenv("PHOENIX_ENDPOINT", "")
-MCP_URL = os.getenv("MCP_URL", "http://localhost:6190/api/v1/reserve_recommendation/mcp")
-AGENT_PORT = int(os.getenv("AGENT_PORT", "8910"))
+data:  correct
 
-config_mcp_server = {
-    "reserve_recommendation_mcp": {
-        "url": MCP_URL,
-        "transport": "streamable_http",
-        "timeout": timedelta(seconds=120),
-        "sse_read_timeout": timedelta(seconds=600),
-    }
-}
+data:  and
 
-app = FastAPI(title="Reserve Recommendation Agent")
+data:  exists
 
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
+data:  in
 
+data:  the
 
-class State(TypedDict):
-    messages: Annotated[list, add_messages]
+data:  system
 
+data: .
 
-def router(state: State):
-    last = state["messages"][-1]
-    if isinstance(last, AIMessage) and getattr(last, "tool_calls", None):
-        return "tools"
-    if isinstance(last, AIMessage) and last.content:
-        if "Continue" in last.content:
-            return "tools"
-        if "End" in last.content:
-            return "End"
-    return "End"
+data:  If
 
+data:  the
 
-_FALLBACK_PROMPT = """
-You are the Reserve Recommendation Agent for an insurance claims platform,
-assisting a Claims Adjuster.
+data:  problem
 
-Given a claim_id, your workflow is:
+data:  persists
 
-1. Call recommend_reserve with the claim_id. This will:
-   - Pull loss assessment totals, fraud risk score, and claim severity.
-   - Apply severity and fraud buffers to compute a recommended reserve.
-   - Compare against the adjuster's manually set adjusted_reserve.
-   - Update adjuster_findings with the recommended reserve.
+data: ,
 
-2. Summarize for the adjuster:
-   - The recommended reserve amount and its calculation breakdown.
-   - The severity buffer and fraud risk buffer applied.
-   - Variance vs. the adjuster's manual reserve (if set).
-   - The LLM rationale.
+data:  you
 
-When you have completed the task, end your response with "End".
-"""
+data:  may
 
+data:  need
 
-def load_prompt() -> str:
-    if not PHOENIX_ENDPOINT:
-        raise RuntimeError("Phoenix not configured")
-    from phoenix.client import Client
-    client = Client(base_url=PHOENIX_ENDPOINT, api_key=PHOENIX_API_KEY)
-    prompt = client.prompts.get(name="reserve_recommendation_agent", label="production")
-    prompt_set = prompt._template["messages"]
-    system_msg = next(
-        (item["content"][0]["text"] for item in prompt_set if item.get("role") == "system"), None
-    )
-    if not system_msg:
-        raise ValueError("System prompt is empty or missing in Phoenix")
-    return system_msg
+data:  to
 
+data:  contact
 
-def create_graph(model, tools, prompt):
-    graph_builder = StateGraph(State)
-    llm_with_tools = model.bind_tools(tools)
+data:  technical
 
-    async def agent_node(state: State):
-        all_messages = [SystemMessage(content=prompt)] + state["messages"]
-        message = await llm_with_tools.ainvoke(all_messages)
-        return {"messages": [message]}
+data:  support
 
-    graph_builder.add_node("agent", agent_node)
-    graph_builder.add_node("tools", ToolNode(tools=tools))
-    graph_builder.add_edge(START, "agent")
-    graph_builder.add_conditional_edges("agent", router, {"tools": "tools", "End": END})
-    graph_builder.add_edge("tools", "agent")
-    return graph_builder.compile()
+data:  or
 
+data:  try
 
-async def get_tools():
-    client = MultiServerMCPClient(config_mcp_server)
-    tools = await client.get_tools()
-    logger.info("Tools loaded from MCP: %s", [t.name for t in tools])
-    return tools
+data:  again
 
+data:  later
 
-async def stream_graph(graph, initial_state, config):
-    async for event in graph.astream_events(initial_state, config=config, version="v2"):
-        kind = event.get("event", "")
-        if kind == "on_chat_model_stream":
-            chunk = event["data"].get("chunk")
-            if chunk and hasattr(chunk, "content") and chunk.content:
-                yield f"data: {chunk.content}\n\n"
-        elif kind == "on_tool_start":
-            yield f"data: [Tool: {event.get('name', 'unknown_tool')}] Starting...\n\n"
-        elif kind == "on_tool_end":
-            yield f"data: [Tool: {event.get('name', 'unknown_tool')}] Done\n\n"
-
-
-@app.post("/chat")
-async def chat_stream(request: Request):
-    load_dotenv(find_dotenv())
-    tools = await get_tools()
-
-    model = AzureChatOpenAI(
-        api_key=os.getenv("AZURE_OPENAI_API_KEY"),
-        api_version=os.getenv("AZURE_OPENAI_API_VERSION"),
-        azure_deployment=os.getenv("AZURE_OPENAI_CHAT_DEPLOYMENT"),
-        azure_endpoint=os.getenv("AZURE_OPENAI_ENDPOINT"),
-    )
-
-    try:
-        system_prompt = load_prompt()
-    except Exception as e:
-        logger.warning("Phoenix prompt load failed (%s) — using fallback prompt", e)
-        system_prompt = _FALLBACK_PROMPT
-
-    body = await request.json()
-    user_message = body.get("message", "Recommend a reserve for this claim")
-    graph = create_graph(model=model, tools=tools, prompt=system_prompt)
-
-    async def generate():
-        start = time.time()
-        last_event_at = start
-        last_tool = None
-        try:
-            async for event in stream_graph(
-                graph=graph,
-                initial_state={"messages": [user_message]},
-                config={"recursion_limit": 250},
-            ):
-                last_event_at = time.time()
-                if isinstance(event, str) and event.startswith("data: [Tool:"):
-                    try:
-                        last_tool = event.split("[Tool:", 1)[1].split("]", 1)[0]
-                    except Exception:
-                        pass
-                yield event
-        except BaseException as e:
-            elapsed = time.time() - start
-            since_last = time.time() - last_event_at
-            err = {
-                "exception_class": type(e).__name__,
-                "message": str(e),
-                "elapsed_total_seconds": round(elapsed, 2),
-                "seconds_since_last_event": round(since_last, 2),
-                "last_tool_invoked": last_tool,
-                "traceback": traceback.format_exc(),
-                "timestamp_utc": datetime.utcnow().isoformat(),
-            }
-            logger.error("AGENT_ERROR %s", json.dumps(err, default=str))
-            try:
-                yield f"data: [AGENT_ERROR] {json.dumps(err, default=str)}\n\n"
-            except Exception:
-                pass
-            import asyncio
-            if isinstance(e, asyncio.CancelledError):
-                raise
-
-    return StreamingResponse(generate(), media_type="text/event-stream")
-
-
-@app.get("/health")
-async def health():
-    return {"status": "healthy", "agent": "reserve_recommendation_agent"}
-
-
-if __name__ == "__main__":
-    uvicorn.run(app, host="0.0.0.0", port=AGENT_PORT)
+data: .
 
 
 
-"""
-reserve_recommendation_router.py
-──────────────────────────────────
-Tool / Endpoint map:
-  get_adjuster_findings  GET  /api/reserve_recommendation/findings/{claim_id}
-  recommend_reserve      POST /api/reserve_recommendation/recommend/{claim_id}
-"""
+data: End
 
-import logging
-from fastapi import APIRouter, HTTPException
-
-from reserve_recommendation_mcp import handler
-
-log = logging.getLogger(__name__)
-
-router = APIRouter()
+JarvisClaims@JarvisClaims:~/rohan$ 
 
 
-@router.get(
-    "/api/reserve_recommendation/findings/{claim_id}",
-    operation_id="get_adjuster_findings",
-    summary="Read the latest adjuster_findings record for a claim",
-    tags=["ReserveRecommendation"],
-)
-def get_adjuster_findings(claim_id: str):
-    record = handler.get_adjuster_findings(claim_id)
-    return {"claim_id": claim_id, "adjuster_findings": record}
+(venv) JarvisClaims@JarvisClaims:~/rohan/Jarvis_claims_agents_v2_orchestrator/AdjusterAgents/MCP$ python3 main.py 
+/home/JarvisClaims/rohan/Jarvis_claims_agents_v2_orchestrator/AdjusterAgents/MCP/main.py:413: DeprecationWarning: 
+        on_event is deprecated, use lifespan event handlers instead.
 
-
-@router.post(
-    "/api/reserve_recommendation/recommend/{claim_id}",
-    operation_id="recommend_reserve",
-    summary="Compute and store a recommended financial reserve for a claim",
-    tags=["ReserveRecommendation"],
-)
-def recommend_reserve(claim_id: str):
-    try:
-        return handler.recommend_reserve(claim_id)
-    except ValueError as e:
-        raise HTTPException(status_code=404, detail=str(e))
-    except Exception as e:
-        log.exception("recommend_reserve error")
-        raise HTTPException(status_code=500, detail=str(e))
+        Read more about it in the
+        [FastAPI docs for Lifespan Events](https://fastapi.tiangolo.com/advanced/events/).
+        
+  @app.on_event("startup")
+INFO:     Started server process [32649]
+INFO:     Waiting for application startup.
+INFO:     Application startup complete.
+INFO:     Uvicorn running on http://0.0.0.0:6190 (Press CTRL+C to quit)
+INFO:     127.0.0.1:41554 - "POST /api/v1/reserve_recommendation/mcp HTTP/1.1" 200 OK
+INFO:     127.0.0.1:41554 - "POST /api/v1/reserve_recommendation/mcp HTTP/1.1" 202 Accepted
+INFO:     127.0.0.1:41586 - "POST /api/v1/reserve_recommendation/mcp HTTP/1.1" 200 OK
+INFO:     127.0.0.1:41586 - "DELETE /api/v1/reserve_recommendation/mcp HTTP/1.1" 200 OK
+INFO:     127.0.0.1:41570 - "GET /api/v1/reserve_recommendation/mcp HTTP/1.1" 200 OK
+INFO:     127.0.0.1:41596 - "POST /api/v1/reserve_recommendation/mcp HTTP/1.1" 200 OK
+INFO:     127.0.0.1:41596 - "POST /api/v1/reserve_recommendation/mcp HTTP/1.1" 202 Accepted
+Error calling recommend_reserve
+Traceback (most recent call last):
+  File "/home/JarvisClaims/rohan/Jarvis_claims_agents_v2_orchestrator/AdjusterAgents/venv/lib/python3.11/site-packages/fastapi_mcp/server.py", line 559, in _execute_api_tool
+    raise Exception(
+Exception: Error calling recommend_reserve. Status code: 404. Response: {"detail":"Invalid format specifier '\"...\"' for object of type 'str'"}
+INFO:     127.0.0.1:41620 - "POST /api/v1/reserve_recommendation/mcp HTTP/1.1" 200 OK
+INFO:     127.0.0.1:41620 - "DELETE /api/v1/reserve_recommendation/mcp HTTP/1.1" 200 OK
+INFO:     127.0.0.1:41604 - "GET /api/v1/reserve_recommendation/mcp HTTP/1.1" 200 OK
 
 
 
 
-# ── Sub-app: reserve_recommendation (PLACEHOLDER) ──────────────────────────────
+(venv) JarvisClaims@JarvisClaims:~/rohan/Jarvis_claims_agents_v2_orchestrator/AdjusterAgents/ReserveRecommendationAgent$ python3 server.py 
+INFO:     Started server process [32603]
+INFO:     Waiting for application startup.
+INFO:     Application startup complete.
+INFO:     Uvicorn running on http://0.0.0.0:8910 (Press CTRL+C to quit)
+2026-07-17 11:02:23,309 | INFO     | httpx | HTTP Request: POST http://localhost:6190/api/v1/reserve_recommendation/mcp "HTTP/1.1 200 OK"
+2026-07-17 11:02:23,309 | INFO     | mcp.client.streamable_http | Received session ID: 775d3578e728494398b2a61f8d536975
+2026-07-17 11:02:23,310 | INFO     | mcp.client.streamable_http | Negotiated protocol version: 2025-11-25
+2026-07-17 11:02:23,316 | INFO     | httpx | HTTP Request: POST http://localhost:6190/api/v1/reserve_recommendation/mcp "HTTP/1.1 202 Accepted"
+2026-07-17 11:02:23,322 | INFO     | httpx | HTTP Request: POST http://localhost:6190/api/v1/reserve_recommendation/mcp "HTTP/1.1 200 OK"
+2026-07-17 11:02:23,328 | INFO     | httpx | HTTP Request: DELETE http://localhost:6190/api/v1/reserve_recommendation/mcp "HTTP/1.1 200 OK"
+2026-07-17 11:02:23,330 | INFO     | reserve_recommendation_agent | Tools loaded from MCP: ['get_adjuster_findings', 'recommend_reserve']
+2026-07-17 11:02:23,996 | WARNING  | reserve_recommendation_agent | Phoenix prompt load failed (Phoenix not configured) — using fallback prompt
+INFO:     127.0.0.1:59962 - "POST /chat HTTP/1.1" 200 OK
+2026-07-17 11:02:24,565 | INFO     | httpx | HTTP Request: POST https://azureclaimsopenai.openai.azure.com/openai/deployments/gpt-4.1-claims/chat/completions?api-version=2025-01-01-preview "HTTP/1.1 200 OK"
+2026-07-17 11:02:24,836 | INFO     | httpx | HTTP Request: POST http://localhost:6190/api/v1/reserve_recommendation/mcp "HTTP/1.1 200 OK"
+2026-07-17 11:02:24,836 | INFO     | mcp.client.streamable_http | Received session ID: 7e79e5139ea24c6c800a18d8287be2ff
+2026-07-17 11:02:24,837 | INFO     | mcp.client.streamable_http | Negotiated protocol version: 2025-11-25
+2026-07-17 11:02:24,844 | INFO     | httpx | HTTP Request: POST http://localhost:6190/api/v1/reserve_recommendation/mcp "HTTP/1.1 202 Accepted"
+2026-07-17 11:02:25,845 | INFO     | httpx | HTTP Request: POST http://localhost:6190/api/v1/reserve_recommendation/mcp "HTTP/1.1 200 OK"
+2026-07-17 11:02:25,849 | INFO     | httpx | HTTP Request: DELETE http://localhost:6190/api/v1/reserve_recommendation/mcp "HTTP/1.1 200 OK"
+2026-07-17 11:02:27,035 | INFO     | httpx | HTTP Request: POST https://azureclaimsopenai.openai.azure.com/openai/deployments/gpt-4.1-claims/chat/completions?api-version=2025-01-01-preview "HTTP/1.1 200 OK"
 
-reserve_recommendation_app = _make_cors_app(
-    title="reserve_recommendation_agent_mcps",
-    description="[PLACEHOLDER] MCP tools for reserve recommendation.",
-)
-reserve_recommendation_app.include_router(reserve_recommendation_router)
-FastApiMCP(
-    reserve_recommendation_app,
-    include_operations=["recommend_reserve", "get_adjuster_findings"],
-).mount_http()
-app.mount("/api/v1/reserve_recommendation", reserve_recommendation_app)
+
+
 
 
 
@@ -457,24 +398,58 @@ def recommend_reserve(claim_id: str) -> dict:
         recommended_reserve = remaining_coverage_limit
 
     adjuster_reserve = float(findings.get("adjusted_reserve") or 0) if findings else 0.0
-    variance_pct = round((recommended_reserve - adjuster_reserve) / adjuster_reserve * 100, 1) if adjuster_reserve > 0 else 0.0
+    # variance_pct = round((recommended_reserve - adjuster_reserve) / adjuster_reserve * 100, 1) if adjuster_reserve > 0 else 0.0
+
+
+
+    if adjuster_reserve > 0:
+        variance_pct = round(
+            ((recommended_reserve - adjuster_reserve) / adjuster_reserve) * 100,
+            1,
+        )
+    else:
+        variance_pct = None
+
 
     llm = _get_llm()
+    # prompt = f"""
+# You are an insurance reserve specialist. Write a one-sentence rationale
+# explaining the recommended reserve calculation.
+
+#   severity: {severity}
+#   base_loss_estimate: {base_loss}
+#   severity_buffer_percent: {severity_buffer_pct * 100}%
+#   fraud_risk_score: {fraud_score}
+#   fraud_buffer_percent: {fraud_buffer_pct * 100:.1f}%
+#   recommended_reserve: {recommended_reserve}
+#   adjuster_set_reserve: {adjuster_reserve if adjuster_reserve else 'not set'}
+#   variance_percent: {variance_pct}%
+
+# Respond with ONLY a JSON object: {{"rationale": "..."}}
+# """
+
+
+
     prompt = f"""
-You are an insurance reserve specialist. Write a one-sentence rationale
-explaining the recommended reserve calculation.
-
-  severity: {severity}
-  base_loss_estimate: {base_loss}
-  severity_buffer_percent: {severity_buffer_pct * 100}%
-  fraud_risk_score: {fraud_score}
-  fraud_buffer_percent: {fraud_buffer_pct * 100:.1f}%
-  recommended_reserve: {recommended_reserve}
-  adjuster_set_reserve: {adjuster_reserve if adjuster_reserve else 'not set'}
-  variance_percent: {variance_pct}%
-
-Respond with ONLY a JSON object: {{"rationale": "..."}}
+You are an insurance reserve specialist.
+Write a concise one-sentence rationale explaining how the recommended reserve was calculated.
+Use the following information:
+severity: {severity}
+base_loss_estimate: {base_loss}
+policy_deductible: {deductible if deductible is not None else "Not Applicable"}
+net_loss_after_deductible: {net_loss}
+severity_buffer_percent: {severity_buffer_pct * 100:.1f}%
+fraud_risk_score: {fraud_score}
+fraud_buffer_percent: {fraud_buffer_pct * 100:.1f}%
+remaining_coverage_limit: {remaining_coverage_limit if remaining_coverage_limit is not None else "Not Applicable"}
+recommended_reserve: {recommended_reserve}
+adjuster_set_reserve: {adjuster_reserve if adjuster_reserve > 0 else "Not Set"}
+variance_percent: {variance_pct if variance_pct is not None else "Not Applicable"}
+Mention deductible and coverage limit only if they affected the calculation.
+Respond ONLY as JSON.
+{"rationale":"..."}
 """
+
     response = llm.invoke(prompt)
     content = response.content.strip().strip("`")
     if content.startswith("json"):
@@ -521,156 +496,9 @@ Respond with ONLY a JSON object: {{"rationale": "..."}}
         "claim_id": claim_id,
         "system_recommended_reserve": recommended_reserve,
         "adjuster_set_reserve": adjuster_reserve or None,
-        "variance_percent": variance_pct,
+        # "variance_percent": variance_pct,
+        "variance_percent": variance_pct if variance_pct is not None else "Not Applicable",
         "severity_buffer_percent": round(severity_buffer_pct * 100, 1),
         "fraud_buffer_percent": round(fraud_buffer_pct * 100, 1),
         "rationale": rationale,
     }
-
-below is the output 
-
-The system generated a reserve recommendation for claim CLM-2026-4511. It recommended setting the initial reserve at 
-5
-,
-297.42
-∗
-∗
-.
-A
-c
-c
-o
-r
-d
-i
-n
-g
-t
-o
-t
-h
-e
-r
-e
-s
-p
-o
-n
-s
-e
-,
-t
-h
-i
-s
-r
-e
-c
-o
-m
-m
-e
-n
-d
-a
-t
-i
-o
-n
-w
-a
-s
-b
-a
-s
-e
-d
-o
-n
-a
-∗
-∗
-b
-a
-s
-e
-l
-o
-s
-s
-e
-s
-t
-i
-m
-a
-t
-e
-o
-f
-5,297.42∗∗.Accordingtotheresponse,thisrecommendationwasbasedona∗∗baselossestimateof7,500, with a 5.0% severity buffer applied because the claim was assessed as low severity, and a 1.5% fraud risk buffer applied because the claim had a low fraud risk score. After these adjustments, the system arrived at a net reserve recommendation of 
-5
-,
-297.42
-∗
-∗
-.
-T
-h
-i
-s
-w
-a
-s
-c
-o
-m
-p
-a
-r
-e
-d
-a
-g
-a
-i
-n
-s
-t
-t
-h
-e
-a
-d
-j
-u
-s
-t
-e
-r
-’
-s
-m
-a
-n
-u
-a
-l
-l
-y
-s
-e
-t
-r
-e
-s
-e
-r
-v
-e
-o
-f
-∗
-∗
-5,297.42∗∗.Thiswascomparedagainsttheadjuster’smanuallysetreserveof∗∗5,000.00, meaning the recommended reserve is 5.9% higher than the manual reserve. The rationale given by the system is that the recommendation reflects the claim’s low severity and low fraud risk profile, and that it remains closely aligned with the adjuster’s original assessment.
-
