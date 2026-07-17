@@ -1,478 +1,676 @@
-from fastapi import APIRouter
-from fastapi.responses import JSONResponse
+Reserve recommendation agent i upadted few things here lets call this version 3
 
-from .handler import bind_and_issue_policy
-from .models import BindIssueRequest
+
+
+"""
+server.py — Reserve Recommendation Agent
+──────────────────────────────────────────
+LangGraph agent that computes a recommended financial reserve for a claim
+and compares it against the adjuster's manually set reserve.
+
+Port: 8910
+MCP : http://localhost:8900/api/v1/reserve_recommendation/mcp
+
+Run:
+    py -3 server.py
+"""
+
+import json
+import logging
+import os
+import sys
+import time
+import traceback
+from datetime import datetime, timedelta
+from typing import Annotated, TypedDict
+
+import uvicorn
+from dotenv import load_dotenv, find_dotenv
+from fastapi import FastAPI, Request
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import StreamingResponse
+from langchain_core.messages import AIMessage, SystemMessage
+from langchain_mcp_adapters.client import MultiServerMCPClient
+from langchain_openai.chat_models import AzureChatOpenAI
+from langgraph.graph import END, START, StateGraph
+from langgraph.graph.message import add_messages
+from langgraph.prebuilt import ToolNode
+
+load_dotenv(find_dotenv())
+
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s | %(levelname)-8s | %(name)s | %(message)s",
+    stream=sys.stdout,
+    force=True,
+)
+logger = logging.getLogger("reserve_recommendation_agent")
+
+PHOENIX_API_KEY = os.getenv("PHOENIX_API_KEY", "")
+PHOENIX_ENDPOINT = os.getenv("PHOENIX_ENDPOINT", "")
+MCP_URL = os.getenv("MCP_URL", "http://localhost:6190/api/v1/reserve_recommendation/mcp")
+AGENT_PORT = int(os.getenv("AGENT_PORT", "8910"))
+
+config_mcp_server = {
+    "reserve_recommendation_mcp": {
+        "url": MCP_URL,
+        "transport": "streamable_http",
+        "timeout": timedelta(seconds=120),
+        "sse_read_timeout": timedelta(seconds=600),
+    }
+}
+
+app = FastAPI(title="Reserve Recommendation Agent")
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+
+class State(TypedDict):
+    messages: Annotated[list, add_messages]
+
+
+def router(state: State):
+    last = state["messages"][-1]
+    if isinstance(last, AIMessage) and getattr(last, "tool_calls", None):
+        return "tools"
+    if isinstance(last, AIMessage) and last.content:
+        if "Continue" in last.content:
+            return "tools"
+        if "End" in last.content:
+            return "End"
+    return "End"
+
+
+_FALLBACK_PROMPT = """
+You are the Reserve Recommendation Agent for an insurance claims platform,
+assisting a Claims Adjuster.
+
+Given a claim_id, your workflow is:
+
+1. Call recommend_reserve with the claim_id. This will:
+   - Pull loss assessment totals, fraud risk score, and claim severity.
+   - Apply severity and fraud buffers to compute a recommended reserve.
+   - Compare against the adjuster's manually set adjusted_reserve.
+   - Update adjuster_findings with the recommended reserve.
+
+2. Summarize for the adjuster:
+   - The recommended reserve amount and its calculation breakdown.
+   - The severity buffer and fraud risk buffer applied.
+   - Variance vs. the adjuster's manual reserve (if set).
+   - The LLM rationale.
+
+When you have completed the task, end your response with "End".
+"""
+
+
+def load_prompt() -> str:
+    if not PHOENIX_ENDPOINT:
+        raise RuntimeError("Phoenix not configured")
+    from phoenix.client import Client
+    client = Client(base_url=PHOENIX_ENDPOINT, api_key=PHOENIX_API_KEY)
+    prompt = client.prompts.get(name="reserve_recommendation_agent", label="production")
+    prompt_set = prompt._template["messages"]
+    system_msg = next(
+        (item["content"][0]["text"] for item in prompt_set if item.get("role") == "system"), None
+    )
+    if not system_msg:
+        raise ValueError("System prompt is empty or missing in Phoenix")
+    return system_msg
+
+
+def create_graph(model, tools, prompt):
+    graph_builder = StateGraph(State)
+    llm_with_tools = model.bind_tools(tools)
+
+    async def agent_node(state: State):
+        all_messages = [SystemMessage(content=prompt)] + state["messages"]
+        message = await llm_with_tools.ainvoke(all_messages)
+        return {"messages": [message]}
+
+    graph_builder.add_node("agent", agent_node)
+    graph_builder.add_node("tools", ToolNode(tools=tools))
+    graph_builder.add_edge(START, "agent")
+    graph_builder.add_conditional_edges("agent", router, {"tools": "tools", "End": END})
+    graph_builder.add_edge("tools", "agent")
+    return graph_builder.compile()
+
+
+async def get_tools():
+    client = MultiServerMCPClient(config_mcp_server)
+    tools = await client.get_tools()
+    logger.info("Tools loaded from MCP: %s", [t.name for t in tools])
+    return tools
+
+
+async def stream_graph(graph, initial_state, config):
+    async for event in graph.astream_events(initial_state, config=config, version="v2"):
+        kind = event.get("event", "")
+        if kind == "on_chat_model_stream":
+            chunk = event["data"].get("chunk")
+            if chunk and hasattr(chunk, "content") and chunk.content:
+                yield f"data: {chunk.content}\n\n"
+        elif kind == "on_tool_start":
+            yield f"data: [Tool: {event.get('name', 'unknown_tool')}] Starting...\n\n"
+        elif kind == "on_tool_end":
+            yield f"data: [Tool: {event.get('name', 'unknown_tool')}] Done\n\n"
+
+
+@app.post("/chat")
+async def chat_stream(request: Request):
+    load_dotenv(find_dotenv())
+    tools = await get_tools()
+
+    model = AzureChatOpenAI(
+        api_key=os.getenv("AZURE_OPENAI_API_KEY"),
+        api_version=os.getenv("AZURE_OPENAI_API_VERSION"),
+        azure_deployment=os.getenv("AZURE_OPENAI_CHAT_DEPLOYMENT"),
+        azure_endpoint=os.getenv("AZURE_OPENAI_ENDPOINT"),
+    )
+
+    try:
+        system_prompt = load_prompt()
+    except Exception as e:
+        logger.warning("Phoenix prompt load failed (%s) — using fallback prompt", e)
+        system_prompt = _FALLBACK_PROMPT
+
+    body = await request.json()
+    user_message = body.get("message", "Recommend a reserve for this claim")
+    graph = create_graph(model=model, tools=tools, prompt=system_prompt)
+
+    async def generate():
+        start = time.time()
+        last_event_at = start
+        last_tool = None
+        try:
+            async for event in stream_graph(
+                graph=graph,
+                initial_state={"messages": [user_message]},
+                config={"recursion_limit": 250},
+            ):
+                last_event_at = time.time()
+                if isinstance(event, str) and event.startswith("data: [Tool:"):
+                    try:
+                        last_tool = event.split("[Tool:", 1)[1].split("]", 1)[0]
+                    except Exception:
+                        pass
+                yield event
+        except BaseException as e:
+            elapsed = time.time() - start
+            since_last = time.time() - last_event_at
+            err = {
+                "exception_class": type(e).__name__,
+                "message": str(e),
+                "elapsed_total_seconds": round(elapsed, 2),
+                "seconds_since_last_event": round(since_last, 2),
+                "last_tool_invoked": last_tool,
+                "traceback": traceback.format_exc(),
+                "timestamp_utc": datetime.utcnow().isoformat(),
+            }
+            logger.error("AGENT_ERROR %s", json.dumps(err, default=str))
+            try:
+                yield f"data: [AGENT_ERROR] {json.dumps(err, default=str)}\n\n"
+            except Exception:
+                pass
+            import asyncio
+            if isinstance(e, asyncio.CancelledError):
+                raise
+
+    return StreamingResponse(generate(), media_type="text/event-stream")
+
+
+@app.get("/health")
+async def health():
+    return {"status": "healthy", "agent": "reserve_recommendation_agent"}
+
+
+if __name__ == "__main__":
+    uvicorn.run(app, host="0.0.0.0", port=AGENT_PORT)
+
+
+
+"""
+reserve_recommendation_router.py
+──────────────────────────────────
+Tool / Endpoint map:
+  get_adjuster_findings  GET  /api/reserve_recommendation/findings/{claim_id}
+  recommend_reserve      POST /api/reserve_recommendation/recommend/{claim_id}
+"""
+
+import logging
+from fastapi import APIRouter, HTTPException
+
+from reserve_recommendation_mcp import handler
+
+log = logging.getLogger(__name__)
 
 router = APIRouter()
 
 
-@router.post(
-    "/guidewire_bind_and_issue_mcp",
-    operation_id="guidewire_bind_and_issue_mcp",
+@router.get(
+    "/api/reserve_recommendation/findings/{claim_id}",
+    operation_id="get_adjuster_findings",
+    summary="Read the latest adjuster_findings record for a claim",
+    tags=["ReserveRecommendation"],
 )
-async def bind_and_issue(request: BindIssueRequest):
-    """
-    Bind and issue a commercial property policy in Guidewire PolicyCenter
-    using an existing quoted Job ID.
+def get_adjuster_findings(claim_id: str):
+    record = handler.get_adjuster_findings(claim_id)
+    return {"claim_id": claim_id, "adjuster_findings": record}
 
-    This service is responsible for:
 
-    1. Accepting the Guidewire Job ID returned from the Quote MCP.
-    2. Accepting the Quote MCP output_blob_url.
-    3. Invoking the Guidewire Bind & Issue API.
-    4. Persisting the Guidewire API response to Azure Blob Storage.
-    5. Creating the Azure Blob container if it does not already exist.
-    6. Returning both the Guidewire response and the newly created
-       bind_and_issue_blob_url.
-
-    Guidewire API
-    -------------
-        POST /job/v1/jobs/{job_id}/bind-and-issue
-
-    Input
-    -----
-    job_id : str
-        Guidewire Job ID returned from the guidewire_quote_mcp operation.
-
-    output_blob_url : str
-        Azure Blob URL returned from the guidewire_quote_mcp operation.
-
-        Example:
-
-        https://agenticai1.blob.core.windows.net/guidewire-quote/
-        19F64D19C34B9B1C_Quote_Report_20260715_081238_mail.json
-
-    Processing
-    ----------
-    The service stores the Bind & Issue response in the
-    'guidewire_bind_and_issue' container.
-
-    Blob naming convention
-
-    Input
-
-        19F64D19C34B9B1C_Quote_Report_20260715_081238_mail.json
-
-    Output
-
-        19F64D19C34B9B1C_bind_and_issue_Report_20260715_081238_mail.json
-
-    Returns
-    -------
-    Success
-
-    {
-        "status": True,
-        "jobId": "pc:10234",
-        "bind_and_issue_blob_url":
-        "https://.../guidewire_bind_and_issue/19F64D19C34B9B1C_bind_and_issue_Report_20260715_081238_mail.json",
-        "policyResponse": {
-            ...
-        }
-    }
-
-    Failure
-
-    {
-        "status": False,
-        "error": "Failed to bind and issue policy using Guidewire API: ..."
-    }
-
-    Notes
-    -----
-    - The Job must already be successfully quoted.
-    - The Job must be in a bindable state.
-    - The Quote MCP output_blob_url is used only for generating the
-      Bind & Issue blob filename.
-    - The Bind & Issue response is stored in Azure Blob Storage before
-      being returned to the caller.
-    """
-
+@router.post(
+    "/api/reserve_recommendation/recommend/{claim_id}",
+    operation_id="recommend_reserve",
+    summary="Compute and store a recommended financial reserve for a claim",
+    tags=["ReserveRecommendation"],
+)
+def recommend_reserve(claim_id: str):
     try:
-        result = await bind_and_issue_policy(
-            job_id=request.job_id,
-            output_blob_url=request.output_blob_url,
-        )
-
-        return JSONResponse(
-            content={
-                "jsonrpc": "2.0",
-                "id": 1,
-                "result": result,
-            },
-            status_code=200,
-        )
-
+        return handler.recommend_reserve(claim_id)
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e))
     except Exception as e:
-        return JSONResponse(
-            content={
-                "jsonrpc": "2.0",
-                "id": 1,
-                "result": {
-                    "status": False,
-                    "error": str(e),
-                },
-            },
-            status_code=200,
-        )
+        log.exception("recommend_reserve error")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+
+
+# ── Sub-app: reserve_recommendation (PLACEHOLDER) ──────────────────────────────
+
+reserve_recommendation_app = _make_cors_app(
+    title="reserve_recommendation_agent_mcps",
+    description="[PLACEHOLDER] MCP tools for reserve recommendation.",
+)
+reserve_recommendation_app.include_router(reserve_recommendation_router)
+FastApiMCP(
+    reserve_recommendation_app,
+    include_operations=["recommend_reserve", "get_adjuster_findings"],
+).mount_http()
+app.mount("/api/v1/reserve_recommendation", reserve_recommendation_app)
 
 
 
 
 
-from pydantic import BaseModel, Field
-
-
-class BindIssueRequest(BaseModel):
-    """
-    Request model for the Guidewire Bind & Issue MCP.
-
-    This model accepts the Job ID generated by the Guidewire Quote MCP
-    along with the Quote MCP output blob URL.
-
-    The output_blob_url is used to derive the filename for storing the
-    Bind & Issue API response in Azure Blob Storage.
-
-    Attributes
-    ----------
-    job_id : str
-        Guidewire Job ID returned from the Quote MCP.
-
-    output_blob_url : str
-        Azure Blob URL returned from the Quote MCP.
-
-    Example
-    -------
-    {
-        "job_id": "pc:10234",
-        "output_blob_url":
-        "https://agenticai1.blob.core.windows.net/guidewire-quote/19F64D19C34B9B1C_Quote_Report_20260715_081238_mail.json"
-    }
-    """
-
-    job_id: str = Field(
-        ...,
-        description=(
-            "Guidewire Job ID returned from the "
-            "guidewire_quote_mcp operation."
-        ),
-    )
-
-    output_blob_url: str = Field(
-        ...,
-        description=(
-            "Azure Blob URL returned from the guidewire_quote_mcp "
-            "operation. This is used to generate the Bind & Issue "
-            "output blob filename."
-        ),
-    )
-
-
-
-
-import logging
-
-from .clients.guidewire_clients import post
-from .storage_utils import save_bind_and_issue_output_to_blob
-
-logger = logging.getLogger(__name__)
-
-
-async def bind_and_issue_policy(
-    job_id: str,
-    output_blob_url: str,
-) -> dict:
-    """
-    Bind and issue a policy in Guidewire for an existing Job ID.
-
-    This service performs the following steps:
-
-    1. Calls the Guidewire Bind & Issue API.
-    2. Uploads the Guidewire response JSON to Azure Blob Storage.
-    3. Creates the destination container if it does not already exist.
-    4. Returns both the Guidewire response and the newly created
-       bind_and_issue_blob_url.
-
-    Guidewire API
-    -------------
-        POST /job/v1/jobs/{job_id}/bind-and-issue
-
-    Args
-    ----
-    job_id : str
-        The Guidewire Job ID returned from the Quote MCP.
-
-    output_blob_url : str
-        The Quote MCP output blob URL. This is used to derive the
-        Bind & Issue output filename.
-
-    Example output_blob_url
-    -----------------------
-    https://agenticai1.blob.core.windows.net/guidewire-quote/
-    19F64D19C34B9B1C_Quote_Report_20260715_081238_mail.json
-
-    Returns
-    -------
-    Success
-
-    {
-        "status": True,
-        "jobId": "pc:12345",
-        "bind_and_issue_blob_url": "...",
-        "policyResponse": {...}
-    }
-
-    Failure
-
-    {
-        "status": False,
-        "error": "Failed to bind and issue policy using Guidewire API: ..."
-    }
-    """
-
-    try:
-        logger.info("Calling Guidewire Bind & Issue API for Job ID: %s", job_id)
-
-        policy_resp = post(
-            f"/job/v1/jobs/{job_id}/bind-and-issue",
-            {},
-        )
-
-        logger.info("Guidewire Bind & Issue completed successfully.")
-
-        bind_and_issue_blob_url = (
-            await save_bind_and_issue_output_to_blob(
-                output_blob_url=output_blob_url,
-                bind_and_issue_response=policy_resp,
-            )
-        )
-
-        logger.info(
-            "Bind & Issue response uploaded to Azure Blob Storage."
-        )
-
-        return {
-            "status": True,
-            "jobId": job_id,
-            "bind_and_issue_blob_url": bind_and_issue_blob_url,
-            "policyResponse": policy_resp,
-        }
-
-    except Exception as e:
-        logger.exception("Bind & Issue failed.")
-
-        return {
-            "status": False,
-            "error": f"Failed to bind and issue policy using Guidewire API: {str(e)}",
-        }
-
-
-
-
-
+"""
+handler.py — Reserve Recommendation
+──────────────────────────────────────
+Calculates a recommended financial reserve by combining loss_assessments,
+fraud_risk_score, and claim severity. Compares the recommendation against
+the adjuster's manually set adjusted_reserve.
+"""
 
 import json
 import logging
+import os
+import sys
+from typing import Optional
 
-from azure.storage.blob.aio import BlobServiceClient
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "common"))
 
-from .service import (
-    AZURE_STORAGE_CONNECTION_STRING,
-    GUIDEWIRE_BIND_AND_ISSUE_CONTAINER,
-    _require_env,
-    _parse_blob_url,
-    build_bind_and_issue_blob_name,
-)
+from db import get_db_connection, row_to_dict  # noqa: E402
+from langchain_openai.chat_models import AzureChatOpenAI  # noqa: E402
 
-logger = logging.getLogger(__name__)
+log = logging.getLogger(__name__)
 
-
-async def save_bind_and_issue_output_to_blob(
-    output_blob_url: str,
-    bind_and_issue_response: dict,
-) -> str:
-    """
-    Save the Guidewire Bind & Issue API response to Azure Blob Storage.
-
-    Workflow
-    --------
-    1. Parse the Quote MCP output_blob_url.
-    2. Extract the original blob filename.
-    3. Generate a new blob filename by replacing the token immediately
-       after the reference id with 'bind_and_issue'.
-    4. Upload the response JSON into the
-       'guidewire_bind_and_issue' container.
-    5. Create the container if it does not already exist.
-    6. Return the uploaded blob URL.
-
-    Example
-    -------
-
-    Input output_blob_url
-
-    https://agenticai1.blob.core.windows.net/guidewire-quote/
-    19F64D19C34B9B1C_Quote_Report_20260715_081238_mail.json
+_SEVERITY_BUFFER = {"Critical": 0.20, "High": 0.15, "Medium": 0.10, "Low": 0.05}
 
 
-    Stored Blob Name
-
-    19F64D19C34B9B1C_bind_and_issue_Report_20260715_081238_mail.json
-
-
-    Returned URL
-
-    https://agenticai1.blob.core.windows.net/guidewire_bind_and_issue/
-    19F64D19C34B9B1C_bind_and_issue_Report_20260715_081238_mail.json
-    """
-
-    _require_env()
-
-    _, original_blob_name = _parse_blob_url(output_blob_url)
-
-    bind_and_issue_blob_name = build_bind_and_issue_blob_name(
-        original_blob_name
+def _get_llm():
+    return AzureChatOpenAI(
+        api_key=os.getenv("AZURE_OPENAI_API_KEY"),
+        api_version=os.getenv("AZURE_OPENAI_API_VERSION"),
+        azure_deployment=os.getenv("AZURE_OPENAI_CHAT_DEPLOYMENT"),
+        azure_endpoint=os.getenv("AZURE_OPENAI_ENDPOINT"),
     )
 
-    json_data = json.dumps(bind_and_issue_response, indent=2)
 
-    async with BlobServiceClient.from_connection_string(
-        AZURE_STORAGE_CONNECTION_STRING
-    ) as service:
-
-        container_client = service.get_container_client(
-            GUIDEWIRE_BIND_AND_ISSUE_CONTAINER
+def get_adjuster_findings(claim_id: str) -> Optional[dict]:
+    conn = get_db_connection()
+    try:
+        cur = conn.cursor()
+        cur.execute(
+            "SELECT * FROM adjuster_findings WHERE claim_id = %s ORDER BY id DESC LIMIT 1",
+            (claim_id,),
         )
+        return row_to_dict(cur.fetchone())
+    finally:
+        conn.close()
 
-        try:
-            await container_client.get_container_properties()
-        except Exception:
-            logger.info(
-                "Container '%s' does not exist. Creating container.",
-                GUIDEWIRE_BIND_AND_ISSUE_CONTAINER,
+
+def _get_claim(claim_id: str) -> Optional[dict]:
+    conn = get_db_connection()
+    try:
+        cur = conn.cursor()
+        cur.execute("SELECT * FROM claims WHERE claim_number = %s", (claim_id,))
+        row = cur.fetchone()
+        if row:
+            return row_to_dict(row)
+        if claim_id.isdigit():
+            cur.execute("SELECT * FROM claims WHERE id = %s", (int(claim_id),))
+            return row_to_dict(cur.fetchone())
+        return None
+    finally:
+        conn.close()
+
+
+def _get_loss_assessment(claim_id: str) -> Optional[dict]:
+    conn = get_db_connection()
+    try:
+        cur = conn.cursor()
+        cur.execute(
+            "SELECT * FROM loss_assessments WHERE claim_number = %s ORDER BY id DESC LIMIT 1",
+            (claim_id,),
+        )
+        return row_to_dict(cur.fetchone())
+    finally:
+        conn.close()
+
+
+def _get_fraud_risk(claim_id: str) -> Optional[dict]:
+    conn = get_db_connection()
+    try:
+        cur = conn.cursor()
+        cur.execute(
+            "SELECT * FROM fraud_risk_snapshots WHERE claim_id = %s ORDER BY id DESC LIMIT 1",
+            (claim_id,),
+        )
+        return row_to_dict(cur.fetchone())
+    finally:
+        conn.close()
+
+
+def _get_deductible(policy_number: str) -> Optional[float]:
+    conn = get_db_connection()
+    try:
+        cur = conn.cursor()
+        cur.execute(
+            "SELECT deductible FROM policy_details WHERE policy_number = %s LIMIT 1",
+            (policy_number,),
+        )
+        row = row_to_dict(cur.fetchone())
+        if row and row.get("deductible") is not None:
+            return float(row["deductible"])
+        return None
+    finally:
+        conn.close()
+
+
+def _get_remaining_coverage_limit(policy_number: str) -> Optional[float]:
+    conn = get_db_connection()
+    try:
+        cur = conn.cursor()
+        cur.execute(
+            "SELECT remaining_coverage_limit FROM policy_details WHERE policy_number = %s LIMIT 1",
+            (policy_number,),
+        )
+        row = row_to_dict(cur.fetchone())
+        if row and row.get("remaining_coverage_limit") is not None:
+            return float(row["remaining_coverage_limit"])
+        return None
+    finally:
+        conn.close()
+
+
+def recommend_reserve(claim_id: str) -> dict:
+    """
+    Derives a recommended reserve from loss assessment totals, fraud risk
+    buffer, and severity adjustment. Writes the result to
+    adjuster_findings.system_recommended_reserve — never overwrites
+    adjusted_reserve, which remains the adjuster's manual value.
+    """
+    claim = _get_claim(claim_id)
+    if not claim:
+        raise ValueError(f"Claim {claim_id} not found")
+
+    loss_assessment = _get_loss_assessment(claim_id)
+    fraud_snapshot = _get_fraud_risk(claim_id)
+    findings = get_adjuster_findings(claim_id)
+
+    severity = claim.get("severity") or "Medium"
+    estimated_cost = float(claim.get("estimated_cost") or 0)
+
+    if loss_assessment:
+        base_loss = float(loss_assessment.get("total_parts_cost") or 0) + \
+                    float(loss_assessment.get("total_labor_cost") or 0)
+    else:
+        base_loss = estimated_cost
+
+    fraud_score = int(fraud_snapshot.get("fraud_score") or 0) if fraud_snapshot else 0
+    fraud_buffer_pct = min(fraud_score / 1000, 0.10)
+    severity_buffer_pct = _SEVERITY_BUFFER.get(severity, 0.10)
+
+    policy_number = claim.get("policy_number") or ""
+    deductible = _get_deductible(policy_number) if policy_number else None
+    net_loss = max(base_loss - (deductible or 0.0), 0.0)
+
+    recommended_reserve = round(net_loss * (1 + severity_buffer_pct + fraud_buffer_pct), 2)
+
+    remaining_coverage_limit = _get_remaining_coverage_limit(policy_number) if policy_number else None
+    if remaining_coverage_limit is not None and recommended_reserve > remaining_coverage_limit:
+        recommended_reserve = remaining_coverage_limit
+
+    adjuster_reserve = float(findings.get("adjusted_reserve") or 0) if findings else 0.0
+    variance_pct = round((recommended_reserve - adjuster_reserve) / adjuster_reserve * 100, 1) if adjuster_reserve > 0 else 0.0
+
+    llm = _get_llm()
+    prompt = f"""
+You are an insurance reserve specialist. Write a one-sentence rationale
+explaining the recommended reserve calculation.
+
+  severity: {severity}
+  base_loss_estimate: {base_loss}
+  severity_buffer_percent: {severity_buffer_pct * 100}%
+  fraud_risk_score: {fraud_score}
+  fraud_buffer_percent: {fraud_buffer_pct * 100:.1f}%
+  recommended_reserve: {recommended_reserve}
+  adjuster_set_reserve: {adjuster_reserve if adjuster_reserve else 'not set'}
+  variance_percent: {variance_pct}%
+
+Respond with ONLY a JSON object: {{"rationale": "..."}}
+"""
+    response = llm.invoke(prompt)
+    content = response.content.strip().strip("`")
+    if content.startswith("json"):
+        content = content[4:]
+    try:
+        rationale = json.loads(content).get("rationale", "")
+    except Exception:
+        rationale = f"Reserve based on {severity} severity buffer ({int(severity_buffer_pct * 100)}%) and fraud risk adjustment ({int(fraud_buffer_pct * 100)}%)."
+
+    conn = get_db_connection()
+    try:
+        cur = conn.cursor()
+        if findings:
+            cur.execute(
+                "UPDATE adjuster_findings SET system_recommended_reserve = %s, reason_system_recommendation = %s WHERE id = %s",
+                (recommended_reserve, rationale, findings["id"]),
             )
-            await container_client.create_container()
+        else:
+            cur.execute(
+                """INSERT INTO adjuster_findings (
+                    claim_id, adjuster_name, cause_of_loss, coverage_confirmed,
+                    fraud_risk, repair_vs_replace, adjusted_reserve,
+                    findings_date, fraud_risk_score, system_recommended_reserve,
+                    reason_system_recommendation
+                ) VALUES (%s, %s, %s, %s, %s, %s, %s, NOW(), %s, %s, %s)""",
+                (
+                    claim_id,
+                    "ReserveRecommendationAgent",
+                    claim.get("loss_type") or "Unknown",
+                    "Pending",
+                    "Medium" if fraud_score < 50 else "High",
+                    "TBD",
+                    0,
+                    fraud_score,
+                    recommended_reserve,
+                    rationale,
+                ),
+            )
+        conn.commit()
+    finally:
+        conn.close()
 
-        blob_client = container_client.get_blob_client(
-            bind_and_issue_blob_name
-        )
+    return {
+        "claim_id": claim_id,
+        "system_recommended_reserve": recommended_reserve,
+        "adjuster_set_reserve": adjuster_reserve or None,
+        "variance_percent": variance_pct,
+        "severity_buffer_percent": round(severity_buffer_pct * 100, 1),
+        "fraud_buffer_percent": round(fraud_buffer_pct * 100, 1),
+        "rationale": rationale,
+    }
 
-        await blob_client.upload_blob(
-            json_data.encode("utf-8"),
-            overwrite=True,
-        )
+below is the output 
 
-        logger.info(
-            "Bind & Issue response uploaded successfully to %s",
-            blob_client.url,
-        )
-
-        return blob_client.url
-
-
-
-
-import os
-from urllib.parse import urlparse, unquote
-from dotenv import load_dotenv
-
-load_dotenv()
-
-AZURE_STORAGE_CONNECTION_STRING = os.environ.get(
-    "AZURE_STORAGE_CONNECTION_STRING", ""
-)
-
-GUIDEWIRE_BIND_AND_ISSUE_CONTAINER = os.environ.get(
-    "GUIDEWIRE_BIND_AND_ISSUE_CONTAINER",
-    "guidewire_bind_and_issue",
-)
-
-
-def _require_env() -> None:
-    """
-    Ensure required Azure Storage environment variables exist.
-    """
-    if not AZURE_STORAGE_CONNECTION_STRING:
-        raise RuntimeError(
-            "Missing AZURE_STORAGE_CONNECTION_STRING in environment/.env"
-        )
-
-
-def _parse_blob_url(url: str) -> tuple[str, str]:
-    """
-    Parse an Azure Blob URL and return:
-
-        (container_name, blob_path)
-
-    Example
-    -------
-    Input:
-        https://account.blob.core.windows.net/guidewire-quote/
-        19F64D19C34B9B1C_Quote_Report_20260715_081238_mail.json
-
-    Returns:
-        (
-            "guidewire-quote",
-            "19F64D19C34B9B1C_Quote_Report_20260715_081238_mail.json"
-        )
-    """
-
-    parsed = urlparse(url)
-
-    if not parsed.scheme.startswith("http"):
-        raise ValueError("Invalid Azure Blob URL.")
-
-    path = parsed.path.lstrip("/")
-
-    if "/" not in path:
-        raise ValueError(
-            "Blob URL must contain both container and blob name."
-        )
-
-    container, blob_path = path.split("/", 1)
-
-    return unquote(container), unquote(blob_path)
-
-
-def build_bind_and_issue_blob_name(original_blob_name: str) -> str:
-    """
-    Build the Bind & Issue blob filename.
-
-    Rule
-    ----
-    Replace only the token immediately after the reference ID with
-    'bind_and_issue'.
-
-    Example
-    -------
-    Input
-
-        19F64D19C34B9B1C_Quote_Report_20260715_081238_mail.json
-
-    Output
-
-        19F64D19C34B9B1C_bind_and_issue_Report_20260715_081238_mail.json
-
-    Another Example
-
-        19F64D19C34B9B1C_Submission_Report_20260715.json
-
-    Output
-
-        19F64D19C34B9B1C_bind_and_issue_Report_20260715.json
-    """
-
-    parts = original_blob_name.split("_", 2)
-
-    if len(parts) < 3:
-        raise ValueError(
-            "Unexpected blob filename format."
-            " Expected REFID_<TYPE>_<remaining_filename>."
-        )
-
-    ref_id = parts[0]
-    remaining = parts[2]
-
-    return f"{ref_id}_bind_and_issue_{remaining}"
-
+The system generated a reserve recommendation for claim CLM-2026-4511. It recommended setting the initial reserve at 
+5
+,
+297.42
+∗
+∗
+.
+A
+c
+c
+o
+r
+d
+i
+n
+g
+t
+o
+t
+h
+e
+r
+e
+s
+p
+o
+n
+s
+e
+,
+t
+h
+i
+s
+r
+e
+c
+o
+m
+m
+e
+n
+d
+a
+t
+i
+o
+n
+w
+a
+s
+b
+a
+s
+e
+d
+o
+n
+a
+∗
+∗
+b
+a
+s
+e
+l
+o
+s
+s
+e
+s
+t
+i
+m
+a
+t
+e
+o
+f
+5,297.42∗∗.Accordingtotheresponse,thisrecommendationwasbasedona∗∗baselossestimateof7,500, with a 5.0% severity buffer applied because the claim was assessed as low severity, and a 1.5% fraud risk buffer applied because the claim had a low fraud risk score. After these adjustments, the system arrived at a net reserve recommendation of 
+5
+,
+297.42
+∗
+∗
+.
+T
+h
+i
+s
+w
+a
+s
+c
+o
+m
+p
+a
+r
+e
+d
+a
+g
+a
+i
+n
+s
+t
+t
+h
+e
+a
+d
+j
+u
+s
+t
+e
+r
+’
+s
+m
+a
+n
+u
+a
+l
+l
+y
+s
+e
+t
+r
+e
+s
+e
+r
+v
+e
+o
+f
+∗
+∗
+5,297.42∗∗.Thiswascomparedagainsttheadjuster’smanuallysetreserveof∗∗5,000.00, meaning the recommended reserve is 5.9% higher than the manual reserve. The rationale given by the system is that the recommendation reflects the claim’s low severity and low fraud risk profile, and that it remains closely aligned with the adjuster’s original assessment.
 
