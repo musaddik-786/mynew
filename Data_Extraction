@@ -1,54 +1,53 @@
-JarvisClaims@JarvisClaims:~/Ramakrishna$ curl -X POST http://localhost:8910/chat -H "Content-Type: application/json" -d '{"message":"Set the initial reserve for claim CLM-2026-4511"}'
-data: [Tool: recommend_reserve] Starting...
+JarvisClaims@JarvisClaims:~/Ramakrishna$ curl -s -N -X POST http://localhost:8913/chat   -H "Content-Type: application/json"   -d '{"message": "Generate a settlement recommendation for claim CLM-2026-1001."}'   --max-time 90
+data: [Tool: recommend_settlement] Starting...
 
-data: [Tool: recommend_reserve] Done
+data: [Tool: recommend_settlement] Done
 
-data: Recommended
+data: Settlement
 
-data:  Reserve
+data:  Recommendation
 
-data: :
+data:  for
 
-data:  $
+data:  Claim
 
-data: 5
+data:  CL
 
-data: ,
+data: M
 
-data: 297
+data: -
 
-data: .
+data: 202
 
-data: 42
+data: 6
 
-data: 
+data: -
 
+data: 100
 
-
-data: Calculation
-
-data:  Breakdown
+data: 1
 
 data: :
+
 
 
 data: -
 
-data:  Base
+data:  Recommended
 
-data:  loss
+data:  settlement
 
-data:  estimate
+data:  amount
 
 data: :
 
 data:  $
 
-data: 7
+data: 26
 
 data: ,
 
-data: 500
+data: 300
 
 data: .
 
@@ -59,354 +58,209 @@ data:
 
 data: -
 
-data:  Less
+data:  ST
 
-data:  deductible
+data: P
 
-data: :
+data:  eligibility
 
-data:  $
-
-data: 2
-
-data: ,
-
-data: 525
-
-data: .
-
-data: 90
-
-data: 
-
-
-data: -
-
-data:  Net
-
-data:  loss
-
-data: :
-
-data:  $
-
-data: 4
-
-data: ,
-
-data: 974
-
-data: .
-
-data: 10
-
-data: 
-
-
-data: -
-
-data:  Severity
-
-data:  buffer
-
-data:  (
-
-data: 5
-
-data: %
-
-data: ):
-
-data:  +
-
-data: $
-
-data: 248
-
-data: .
-
-data: 71
-
-data: 
-
-
-data: -
-
-data:  Fraud
-
-data:  risk
-
-data:  buffer
-
-data:  (
-
-data: 1
-
-data: .
-
-data: 5
-
-data: %
-
-data: ):
-
-data:  +
-
-data: $
-
-data: 74
-
-data: .
-
-data: 61
-
-data: 
-
-
-data: -
-
-data:  Final
-
-data:  recommended
-
-data:  reserve
-
-data: :
-
-data:  $
-
-data: 5
-
-data: ,
-
-data: 297
-
-data: .
-
-data: 42
-
-data: 
-
-
-
-data: Severity
-
-data:  buffer
-
-data:  applied
+data:  score
 
 data: :
 
 data:  
 
-data: 5
+data: 70
 
-data: .
-
-data: 0
-
-data: %
+data: 
 
 
-data: Fra
+data: -
 
-data: ud
+data:  Recommended
 
-data:  risk
-
-data:  buffer
-
-data:  applied
+data:  action
 
 data: :
 
-data:  
+data:  Proceed
 
-data: 1
+data:  with
 
-data: .
+data:  repair
 
-data: 5
+data:  and
 
-data: %
+data:  settle
 
-
-
-data: Variance
-
-data:  vs
-
-data: .
-
-data:  adjust
-
-data: er's
-
-data:  reserve
-
-data: :
-
-data:  Not
-
-data:  applicable
-
-data: ,
-
-data:  as
-
-data:  you
-
-data:  have
-
-data:  not
-
-data:  yet
-
-data:  set
-
-data:  a
-
-data:  manual
-
-data:  reserve
-
-data:  for
-
-data:  this
+data:  the
 
 data:  claim
 
+data:  for
+
+data:  $
+
+data: 26
+
+data: ,
+
+data: 300
+
+data: .
+
+data: 00
+
 data: .
 
 
-
-data: LL
-
-data: M
+data: -
 
 data:  R
 
 data: ationale
 
+data:  notes
+
 data: :
 
+data:  The
 
-data: The
+data:  business
 
-data:  recommended
+data:  rules
 
-data:  reserve
+data:  recommend
 
-data:  was
+data:  a
 
-data:  determined
+data:  repair
 
-data:  by
+data:  based
 
-data:  starting
-
-data:  with
-
-data:  the
-
-data:  estimated
-
-data:  loss
-
-data: ,
-
-data:  deduct
-
-data: ing
+data:  on
 
 data:  the
 
-data:  policy
-
-data:  deductible
-
-data: ,
-
-data:  and
-
-data:  applying
+data:  provided
 
 data:  severity
 
 data:  and
 
-data:  fraud
+data:  cause
 
-data:  buffers
+data:  of
 
-data:  to
-
-data:  provide
-
-data:  financial
-
-data:  protection
-
-data:  against
-
-data:  claims
-
-data:  escalation
-
-data:  and
-
-data:  potential
-
-data:  fraud
+data:  loss
 
 data: .
 
 data:  The
 
+data:  final
+
+data:  settlement
+
 data:  amount
 
-data:  was
+data:  aligns
 
-data:  not
+data:  with
 
-data:  adjusted
+data:  the
 
-data:  for
+data:  net
 
-data:  coverage
+data:  payable
 
-data:  limits
+data:  after
 
-data: ,
+data:  applying
+
+data:  the
+
+data:  deductible
+
+data: .
+
+data:  Fraud
 
 data:  and
 
-data:  since
+data:  vendor
 
-data:  no
+data:  risks
 
-data:  manual
+data:  are
 
-data:  reserve
-
-data:  was
-
-data:  set
+data:  low
 
 data: ,
 
-data:  no
+data:  supporting
 
-data:  variance
+data:  this
 
-data:  is
+data:  straightforward
 
-data:  calculated
+data:  resolution
 
 data: .
+
+
+data: -
+
+data:  Ded
+
+data: uct
+
+data: ible
+
+data:  applied
+
+data: :
+
+data:  $
+
+data: 1
+
+data: ,
+
+data: 000
+
+data: .
+
+data: 00
+
+data: 
+
+
+data: -
+
+data:  Policy
+
+data:  limit
+
+data: :
+
+data:  $
+
+data: 250
+
+data: ,
+
+data: 000
+
+data: .
+
+data: 00
+
+data: 
 
 
 
 data: End
 
 JarvisClaims@JarvisClaims:~/Ramakrishna$ 
+
