@@ -1,4 +1,6 @@
-I made code changes please check , also please explain in good way where exactly what changes i should do if i missed
+This is my current code
+
+
 """
 handler.py — Repair vs Replacement
 ───────────────────────────────────────
@@ -494,7 +496,7 @@ def _llm_estimate_costs(
 def compare_repair_vs_replace(claim_number: str, item_age: int, useful_life_remaining: int) -> dict:
     # Look up existing repair_costs/replacement_costs for this claim+item_type, if present
     claim_id = get_claim_id(claim_number)
-    damage = get_damage_items(claim_number)
+    damage_items = get_damage_items(claim_number)
     # damage_id = damage["damage_id"]
     # item_type = damage["category"]
     # severity = damage["severity"]
@@ -526,12 +528,47 @@ def compare_repair_vs_replace(claim_number: str, item_age: int, useful_life_rema
     for damage in damage_items:
         damage_id = damage["damage_id"]
         item_type = damage["category"]
+
+
+        conn = get_db_connection()
+        try:
+            cur = conn.cursor()
+            cur.execute(
+                """
+                SELECT *
+                FROM repair_costs
+                WHERE claim_id=%s
+                AND item_type=%s
+                ORDER BY id DESC
+                LIMIT 1
+                """,
+                (claim_id, item_type),
+            )
+            repair_row = row_to_dict(cur.fetchone())
+            cur.execute(
+                """
+                SELECT *
+                FROM replacement_costs
+                WHERE claim_id=%s
+                AND item_type=%s
+                ORDER BY id DESC
+                LIMIT 1
+                """,
+                (claim_id, item_type),
+            )
+            replacement_row = row_to_dict(cur.fetchone())
+        finally:
+            conn.close()
+
+
+
         severity = damage["severity"]
         estimated_cost = damage["estimated_cost"]
         adjuster_notes = damage["adjuster_notes"]
         item_type = damage["category"]
         item_types.append(item_type)
-        item_type = ", ".join(item_types)
+    
+    all_item_type = ", ".join(item_types)
 
         if repair_row and replacement_row:
             # repair_cost = float(repair_row["total_repair_estimate"])
