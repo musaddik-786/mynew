@@ -1,4 +1,12 @@
+totalRepairCost < totalReplacementCost * 0.4 → preferRepair  (note: 0.4 threshold, not 0.6)
 
+totalReplacementCost <= totalRepairCost * 1.25 → preferReplace 
+
+Age remaining < 3 years → preferReplace 
+
+other wise replace 
+
+this is currently my handler
 """
 handler.py — Repair vs Replacement
 ───────────────────────────────────────
@@ -848,6 +856,3 @@ def compare_repair_vs_replace(claim_number: str, item_age: int, useful_life_rema
         #     "estimate": estimate,
         #     "ai_generated_message":ai_message,
         # }
-
-
-it gave replace as recommendation
