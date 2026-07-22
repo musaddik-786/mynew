@@ -1,224 +1,51 @@
-below is the transcript
+Insurance claims today continue to face challenges throughout the claims lifecycle, including lengthy first notice of loss processes, manual data collection, inconsistent claim information, delayed investigations, and limited customer visibility into claim progress.
 
-Musaddique Lalkot
-0 minutes 21 seconds0:21
-Musaddique Lalkot 0 minutes 21 seconds
-So, let's start with the Policyholder Interactive Claim Journey.
-Musaddique Lalkot 0 minutes 35 seconds
-So, firstly, policy holder.
-Musaddique Lalkot 0 minutes 38 seconds
-Enters the policy number.
-Musaddique Lalkot 0 minutes 42 seconds
-in order to verify the policy and clicks on the lookup button.
-Musaddique Lalkot 0 minutes 50 seconds
-So, once the...
-Musaddique Lalkot 0 minutes 53 seconds
-Policy holder is verified.
-Musaddique Lalkot 1 minute
-Policyholder simply describes the incident using voice or text.
-Musaddique Lalkot 1 minute 6 seconds
-The customer reports.
-Musaddique Lalkot 1 minute 9 seconds
-A fire incident occurred today at around 4pm. While I was at home, the fire started in the kitchen and caused damage to the flooring and the cabinets.
-Musaddique Lalkot 1 minute 49 seconds
-as soon as the narration is submitted.
-Musaddique Lalkot 1 minute 56 seconds
-Before that, the policyholder also enters the estimated damage amount.
-Musaddique Lalkot 2 minutes 8 seconds
-and clicks on chat with AI button.
-Musaddique Lalkot 2 minutes 17 seconds
-Now, multiple AI agents.
-Musaddique Lalkot 2 minutes 23 seconds
-Come in.
-Musaddique Lalkot 2 minutes 50 seconds
-So, voice to text intake agent.
-Musaddique Lalkot 2 minutes 54 seconds
-Is already done.
-Musaddique Lalkot 2 minutes 58 seconds
-In the background, also duplicate.
-Musaddique Lalkot 3 minutes 5 seconds
-No, no duplicate.
-Musaddique Lalkot 3 minutes 14 seconds
-Now, there are few.
-Musaddique Lalkot 3 minutes 18 seconds
-mandatory data that is required for the voice text intake agent.
-Musaddique Lalkot 3 minutes 26 seconds
-Due to which it is asking.
-Musaddique Lalkot 3 minutes 29 seconds
-How do you describe your emotional state during or after the incident?
-Musaddique Lalkot 3 minutes 37 seconds
-Policyholder answers all the questions.
-Musaddique Lalkot 4 minutes
-And...
-Musaddique Lalkot 4 minutes 3 seconds
-The F boys text and take agent.
-Musaddique Lalkot 4 minutes 7 seconds
-records all of the mandatory data and provides a summary of it to the policyholder.
-Musaddique Lalkot 4 minutes 15 seconds
-So this was chat with your claim assistant functionality.
-Musaddique Lalkot 4 minutes 20 seconds
-Moving forward.
-Musaddique Lalkot 4 minutes 23 seconds
-The policyholder can add the evidence.
-Musaddique Lalkot 4 minutes 27 seconds
-by uploading the photos and documents of the damage.
-Musaddique Lalkot 4 minutes 43 seconds
-So, once he uploads the documents and the image.
-Musaddique Lalkot 4 minutes 54 seconds
-Scrolling down gives you gives the policyholder.
-Musaddique Lalkot 4 minutes 59 seconds
-the policy information that was fetched from the guidewire.
-Musaddique Lalkot 5 minutes 5 seconds
-with some details such as policy number, insured name, address and policy period.
-Musaddique Lalkot 5 minutes 11 seconds
-which were auto-filled by the guidewire.
-Musaddique Lalkot 5 minutes 16 seconds
-System.
-Musaddique Lalkot 5 minutes 18 seconds
-And scrolling below, we see.
-Musaddique Lalkot 5 minutes 22 seconds
-what AI has extracted from the description provided by the policyholder.
-Musaddique Lalkot 5 minutes 30 seconds
-Multiple fields, such as type of loss, cause of loss, etc.
-Musaddique Lalkot 5 minutes 36 seconds
-Along with the source.
-Musaddique Lalkot 5 minutes 42 seconds
-whether it was extracted from the description or AI extracted it.
-Musaddique Lalkot 5 minutes 48 seconds
-Also, the human review part, where the policyholder can change, can update the data.
-Musaddique Lalkot 6 minutes 11 seconds
-And below that we see overall agent confidence.
-Musaddique Lalkot 6 minutes 18 seconds
-And once the policy holder clicks on review and confirm fields.
-Musaddique Lalkot 6 minutes 30 seconds
-The data.
-Musaddique Lalkot 6 minutes 37 seconds
-It's updated whatever policyholder updated the data, and...
-Musaddique Lalkot 6 minutes 44 seconds
-Once he reviews the data.
-Musaddique Lalkot 6 minutes 47 seconds
-Policy holder clicks on conform and submit a canal.
-Musaddique Lalkot 6 minutes 59 seconds
-And...
-Musaddique Lalkot 7 minutes 1 second
-We see the claim number gets generated.
-Musaddique Lalkot 7 minutes 10 seconds
-In the background, there was also duplicate claim check agent.
-Musaddique Lalkot 7 minutes 17 seconds
-Which ran
+Hexaware’s Agentic AI Claims Solution transforms this experience by introducing intelligent AI agents across the entire claims journey, enabling faster claim reporting, AI-assisted data capture, intelligent validation, real-time claim tracking, and seamless collaboration between the policyholder, adjuster, and SIU investigator.
 
-Musaddique Lalkot
-0 minutes 9 seconds0:09
-Musaddique Lalkot 0 minutes 9 seconds
-Now moving to my claim section where we see a summary of all the claims.
-Musaddique Lalkot 0 minutes 19 seconds
-The policyholder sees the summary of all the claims.
-Musaddique Lalkot 0 minutes 24 seconds
-Along with some description.
-Musaddique Lalkot 0 minutes 26 seconds
-And cause.
-Musaddique Lalkot 0 minutes 30 seconds
-Under "Follow My Claims" section.
-Musaddique Lalkot 0 minutes 39 seconds
-Policyholder can search that particular claim.
-Musaddique Lalkot 0 minutes 45 seconds
-and open it to see the overall claim journey.
-Musaddique Lalkot 0 minutes 51 seconds
-along with clean readiness scores, progressing track, and coverage status.
-Musaddique Lalkot 0 minutes 57 seconds
-and also the stage at which the claim is.
-Musaddique Lalkot 1 minute 6 seconds
-Scrolling down gives us the view.
-Musaddique Lalkot 1 minute 9 seconds
-Off.
-Musaddique Lalkot 1 minute 13 seconds
-The next stage.
-Musaddique Lalkot 1 minute 17 seconds
-That has been.
-Musaddique Lalkot 1 minute 19 seconds
-Notified to the policy holder, which is claimed in deck validation.
-Musaddique Lalkot 1 minute 26 seconds
-Now, policyholder can...
-Musaddique Lalkot 1 minute 29 seconds
-Submit the feedback.
-Musaddique Lalkot 1 minute 33 seconds
-in which there is a feedback agent that works on it.
-Musaddique Lalkot 1 minute 41 seconds
-And also, he can raise a concern if he faced any.
-Musaddique Lalkot 1 minute 48 seconds
-Sudesh.
-Musaddique Lalkot 1 minute 51 seconds
-is handled by the communication agent.
-Musaddique Lalkot 2 minutes 4 seconds
-Here we also see the latest updates, estimated timeline.
-Musaddique Lalkot 2 minutes 10 seconds
-and the document share where he can also upload other documents if he wants to.
-Musaddique Lalkot 2 minutes 16 seconds
-And if he has any concerns or he needs any assistance, he can just e-mail that just to escalate it.
-Musaddique Lalkot 2 minutes 26 seconds
-or download the claim summary.
-Musaddique Lalkot 2 minutes 32 seconds
-which get downloaded in a text format.
-Musaddique Lalkot 2 minutes 39 seconds
-If the policyholder...
-Musaddique Lalkot 2 minutes 43 seconds
-Clicks on the e-mail address store.
-Musaddique Lalkot 2 minutes 46 seconds
-It gets recorded in the latest update section.
-Musaddique Lalkot 2 minutes 52 seconds
-Under Document Hub section.
-Musaddique Lalkot 2 minutes 55 seconds
-Policyholder.
-Musaddique Lalkot 2 minutes 58 seconds
-can see all the documents that he uploaded.
-Musaddique Lalkot 3 minutes 6 seconds
-and can view it.
-Musaddique Lalkot 3 minutes 8 seconds
-As good.
-Musaddique Lalkot 3 minutes 14 seconds
-So this was the policy holder persona.
+In this demonstration, we will focus on the Policyholder Interactive Claim Journey.
 
+The journey begins with the policyholder entering the policy number and clicking the Lookup button. The system verifies the policy in real time and retrieves the policy details from Guidewire.
 
+Once the policy is verified, the policyholder simply describes the incident using either voice or text.
 
-below was what we had earlier as script but now the above one is the where there are few changes in the application due to whcih the script has to be changed so change the below script accordingly
-or use the below script to create the above script i leave it to you but now we only want policholder persona as script
-but remember the above transcript is the latest one i mean it has some new finctionlity also agents are mentioned, so the seciton names are same but we are not going to show siu or adjuster persona in the video we can mention them in script that is fine.
+The customer reports:
 
+“A fire incident occurred today at around 4:00 PM while I was at home. The fire started in the kitchen and caused damage to the flooring and the cabinets.”
 
-Insurance today face challenges across the entire claims process, including inefficient FNOL intake, manual adjuster workflows, delayed investigations, and fraud detection complexities within CEU operations. FNOL processes are lengthy and cumbersome, requiring customers to fill out complex forms and follow up multiple times, while insurers struggle with incomplete or inconsistent data intake. 
+Before submitting the claim, the policyholder also enters the estimated damage amount and clicks Chat with AI.
 
-Hexaware's Agentic AI claims solution transforms the overall claims lifecycle by enabling intelligent FNOL, AI-assisted adjuster workflows, proactive SIU investigation, and faster, more customer-centric claim resolution experiences. The solution experience is demonstrated across three key personas: 
+Behind the scenes, multiple AI agents begin working simultaneously. The Voice-to-Text Intake Agent processes the narration, while the Duplicate Claim Check Agent verifies whether a similar claim has already been reported.
 
-the policyholder, the adjuster, and the SIU investigator. 
+During intake validation, the AI identifies any mandatory information that is still missing and asks contextual follow-up questions. For example, it may ask, “How would you describe your emotional state during or after the incident?”
 
-The policyholder experiences a simplified and intelligent FNOL journey, enabling faster claim reporting, AI-assisted intake validation, real-time claim tracking, and seamless communication throughout the claims lifecycle. The adjuster is empowered with AI-assisted claim assessment, document intelligence, fraud insights, 
+After the policyholder answers all the required questions, the Voice-to-Text Intake Agent captures the complete information and generates a structured summary for review, ensuring all mandatory claim details have been collected before submission.
 
-Repair vs. replacement recommendations, and intelligent decision support to accelerate claim handling while maintaining human oversight. 
+The policyholder can then upload supporting evidence by adding photographs and documents related to the damage.
 
-The SIU Investigator gains proactive fraud investigation capabilities through AI-driven fraud indicators, investigation timelines, external verification support, SLA tracking, and centralized access to all claim-related intelligence required for deeper investigation and compliance review. So let's start with the policyholder interactive claim journey. 
+As we scroll down, we can see the policy information automatically retrieved from Guidewire, including details such as the policy number, insured name, property address, and policy period.
 
-Policyholder simply describes the incident using voice or text. The customer reports. 
+Below that, the AI displays all the information it has extracted from the policyholder’s description, including fields such as the type of loss, cause of loss, and other claim attributes. Each field clearly indicates whether the value was extracted directly from the customer description or inferred by AI.
 
-A fire incident occurred today at around 4:00 PM while I was at home. The fire started in the kitchen and caused damage to the flooring and cabinets. 
+The application also supports a human review process, allowing the policyholder to edit or correct any AI-generated information before submission. An overall AI agent confidence score is also presented, providing transparency into the extraction process.
 
- As soon as the narration is submitted, the AI automatically identifies the incident as a property damage claim and extracts insights. He can edit the description of the incident and system immediately presents structured key details provided by AI, along with the cause of loss, affected areas. 
+Once the policyholder clicks Review and Confirm Fields, any modifications made by the customer are updated in the structured claim data.
 
-incident timeline, and severity indicators. Below is the view of policy information that is auto-filled from the policy admin system. 
+Finally, the policyholder clicks Confirm and Submit, after which the claim is successfully created and a unique claim number is generated. Throughout this process, the Duplicate Claim Check Agent continues validating that no duplicate claim exists for the reported incident.
 
-This creates a faster, more accurate, and customer-friendly F&OL experience while reducing manual intake efforts for the insurer. Now clicking on Confirm and Continue, next step is Answer Questions. Where before submission there is an intake validation from the system by asking contextual questions, 
+After submission, the policyholder can navigate to the My Claims section, where a consolidated summary of all submitted claims is available, including a brief description and the reported cause of loss.
 
-Once answered all the questions. Policyholder will be redirected to add evidence section here he can upload an image or videos as an evidence and click on generate FNOL report. 
+Under the Follow My Claims section, the policyholder can search for a specific claim and view the complete claim journey. This includes the claim readiness score, claim progress tracker, coverage status, and the current stage of claim processing.
 
-Moving to review form. Pre-filled FNOL report will be generated with corresponding sections. Section A from policy admin system which is auto-filled. Section B is AI inferred data related to loss and Section C is the evidence. Now he can review and confirm the AI fields. Now he can confirm and submit AI inferred information. 
+The policyholder can also view the latest stage updates, such as claim intake validation, giving complete visibility into where the claim currently stands.
 
-Either he can submit one by one or all at once. 
+If needed, the policyholder can submit feedback, which is processed by the Feedback Agent, or raise concerns and communicate directly through the Communication Agent for additional assistance.
 
-after which claims number is generated. 
+The portal also provides the latest claim updates, estimated processing timeline, and a document-sharing section where additional supporting documents can be uploaded whenever required.
 
-Tracking claims would enable policy holder to see the interactive claim journey he can raise any concerns if required which flows to the adjuster. The claim is then routed to the adjuster portal, where the adjuster can see claims related insights and review the overall claim process. The adjuster has the ability to validate documents, perform investigation, 
+For convenience, the policyholder can download a claim summary or send an email to request further assistance or escalate concerns. Any communication initiated by the policyholder is automatically recorded within the latest updates section, ensuring complete traceability.
 
-run AI-assisted loss assessment, approve or reject claims, or escalate suspicious claims to the SIU for further investigation. 
+Under the Document Hub, the policyholder can access and view all previously uploaded documents and evidence associated with the claim.
 
-At the same time, the SIU or Special Investigation Unit becomes part of the process whenever suspicious indicators or inconsistencies are detected. Claims with higher fraud indicators can be escalated for deeper investigation, additional verification, interview scheduling, and compliance review. With Intelligent FNOL, 
+From this point onward, the claim continues through the intelligent adjuster and SIU workflows, where AI-assisted assessment, fraud detection, and decision support accelerate claim handling while maintaining appropriate human oversight.
 
-the policyholder experiences a simplified and transparent claims journey, reducing manual effort while improving speed, accuracy, and overall customer experience. 
+With Hexaware’s Agentic AI Claims Solution, policyholders experience a faster, more intelligent, and transparent claims journey—from policy verification and AI-assisted claim intake to real-time claim tracking and continuous engagement throughout the claims lifecycle.
