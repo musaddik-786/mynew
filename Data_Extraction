@@ -1,340 +1,74 @@
+In short, the main functionality of this sanctions check is:
 
+Take the customer’s name from an extracted JSON document, check whether that name exists in a sanctions list (CSV), and then update an eligibility Excel file with the corresponding pre-filled result.
 
-#Working code after metadata filling
-import os
-import json
-import logging
-from typing import Optional, Dict, Any
-import pandas as pd
-from azure.storage.blob.aio import BlobServiceClient
-from azure.core.exceptions import ResourceNotFoundError
-from dotenv import load_dotenv
-from io import BytesIO
-import openpyxl
-from datetime import datetime
-from zoneinfo import ZoneInfo
+Flow
 
-from .service import _require_env, _parse_blob_url
+1. Input
+    * Receives:
+        * json_file_url → Azure Blob URL of the extracted JSON.
+        * detected_lob → Line of Business (e.g. Residential Property).
+2. Download JSON
+    * Downloads the JSON from Azure Blob Storage.
+3. Extract Customer Name
+    * Searches the JSON recursively for either:
+        * NameAndMailingAddress
+        * ClientName
+    * Takes only the name portion (before the first comma).
+4. Load Sanctions List
+    * Reads the local file:
 
-load_dotenv()
+input/sanctions.csv
 
-logger = logging.getLogger(__name__)
+    * Uses the entity_name column as the sanctions database.
+5. Sanctions Check
+    * Normalizes the names (lowercase, trimmed).
+    * Performs an exact match:
 
-AZURE_STORAGE_CONNECTION_STRING = os.environ.get("AZURE_STORAGE_CONNECTION_STRING", "")
+extracted_name in sanctions_csv
 
-BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-LOCAL_CSV_PATH = os.path.join(BASE_DIR, "input", "sanctions.csv")
-# LOCAL_CSV_PATH = os.path.join(os.getcwd(),"input", "sanctions.csv")
+    * If found:
 
-# FETCHED_EMAILS_EXCEL_BLOB_URL = "https://agenticai1.blob.core.windows.net/fetched-emails-data/Fetched_emails_data_new_local.xlsx"
-# TARGET_BLOB_EXCEL_URL = "https://agenticail.blob.core.windows.net/eligibility-results/eligibility_local.xlsx"
+is_sanctioned = True
 
-# FETCHED_EMAILS_EXCEL_BLOB_URL = "https://agenticai1.blob.core.windows.net/fetched-emails-data/Fetched_emails_data_new.xlsx"
-# TARGET_BLOB_EXCEL_URL = "https://agenticail.blob.core.windows.net/eligibility-results/eligibility.xlsx"
-LOCAL_STUBBED_EXCEL_PATH = os.path.join(BASE_DIR,"input", "stubbed.xlsx")
+    * Otherwise:
 
+is_sanctioned = False
 
-FETCHED_EMAILS_EXCEL_BLOB_URL = os.environ.get("FETCHED_EMAILS_EXCEL_BLOB_URL", "")
+6. Update Eligibility Excel
+    Instead of calculating eligibility itself, it:
+    * Opens the fetched emails Excel.
+    * Gets the latest email/reference.
+    * Opens the target eligibility Excel.
+    * Adds a new row with:
+        * Reference ID
+        * Current timestamp
+    * Copies a predefined row from stubbed.xlsx.
+7. Which row is copied?
+    It depends on:
+    * Whether the customer is sanctioned.
+    * Which Line of Business (LOB) it is.
 
-TARGET_BLOB_EXCEL_URL = os.environ.get("TARGET_BLOB_EXCEL_URL", "")
+LOB	Sanctioned	Row copied from stubbed.xlsx
+Residential Property	Yes	Row 5
+Residential Property	No	Row 4
+Other LOBs	Yes	Row 3
+Other LOBs	No	Row 2
 
+8. Save Back
+    * Uploads the updated eligibility Excel back to Azure Blob Storage.
 
-#NEW CODE FOR HOME INSURANCE
-def normalize(header):
-    return str(header).strip().lower().replace(" ","")
+Actual Business Purpose
 
+The sanctions check itself is very simple:
 
-async def compare_name_with_sanctions(json_file_url:str,detected_lob:str)->Dict[str,Any]:
+* Extract customer’s name.
+* Compare it with a sanctions list.
+* Determine Sanctioned or Not Sanctioned.
 
-    try:
-        _require_env()
-    except Exception as e:
-        logger.error("❌ Environment misconfigured: %s", e)
-        return {"status":False,"error":str(e)}
+The rest of the code is mainly for automatically populating the eligibility results Excel with the correct preconfigured outcome based on:
 
-    try:
-        container_name,blob_name=_parse_blob_url(json_file_url)
-    except Exception as e:
-        logger.error("❌ Invalid json_file_url: %s", e)
-        return {"status":False,"error":str(e)}
+* Sanction status.
+* Line of Business.
 
-    try:
-        async with BlobServiceClient.from_connection_string(AZURE_STORAGE_CONNECTION_STRING) as blob_service:
-            container_client=blob_service.get_container_client(container_name)
-            blob_client=container_client.get_blob_client(blob_name)
-            await blob_client.get_blob_properties()
-            stream=await blob_client.download_blob()
-            raw_bytes=await stream.readall()
-
-    except Exception as e:
-        logger.exception("❌ Failed to download JSON blob: container=%s blob=%s", container_name, blob_name)
-        return {"status":False,"error":str(e)}
-
-    try:
-        data=json.loads(raw_bytes.decode("utf-8"))
-
-    except Exception as e:
-        logger.error("❌ Failed to parse JSON blob: %s", e)
-        return {"status":False,"error":str(e)}
-
-    target_labels={"nameandmailingaddress","clientname"}
-
-    extracted_name:Optional[str]=None
-
-    def search_nested(data_obj):
-
-        if isinstance(data_obj,dict):
-
-            for key,value in data_obj.items():
-
-                if isinstance(value,dict):
-
-                    res=search_nested(value)
-
-                    if res:
-                        return res
-
-                elif isinstance(value,list):
-
-                    for elem in value:
-
-                        if isinstance(elem,dict):
-
-                            res=search_nested(elem)
-
-                            if res:
-                                return res
-
-                elif isinstance(key,str):
-
-                    normalized_key=key.lower().replace(" ","")
-
-                    if normalized_key in target_labels:
-
-                        return str(value).split(",")[0].strip()
-
-        return None
-
-    extracted_name=search_nested(data)
-
-    if not extracted_name:
-        logger.warning("⚠️ No matching name field found in JSON for url=%s", json_file_url)
-        excel_status=await _append_and_copy_columns_to_target_blob(None,detected_lob)
-        return {"status":False,"error":"Name not found","excel_update":excel_status}
-
-    if not os.path.exists(LOCAL_CSV_PATH):
-        logger.error("❌ Local CSV not found at '%s'", LOCAL_CSV_PATH)
-        excel_status=await _append_and_copy_columns_to_target_blob(None,detected_lob)
-        return {"status":False,"error":"CSV missing"}
-
-    csv_df=pd.read_csv(LOCAL_CSV_PATH)
-
-    def norm(s):
-
-        return s.strip().lower() if isinstance(s,str) else ""
-
-    entity_set={norm(x) for x in csv_df["entity_name"].dropna() if isinstance(x,str)}
-
-    is_sanctioned=norm(extracted_name) in entity_set
-
-    results=[{
-        "Extracted Name":extracted_name,
-        "is_Sanctioned":is_sanctioned
-    }]
-
-    excel_status=await _append_and_copy_columns_to_target_blob(
-        is_sanctioned,
-        detected_lob
-    )
-
-    logger.info("✅ Sanction check complete: name=%s is_sanctioned=%s lob=%s", extracted_name, is_sanctioned, detected_lob)
-    return {
-        "status":True,
-        "results":results,
-        "excel_update":excel_status
-    }
-
-
-async def _append_and_copy_columns_to_target_blob(extracted_flag:Optional[bool],detected_lob:str)->Dict[str,Any]:
-    try:
-     async with BlobServiceClient.from_connection_string(AZURE_STORAGE_CONNECTION_STRING) as blob_service:
-
-        src_container,src_blob=_parse_blob_url(FETCHED_EMAILS_EXCEL_BLOB_URL)
-
-        src_client=blob_service.get_blob_client(src_container,src_blob)
-
-        src_stream=await src_client.download_blob()
-
-        src_bytes=await src_stream.readall()
-
-        src_wb=openpyxl.load_workbook(BytesIO(src_bytes),read_only=True)
-
-        src_ws=src_wb.active
-
-        last_value=None
-
-        for r in range(src_ws.max_row,0,-1):
-
-            v=src_ws.cell(r,1).value
-
-            if v:
-
-                last_value=str(v)
-
-                break
-
-        src_wb.close()
-
-        tgt_container,tgt_blob=_parse_blob_url(TARGET_BLOB_EXCEL_URL)
-
-        tgt_client=blob_service.get_blob_client(tgt_container,tgt_blob)
-
-        try:
-
-            tgt_bytes=await (await tgt_client.download_blob()).readall()
-
-            wb=openpyxl.load_workbook(BytesIO(tgt_bytes))
-
-        except Exception:
-            logger.warning("⚠️ Target Excel blob not found or unreadable — creating new workbook")
-            wb=openpyxl.Workbook()
-
-        ws=wb.active
-
-        last_row=0
-
-        for r in range(ws.max_row,0,-1):
-
-            if ws.cell(r,1).value:
-
-                last_row=r
-
-                break
-
-        write_row=last_row+1 if last_row else 2
-
-        ws.cell(write_row,1,last_value)
-
-        now=datetime.now(ZoneInfo("Asia/Kolkata"))
-
-        ws.cell(write_row,2,now.strftime("%m/%d/%Y %I:%M:%S %p"))
-
-        lob=detected_lob.strip().upper()
-
-        if lob=="RESIDENTIAL PROPERTY":
-
-            source_row=5 if extracted_flag else 4
-
-        else:
-
-            source_row=3 if extracted_flag else 2
-
-
-        if extracted_flag is not None:
-
-            wb_local=openpyxl.load_workbook(
-                LOCAL_STUBBED_EXCEL_PATH,
-                data_only=True
-            )
-
-            ws_local=wb_local.active
-
-
-            stub_headers={}
-
-            for col in range(1,ws_local.max_column+1):
-
-                header=ws_local.cell(1,col).value
-
-                if header:
-
-                    stub_headers[normalize(header)]=col
-
-
-            for col in range(1,ws.max_column+1):
-
-                header=ws.cell(1,col).value
-
-                if not header:
-                    continue
-
-                key=normalize(header)
-
-                if key in stub_headers:
-
-                    source_col=stub_headers[key]
-
-                    value=ws_local.cell(source_row,source_col).value
-
-                    ws.cell(write_row,col,value)
-
-
-            wb_local.close()
-
-
-        bio=BytesIO()
-
-        wb.save(bio)
-
-        bio.seek(0)
-
-        await tgt_client.upload_blob(
-            bio.getvalue(),
-            overwrite=True
-        )
-
-        wb.close()
-        logger.info("✅ Excel append complete: row=%s lob=%s", source_row, detected_lob)
-        return {
-            "status":True,
-            "row_used":source_row,
-            "lob":detected_lob
-        }
-
-    except Exception as e:
-        logger.exception("❌ Excel append/blob operation failed")
-        return {"status": False, "error": str(e)}
-
-
-
-
-
-#Working code after metadata filling
-import logging
-import os
-from urllib.parse import urlparse, unquote
-from dotenv import load_dotenv
-
-load_dotenv()
-
-logger = logging.getLogger(__name__)
-
-AZURE_STORAGE_CONNECTION_STRING = os.environ.get("AZURE_STORAGE_CONNECTION_STRING", "")
-
-
-def _require_env() -> None:
-    """Ensure required environment variables exist."""
-    if not AZURE_STORAGE_CONNECTION_STRING:
-        raise RuntimeError("Missing AZURE_STORAGE_CONNECTION_STRING in .env")
-
-
-def _parse_blob_url(url: str) -> tuple[str, str]:
-    """
-    Parse an Azure Blob URL and return (container_name, blob_path).
-    Example URL:
-      https://account.blob.core.windows.net/output-results/folder/name.json
-    Returns:
-      ("output-results", "folder/name.json")
-    """
-    parsed = urlparse(url)
-    if not parsed.scheme.startswith("http"):
-        raise ValueError("jsonfilepath must be a valid http(s) URL to Azure Blob Storage.")
-
-    path = parsed.path.lstrip("/")
-    if "/" not in path:
-        raise ValueError("jsonfilepath must include both container and blob path.")
-    parts = path.split("/", 1)
-    container = parts[0]
-    blob_path = parts[1]
-    return unquote(container), unquote(blob_path)
-
+So, this module is primarily an eligibility gate that screens applicants against a sanctions list and records the corresponding eligibility template in the output Excel.
