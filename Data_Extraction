@@ -1,51 +1,90 @@
-Insurance claims today continue to face challenges throughout the claims lifecycle, including lengthy first notice of loss processes, manual data collection, inconsistent claim information, delayed investigations, and limited customer visibility into claim progress.
-
-Hexaware’s Agentic AI Claims Solution transforms this experience by introducing intelligent AI agents across the entire claims journey, enabling faster claim reporting, AI-assisted data capture, intelligent validation, real-time claim tracking, and seamless collaboration between the policyholder, adjuster, and SIU investigator.
-
-In this demonstration, we will focus on the Policyholder Interactive Claim Journey.
-
-The journey begins with the policyholder entering the policy number and clicking the Lookup button. The system verifies the policy in real time and retrieves the policy details from Guidewire.
-
-Once the policy is verified, the policyholder simply describes the incident using either voice or text.
-
-The customer reports:
-
-“A fire incident occurred today at around 4:00 PM while I was at home. The fire started in the kitchen and caused damage to the flooring and the cabinets.”
-
-Before submitting the claim, the policyholder also enters the estimated damage amount and clicks Chat with AI.
-
-Behind the scenes, multiple AI agents begin working simultaneously. The Voice-to-Text Intake Agent processes the narration, while the Duplicate Claim Check Agent verifies whether a similar claim has already been reported.
-
-During intake validation, the AI identifies any mandatory information that is still missing and asks contextual follow-up questions. For example, it may ask, “How would you describe your emotional state during or after the incident?”
-
-After the policyholder answers all the required questions, the Voice-to-Text Intake Agent captures the complete information and generates a structured summary for review, ensuring all mandatory claim details have been collected before submission.
-
-The policyholder can then upload supporting evidence by adding photographs and documents related to the damage.
-
-As we scroll down, we can see the policy information automatically retrieved from Guidewire, including details such as the policy number, insured name, property address, and policy period.
-
-Below that, the AI displays all the information it has extracted from the policyholder’s description, including fields such as the type of loss, cause of loss, and other claim attributes. Each field clearly indicates whether the value was extracted directly from the customer description or inferred by AI.
-
-The application also supports a human review process, allowing the policyholder to edit or correct any AI-generated information before submission. An overall AI agent confidence score is also presented, providing transparency into the extraction process.
-
-Once the policyholder clicks Review and Confirm Fields, any modifications made by the customer are updated in the structured claim data.
-
-Finally, the policyholder clicks Confirm and Submit, after which the claim is successfully created and a unique claim number is generated. Throughout this process, the Duplicate Claim Check Agent continues validating that no duplicate claim exists for the reported incident.
-
-After submission, the policyholder can navigate to the My Claims section, where a consolidated summary of all submitted claims is available, including a brief description and the reported cause of loss.
-
-Under the Follow My Claims section, the policyholder can search for a specific claim and view the complete claim journey. This includes the claim readiness score, claim progress tracker, coverage status, and the current stage of claim processing.
-
-The policyholder can also view the latest stage updates, such as claim intake validation, giving complete visibility into where the claim currently stands.
-
-If needed, the policyholder can submit feedback, which is processed by the Feedback Agent, or raise concerns and communicate directly through the Communication Agent for additional assistance.
-
-The portal also provides the latest claim updates, estimated processing timeline, and a document-sharing section where additional supporting documents can be uploaded whenever required.
-
-For convenience, the policyholder can download a claim summary or send an email to request further assistance or escalate concerns. Any communication initiated by the policyholder is automatically recorded within the latest updates section, ensuring complete traceability.
-
-Under the Document Hub, the policyholder can access and view all previously uploaded documents and evidence associated with the claim.
-
-From this point onward, the claim continues through the intelligent adjuster and SIU workflows, where AI-assisted assessment, fraud detection, and decision support accelerate claim handling while maintaining appropriate human oversight.
-
-With Hexaware’s Agentic AI Claims Solution, policyholders experience a faster, more intelligent, and transparent claims journey—from policy verification and AI-assisted claim intake to real-time claim tracking and continuous engagement throughout the claims lifecycle.
+For claim CLM-2026-9497, the system recommended an initial reserve amount of 
+0.00
+∗
+∗
+.
+T
+h
+i
+s
+w
+a
+s
+b
+a
+s
+e
+d
+o
+n
+a
+∗
+∗
+b
+a
+s
+e
+l
+o
+s
+s
+e
+s
+t
+i
+m
+a
+t
+e
+o
+f
+0.00∗∗.Thiswasbasedona∗∗baselossestimateof1,066.00 and a policy deductible of 
+2
+,
+525.90
+∗
+∗
+,
+w
+h
+i
+c
+h
+r
+e
+s
+u
+l
+t
+e
+d
+i
+n
+a
+∗
+∗
+n
+e
+t
+l
+o
+s
+s
+a
+f
+t
+e
+r
+d
+e
+d
+u
+c
+t
+i
+b
+l
+e
+o
+f
+2,525.90∗∗,whichresultedina∗∗netlossafterdeductibleof0.00 because the deductible exceeded the loss amount. Although the system noted a 15.0% severity buffer and a 5.2% fraud risk buffer, neither buffer was applied because there was no remaining net loss. No manual reserve had been set by the adjuster, so variance was marked as not applicable. The rationale provided is that, after applying the deductible, no payable loss remained, so no additional buffers were needed and no reserve is required for this claim at this time.
