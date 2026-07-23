@@ -1,588 +1,340 @@
-"""
-server.py — Communication Agent
-─────────────────────────────────
-LangGraph agent that auto-drafts status-change notifications for
-policyholders using sentiment data, claim status, and communication history.
 
-Port: 7709
-MCP : http://localhost:7720/api/v1/communication/mcp
 
-Run:
-    py -3 server.py
-"""
-
+#Working code after metadata filling
+import os
 import json
 import logging
-import os
-import sys
-import time
-import traceback
-from datetime import datetime, timedelta
-from typing import Annotated, TypedDict
-
-import uvicorn
-from dotenv import load_dotenv, find_dotenv
-from fastapi import FastAPI, Request
-from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import StreamingResponse
-from langchain_core.messages import AIMessage, SystemMessage
-from langchain_mcp_adapters.client import MultiServerMCPClient
-from langchain_openai.chat_models import AzureChatOpenAI
-from langgraph.graph import END, START, StateGraph
-from langgraph.graph.message import add_messages
-from langgraph.prebuilt import ToolNode
-
-load_dotenv(find_dotenv())
-
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s | %(levelname)-8s | %(name)s | %(message)s",
-    stream=sys.stdout,
-    force=True,
-)
-logger = logging.getLogger("communication_agent")
-
-PHOENIX_API_KEY = os.getenv("PHOENIX_API_KEY", "")
-PHOENIX_ENDPOINT = os.getenv("PHOENIX_ENDPOINT", "")
-MCP_URL = os.getenv("MCP_URL", "http://localhost:7720/api/v1/communication/mcp")
-AGENT_PORT = int(os.getenv("AGENT_PORT", "7709"))
-
-FEEDBACK_MCP_URL = os.getenv("FEEDBACK_MCP_URL", "http://localhost:7720/api/v1/feedback/mcp")
-
-config_mcp_server = {
-    "communication_mcp": {
-        "url": MCP_URL,
-        "transport": "streamable_http",
-        "timeout": timedelta(seconds=120),
-        "sse_read_timeout": timedelta(seconds=600),
-    },
-    "feedback_mcp": {
-        "url": FEEDBACK_MCP_URL,
-        "transport": "streamable_http",
-        "timeout": timedelta(seconds=120),
-        "sse_read_timeout": timedelta(seconds=600),
-    },
-}
-
-app = FastAPI(title="Communication Agent")
-
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
-
-
-class State(TypedDict):
-    messages: Annotated[list, add_messages]
-
-
-def router(state: State):
-    last = state["messages"][-1]
-    if isinstance(last, AIMessage) and getattr(last, "tool_calls", None):
-        return "tools"
-    if isinstance(last, AIMessage) and last.content:
-        if "Continue" in last.content:
-            return "tools"
-        if "End" in last.content:
-            return "End"
-    return "End"
-
-
-_FALLBACK_PROMPT = """
-You are the Communication Agent for an insurance claims platform. You help
-policyholders get status updates and auto-draft notifications on their behalf.
-You have access to both communication tools and sentiment/feedback tools.
-
-## Step 0 — General questions
-If the policyholder is asking a general question unrelated to a specific
-claim, answer conversationally. Do not call any tool.
-
-## Step 1 — Identify the claim number
-Extract the claim number ONLY from the CURRENT message. Never carry it
-over from prior conversation turns. Claim numbers look like CLM-YYYY-NNNN.
-If missing, ask: "Could you share your claim number so I can help you?"
-
-## Step 2 — Review communication history
-Call get_communication_history once to understand what has already been
-communicated to the policyholder.
-
-## Step 3 — Log the inbound message
-Call log_inbound_communication with:
-  - claim_number
-  - message_text: the policyholder's exact message
-  - sentiment: your best read of their tone ("Positive", "Neutral", or "Negative")
-This persists the policyholder's message as an inbound record.
-
-## Step 4 — Record feedback if message is emotional
-If the policyholder's message expresses frustration, dissatisfaction, or
-strong positive experience, call write_customer_feedback with:
-  - claim_number
-  - comment: the policyholder's message text
-  DO NOT pass stage_number or stage_name — the system resolves them automatically.
-This updates the sentiment tracker so the notification draft uses current sentiment.
-Skip this step if the message is purely factual/neutral with no emotional content.
-
-## Step 5 — Draft the status notification
-Call draft_status_notification EXACTLY ONCE with the claim number.
-This reads the updated sentiment, current claim stage, and communication
-history to generate an empathetic, channel-appropriate notification draft,
-which is also saved to communication_history.
-
-## Step 6 — Present the result
-Using ONLY what the tools returned:
-- Briefly acknowledge prior communications if any (one sentence).
-- If feedback was recorded, acknowledge the policyholder's feelings
-  empathetically before showing the notification.
-- Show the drafted notification:
-    Subject: [subject]
-    Message: [message_body]
-    Recommended channel: [channel]
-    Next action: [next_action]
-- If escalation_risk is "High" or "Medium", assure them their case is
-  receiving priority attention from the claims team.
-- If any tool returns an error, relay it honestly — never fabricate content.
-
-## Rules
-- NEVER call draft_status_notification more than once per request.
-- NEVER fabricate a claim number, notification, or communication record.
-- NEVER expose internal database IDs or raw sentiment scores.
-- NEVER assume a claim number from prior conversation turns.
-- Keep responses warm, empathetic, and concise.
-"""
-
-
-def load_prompt() -> str:
-    if not PHOENIX_ENDPOINT:
-        raise RuntimeError("Phoenix not configured")
-    from phoenix.client import Client
-    client = Client(base_url=PHOENIX_ENDPOINT, api_key=PHOENIX_API_KEY)
-    prompt = client.prompts.get(name="communication_agent", label="production")
-    prompt_set = prompt._template["messages"]
-    system_msg = next(
-        (item["content"][0]["text"] for item in prompt_set if item.get("role") == "system"), None
-    )
-    if not system_msg:
-        raise ValueError("System prompt is empty or missing in Phoenix")
-    return system_msg
-
-
-def create_graph(model, tools, prompt):
-    graph_builder = StateGraph(State)
-    llm_with_tools = model.bind_tools(tools)
-
-    async def agent_node(state: State):
-        all_messages = [SystemMessage(content=prompt)] + state["messages"]
-        message = await llm_with_tools.ainvoke(all_messages)
-        return {"messages": [message]}
-
-    graph_builder.add_node("agent", agent_node)
-    graph_builder.add_node("tools", ToolNode(tools=tools))
-    graph_builder.add_edge(START, "agent")
-    graph_builder.add_conditional_edges("agent", router, {"tools": "tools", "End": END})
-    graph_builder.add_edge("tools", "agent")
-    return graph_builder.compile()
-
-
-async def get_tools():
-    client = MultiServerMCPClient(config_mcp_server)
-    tools = await client.get_tools()
-    logger.info("Tools loaded from MCP: %s", [t.name for t in tools])
-    return tools
-
-
-async def stream_graph(graph, initial_state, config):
-    async for event in graph.astream_events(initial_state, config=config, version="v2"):
-        kind = event.get("event", "")
-        if kind == "on_chat_model_stream":
-            chunk = event["data"].get("chunk")
-            if chunk and hasattr(chunk, "content") and chunk.content:
-                yield f"data: {chunk.content}\n\n"
-        elif kind == "on_tool_start":
-            yield f"data: [Tool: {event.get('name', 'unknown_tool')}] Starting...\n\n"
-        elif kind == "on_tool_end":
-            yield f"data: [Tool: {event.get('name', 'unknown_tool')}] Done\n\n"
-
-
-@app.post("/chat")
-async def chat_stream(request: Request):
-    load_dotenv(find_dotenv())
-    tools = await get_tools()
-
-    model = AzureChatOpenAI(
-        api_key=os.getenv("AZURE_OPENAI_API_KEY"),
-        api_version=os.getenv("AZURE_OPENAI_API_VERSION"),
-        azure_deployment=os.getenv("AZURE_OPENAI_CHAT_DEPLOYMENT"),
-        azure_endpoint=os.getenv("AZURE_OPENAI_ENDPOINT"),
-    )
-
-    try:
-        system_prompt = load_prompt()
-    except Exception as e:
-        logger.warning("Phoenix prompt load failed (%s) — using fallback prompt", e)
-        system_prompt = _FALLBACK_PROMPT
-
-    body = await request.json()
-    user_message = body.get("message", "Can I get a status update on my claim?")
-    graph = create_graph(model=model, tools=tools, prompt=system_prompt)
-
-    async def generate():
-        start = time.time()
-        last_event_at = start
-        last_tool = None
-        try:
-            async for event in stream_graph(
-                graph=graph,
-                initial_state={"messages": [user_message]},
-                config={"recursion_limit": 250},
-            ):
-                last_event_at = time.time()
-                if isinstance(event, str) and event.startswith("data: [Tool:"):
-                    try:
-                        last_tool = event.split("[Tool:", 1)[1].split("]", 1)[0]
-                    except Exception:
-                        pass
-                yield event
-        except BaseException as e:
-            elapsed = time.time() - start
-            since_last = time.time() - last_event_at
-            err = {
-                "exception_class": type(e).__name__,
-                "message": str(e),
-                "elapsed_total_seconds": round(elapsed, 2),
-                "seconds_since_last_event": round(since_last, 2),
-                "last_tool_invoked": last_tool,
-                "traceback": traceback.format_exc(),
-                "timestamp_utc": datetime.utcnow().isoformat(),
-            }
-            logger.error("AGENT_ERROR %s", json.dumps(err, default=str))
-            try:
-                yield f"data: [AGENT_ERROR] {json.dumps(err, default=str)}\n\n"
-            except Exception:
-                pass
-            import asyncio
-            if isinstance(e, asyncio.CancelledError):
-                raise
-
-    return StreamingResponse(generate(), media_type="text/event-stream")
-
-
-@app.get("/health")
-async def health():
-    return {"status": "healthy", "agent": "communication_agent"}
-
-
-if __name__ == "__main__":
-    uvicorn.run(app, host="0.0.0.0", port=AGENT_PORT)
-
-
-
-"""
-handler.py — Communication
-───────────────────────────
-Auto-drafts status-change notifications for policyholders using claim
-status, sentiment data, and communication history. Writes drafted
-messages to communication_history.
-"""
-import json
-import logging
-import os
-import sys
+from typing import Optional, Dict, Any
+import pandas as pd
+from azure.storage.blob.aio import BlobServiceClient
+from azure.core.exceptions import ResourceNotFoundError
+from dotenv import load_dotenv
+from io import BytesIO
+import openpyxl
 from datetime import datetime
+from zoneinfo import ZoneInfo
 
-sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "common"))
+from .service import _require_env, _parse_blob_url
 
-from db import get_db_connection, row_to_dict  # noqa: E402
-from dotenv import load_dotenv, find_dotenv
-from openai import AzureOpenAI
+load_dotenv()
 
-load_dotenv(find_dotenv())
+logger = logging.getLogger(__name__)
 
-log = logging.getLogger(__name__)
+AZURE_STORAGE_CONNECTION_STRING = os.environ.get("AZURE_STORAGE_CONNECTION_STRING", "")
 
-AZURE_OPENAI_ENDPOINT = os.environ.get("AZURE_OPENAI_ENDPOINT", "")
-AZURE_OPENAI_API_KEY = os.environ.get("AZURE_OPENAI_API_KEY", "")
-AZURE_OPENAI_API_VERSION = os.environ.get("AZURE_OPENAI_API_VERSION", "2025-01-01-preview")
-AZURE_OPENAI_CHAT_DEPLOYMENT = os.environ.get("AZURE_OPENAI_CHAT_DEPLOYMENT", "gpt-4.1-claims")
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+LOCAL_CSV_PATH = os.path.join(BASE_DIR, "input", "sanctions.csv")
+# LOCAL_CSV_PATH = os.path.join(os.getcwd(),"input", "sanctions.csv")
+
+# FETCHED_EMAILS_EXCEL_BLOB_URL = "https://agenticai1.blob.core.windows.net/fetched-emails-data/Fetched_emails_data_new_local.xlsx"
+# TARGET_BLOB_EXCEL_URL = "https://agenticail.blob.core.windows.net/eligibility-results/eligibility_local.xlsx"
+
+# FETCHED_EMAILS_EXCEL_BLOB_URL = "https://agenticai1.blob.core.windows.net/fetched-emails-data/Fetched_emails_data_new.xlsx"
+# TARGET_BLOB_EXCEL_URL = "https://agenticail.blob.core.windows.net/eligibility-results/eligibility.xlsx"
+LOCAL_STUBBED_EXCEL_PATH = os.path.join(BASE_DIR,"input", "stubbed.xlsx")
 
 
-def _get_openai_client() -> AzureOpenAI:
-    return AzureOpenAI(
-        api_key=AZURE_OPENAI_API_KEY,
-        api_version=AZURE_OPENAI_API_VERSION,
-        azure_endpoint=AZURE_OPENAI_ENDPOINT,
+FETCHED_EMAILS_EXCEL_BLOB_URL = os.environ.get("FETCHED_EMAILS_EXCEL_BLOB_URL", "")
+
+TARGET_BLOB_EXCEL_URL = os.environ.get("TARGET_BLOB_EXCEL_URL", "")
+
+
+#NEW CODE FOR HOME INSURANCE
+def normalize(header):
+    return str(header).strip().lower().replace(" ","")
+
+
+async def compare_name_with_sanctions(json_file_url:str,detected_lob:str)->Dict[str,Any]:
+
+    try:
+        _require_env()
+    except Exception as e:
+        logger.error("❌ Environment misconfigured: %s", e)
+        return {"status":False,"error":str(e)}
+
+    try:
+        container_name,blob_name=_parse_blob_url(json_file_url)
+    except Exception as e:
+        logger.error("❌ Invalid json_file_url: %s", e)
+        return {"status":False,"error":str(e)}
+
+    try:
+        async with BlobServiceClient.from_connection_string(AZURE_STORAGE_CONNECTION_STRING) as blob_service:
+            container_client=blob_service.get_container_client(container_name)
+            blob_client=container_client.get_blob_client(blob_name)
+            await blob_client.get_blob_properties()
+            stream=await blob_client.download_blob()
+            raw_bytes=await stream.readall()
+
+    except Exception as e:
+        logger.exception("❌ Failed to download JSON blob: container=%s blob=%s", container_name, blob_name)
+        return {"status":False,"error":str(e)}
+
+    try:
+        data=json.loads(raw_bytes.decode("utf-8"))
+
+    except Exception as e:
+        logger.error("❌ Failed to parse JSON blob: %s", e)
+        return {"status":False,"error":str(e)}
+
+    target_labels={"nameandmailingaddress","clientname"}
+
+    extracted_name:Optional[str]=None
+
+    def search_nested(data_obj):
+
+        if isinstance(data_obj,dict):
+
+            for key,value in data_obj.items():
+
+                if isinstance(value,dict):
+
+                    res=search_nested(value)
+
+                    if res:
+                        return res
+
+                elif isinstance(value,list):
+
+                    for elem in value:
+
+                        if isinstance(elem,dict):
+
+                            res=search_nested(elem)
+
+                            if res:
+                                return res
+
+                elif isinstance(key,str):
+
+                    normalized_key=key.lower().replace(" ","")
+
+                    if normalized_key in target_labels:
+
+                        return str(value).split(",")[0].strip()
+
+        return None
+
+    extracted_name=search_nested(data)
+
+    if not extracted_name:
+        logger.warning("⚠️ No matching name field found in JSON for url=%s", json_file_url)
+        excel_status=await _append_and_copy_columns_to_target_blob(None,detected_lob)
+        return {"status":False,"error":"Name not found","excel_update":excel_status}
+
+    if not os.path.exists(LOCAL_CSV_PATH):
+        logger.error("❌ Local CSV not found at '%s'", LOCAL_CSV_PATH)
+        excel_status=await _append_and_copy_columns_to_target_blob(None,detected_lob)
+        return {"status":False,"error":"CSV missing"}
+
+    csv_df=pd.read_csv(LOCAL_CSV_PATH)
+
+    def norm(s):
+
+        return s.strip().lower() if isinstance(s,str) else ""
+
+    entity_set={norm(x) for x in csv_df["entity_name"].dropna() if isinstance(x,str)}
+
+    is_sanctioned=norm(extracted_name) in entity_set
+
+    results=[{
+        "Extracted Name":extracted_name,
+        "is_Sanctioned":is_sanctioned
+    }]
+
+    excel_status=await _append_and_copy_columns_to_target_blob(
+        is_sanctioned,
+        detected_lob
     )
 
-
-def log_inbound_communication(claim_number: str, message_text: str, sentiment: str = "Neutral") -> dict:
-    """Log the policyholder's inbound message to communication_history."""
-    conn = get_db_connection()
-    try:
-        cur = conn.cursor()
-        cur.execute("SELECT id, policyholder_name FROM claims WHERE claim_number = %s", (claim_number,))
-        claim_row = cur.fetchone()
-        claim_id = claim_row["id"] if claim_row else None
-        policyholder_name = claim_row["policyholder_name"] if claim_row else "Valued Policyholder"
-
-        comm_id = f"COMM-IN-{claim_number}-{int(datetime.utcnow().timestamp())}"
-        cur.execute(
-            """
-            INSERT INTO communication_history (
-                communication_id, claim_row_id, claim_number, policyholder_name,
-                communication_type, direction, subject, summary,
-                sentiment_detected, handled_by, resolution_status, follow_up_required
-            ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
-            RETURNING *
-            """,
-            (
-                comm_id, claim_id, claim_number, policyholder_name,
-                "Portal", "Inbound",
-                "Policyholder Message",
-                message_text[:500],
-                sentiment,
-                "CommunicationAgent",
-                "Logged",
-                False,
-            ),
-        )
-        result = row_to_dict(cur.fetchone())
-        conn.commit()
-        return result
-    except Exception:
-        conn.rollback()
-        raise
-    finally:
-        conn.close()
-
-
-def get_communication_history(claim_number: str) -> list:
-    conn = get_db_connection()
-    try:
-        cur = conn.cursor()
-        cur.execute(
-            "SELECT * FROM communication_history WHERE claim_number = %s ORDER BY communication_date DESC",
-            (claim_number,),
-        )
-        return row_to_dict(cur.fetchall()) or []
-    finally:
-        conn.close()
-
-
-def draft_status_notification(claim_number: str) -> dict:
-    conn = get_db_connection()
-    try:
-        cur = conn.cursor()
-
-        cur.execute("SELECT * FROM claims WHERE claim_number = %s", (claim_number,))
-        claim = row_to_dict(cur.fetchone())
-        if not claim:
-            return {"error": f"Claim {claim_number} not found"}
-
-        cur.execute(
-            "SELECT * FROM communication_history WHERE claim_number = %s ORDER BY communication_date DESC LIMIT 5",
-            (claim_number,),
-        )
-        history = row_to_dict(cur.fetchall()) or []
-
-        sentiment_data = None
-        try:
-            cur.execute(
-                "SELECT * FROM claim_sentiment_tracker WHERE claim_number = %s ORDER BY updated_at DESC LIMIT 1",
-                (claim_number,),
-            )
-            sentiment_data = row_to_dict(cur.fetchone())
-        except Exception:
-            pass
-
-        cur.execute(
-            "SELECT * FROM claim_journey_master WHERE claim_number = %s ORDER BY id DESC LIMIT 1",
-            (claim_number,),
-        )
-        journey = row_to_dict(cur.fetchone()) or {}
-
-    finally:
-        conn.close()
-
-    sentiment_label = (sentiment_data or {}).get("current_sentiment", "Neutral")
-    escalation_risk = (sentiment_data or {}).get("escalation_risk", "Low")
-    claim_status = claim.get("status", "In Progress")
-    current_stage_name = journey.get("current_stage_name", claim_status)
-    claimant_name = claim.get("policyholder_name") or "Valued Policyholder"
-    recent_summaries = [h.get("summary") for h in history[:3] if h.get("summary")]
-
-    try:
-        client = _get_openai_client()
-        prompt = (
-            "You are an insurance claims communication specialist. "
-            "Draft a professional, empathetic status-update notification for the policyholder. "
-            "Respond with JSON: "
-            '{"subject": "...", "message_body": "...", "channel": "Email|SMS|Portal", '
-            '"tone": "Empathetic|Informational|Urgent", "next_action": "..."}.\n\n'
-            f"Claimant: {claimant_name}\n"
-            f"Claim Number: {claim_number}\n"
-            f"Current Status: {claim_status}\n"
-            f"Current Stage: {current_stage_name}\n"
-            f"Loss Type: {claim.get('loss_type', 'Unknown')}\n"
-            f"Policyholder Sentiment: {sentiment_label}\n"
-            f"Escalation Risk: {escalation_risk}\n"
-            f"Recent Communication Summaries: {recent_summaries}"
-        )
-        response = client.chat.completions.create(
-            model=AZURE_OPENAI_CHAT_DEPLOYMENT,
-            messages=[{"role": "user", "content": prompt}],
-            temperature=0.3,
-            response_format={"type": "json_object"},
-        )
-        draft = json.loads(response.choices[0].message.content)
-    except Exception as e:
-        log.warning("LLM notification draft failed: %s", e)
-        draft = {
-            "subject": f"Update on Your Claim {claim_number}",
-            "message_body": (
-                f"Dear {claimant_name}, your claim {claim_number} is currently "
-                f"at the '{current_stage_name}' stage. We will keep you updated."
-            ),
-            "channel": "Email",
-            "tone": "Informational",
-            "next_action": "No further action required at this time",
-        }
-
-    conn2 = get_db_connection()
-    try:
-        cur2 = conn2.cursor()
-        cur2.execute(
-            """
-            INSERT INTO communication_history (
-                communication_id, claim_row_id, claim_number, policyholder_name,
-                communication_type, direction, subject, summary,
-                sentiment_detected, handled_by, resolution_status, follow_up_required
-            ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
-            """,
-            (
-                f"COMM-{claim_number}-{int(datetime.utcnow().timestamp())}",
-                claim.get("id"),
-                claim_number,
-                claimant_name,
-                draft.get("channel", "Email"),
-                "Outbound",
-                draft.get("subject"),
-                draft.get("message_body"),
-                sentiment_label,
-                "CommunicationAgent",
-                "Draft",
-                False,
-            ),
-        )
-        conn2.commit()
-    except Exception as e:
-        conn2.rollback()
-        log.warning("Could not write communication_history: %s", e)
-    finally:
-        conn2.close()
-
+    logger.info("✅ Sanction check complete: name=%s is_sanctioned=%s lob=%s", extracted_name, is_sanctioned, detected_lob)
     return {
-        "claim_number": claim_number,
-        "claim_status": claim_status,
-        "current_stage": current_stage_name,
-        "policyholder_sentiment": sentiment_label,
-        "escalation_risk": escalation_risk,
-        "drafted_notification": draft,
+        "status":True,
+        "results":results,
+        "excel_update":excel_status
     }
 
 
-
-"""
-communication_router.py
-────────────────────────
-Tool / Endpoint map:
-  get_communication_history    GET  /api/communication/history/{claim_number}
-  draft_status_notification    POST /api/communication/draft/{claim_number}
-"""
-
-import logging
-from typing import Optional
-
-from fastapi import APIRouter, HTTPException
-from pydantic import BaseModel
-
-from communication_mcp import handler
-
-log = logging.getLogger(__name__)
-
-router = APIRouter()
-
-
-class LogInboundRequest(BaseModel):
-    message_text: str
-    sentiment: Optional[str] = "Neutral"
-
-
-@router.post(
-    "/api/communication/log_inbound/{claim_number}",
-    operation_id="log_inbound_communication",
-    summary="Log the policyholder's inbound message to communication_history",
-    tags=["Communication"],
-)
-def log_inbound_communication(claim_number: str, req: LogInboundRequest):
-    """
-    Records the policyholder's inbound message as a new row in
-    communication_history with direction='Inbound'. Call this BEFORE
-    drafting the notification so the inbound message is persisted.
-    """
+async def _append_and_copy_columns_to_target_blob(extracted_flag:Optional[bool],detected_lob:str)->Dict[str,Any]:
     try:
-        return handler.log_inbound_communication(claim_number, req.message_text, req.sentiment)
+     async with BlobServiceClient.from_connection_string(AZURE_STORAGE_CONNECTION_STRING) as blob_service:
+
+        src_container,src_blob=_parse_blob_url(FETCHED_EMAILS_EXCEL_BLOB_URL)
+
+        src_client=blob_service.get_blob_client(src_container,src_blob)
+
+        src_stream=await src_client.download_blob()
+
+        src_bytes=await src_stream.readall()
+
+        src_wb=openpyxl.load_workbook(BytesIO(src_bytes),read_only=True)
+
+        src_ws=src_wb.active
+
+        last_value=None
+
+        for r in range(src_ws.max_row,0,-1):
+
+            v=src_ws.cell(r,1).value
+
+            if v:
+
+                last_value=str(v)
+
+                break
+
+        src_wb.close()
+
+        tgt_container,tgt_blob=_parse_blob_url(TARGET_BLOB_EXCEL_URL)
+
+        tgt_client=blob_service.get_blob_client(tgt_container,tgt_blob)
+
+        try:
+
+            tgt_bytes=await (await tgt_client.download_blob()).readall()
+
+            wb=openpyxl.load_workbook(BytesIO(tgt_bytes))
+
+        except Exception:
+            logger.warning("⚠️ Target Excel blob not found or unreadable — creating new workbook")
+            wb=openpyxl.Workbook()
+
+        ws=wb.active
+
+        last_row=0
+
+        for r in range(ws.max_row,0,-1):
+
+            if ws.cell(r,1).value:
+
+                last_row=r
+
+                break
+
+        write_row=last_row+1 if last_row else 2
+
+        ws.cell(write_row,1,last_value)
+
+        now=datetime.now(ZoneInfo("Asia/Kolkata"))
+
+        ws.cell(write_row,2,now.strftime("%m/%d/%Y %I:%M:%S %p"))
+
+        lob=detected_lob.strip().upper()
+
+        if lob=="RESIDENTIAL PROPERTY":
+
+            source_row=5 if extracted_flag else 4
+
+        else:
+
+            source_row=3 if extracted_flag else 2
+
+
+        if extracted_flag is not None:
+
+            wb_local=openpyxl.load_workbook(
+                LOCAL_STUBBED_EXCEL_PATH,
+                data_only=True
+            )
+
+            ws_local=wb_local.active
+
+
+            stub_headers={}
+
+            for col in range(1,ws_local.max_column+1):
+
+                header=ws_local.cell(1,col).value
+
+                if header:
+
+                    stub_headers[normalize(header)]=col
+
+
+            for col in range(1,ws.max_column+1):
+
+                header=ws.cell(1,col).value
+
+                if not header:
+                    continue
+
+                key=normalize(header)
+
+                if key in stub_headers:
+
+                    source_col=stub_headers[key]
+
+                    value=ws_local.cell(source_row,source_col).value
+
+                    ws.cell(write_row,col,value)
+
+
+            wb_local.close()
+
+
+        bio=BytesIO()
+
+        wb.save(bio)
+
+        bio.seek(0)
+
+        await tgt_client.upload_blob(
+            bio.getvalue(),
+            overwrite=True
+        )
+
+        wb.close()
+        logger.info("✅ Excel append complete: row=%s lob=%s", source_row, detected_lob)
+        return {
+            "status":True,
+            "row_used":source_row,
+            "lob":detected_lob
+        }
+
     except Exception as e:
-        log.exception("log_inbound_communication error")
-        raise HTTPException(status_code=500, detail=str(e))
+        logger.exception("❌ Excel append/blob operation failed")
+        return {"status": False, "error": str(e)}
 
 
-@router.get(
-    "/api/communication/history/{claim_number}",
-    operation_id="get_communication_history",
-    summary="Read communication_history for a claim",
-    tags=["Communication"],
-)
-def get_communication_history(claim_number: str):
-    """Return all communication history records for a given claim number."""
-    records = handler.get_communication_history(claim_number)
-    return {"claim_number": claim_number, "communication_history": records}
 
 
-@router.post(
-    "/api/communication/draft/{claim_number}",
-    operation_id="draft_status_notification",
-    summary="Auto-draft a status-change notification for the policyholder",
-    tags=["Communication"],
-)
-def draft_status_notification(claim_number: str):
+
+#Working code after metadata filling
+import logging
+import os
+from urllib.parse import urlparse, unquote
+from dotenv import load_dotenv
+
+load_dotenv()
+
+logger = logging.getLogger(__name__)
+
+AZURE_STORAGE_CONNECTION_STRING = os.environ.get("AZURE_STORAGE_CONNECTION_STRING", "")
+
+
+def _require_env() -> None:
+    """Ensure required environment variables exist."""
+    if not AZURE_STORAGE_CONNECTION_STRING:
+        raise RuntimeError("Missing AZURE_STORAGE_CONNECTION_STRING in .env")
+
+
+def _parse_blob_url(url: str) -> tuple[str, str]:
     """
-    Uses the claim's current status, journey stage, sentiment, and recent
-    communication history to generate an empathetic, channel-appropriate
-    notification draft, saved to communication_history with status='Draft'.
+    Parse an Azure Blob URL and return (container_name, blob_path).
+    Example URL:
+      https://account.blob.core.windows.net/output-results/folder/name.json
+    Returns:
+      ("output-results", "folder/name.json")
     """
-    result = handler.draft_status_notification(claim_number)
-    if result.get("error"):
-        raise HTTPException(status_code=404, detail=result["error"])
-    return result
+    parsed = urlparse(url)
+    if not parsed.scheme.startswith("http"):
+        raise ValueError("jsonfilepath must be a valid http(s) URL to Azure Blob Storage.")
 
-
-
-communication_app = _make_cors_app(
-    title="communication_agent_mcps",
-    description="[PLACEHOLDER] MCP tools for policyholder communication history.",
-)
-communication_app.include_router(communication_router)
-FastApiMCP(
-    communication_app,
-    include_operations=["get_communication_history", "log_inbound_communication", "draft_status_notification"],
-).mount_http()
-app.mount("/api/v1/communication", communication_app)
-
-
-
-
-
-
+    path = parsed.path.lstrip("/")
+    if "/" not in path:
+        raise ValueError("jsonfilepath must include both container and blob path.")
+    parts = path.split("/", 1)
+    container = parts[0]
+    blob_path = parts[1]
+    return unquote(container), unquote(blob_path)
 
