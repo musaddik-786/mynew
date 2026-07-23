@@ -1,90 +1,53 @@
-For claim CLM-2026-9497, the system recommended an initial reserve amount of 
-0.00
-∗
-∗
-.
-T
-h
-i
-s
-w
-a
-s
-b
-a
-s
-e
-d
-o
-n
-a
-∗
-∗
-b
-a
-s
-e
-l
-o
-s
-s
-e
-s
-t
-i
-m
-a
-t
-e
-o
-f
-0.00∗∗.Thiswasbasedona∗∗baselossestimateof1,066.00 and a policy deductible of 
-2
-,
-525.90
-∗
-∗
-,
-w
-h
-i
-c
-h
-r
-e
-s
-u
-l
-t
-e
-d
-i
-n
-a
-∗
-∗
-n
-e
-t
-l
-o
-s
-s
-a
-f
-t
-e
-r
-d
-e
-d
-u
-c
-t
-i
-b
-l
-e
-o
-f
-2,525.90∗∗,whichresultedina∗∗netlossafterdeductibleof0.00 because the deductible exceeded the loss amount. Although the system noted a 15.0% severity buffer and a 5.2% fraud risk buffer, neither buffer was applied because there was no remaining net loss. No manual reserve had been set by the adjuster, so variance was marked as not applicable. The rationale provided is that, after applying the deductible, no payable loss remained, so no additional buffers were needed and no reserve is required for this claim at this time.
+
+Musaddique Lalkot
+0 minutes 22 seconds0:22
+Musaddique Lalkot 0 minutes 22 seconds
+Insurance today face challenges across the entire claims lifecycle, including inefficient FNOL intake, manual adjuster workflows, delayed investigations, vendor coordination complexities, and fraud detection across SIU operations.
+Musaddique Lalkot 0 minutes 38 seconds
+Hexaware's Agentic AI claims solution transforms the end-to-end claims journey through intelligent FNOL, AI-assisted adjuster workflows, proactive SIU investigation capabilities, document intelligence, vendor orchestration, and automated verification support enabling insurers to deliver faster, more accurate, and customer-centric claim experiences while keeping humans at the center of every critical decision.
+Musaddique Lalkot 1 minute 2 seconds
+In the previous experience, we saw how the policyholder initiated a claim through the intelligent FNOL interface by simply describing the incident using voice or text. The AI automatically identified the loss type, extracted key details, validated intake information, generated a pre-filled FNOL report, and submitted the claim for further processing.
+Musaddique Lalkot 1 minute 24 seconds
+Once the FNOL is successfully submitted and the claim number is generated, the claim seamlessly moves into the adjuster workflow for assessment.
+Musaddique Lalkot 1 minute 33 seconds
+Now we will look at the adjuster followed by the SIU or Special Investigation Unit. As the claim is routed to the adjuster portal. Here the adjuster can see claims related insights and he clicks on follow my claims to see all the claims that have to be reviewed. Opening the particular claim gives an insights related to customer. He can request more information schedule interview or respond to escalation.
+Musaddique Lalkot 1 minute 56 seconds
+Now adjuster opens loss adjustments page where he gets detailed insights of customer documents. AI investigation tools and below section provides AI powered smart comparison of similar type of claims in the neighboring location.
+Musaddique Lalkot 2 minutes 10 seconds
+showcasing claims and settlement insights.
+Musaddique Lalkot 2 minutes 15 seconds
+Verification Intelligence section validates the customer uploaded images against drone captures. Below all images he can verify the integrity of the uploaded image using AI-powered cross-reference, after which he can approve.
+Musaddique Lalkot 2 minutes 28 seconds
+Forward to SIU, etc.
+Musaddique Lalkot 2 minutes 33 seconds
+He can also check vendor assigned if any, also he can directly go to the document hub to view documents and system automatically classifies it and provides the insights, here he can approve or reject the documents that have been provided. And the adjuster can conclude the intake validation, now the claim moves to loss investigation stage.
+Musaddique Lalkot 2 minutes 51 seconds
+Now the adjuster completes the investigation to move forward and any point in time he can ask for additional documents from the policyholder.
+Musaddique Lalkot 3 minutes
+Now he moves to AI assisted loss assessment for that particular claim and runs the AI analysis to display loss calculation engine with a summary of loss estimate, deductible, repair vs replacement for property and repair vs total loss for motor claims.
+Musaddique Lalkot 3 minutes 15 seconds
+The Repair vs. Replacement section summarizes a side-by-side comparative view of the recommendation for repair and replacement.
+Musaddique Lalkot 3 minutes 23 seconds
+Moving back to loss assessment, Adjuster can run AI analysis for AI recommendations for approval or rejection decisions, depending on the fraud scoring, or redirecting claims, with high fraudulent scoring to SAU. Although the platform supports straight-through processing, or STP, human oversight remains pivotal to the process.
+Musaddique Lalkot 3 minutes 44 seconds
+Even when the AI recommends automated approval, the adjuster retains full authority to approve, reject, or escalate the claim for further investigation.
+Musaddique Lalkot 3 minutes 54 seconds
+If suspicious indicators or inconsistencies are detected, the claim can be escalated to the Special Investigation Unit, or SIU.
+Musaddique Lalkot 4 minutes 2 seconds
+Claims with fraud scores above the defined threshold are automatically flagged for Sayu review, though adjusters can manually escalate any claim when necessary.
+Musaddique Lalkot 4 minutes 11 seconds
+Once forwarded, the claim appears in the SIU Portal, and SIU investigators can review claim timelines, request additional documentation, schedule interviews, or trigger external verification processes. The system also tracks SLA timelines to ensure investigations remain within compliance windows. After reviewing,
+Musaddique Lalkot 4 minutes 31 seconds
+This way you can clear the claim and return it to the adjuster for further processing.
+Musaddique Lalkot 4 minutes 36 seconds
+Throughout this process, claim statuses, investigation outcomes, and pending customer actions are continuously updated and reflected across the platform. Once the investigation is cleared, the adjuster views the latest actions of the claim and in-loss assessment he proceeds with claim approval.
+Musaddique Lalkot 4 minutes 54 seconds
+Following approval, the system activates Smart Vendor Matching. Using AI-driven vendor intelligence scores, the platform automatically recommends the most suitable vendor for the repair work. The recommendation considers multiple factors, including skill specialization, licensing compliance, SLA performance,
+Musaddique Lalkot 5 minutes 13 seconds
+More.
+Musaddique Lalkot 5 minutes 14 seconds
+The adjuster can accept the AI recommended vendor or manually select other vendors if required. With Hexaware's Agentic AI claims solution, this AI-orchestrated property and motor claims solution transforms the traditional claims lifecycle into an intelligent, customer-centric experience. The platform combines intelligent FNOL,
+Musaddique Lalkot 5 minutes 33 seconds
+AI-assisted assessment, proactive SIU investigation, centralized document intelligence, smart vendor orchestration, and automated verification capabilities into a unified ecosystem.
+Musaddique Lalkot 5 minutes 45 seconds
+The result is faster settlements, reduced operational costs, lower claims leakage, improved adjuster productivity, and enhanced customer satisfaction all while ensuring humans remain at the center of every critical decision, augmented by AI-driven intelligence and automation.
