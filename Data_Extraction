@@ -1,74 +1,36 @@
-In short, the main functionality of this sanctions check is:
+Insurance today face challenges across the entire claims lifecycle, including inefficient FNOL intake, manual adjuster workflows, delayed investigations, vendor coordination complexities, and fraud detection across SIU operations. 
 
-Take the customer’s name from an extracted JSON document, check whether that name exists in a sanctions list (CSV), and then update an eligibility Excel file with the corresponding pre-filled result.
+ Hexaware’s Agentic AI Claims Solution transforms the end-to-end claims journey through intelligent FNOL, AI-assisted adjuster workflows, proactive SIU investigation capabilities, document intelligence, vendor orchestration, and automated verification support, enabling insurers to deliver faster, more accurate, and customer-centric claim experiences while keeping humans at the center of every critical decision. 
 
-Flow
+ In the previous experience, we saw how the policyholder initiated a claim through the intelligent FNOL interface by simply describing the incident using voice or text. The AI automatically identified the loss type, extracted key details, validated intake information, generated a pre-filled FNOL report, and submitted the claim for further processing. 
 
-1. Input
-    * Receives:
-        * json_file_url → Azure Blob URL of the extracted JSON.
-        * detected_lob → Line of Business (e.g. Residential Property).
-2. Download JSON
-    * Downloads the JSON from Azure Blob Storage.
-3. Extract Customer Name
-    * Searches the JSON recursively for either:
-        * NameAndMailingAddress
-        * ClientName
-    * Takes only the name portion (before the first comma).
-4. Load Sanctions List
-    * Reads the local file:
+Once the FNOL is successfully submitted and the claim number is generated, the claim seamlessly moves into the adjuster workflow for assessment. 
 
-input/sanctions.csv
+Now we will look at the Adjuster, followed by the SIU, or Special Investigation Unit. 
 
-    * Uses the entity_name column as the sanctions database.
-5. Sanctions Check
-    * Normalizes the names (lowercase, trimmed).
-    * Performs an exact match:
+As the claim is routed to the Adjuster Portal, the adjuster can view claim-related insights and click on Follow My Claims to see all the claims awaiting review. Opening a particular claim provides customer insights, and the adjuster can request additional information, schedule interviews, or respond to escalations. 
 
-extracted_name in sanctions_csv
+The adjuster then opens the Loss Adjustments page, where detailed customer information, uploaded documents, and AI-powered investigation tools are available. After running the run AI investigation, Fraud Screening , Damage Assessment along with other agents are executed which provides their outputs,  A smart comparison section provides insights from similar claims in neighboring locations, showcasing comparable claims and settlement information.
+Document Hub, where uploaded documents are automatically classified and summarized by AI,also Extracted data related to image ,evidence can also be viewed.
+The Verification Intelligence section validates customer-uploaded images against drone captures. Using AI-powered cross-referencing, the adjuster can verify the integrity of uploaded images before approving them or forwarding the claim to the SIU if required. 
 
-    * If found:
+The as the intake validation is concluded, now the claim progresses to the loss investigation stage. 
 
-is_sanctioned = True
+After completing the investigation, the adjuster can move the claim forward while requesting additional documentation from the policyholder whenever necessary. 
+Next, the adjuster initiates the AI-Assisted Loss Assessment where Loss Assessment Agent comes in. Running the AI analysis displays the loss calculation engine, including a summary of the estimated loss, applicable deductible, repair versus replacement recommendations for the claim,
 
-    * Otherwise:
+The Repair vs Replacement agent kicks in, under section Repair vs. Replacement section provides a side-by-side comparison of both options, enabling the adjuster to make an informed decision. 
 
-is_sanctioned = False
+Returning to the loss assessment, the adjuster can generate AI-assisted recommendations for claim approval or rejection. Based on fraud scoring, 
+ the platform supports Straight-Through Processing, or STP, human oversight remains central to every decision. 
 
-6. Update Eligibility Excel
-    Instead of calculating eligibility itself, it:
-    * Opens the fetched emails Excel.
-    * Gets the latest email/reference.
-    * Opens the target eligibility Excel.
-    * Adds a new row with:
-        * Reference ID
-        * Current timestamp
-    * Copies a predefined row from stubbed.xlsx.
-7. Which row is copied?
-    It depends on:
-    * Whether the customer is sanctioned.
-    * Which Line of Business (LOB) it is.
+After which Reserve Recommendation Agent is triggered generating System Recommended Reserve along with other details, he can either approve or reject , proceeding with approve it gets populated in adjusted reserve, rejecting it Reserve can be entered manually  
 
-LOB	Sanctioned	Row copied from stubbed.xlsx
-Residential Property	Yes	Row 5
-Residential Property	No	Row 4
-Other LOBs	Yes	Row 3
-Other LOBs	No	Row 2
+Next Settlement Recommendation Agent is trigerred generating Settlement Amount, Recommended Action, similarly he can aprove or reject , if rejected he can manually enter the value for final settlement. 
 
-8. Save Back
-    * Uploads the updated eligibility Excel back to Azure Blob Storage.
+Next Financial Leakage agent whcih generates Leakage Risk, score and costs along with risk flags and recommendation, risk level can be overriden now clicking on save leackage decision. Now under  
 
-Actual Business Purpose
+Payment Eligibility the agent does multiple checks so 
 
-The sanctions check itself is very simple:
-
-* Extract customer’s name.
-* Compare it with a sanctions list.
-* Determine Sanctioned or Not Sanctioned.
-
-The rest of the code is mainly for automatically populating the eligibility results Excel with the correct preconfigured outcome based on:
-
-* Sanction status.
-* Line of Business.
-
-So, this module is primarily an eligibility gate that screens applicants against a sanctions list and records the corresponding eligibility template in the output Excel.
+Currently two checks have failed marking it as Not eligible and decesion as manual review, moving to Payment Readiness & Final Decision, here payment agent shows Available Amount along with the decision , selecting approve, now Interactive Claim Journey has reached to closing the claim
+The result is faster settlements, reduced operational costs, lower claims leakage, improved adjuster productivity, and enhanced customer satisfaction, while ensuring that humans remain at the center of every critical decision, augmented by AI-driven intelligence and automation.
