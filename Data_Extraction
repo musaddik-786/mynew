@@ -1,1245 +1,732 @@
-loaders
-# from langchain.document_loaders import PyPDFLoader, TextLoader
-from langchain_community.document_loaders import TextLoader
-loader = TextLoader("C:\\Users\\2000137378\\Desktop\\newproject\\RAG_PIPELINES\\mytext.txt",encoding ="utf-8")
-text = loader.load()
+Task: Perform a Complete Gap Analysis to Extend the Existing Commercial Property Claims Platform to Motor Insurance
 
-print(text)
+Background
 
+The current claims platform has been developed exclusively for the Commercial Property Line of Business (LOB).
 
-# TextLoader
-# PyPDFLoader
-# CSVLoader
-# JSONLoader
-# DocxLoader
+The platform contains multiple AI agents (MCP/FastAPI based) that together handle the complete claims lifecycle, including but not limited to:
 
-# FLOW
-# file.txt
-#   ↓
-# read file
-#   ↓
-# convert text
-#   ↓
-# Document object
+* FNOL
+* Document Classification
+* Data Extraction
+* Eligibility Verification
+* Policy Coverage Verification
+* Risk Assessment
+* Fraud Screening
+* Claim Classification
+* Claim Routing
+* Damage Assessment
+* Evidence Validation
+* External Data Verification
+* Reserve Recommendation
+* Repair vs Replacement
+* Settlement Recommendation
+* Payment Eligibility
+* Payment Trigger
+* Communication Agent
+* Other supporting agents
 
-# OUTPUT
-# documents is NOT text.
-# It is a list (array) of Document objects.documents is NOT text.
-# It is a list (array) of Document objects.
+The complete codebase will be provided.
 
-# [
-# Document(
-# page_content="text inside file",
-# metadata={'source':'file.txt'}
-# )
-# ]
+The objective is NOT to rewrite the project.
 
+The objective is to identify everything that must change so that the platform can support Motor Insurance Claims in addition to Commercial Property.
 
+⸻
 
-# TEXT SPLITTING
+Your Task
 
+Perform a deep architectural review of the complete codebase and identify every place where Commercial Property assumptions exist.
 
-splitters
-from langchain_text_splitters import (RecursiveCharacterTextSplitter, CharacterTextSplitter, TokenTextSplitter)
-from langchain_community.document_loaders import TextLoader
+Assume we want to support both
 
+* Commercial Property
+* Motor Insurance
 
-loader = TextLoader("C:\\Users\\2000137378\\Desktop\\newproject\\RAG_PIPELINES\\mytext.txt",encoding ="utf-8")
-document = loader.load()
+without breaking the existing implementation.
 
-# print(document)
+⸻
 
-###Character text splitter
-text = document[0].page_content
-text_splitter = CharacterTextSplitter(separator="\n", chunk_size=100, chunk_overlap=20,length_function = len)
-#chunk size is characters 
+Analyse Every Agent Individually
 
-char_chunk = text_splitter.split_text(text)
+For every agent, identify:
 
-print(len(char_chunk))
-# print(f"first Chunk: {char_chunk[0][:100]}...")
+1. Current Commercial Property Logic
 
+Explain
 
-### Recursive character text splitter
-recursive_char_splitter = RecursiveCharacterTextSplitter(chunk_size=100, chunk_overlap=20)
-recursive_char_chunk = recursive_char_splitter.split_text(text)
-print(len(recursive_char_chunk))
-# print(f"first Chunk: {recursive_char_chunk[0][:100]}...")
+* what the current agent is doing
+* which Commercial Property assumptions are hardcoded
+* why those assumptions do not work for Motor Insurance
 
+⸻
 
-### Token text splitter
-token_text_splitter = TokenTextSplitter(chunk_size=100, chunk_overlap=20)
-token_chunk = token_text_splitter.split_text(text)
-print(len(token_chunk))
-# print(f"first Chunk: {token_chunk[0][:100]}...")
+2. Motor Insurance Requirements
 
+For Motor Insurance identify
 
+* new functionality
+* additional validations
+* additional business rules
+* additional calculations
+* additional mandatory fields
+* optional fields
+* additional APIs
+* additional external integrations
+* new document types
+* new prompts
+* new LLM context
+* new decision logic
 
-loaders.pdf
-from langchain_community.document_loaders import PyPDFLoader
-loader = PyPDFLoader("C:\\Users\\2000137378\\Desktop\\newproject\\RAG_PIPELINES\\quote_20260325_114738.pdf")
-document = loader.load()
-print(document)
+⸻
 
+3. Existing Logic That Can Be Reused
 
-embedding
-from langchain_chroma import Chroma
-from langchain_openai import AzureOpenAIEmbeddings
-from langchain_community.document_loaders import TextLoader
-from langchain_text_splitters import CharacterTextSplitter, RecursiveCharacterTextSplitter
-from dotenv import load_dotenv
-from langchain_core.documents import Document
-import os
+Clearly mention
 
-###split_text=--------------------------------------------------------------
-load_dotenv()
+* which functions remain unchanged
+* which modules are reusable
+* which prompts only need modification
+* which business rules are common across both LOBs
 
-# embeddings = AzureOpenAIEmbeddings(
-#     azure_deployment=os.getenv("AZURE_OPENAI_EMBEDDING_DEPLOYMENT_NAME"),
-#     openai_api_key=os.getenv("AZURE_OPENAI_API_KEY"),
-#     openai_api_version=os.getenv("AZURE_OPENAI_API_VERSION"),
-#     azure_endpoint=os.getenv("AZURE_OPENAI_ENDPOINT"),
-#     chunk_size=1024  # Adding required chunk_size parameter
-# )
+⸻
 
-# text_splitter = RecursiveCharacterTextSplitter(
-#     chunk_size=int(os.getenv("CHUNK_SIZE", "800")),
-#     chunk_overlap=int(os.getenv("CHUNK_OVERLAP", "100")),
-#     length_function=len,
-# )
+4. Code Changes Required
 
-# loader = TextLoader("C:\\Users\\2000137378\\Desktop\\newproject\\RAG_PIPELINES\\mytext.txt", encoding="utf-8")
-# documents = loader.load() #THIS GIVES US A LIST OF DOCUMENT OBJECTS BUT WE NEED STRING AS SPLIT_TEXT EXPECTS A STRING NOT A DOCUMENT OBJECT
-# document_text = documents[0].page_content #WE EXTRACT THE STRING FROM THE DOCUMENT OBJECT TO PASS IT TO SPLIT_TEXT
+For every agent list
 
-# chunks = text_splitter.split_text(document_text) #THIS GIVES US A LIST OF STRINGS (CHUNKS) WHICH WE CAN THEN CONVERT TO DOCUMENT OBJECTS TO PASS TO CHROMA
+* new functions required
+* existing functions to modify
+* new helper utilities
+* new configuration
+* prompt changes
+* routing changes
+* orchestration changes
+* new validation logic
 
-# my_dir = os.path.dirname(os.path.abspath(__file__))
-# print(f"Current directory: {my_dir}")
+Do NOT write code.
 
+Only explain what should change.
 
-# Now we have chunks as a list of strings. We need to convert them to Document objects to pass to Chroma.
+⸻
 
-# docs = []
-# for chunk in chunks:
-#     docs.append(Document(page_content=chunk))
+FNOL Analysis
 
-# vectorstore = Chroma.from_documents(
-#     # documents=chunks, #WE CANNOT PASS THE LIST OF STRINGS (CHUNKS) TO CHROMA BECAUSE IT EXPECTS A LIST OF DOCUMENT OBJECTS. WE NEED TO CONVERT THE CHUNKS TO DOCUMENT OBJECTS FIRST.
-#     documents=docs,   #WE PASS THE LIST OF DOCUMENT OBJECTS TO CHROMA
-#     embedding=embeddings,
-#     collection_name="my_collection",
-#     persist_directory=my_dir
-#     )
-
-
-
+Pay special attention to FNOL.
 
-
-###------------------SPLIT DOCUMENT
-
-#below is the exact above code this time using SplitDocuments instead of split_text to directly get Document objects instead of strings which we then pass to Chroma without needing to convert them to Document objects again.
-
-load_dotenv()
-embeddings = AzureOpenAIEmbeddings(
-    azure_deployment=os.getenv("AZURE_OPENAI_EMBEDDING_DEPLOYMENT_NAME"),
-    openai_api_key=os.getenv("AZURE_OPENAI_API_KEY"),
-    openai_api_version=os.getenv("AZURE_OPENAI_API_VERSION"),
-    azure_endpoint=os.getenv("AZURE_OPENAI_ENDPOINT"),
-    chunk_size=1024  # Adding required chunk_size parameter
-)
-text_splitter = RecursiveCharacterTextSplitter(
-    chunk_size=int(os.getenv("CHUNK_SIZE", "800")),
-    chunk_overlap=int(os.getenv("CHUNK_OVERLAP", "100")),
-    length_function=len,
-)
-loader = TextLoader("C:\\Users\\2000137378\\Desktop\\newproject\\RAG_PIPELINES\\mytext.txt", encoding="utf-8")
-documents = loader.load() #THIS GIVES US A LIST OF DOCUMENT OBJECTS BUT WE NEED
-    # TO SPLIT THEM INTO CHUNKS AS DOCUMENT OBJECTS TO PASS TO CHROMA
-chunks = text_splitter.split_documents(documents)
-# my_dir = os.path.dirname(os.path.abspath(__file__))
-my_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "input")
-
-vectorstore = Chroma.from_documents(
-    documents=chunks, #NOW WE CAN PASS THE CHUNKS DIRECTLY TO CHROMA BECAUSE THEY ARE ALREADY DOCUMENT OBJECTS
-    embedding=embeddings,
-    collection_name="my_collection",
-    persist_directory=my_dir
-    )
-
-
-print(len(chunks))
-# print(f"first Chunk: {chunks[0][:100]}...")
-print(f"first Chunk: {chunks[0].page_content[:100]}...")
-
-
-queryretriever
-from langchain_chroma import Chroma
-from langchain_openai import AzureOpenAIEmbeddings
-from dotenv import load_dotenv
-import os
-
-load_dotenv()
-
-embeddings = AzureOpenAIEmbeddings(
-    azure_deployment=os.getenv("AZURE_OPENAI_EMBEDDING_DEPLOYMENT_NAME"),
-    openai_api_key=os.getenv("AZURE_OPENAI_API_KEY"),
-    openai_api_version=os.getenv("AZURE_OPENAI_API_VERSION"),
-    azure_endpoint=os.getenv("AZURE_OPENAI_ENDPOINT"),      
-    # chunk_size=1024  # Adding required chunk_size parameter
-)
-
-
-my_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "input")
-
-vectorstore = Chroma(
-    collection_name="my_collection",
-    embedding_function=embeddings,
-    persist_directory=my_dir
-)
-
-query = input("Enter your query: ")
-
-results = vectorstore.similarity_search(query, k=3)
-
-print("Top 3 similar documents:")
-
-for doc in results:
-    print(doc.page_content)
-    print("-----")
-
-
-
-retreiver.py
-from langchain_chroma import Chroma
-from langchain_openai import AzureOpenAIEmbeddings
-from dotenv import load_dotenv
-import os
-
-import logging
-from typing import Dict, Any, List
-# from langchain.chains import LLMChain
-from langchain_classic.chains.llm import LLMChain
-# from langchain.prompts import PromptTemplate
-from langchain_core.prompts import PromptTemplate
-# from langchain_community.chat_models import AzureChatOpenAI
-from langchain_openai import AzureChatOpenAI, AzureOpenAIEmbeddings
-# from langchain_community.vectorstores import Chroma
-from langchain_chroma import Chroma
-# from langchain_community.embeddings import AzureOpenAIEmbeddings
-# from azure.storage.blob import BlobServiceClient, ContainerClient
-from azure.core.exceptions import ResourceExistsError
-import re
-# from datetime import datetime
-# from urllib.parse import urlparse, unquote
-# from Jarvis.MCP.common.phoenix_prompt import build_prompt
-
-import asyncio
-# Load environment variables
-load_dotenv()
-
-# Configure logging
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger(__name__)
-
-# Initialize Azure OpenAI embeddings
-embeddings = AzureOpenAIEmbeddings(
-    azure_deployment=os.getenv("AZURE_OPENAI_EMBEDDING_DEPLOYMENT_NAME"),
-    openai_api_key=os.getenv("AZURE_OPENAI_API_KEY"),
-    openai_api_version=os.getenv("AZURE_OPENAI_API_VERSION"),
-    azure_endpoint=os.getenv("AZURE_OPENAI_ENDPOINT"),
-    chunk_size=1024
-)
-
-
-def query_documents(vectordb: Any, user_query: str) -> str:
-    """
-    Answer user questions by querying vectorized document content.
-    
-    Performs semantic search on the vectorized content to find relevant chunks,
-    then uses LLM to generate a direct answer based on the context.
-    
-    Args:
-        vectordb: Loaded ChromaDB instance with embeddings
-        user_query: User's question as a string
-    
-    Returns:
-        Direct answer string (not structured JSON)
-    """
-    print(f"🔍 Processing query: {user_query}")
-    
-    llm = AzureChatOpenAI(
-        openai_api_key=os.getenv("AZURE_OPENAI_API_KEY"),
-        azure_endpoint=os.getenv("AZURE_OPENAI_ENDPOINT"),
-        openai_api_version=os.getenv("AZURE_OPENAI_API_VERSION"),
-        deployment_name=os.getenv("AZURE_OPENAI_CHAT_DEPLOYMENT"),
-        temperature=0,
-        top_p=1
-    )
-    
-    # Perform semantic search with large k value for better context
-    print(f"📚 Performing semantic search...")
-    relevant_chunks = vectordb.similarity_search(
-        user_query,
-        k=5  # Large k for comprehensive context
-    )
-    
-    if not relevant_chunks:
-        print("⚠️ No relevant chunks found in the document")
-        return "I could not find any relevant information in the document to answer your question."
-    
-    # Combine relevant chunks into context
-    context = "\n".join([chunk.page_content for chunk in relevant_chunks])
-    print("This is my context",context)
-    # Create prompt for question answering
-    qa_prompt = PromptTemplate(
-        input_variables=["context", "question"],
-        template="""You are an expert assistant for answering questions about documents.
-
-Based on the provided document context, answer the user's question accurately and concisely.
-
-QUESTION: {question}
-
-CONTEXT:
-{context}
-
-ANSWER:
-Provide a clear, direct answer based only on the context provided. 
-If the answer is not found in the context, explicitly state "Not found in documents."
-Do not guess or use external knowledge.
-Keep your answer concise and relevant to the question."""
-    )
-    
-    chain = LLMChain(llm=llm, prompt=qa_prompt)
-    
-    try:
-        print(f"Generating answer...")
-        answer = chain.run({
-            "context": context,
-            "question": user_query
-        }).strip()
-        
-        print(f"Answer generated successfully")
-        return answer
-        
-    except Exception as e:
-        logger.error(f"Error generating answer: {e}")
-        return f"Error processing your query: {str(e)}"
-
-
-async def process_query_retrieval(vector_db_path: str, query: str) -> Dict[str, Any]:
-    """
-    Main processing function for query-based document retrieval.
-    
-    Takes a user query, performs semantic search on vectorized content,
-    and returns a direct answer without JSON extraction.
-    
-    Args:
-        vector_db_path: Can be either:
-            1. Local absolute path from pdf_vectorizer output: /home/jarvis/rohan/Document_Query_MCP/data/vec_db/pdf_name
-            2. Blob URL (fallback): https://... - will extract pdf name and construct local path
-        query: User's question as a string
-    
-    Returns:
-        Dict with answer and metadata
-    """
-    try:
-        # Handle both blob URLs and local paths
-        # if vector_db_path.startswith(("http://", "https://")):
-            # This is a blob URL - extract the PDF name and construct local path
-        #     logger.warning(f"Received blob URL instead of local path. Extracting PDF name...")
-        #     path = unquote(urlparse(vector_db_path).path)
-        #     file_name_with_ext = os.path.basename(path)
-        #     pdf_name = os.path.splitext(file_name_with_ext)[0]
-            
-        #     # Construct the local vector_db_path
-        #     vdb_base_path = os.getenv("QUERY_VDB_PATH", "./data/vec_db")
-        #     vector_db_path = os.path.abspath(os.path.join(vdb_base_path, pdf_name))
-        #     logger.info(f"Reconstructed local vector_db_path: {vector_db_path}")
-        # else:
-            # Ensure it's an absolute path
-        vector_db_path = os.path.abspath(vector_db_path)
-        
-        # Get safe collection name from vector_db_path
-        # ChromaDB only allows: [a-zA-Z0-9._-]
-        # safe_name = os.path.basename(vector_db_path).lower()
-        # safe_name = safe_name.replace(" ", "_").replace("-", "_").replace(".", "_")
-        # # Remove parentheses and other special characters
-        # safe_name = "".join(c if c.isalnum() or c in "._-" else "" for c in safe_name)
-        # # Ensure it starts and ends with alphanumeric
-        # safe_name = safe_name.strip("._-")
-        # collection_name = f"{safe_name}_collection"
-        # persist_directory = os.path.join(vector_db_path, "chroma_db", safe_name)
-        
-        # Verify the vector DB exists
-        if not os.path.exists(vector_db_path):
-            raise FileNotFoundError(f"Vector database not found at: {vector_db_path}")
-        
-        # Load the vector store
-        print(f"📚 Loading vector store from {vector_db_path}")
-        vectordb = Chroma(
-            embedding_function=embeddings,
-            persist_directory=vector_db_path,
-            collection_name="newbig_collection"
-        )
-        
-        # Get answer using semantic search and LLM
-        answer = query_documents(vectordb, query)
-        # Get PDF name for metadata
-        pdf_name = os.path.basename(vector_db_path)
-        
-        return {
-            "answer": answer,
-            "metadata": {
-                "is_error": False,
-                "error_message": None,
-                "query": query,
-                "source_pdf": pdf_name,
-                "vector_db_path": vector_db_path
-            }
-        }
-        
-    except Exception as e:
-        logger.exception("Error in query retrieval process")
-        return {
-            "answer": None,
-            "metadata": {
-                "is_error": True,
-                "error_message": str(e),
-                "query": query,
-                "source_pdf": None,
-                "vector_db_path": vector_db_path if 'vector_db_path' in locals() else None
-            }
-        }
-
-
-
-
-
-# if __name__ == "__main__":
-#     await process_query_retrieval("C:\\Users\\2000137378\\Desktop\\newproject\\RAG_PIPELINES\\input","What is Contact Number")
-    
-if __name__ == "__main__":
-    result = asyncio.run(process_query_retrieval(
-        r"C:\Users\2000137378\Desktop\newproject\RAG_PIPELINES\big_input",
-        "whose number is this +64 21 555 0198"
-    ))
-    print(result)    
-
-
-metadatafiltering laoader
-from langchain_chroma import Chroma
-from langchain_openai import AzureOpenAIEmbeddings
-from langchain_community.document_loaders import TextLoader
-from langchain_text_splitters import RecursiveCharacterTextSplitter
-from dotenv import load_dotenv
-import os
-load_dotenv()
-# Embedding model
-embeddings = AzureOpenAIEmbeddings(
-   azure_deployment=os.getenv("AZURE_OPENAI_EMBEDDING_DEPLOYMENT_NAME"),
-   openai_api_key=os.getenv("AZURE_OPENAI_API_KEY"),
-   openai_api_version=os.getenv("AZURE_OPENAI_API_VERSION"),
-   azure_endpoint=os.getenv("AZURE_OPENAI_ENDPOINT"),
-   chunk_size=1024
-)
-# Text splitter
-text_splitter = RecursiveCharacterTextSplitter(
-   chunk_size=800,
-   chunk_overlap=100
-)
-# Load document
-loader = TextLoader(
-   r"C:\Users\2000137378\Desktop\newproject\RAG_PIPELINES\mytext.txt",
-   encoding="utf-8"
-)
-documents = loader.load()
-# Split into chunks
-chunks = text_splitter.split_documents(documents)
-# ADD METADATA HERE
-for chunk in chunks:
-   chunk.metadata["doc_type"] = "insurance"
-   chunk.metadata["category"] = "underwriting"
-   chunk.metadata["source_file"] = "mytext.txt"
-
-# Directory to store vectors
-my_dir = os.path.join(
-   os.path.dirname(os.path.abspath(__file__)),
-   "input8.1"
-)
-# Create vector DB
-vectorstore = Chroma.from_documents(
-   documents=chunks,
-   embedding=embeddings,
-   collection_name="mynew_collection",
-   persist_directory=my_dir
-)
-print("\nTotal chunks:",len(chunks))
-print("\nFirst chunk text:")
-print(chunks[0].page_content[:150])
-print("\nFirst chunk metadata:")
-print(chunks[0].metadata)
-
-
-
-meta data filteringretreival
-from langchain_chroma import Chroma
-from langchain_openai import AzureOpenAIEmbeddings, AzureChatOpenAI
-from langchain_core.prompts import PromptTemplate
-from langchain_classic.chains.llm import LLMChain
-from dotenv import load_dotenv
-import os
-import asyncio
-load_dotenv()
-# Embeddings
-embeddings = AzureOpenAIEmbeddings(
-   azure_deployment=os.getenv("AZURE_OPENAI_EMBEDDING_DEPLOYMENT_NAME"),
-   openai_api_key=os.getenv("AZURE_OPENAI_API_KEY"),
-   openai_api_version=os.getenv("AZURE_OPENAI_API_VERSION"),
-   azure_endpoint=os.getenv("AZURE_OPENAI_ENDPOINT"),
-   chunk_size=1024
-)
-
-def query_documents(vectordb, user_query):
-   print("\nProcessing query:",user_query)
-   llm = AzureChatOpenAI(
-       openai_api_key=os.getenv("AZURE_OPENAI_API_KEY"),
-       azure_endpoint=os.getenv("AZURE_OPENAI_ENDPOINT"),
-       openai_api_version=os.getenv("AZURE_OPENAI_API_VERSION"),
-       deployment_name=os.getenv("AZURE_OPENAI_CHAT_DEPLOYMENT"),
-       temperature=0
-   )
-   print("\nPerforming metadata filtered search...")
-   # METADATA FILTER HERE
-   relevant_chunks = vectordb.similarity_search(
-       user_query,
-       k=5,
-       filter={"doc_type":"insurance"}
-   )
-   print("\nChunks retrieved:",len(relevant_chunks))
-   if not relevant_chunks:
-       return "No relevant information found"
-   # Print metadata to confirm filtering
-   print("\nMetadata of retrieved chunks:")
-   for chunk in relevant_chunks:
-       print(chunk.metadata)
-   # Build context
-   context = "\n".join(
-       chunk.page_content for chunk in relevant_chunks
-   )
-   # Prompt
-   qa_prompt = PromptTemplate(
-       input_variables=["context","question"],
-       template="""
-Answer the question using only the context.
-QUESTION:
-{question}
-CONTEXT:
-{context}
-ANSWER:
-"""
-   )
-   chain = LLMChain(
-       llm=llm,
-       prompt=qa_prompt
-   )
-   answer = chain.run({
-       "context":context,
-       "question":user_query
-   })
-   return answer
-
-async def process_query():
-   vector_db_path = r"C:\Users\2000137378\Desktop\newproject\RAG_PIPELINES\big_input"
-   vectordb = Chroma(
-       embedding_function=embeddings,
-       persist_directory=vector_db_path,
-       collection_name="big_collection"
-   )
-   answer = query_documents(
-       vectordb,
-       "whose number is this +64 21 555 0198"
-   )
-   print("\nFinal Answer:\n")
-   print(answer)
-
-if __name__ == "__main__":
-   asyncio.run(process_query())
-
-
-
-metadatafilteringloader.py
-from langchain_chroma import Chroma
-from langchain_openai import AzureOpenAIEmbeddings
-from langchain_community.document_loaders import TextLoader
-from langchain_text_splitters import RecursiveCharacterTextSplitter
-from dotenv import load_dotenv
-import os
-load_dotenv()
-# ================= EMBEDDINGS =================
-embeddings = AzureOpenAIEmbeddings(
-   azure_deployment=os.getenv("AZURE_OPENAI_EMBEDDING_DEPLOYMENT_NAME"),
-   openai_api_key=os.getenv("AZURE_OPENAI_API_KEY"),
-   openai_api_version=os.getenv("AZURE_OPENAI_API_VERSION"),
-   azure_endpoint=os.getenv("AZURE_OPENAI_ENDPOINT"),
-   chunk_size=1024
-)
-# ================= SPLITTER =================
-text_splitter = RecursiveCharacterTextSplitter(
-   chunk_size=800,
-   chunk_overlap=100
-)
-# ================= LOADER =================
-loader = TextLoader(
-   r"C:\Users\2000137378\Desktop\newproject\RAG_PIPELINES\mytext.txt",
-   encoding="utf-8"
-)
-documents = loader.load()
-# ================= CHUNKING =================
-chunks = text_splitter.split_documents(documents)
-# ================= AUTO METADATA TAGGING =================
-for chunk in chunks:
-   text = chunk.page_content.lower()
-   chunk.metadata["doc_type"] = "insurance"
-   chunk.metadata["source_file"] = "mytext.txt"
-   # SECTION DETECTION
-   if "property overview" in text or "year built" in text:
-       chunk.metadata["section"] = "property"
-   elif "claims history" in text or "amount paid" in text:
-       chunk.metadata["section"] = "claims"
-   elif "construction" in text:
-       chunk.metadata["section"] = "construction"
-   elif "security features" in text:
-       chunk.metadata["section"] = "security"
-   elif "policyholder" in text:
-       chunk.metadata["section"] = "policyholder"
-   else:
-       chunk.metadata["section"] = "general"
-# ================= VECTOR DB =================
-my_dir = os.path.join(
-   os.path.dirname(os.path.abspath(__file__)),
-   "input9.1"
-)
-vectorstore = Chroma.from_documents(
-   documents=chunks,
-   embedding=embeddings,
-   collection_name="my9.1_collection",
-   persist_directory=my_dir
-)
-# ================= DEBUG =================
-print("\nTotal chunks:",len(chunks))
-print("\nExample chunk:")
-print(chunks[0].page_content[:150])
-print("\nMetadata:")
-print(chunks[0].metadata)
-
-
-metadatafilteringquery
-from langchain_chroma import Chroma
-from langchain_openai import AzureOpenAIEmbeddings, AzureChatOpenAI
-from langchain_core.prompts import PromptTemplate
-from langchain_classic.chains.llm import LLMChain
-from dotenv import load_dotenv
-import os
-load_dotenv()
-# ================= EMBEDDINGS =================
-embeddings = AzureOpenAIEmbeddings(
-   azure_deployment=os.getenv("AZURE_OPENAI_EMBEDDING_DEPLOYMENT_NAME"),
-   openai_api_key=os.getenv("AZURE_OPENAI_API_KEY"),
-   openai_api_version=os.getenv("AZURE_OPENAI_API_VERSION"),
-   azure_endpoint=os.getenv("AZURE_OPENAI_ENDPOINT"),
-   chunk_size=1024
-)
-# ================= LOAD VECTOR DB =================
-vector_db_path = r"C:\Users\2000137378\Desktop\newproject\RAG_PIPELINES\big_input"
-vectordb = Chroma(
-   embedding_function=embeddings,
-   persist_directory=vector_db_path,
-   collection_name="my_collection"
-)
-# ================= QUERY =================
-user_query = "+64 21 555 0198"
-# CHANGE SECTION TO TEST
-section_filter="general"
-print("\nQuery:",user_query)
-print("\nFiltering section:",section_filter)
-# ================= FILTERED SEARCH =================
-relevant_chunks = vectordb.similarity_search(
-   user_query,
-   k=5,
-   filter={
-      "$and":[ {"doc_type":"insurance"},
-       {"section":section_filter}
-   ]
-   }
-)
-print("\nChunks found:",len(relevant_chunks))
-# ================= SHOW RETRIEVED =================
-for chunk in relevant_chunks:
-   print("\nMetadata:",chunk.metadata)
-   print("Text:",chunk.page_content[:150])
-# ================= BUILD CONTEXT =================
-context="\n".join(
-   chunk.page_content for chunk in relevant_chunks
-)
-# ================= LLM =================
-llm = AzureChatOpenAI(
-   openai_api_key=os.getenv("AZURE_OPENAI_API_KEY"),
-   azure_endpoint=os.getenv("AZURE_OPENAI_ENDPOINT"),
-   openai_api_version=os.getenv("AZURE_OPENAI_API_VERSION"),
-   deployment_name=os.getenv("AZURE_OPENAI_CHAT_DEPLOYMENT"),
-   temperature=0
-)
-prompt=PromptTemplate(
-   input_variables=["context","question"],
-   template="""
-Answer only from context.
-QUESTION:
-{question}
-CONTEXT:
-{context}
-ANSWER:
-"""
-)
-chain=LLMChain(
-   llm=llm,
-   prompt=prompt
-)
-answer=chain.run({
-   "context":context,
-   "question":user_query
-})
-print("\nFINAL ANSWER:\n")
-print(answer)
-
-
-metadatadynamic filtering missing i want you to give this file code
-
-
-metadatadynamicfilteringretrienval.py
-# (venv) PS C:\Users\2000137378\Desktop\newproject\RAG_PIPELINES> python .\9.1metadatafilteringloader.py
-
-
-from langchain_chroma import Chroma
-from langchain_openai import AzureOpenAIEmbeddings, AzureChatOpenAI
-from langchain_core.prompts import PromptTemplate
-from langchain_classic.chains.llm import LLMChain
-from dotenv import load_dotenv
-import os
-load_dotenv()
-# ================= EMBEDDINGS =================
-embeddings = AzureOpenAIEmbeddings(
-   azure_deployment=os.getenv("AZURE_OPENAI_EMBEDDING_DEPLOYMENT_NAME"),
-   openai_api_key=os.getenv("AZURE_OPENAI_API_KEY"),
-   openai_api_version=os.getenv("AZURE_OPENAI_API_VERSION"),
-   azure_endpoint=os.getenv("AZURE_OPENAI_ENDPOINT")
-)
-# ================= LOAD VECTOR DB =================
-vector_db_path = r"C:\Users\2000137378\Desktop\newproject\RAG_PIPELINES\big_input"
-vectordb = Chroma(
-   embedding_function=embeddings,
-   persist_directory=vector_db_path,
-   collection_name="big_collection"
-)
-# ================= LLM =================
-llm = AzureChatOpenAI(
-   openai_api_key=os.getenv("AZURE_OPENAI_API_KEY"),
-   azure_endpoint=os.getenv("AZURE_OPENAI_ENDPOINT"),
-   openai_api_version=os.getenv("AZURE_OPENAI_API_VERSION"),
-   deployment_name=os.getenv("AZURE_OPENAI_CHAT_DEPLOYMENT"),
-   temperature=0
-)
-# ================= USER QUERY =================
-user_query="whose number is this +64 21 555 0198"
-print("\nUser Query:",user_query)
-# ================= SECTION DETECTOR =================
-section_prompt = PromptTemplate(
-   input_variables=["question"],
-   template="""
-You are a document query classifier.
-Classify which section this question belongs to.
-Possible sections:
-property
-claims
-construction
-security
-policyholder
-general
-QUESTION:
-{question}
-Return ONLY the section name.
-"""
-)
-
-section_chain = LLMChain(
-   llm=llm,
-   prompt=section_prompt
-)
-
-section = section_chain.run({
-   "question":user_query
-}).strip().lower()
-print("\nDetected section:",section)
-# ================= RETRIEVAL =================
-
-relevant_chunks = vectordb.similarity_search(
-   user_query,
-   k=5,
-#    filter={
-#        "doc_type":"insurance",
-#        "section":section
-#    }
-
-
-  filter={
-      "$and":[ {"doc_type":"insurance"},
-       {"section":section}
-   ]
-    }
-)
-
-print("\nChunks retrieved:",len(relevant_chunks))
-# Debug retrieved chunks
-for chunk in relevant_chunks:
-   print("\nMetadata:",chunk.metadata)
-   print("Text:",chunk.page_content[:120])
-# ================= BUILD CONTEXT =================
-context="\n".join(
-   chunk.page_content for chunk in relevant_chunks
-)
-# ================= QA PROMPT =================
-qa_prompt=PromptTemplate(
-   input_variables=["context","question"],
-   template="""
-Answer using ONLY the context.
-QUESTION:
-{question}
-CONTEXT:
-{context}
-ANSWER:
-"""
-)
-qa_chain=LLMChain(
-   llm=llm,
-   prompt=qa_prompt
-)
-answer=qa_chain.run({
-   "context":context,
-   "question":user_query
-})
-print("\nFINAL ANSWER:\n")
-print(answer)
-
-
-
-hybrid reterieval.py
-from langchain_chroma import Chroma
-from langchain_openai import AzureOpenAIEmbeddings, AzureChatOpenAI
-from langchain_core.prompts import PromptTemplate
-from langchain_classic.chains.llm import LLMChain
-from dotenv import load_dotenv
-import os
-
-load_dotenv()
-
-# ================= EMBEDDINGS =================
-
-embeddings = AzureOpenAIEmbeddings(
-
-    azure_deployment=os.getenv("AZURE_OPENAI_EMBEDDING_DEPLOYMENT_NAME"),
-
-    openai_api_key=os.getenv("AZURE_OPENAI_API_KEY"),
-
-    openai_api_version=os.getenv("AZURE_OPENAI_API_VERSION"),
-
-    azure_endpoint=os.getenv("AZURE_OPENAI_ENDPOINT")
-)
-
-# ================= VECTOR DB =================
-
-vector_db_path=r"C:\Users\2000137378\Desktop\newproject\RAG_PIPELINES\big_input"
-
-vectordb=Chroma(
-
-    embedding_function=embeddings,
-
-    persist_directory=vector_db_path,
-
-    collection_name="big_collection"
-)
-
-# ================= LLM =================
-
-llm=AzureChatOpenAI(
-
-    openai_api_key=os.getenv("AZURE_OPENAI_API_KEY"),
-
-    azure_endpoint=os.getenv("AZURE_OPENAI_ENDPOINT"),
-
-    openai_api_version=os.getenv("AZURE_OPENAI_API_VERSION"),
-
-    deployment_name=os.getenv("AZURE_OPENAI_CHAT_DEPLOYMENT"),
-
-    temperature=0
-)
-
-# ================= USER QUERY =================
-
-user_query="whose number is this +64 21 555 0198"
-
-print("\nUser Query:",user_query)
-
-# ================= VECTOR SEARCH =================
-
-print("\nRunning vector search...")
-
-vector_results=vectordb.similarity_search(
-
-    user_query,
-
-    k=3
-)
-
-# ================= KEYWORD SEARCH =================
-
-print("\nRunning keyword search...")
-
-all_docs=vectordb.get()
-
-keyword_results=[]
-
-for text,metadata in zip(
-
-        all_docs["documents"],
-        all_docs["metadatas"]
-):
-
-    if user_query.lower() in text.lower():
-
-        keyword_results.append(text)
-
-# ================= MERGE RESULTS =================
-
-combined_texts=[]
-
-# Add vector results
-for doc in vector_results:
-
-    combined_texts.append(doc.page_content)
-
-# Add keyword results
-for text in keyword_results:
-
-    if text not in combined_texts:
-
-        combined_texts.append(text)
-
-print("\nTotal combined chunks:",len(combined_texts))
-
-# ================= CONTEXT =================
-
-context="\n".join(combined_texts)
-
-# ================= QA PROMPT =================
-
-qa_prompt=PromptTemplate(
-
-    input_variables=["context","question"],
-
-    template="""
-Answer using ONLY this context.
-
-QUESTION:
-{question}
-
-CONTEXT:
-{context}
-
-ANSWER:
-"""
-)
-
-qa_chain=LLMChain(
-
-    llm=llm,
-
-    prompt=qa_prompt
-)
-
-answer=qa_chain.invoke({
-
-    "context":context,
-
-    "question":user_query
-
-})["text"]
-
-# ================= ANSWER =================
-
-print("\nFINAL ANSWER:\n")
-
-print(answer)
-
-
-
-embedding my quryto pdf.py
-from langchain_chroma import Chroma
-from langchain_openai import AzureOpenAIEmbeddings
-from langchain_community.document_loaders import TextLoader
-from langchain_text_splitters import RecursiveCharacterTextSplitter
-from dotenv import load_dotenv
-import os
-import time
-
-load_dotenv()
-
-# ================= EMBEDDINGS =================
-
-embeddings = AzureOpenAIEmbeddings(
-
-    azure_deployment=os.getenv("AZURE_OPENAI_EMBEDDING_DEPLOYMENT_NAME"),
-
-    openai_api_key=os.getenv("AZURE_OPENAI_API_KEY"),
-
-    openai_api_version=os.getenv("AZURE_OPENAI_API_VERSION"),
-
-    azure_endpoint=os.getenv("AZURE_OPENAI_ENDPOINT"),
-
-    chunk_size=50,          # IMPORTANT → smaller batch
-
-    max_retries=10          # retry if rate limited
-)
-
-# ================= TEXT SPLITTER =================
-
-text_splitter = RecursiveCharacterTextSplitter(
-
-    chunk_size=800,
-
-    chunk_overlap=100
-)
-
-# ================= LOAD LARGE FILE =================
-
-loader = TextLoader(
-
-    r"C:\Users\2000137378\Desktop\newproject\RAG_PIPELINES\complex_realistic_corpus.txt",
-
-    encoding="utf-8"
-)
-
-documents = loader.load()
-
-print("\nDocuments loaded:",len(documents))
-
-# ================= SPLIT =================
-
-chunks = text_splitter.split_documents(documents)
-
-print("\nTotal chunks:",len(chunks))
-
-# ================= VECTOR DIRECTORY =================
-
-persist_dir = os.path.join(
-
-    os.path.dirname(os.path.abspath(__file__)),
-
-    "big_input"
-)
-
-# ================= CREATE EMPTY DB =================
-
-vectordb = Chroma(
-
-    embedding_function=embeddings,
-
-    persist_directory=persist_dir,
-
-    collection_name="newbig_collection"
-)
-
-# ================= BATCH INGESTION =================
-
-batch_size = 50
-
-print("\nStarting batched ingestion...")
-
-for i in range(0,len(chunks),batch_size):
-
-    batch = chunks[i:i+batch_size]
-
-    try:
-
-        vectordb.add_documents(batch)
-
-        print(f"Inserted batch {i} → {i+batch_size}")
-
-        # IMPORTANT → prevent rate limit
-        time.sleep(1)
-
-    except Exception as e:
-
-        print("Retrying batch due to:",e)
-
-        time.sleep(10)
-
-        vectordb.add_documents(batch)
-
-print("\nIngestion complete")
-
-print("\nVector DB stored at:",persist_dir)
-
-
-pdfloader.py
-import random
-
-names=[
-"Alex Taylor","Jordan Smith","Chris Morgan",
-"Taylor Holdings","Morgan Risk Ltd",
-"Pacific Underwriters","Summit Brokers"
-]
-
-phones=[
-"+64 21 555 0198",
-"021-555-0198",
-"64 21 5550198",
-"+64 (21) 555 0198",
-"0215550198"
-]
-
-zips=[
-"95123","94107","10001","400001","20005"
-]
-
-years=[
-"1998","2001","2005","2010","2015"
-]
-
-noise_blocks=[
-
-"""
-Inspection notes:
-Minor wear observed.
-Previous claim ref CL8821.
-Surveyor comments archived.
-""",
-
-"""
-Maintenance log fragment:
-Roof inspection passed.
-Drainage acceptable.
-Engineer reference ENG9921.
-""",
-
-"""
-Broker internal note:
-Client prefers digital comms.
-Risk appetite moderate.
-Underwriting review pending.
-""",
-
-"""
-Document appendix:
-Photos archived separately.
-Structural review recommended.
-Policy subject to renewal review.
-"""
-]
-
-formats=[
-
-lambda n,p,z,y: f"""
-INSURANCE SUBMISSION
-
-Client: {n}
-
-Contact pathways:
-Primary mobile -> {p}
-
-Construction metadata:
-Property likely built circa {y}
-
-Geographic code:
-ZIP:{z}
-""",
-
-lambda n,p,z,y: f"""
-CLIENT DATA RECORD
-
-Holder : {n}
-
-Reach at:
-Tel number {p}
-
-Asset notes:
-Construction year believed {y}
-
-Postal marker {z}
-""",
-
-lambda n,p,z,y: f"""
-UNDERWRITING SNAPSHOT
-
-Entity name {n}
-
-Communication:
-Mobile contact = {p}
-
-Risk notes:
-Dwelling erected approx {y}
-
-Location identifier {z}
-""",
-
-lambda n,p,z,y: f"""
-RISK REPORT
-
-Policy customer {n}
-
-Phone listing:
-{p}
-
-Asset built year {y}
-
-Area code {z}
-"""
-]
-
-output="complex_realistic_corpus.txt"
-
-with open(output,"w",encoding="utf-8") as f:
-
-    for i in range(15000):
-
-        name=random.choice(names)+"_"+str(i)
-
-        phone=random.choice(phones)
-
-        zipc=random.choice(zips)
-
-        year=random.choice(years)
-
-        template=random.choice(formats)
-
-        doc=template(name,phone,zipc,year)
-
-        doc+=random.choice(noise_blocks)
-
-        # Add random garbage lines
-        if random.random()>0.6:
-
-            doc+=f"\nReference ID: REF{i}{random.randint(100,999)}"
-
-        if random.random()>0.5:
-
-            doc+=f"\nInternal code ZX-{random.randint(1000,9999)}"
-
-        f.write(doc+"\n\n")
-
-print("Complex corpus generated")
+Identify
 
+Commercial Property mandatory fields
 
+and
 
+Motor mandatory fields.
 
+For example
 
+Vehicle Information
 
+VIN
+
+Registration Number
+
+Vehicle Make
+
+Vehicle Model
+
+Vehicle Year
+
+Engine Number
+
+Chassis Number
+
+Driver Details
+
+Driving Licence
+
+Accident Date
+
+Accident Location
+
+Police FIR
+
+Third Party Details
+
+Injuries
+
+Passenger Count
+
+Tow Requirement
+
+Garage Selection
+
+Repair Preference
+
+Vehicle Photos
+
+Dashcam Footage
+
+Telematics
+
+Roadside Assistance
+
+Loss Type
+
+Accident Type
+
+Collision
+
+Theft
+
+Fire
+
+Flood
+
+Vandalism
+
+Natural Disaster
+
+Hit and Run
+
+Glass Damage
+
+Animal Collision
+
+etc.
+
+Mention every field that should be mandatory or optional.
+
+⸻
+
+Document Analysis
+
+Compare Commercial Property documents with Motor Insurance documents.
+
+Identify
+
+new document types such as
+
+Driving Licence
+
+RC Book
+
+Insurance Certificate
+
+Vehicle Inspection Report
+
+Repair Estimate
+
+Garage Invoice
+
+Police FIR
+
+Medical Reports
+
+Vehicle Images
+
+Dashcam Video
+
+Theft Documents
+
+Recovery Report
+
+Surveyor Report
+
+Traffic Camera Evidence
+
+Tow Receipt
+
+Fitness Certificate
+
+PUC
+
+Vehicle Ownership Transfer Documents
+
+etc.
+
+Explain which existing document classifiers must be updated.
+
+⸻
+
+Policy Coverage Verification
+
+Analyse how the current Property policy verification differs from Motor policies.
+
+Explain
+
+new coverages
+
+Own Damage
+
+Third Party
+
+Comprehensive
+
+Zero Depreciation
+
+Engine Protection
+
+Consumables
+
+Roadside Assistance
+
+Personal Accident Cover
+
+Passenger Cover
+
+NCB
+
+Add-ons
+
+Deductibles
+
+IDV
+
+Total Loss
+
+Constructive Total Loss
+
+Salvage
+
+Coverage Limits
+
+Waiting Periods
+
+Exclusions
+
+Driver Restrictions
+
+Vehicle Usage Restrictions
+
+Commercial vs Private Vehicle
+
+Geographical Restrictions
+
+Driver Age Restrictions
+
+Licence Validation
+
+etc.
+
+⸻
+
+Damage Assessment
+
+Explain how Motor damage assessment differs from Property.
+
+Include
+
+vehicle parts
+
+repair labour
+
+paint cost
+
+garage estimates
+
+OEM vs aftermarket parts
+
+repair hours
+
+structural damage
+
+airbags
+
+engine
+
+transmission
+
+wheel alignment
+
+ADAS calibration
+
+battery inspection (EV)
+
+high voltage inspection
+
+salvage
+
+roadworthiness
+
+etc.
+
+⸻
+
+Fraud Detection
+
+Identify additional fraud indicators for Motor Insurance such as
+
+staged accidents
+
+multiple claims
+
+VIN mismatch
+
+RC mismatch
+
+odometer tampering
+
+driver mismatch
+
+garage fraud
+
+repair inflation
+
+duplicate invoices
+
+fake FIR
+
+telematics mismatch
+
+location inconsistency
+
+prior damage
+
+duplicate vehicle photos
+
+etc.
+
+⸻
+
+Reserve Recommendation
+
+Explain how reserve calculation should change for Motor Insurance.
+
+Include
+
+repair estimate
+
+vehicle value
+
+IDV
+
+garage quotation
+
+labour
+
+parts
+
+salvage value
+
+towing
+
+storage
+
+medical expenses
+
+third party liability
+
+legal expenses
+
+rental reimbursement
+
+supplements
+
+taxes
+
+etc.
+
+⸻
+
+Settlement Recommendation
+
+Identify all additional Motor-specific settlement logic.
+
+Include
+
+repair approval
+
+cash settlement
+
+total loss
+
+constructive total loss
+
+IDV settlement
+
+salvage deduction
+
+depreciation
+
+deductible
+
+betterment
+
+parts depreciation
+
+GST
+
+third party payment
+
+medical reimbursement
+
+garage payment
+
+network garage
+
+non-network garage
+
+cashless settlement
+
+etc.
+
+⸻
+
+Communication Agent
+
+Identify Motor-specific communication flows such as
+
+garage appointment
+
+vehicle inspection
+
+surveyor visit
+
+repair approval
+
+repair completion
+
+vehicle pickup
+
+cashless approval
+
+payment updates
+
+salvage pickup
+
+third party updates
+
+roadside assistance
+
+claim closure
+
+etc.
+
+⸻
+
+Database Review
+
+Review the entire database schema.
+
+Identify
+
+Existing Tables
+
+Explain
+
+which tables remain unchanged
+
+which tables require new columns
+
+which tables should become generic
+
+which tables are Property specific
+
+⸻
+
+New Tables Required
+
+Recommend all new Motor tables.
+
+For each table provide
+
+Purpose
+
+Suggested table name
+
+Suggested columns
+
+Primary Key
+
+Foreign Keys
+
+Relationships
+
+Indexes
+
+Do NOT generate SQL.
+
+Only provide schema recommendations.
+
+Possible examples include
+
+vehicle_details
+
+driver_details
+
+accident_details
+
+garage_details
+
+garage_estimates
+
+repair_orders
+
+repair_parts
+
+repair_labour
+
+vehicle_inspections
+
+telematics_data
+
+roadside_assistance
+
+motor_policy_coverages
+
+motor_claim_photos
+
+survey_reports
+
+salvage_details
+
+vehicle_damage_mapping
+
+accident_witnesses
+
+police_reports
+
+third_party_claims
+
+medical_claims
+
+tow_details
+
+vehicle_history
+
+etc.
+
+Also identify whether any existing Commercial Property tables should be generalized instead of creating duplicate Motor tables.
+
+⸻
+
+APIs
+
+Identify
+
+new external integrations that may be required
+
+Examples
+
+RTO
+
+VIN Decoder
+
+Licence Verification
+
+Telematics
+
+Garage Network
+
+Surveyor Portal
+
+Roadside Assistance
+
+Police Verification
+
+Vehicle History
+
+OEM Parts Catalogue
+
+Repair Cost Database
+
+Maps
+
+Weather
+
+EV Battery Health
+
+etc.
+
+⸻
+
+Prompts
+
+Review every LLM prompt.
+
+Identify
+
+Commercial Property terminology
+
+Property-specific assumptions
+
+Property-specific examples
+
+Property-specific outputs
+
+Recommend how prompts should be redesigned so they support multiple LOBs.
+
+⸻
+
+Configuration
+
+Identify where configuration should become LOB-driven instead of hardcoded.
+
+Examples
+
+validation rules
+
+mandatory fields
+
+prompt templates
+
+database mappings
+
+business rules
+
+API routing
+
+document mappings
+
+coverage mappings
+
+claim workflows
+
+decision trees
+
+⸻
+
+Architecture Recommendations
+
+Recommend the best long-term architecture for supporting multiple Lines of Business.
+
+The solution should avoid code duplication.
+
+Prefer configurable architecture wherever possible.
+
+Explain
+
+* Strategy Pattern
+* Rule Engine
+* Configuration-driven workflows
+* LOB-specific plugins/modules
+* Prompt templates
+* Validation configuration
+* Database abstraction
+* Shared services
+
+if applicable.
+
+⸻
+
+Final Deliverable
+
+Produce a structured report containing
+
+1. Executive Summary
+2. Agent-wise Gap Analysis
+3. Database Changes
+4. API Changes
+5. Prompt Changes
+6. Business Rule Changes
+7. Validation Changes
+8. New Mandatory Fields
+9. New Optional Fields
+10. New Tables
+11. Existing Tables to Modify
+12. Configuration Changes
+13. Architecture Recommendations
+14. Estimated Development Effort (Low / Medium / High) for each agent
+15. Priority Order in which changes should be implemented
+
+The objective is to create a complete roadmap for extending the existing Commercial Property claims platform into a production-ready Motor Insurance claims platform while maximizing reuse of the existing codebase and minimizing duplication.
