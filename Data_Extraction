@@ -730,3 +730,5 @@ Produce a structured report containing
 15. Priority Order in which changes should be implemented
 
 The objective is to create a complete roadmap for extending the existing Commercial Property claims platform into a production-ready Motor Insurance claims platform while maximizing reuse of the existing codebase and minimizing duplication.
+
+If there are any calculations give us the formula as well for Motor LOB, if there are any decesions made currently in commercial propoerty lob code tell me for motor lob as well for each Individual Agent in each persona
