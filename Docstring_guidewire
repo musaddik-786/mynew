@@ -1,748 +1,535 @@
-Task: Perform a Complete Architecture & Workflow Analysis of the Claims Platform (Focus on SIU Persona)
+"""
+handler.py — Watchlist Update
+─────────────────────────────────
+Maintains the SIU fraud watchlist (entities flagged for confirmed fraud).
+"""
+
+import logging
+import os
+import random
+import sys
+from typing import Optional
+
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "common"))
+
+from db import get_db_connection, row_to_dict  # noqa: E402
+
+log = logging.getLogger(__name__)
+
+
+def _rand_suffix(n: int) -> str:
+    return "".join(random.choices("0123456789", k=n))
+
+
+def add_to_watchlist(entity_type: str, entity_id: str, entity_name: str, reason: str,
+                      severity: str = "Medium", added_by: str = "SIU Investigator") -> dict:
+    watchlist_id = f"WL-{_rand_suffix(6)}"
+    conn = get_db_connection()
+    try:
+        cur = conn.cursor()
+        cur.execute(
+            """
+            INSERT INTO fraud_watchlist (watchlist_id, entity_type, entity_id, entity_name, reason,
+                                          severity, added_by, status)
+            VALUES (%s,%s,%s,%s,%s,%s,%s, 'Active')
+            """,
+            (watchlist_id, entity_type, entity_id, entity_name, reason, severity, added_by),
+        )
+        conn.commit()
+        return {
+            "id": cur.lastrowid, "watchlist_id": watchlist_id, "entity_type": entity_type,
+            "entity_id": entity_id, "entity_name": entity_name, "reason": reason,
+            "severity": severity, "added_by": added_by, "status": "Active",
+        }
+    finally:
+        conn.close()
+
+
+def get_watchlist(entity_type: Optional[str] = None) -> list:
+    conn = get_db_connection()
+    try:
+        cur = conn.cursor()
+        if entity_type:
+            cur.execute("SELECT * FROM fraud_watchlist WHERE entity_type = %s ORDER BY id DESC", (entity_type,))
+        else:
+            cur.execute("SELECT * FROM fraud_watchlist ORDER BY id DESC")
+        return row_to_dict(cur.fetchall())
+    finally:
+        conn.close()
+
+
+def check_watchlist(entity_id: str) -> list:
+    conn = get_db_connection()
+    try:
+        cur = conn.cursor()
+        cur.execute(
+            "SELECT * FROM fraud_watchlist WHERE entity_id = %s AND status = 'Active' ORDER BY id DESC",
+            (entity_id,),
+        )
+        return row_to_dict(cur.fetchall())
+    finally:
+        conn.close()
+
+
+def remove_from_watchlist(watchlist_id: str) -> dict:
+    conn = get_db_connection()
+    try:
+        cur = conn.cursor()
+        cur.execute("UPDATE fraud_watchlist SET status = 'Removed' WHERE watchlist_id = %s", (watchlist_id,))
+        conn.commit()
+        cur.execute("SELECT * FROM fraud_watchlist WHERE watchlist_id = %s", (watchlist_id,))
+        return row_to_dict(cur.fetchone())
+    finally:
+        conn.close()
+
+
+def _get_latest_siu_case(claim_id: str) -> Optional[dict]:
+    conn = get_db_connection()
+    try:
+        cur = conn.cursor()
+        cur.execute(
+            "SELECT * FROM siu_case_master WHERE claim_id = %s ORDER BY id DESC LIMIT 1",
+            (claim_id,),
+        )
+        return row_to_dict(cur.fetchone())
+    finally:
+        conn.close()
+
+
+def _get_latest_decision(siu_case_id: str) -> Optional[dict]:
+    conn = get_db_connection()
+    try:
+        cur = conn.cursor()
+        cur.execute(
+            "SELECT * FROM siu_decision WHERE siu_case_id = %s ORDER BY id DESC LIMIT 1",
+            (siu_case_id,),
+        )
+        return row_to_dict(cur.fetchone())
+    finally:
+        conn.close()
+
+
+def _get_claim(claim_id: str) -> Optional[dict]:
+    conn = get_db_connection()
+    try:
+        cur = conn.cursor()
+        cur.execute("SELECT * FROM claims WHERE claim_number = %s", (claim_id,))
+        row = cur.fetchone()
+        if row:
+            return row_to_dict(row)
+        if claim_id.isdigit():
+            cur.execute("SELECT * FROM claims WHERE id = %s", (int(claim_id),))
+            return row_to_dict(cur.fetchone())
+        return None
+    finally:
+        conn.close()
+
+
+def update_watchlist_from_case(claim_id: str) -> dict:
+    siu_case = _get_latest_siu_case(claim_id)
+    if not siu_case:
+        return {"claim_id": claim_id, "watchlisted": False, "reason": "No SIU case found for this claim"}
+
+    decision = _get_latest_decision(siu_case["siu_case_id"])
+    if not decision or decision.get("decision") != "Fraud Confirmed":
+        return {
+            "claim_id": claim_id,
+            "watchlisted": False,
+            "reason": "No watchlist action taken — SIU decision is not 'Fraud Confirmed'",
+            "current_decision": decision.get("decision") if decision else None,
+        }
+
+    claim = _get_claim(claim_id)
+    if not claim:
+        return {"claim_id": claim_id, "watchlisted": False, "reason": "Claim not found"}
+
+    policy_number = claim.get("policy_number")
+    policyholder_name = claim.get("policyholder_name")
+
+    entry = add_to_watchlist(
+        entity_type="policyholder",
+        entity_id=policy_number,
+        entity_name=policyholder_name,
+        reason=f"Confirmed fraud on claim {claim_id}",
+        severity="High",
+    )
+
+    return {"claim_id": claim_id, "watchlisted": True, "watchlist_entry": entry}
+
+
+from typing import Optional
+from pydantic import BaseModel
+
+
+class AddToWatchlistRequest(BaseModel):
+    entity_type: str
+    entity_id: str
+    entity_name: str
+    reason: str
+    severity: str = "Medium"
+    added_by: str = "SIU Investigator"
+
+
+
+"""
+watchlist_update_router.py
+─────────────────────────────
+FastAPI routes for the Watchlist Update MCP.
+
+Tool / Endpoint map:
+  add_to_watchlist          POST /api/watchlist_update/watchlist
+  get_watchlist              GET  /api/watchlist_update/watchlist
+  check_watchlist             GET  /api/watchlist_update/watchlist/check/{entity_id}
+  remove_from_watchlist        POST /api/watchlist_update/watchlist/{watchlist_id}/remove
+  update_watchlist_from_case    POST /api/watchlist_update/update_from_case/{claim_id}
+"""
+
+import logging
+from typing import Optional
+from fastapi import APIRouter, HTTPException
+
+from watchlist_update_mcp import handler
+from watchlist_update_mcp.models import AddToWatchlistRequest
+
+log = logging.getLogger(__name__)
+
+router = APIRouter()
+
+
+@router.post(
+    "/api/watchlist_update/watchlist",
+    operation_id="add_to_watchlist",
+    summary="Add an entity to the fraud watchlist",
+    tags=["WatchlistUpdate"],
+)
+def add_to_watchlist(body: AddToWatchlistRequest):
+    """Inserts a new fraud_watchlist row with status 'Active'."""
+    try:
+        return handler.add_to_watchlist(
+            body.entity_type, body.entity_id, body.entity_name, body.reason, body.severity, body.added_by,
+        )
+    except Exception as e:
+        log.exception("add_to_watchlist error")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get(
+    "/api/watchlist_update/watchlist",
+    operation_id="get_watchlist",
+    summary="List the fraud watchlist",
+    tags=["WatchlistUpdate"],
+)
+def get_watchlist(entity_type: Optional[str] = None):
+    """Returns all fraud_watchlist rows, optionally filtered by entity_type."""
+    return handler.get_watchlist(entity_type)
+
+
+@router.get(
+    "/api/watchlist_update/watchlist/check/{entity_id}",
+    operation_id="check_watchlist",
+    summary="Check if an entity is on the active fraud watchlist",
+    tags=["WatchlistUpdate"],
+)
+def check_watchlist(entity_id: str):
+    """Returns matching active fraud_watchlist rows for the given entity_id."""
+    return handler.check_watchlist(entity_id)
+
+
+@router.post(
+    "/api/watchlist_update/watchlist/{watchlist_id}/remove",
+    operation_id="remove_from_watchlist",
+    summary="Remove an entity from the fraud watchlist",
+    tags=["WatchlistUpdate"],
+)
+def remove_from_watchlist(watchlist_id: str):
+    """Sets status = 'Removed' on the fraud_watchlist row matching watchlist_id."""
+    try:
+        return handler.remove_from_watchlist(watchlist_id)
+    except Exception as e:
+        log.exception("remove_from_watchlist error")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post(
+    "/api/watchlist_update/update_from_case/{claim_id}",
+    operation_id="update_watchlist_from_case",
+    summary="Update the fraud watchlist based on an SIU case resolution",
+    tags=["WatchlistUpdate"],
+)
+def update_watchlist_from_case(claim_id: str):
+    """
+    Reads the most recent siu_decision for the claim (via siu_case_master).
+    If decision == "Fraud Confirmed", adds the policyholder to the fraud
+    watchlist. Otherwise explains no action was taken.
+    """
+    try:
+        return handler.update_watchlist_from_case(claim_id)
+    except Exception as e:
+        log.exception("update_watchlist_from_case error")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+
+main.py
+watchlist_update_app = _make_cors_app(
+    title="watchlist_update_agent_mcps",
+    description="MCP tools for maintaining the SIU fraud watchlist.",
+)
+watchlist_update_app.include_router(watchlist_update_router)
+FastApiMCP(
+    watchlist_update_app,
+    include_operations=[
+        "add_to_watchlist",
+        "get_watchlist",
+        "check_watchlist",
+        "remove_from_watchlist",
+        "update_watchlist_from_case",
+    ],
+).mount_http()
+app.mount("/api/v1/watchlist_update", watchlist_update_app)
+
+
+"""
+server.py — Watchlist Update Agent
+──────────────────────────────────────
+LangGraph agent that recomputes and explains the aggregate fraud risk score
+for a claim, for SIU investigators.
+
+Port: 9011
+MCP : http://localhost:9000/api/v1/watchlist_update/mcp
+
+Run:
+    py -3 server.py
+"""
+
+import json
+import logging
+import os
+import sys
+import time
+import traceback
+from datetime import datetime, timedelta
+from typing import Annotated, TypedDict
+
+import uvicorn
+from dotenv import load_dotenv, find_dotenv
+from fastapi import FastAPI, Request
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import StreamingResponse
+from langchain_core.messages import AIMessage, SystemMessage
+from langchain_mcp_adapters.client import MultiServerMCPClient
+from langchain_openai.chat_models import AzureChatOpenAI
+from langgraph.graph import END, START, StateGraph
+from langgraph.graph.message import add_messages
+from langgraph.prebuilt import ToolNode
+
+load_dotenv(find_dotenv())
+
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s | %(levelname)-8s | %(name)s | %(message)s",
+    stream=sys.stdout,
+    force=True,
+)
+logger = logging.getLogger("watchlist_update_agent")
+
+PHOENIX_API_KEY = os.getenv("PHOENIX_API_KEY", "")
+PHOENIX_ENDPOINT = os.getenv("PHOENIX_ENDPOINT", "")
+MCP_URL = os.getenv("MCP_URL", "http://localhost:9000/api/v1/watchlist_update/mcp")
+AGENT_PORT = int(os.getenv("AGENT_PORT", "9011"))
+
+config_mcp_server = {
+    "watchlist_update_mcp": {
+        "url": MCP_URL,
+        "transport": "streamable_http",
+        "timeout": timedelta(seconds=120),
+        "sse_read_timeout": timedelta(seconds=600),
+    }
+}
+
+app = FastAPI(title="Watchlist Update Agent")
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+
+class State(TypedDict):
+    messages: Annotated[list, add_messages]
+
+
+def router(state: State):
+    last = state["messages"][-1]
+    if isinstance(last, AIMessage) and getattr(last, "tool_calls", None):
+        return "tools"
+    if isinstance(last, AIMessage) and last.content:
+        if "Continue" in last.content:
+            return "tools"
+        if "End" in last.content:
+            return "End"
+    return "End"
+
+
+_FALLBACK_PROMPT = """
+You are the Watchlist Update Agent for an insurance claims platform,
+assisting an SIU investigator in maintaining the fraud watchlist.
+
+You have two main workflows:
+
+1. To check an entity: call check_watchlist with the entity_id and report
+   any active watchlist entries found.
+2. After a case is resolved: call update_watchlist_from_case with the
+   claim_id. This will:
+   - Find the most recent SIU decision for the claim.
+   - If decision == "Fraud Confirmed", add the policyholder
+     (entity_type='policyholder') to the fraud_watchlist with severity
+     'High'.
+   - Otherwise, no watchlist action is taken.
+
+You may also use get_watchlist to list all watchlist entries, add_to_watchlist
+to manually add an entity, and remove_from_watchlist to deactivate an entry.
+
+Report the outcome of whichever action you took.
+
+When you have completed the task, end your response with "End".
+"""
+
+
+def load_prompt() -> str:
+    if not PHOENIX_ENDPOINT:
+        raise RuntimeError("Phoenix not configured")
+    from phoenix.client import Client
+    client = Client(base_url=PHOENIX_ENDPOINT, api_key=PHOENIX_API_KEY)
+    prompt = client.prompts.get(name="watchlist_update_agent", label="production")
+    prompt_set = prompt._template["messages"]
+    system_msg = next(
+        (item["content"][0]["text"] for item in prompt_set if item.get("role") == "system"),
+        None,
+    )
+    if not system_msg:
+        raise ValueError("System prompt is empty or missing in Phoenix")
+    return system_msg
+
+
+def create_graph(model, tools, prompt):
+    graph_builder = StateGraph(State)
+    llm_with_tools = model.bind_tools(tools)
+
+    async def agent_node(state: State):
+        messages = state["messages"]
+        all_messages = [SystemMessage(content=prompt)] + messages
+        message = await llm_with_tools.ainvoke(all_messages)
+        return {"messages": [message]}
+
+    graph_builder.add_node("agent", agent_node)
+    graph_builder.add_node("tools", ToolNode(tools=tools))
+    graph_builder.add_edge(START, "agent")
+    graph_builder.add_conditional_edges("agent", router, {"tools": "tools", "End": END})
+    graph_builder.add_edge("tools", "agent")
+    return graph_builder.compile()
+
+
+async def get_tools():
+    client = MultiServerMCPClient(config_mcp_server)
+    tools = await client.get_tools()
+    logger.info("Tools loaded from MCP: %s", [t.name for t in tools])
+    return tools
+
+
+async def stream_graph(graph, initial_state, config):
+    async for event in graph.astream_events(initial_state, config=config, version="v2"):
+        kind = event.get("event", "")
+
+        if kind == "on_chat_model_stream":
+            chunk = event["data"].get("chunk")
+            if chunk and hasattr(chunk, "content") and chunk.content:
+                yield f"data: {chunk.content}\n\n"
+
+        elif kind == "on_tool_start":
+            tool_name = event.get("name", "unknown_tool")
+            yield f"data: [Tool: {tool_name}] Starting...\n\n"
+
+        elif kind == "on_tool_end":
+            tool_name = event.get("name", "unknown_tool")
+            yield f"data: [Tool: {tool_name}] Done\n\n"
+
+
+@app.post("/chat")
+async def chat_stream(request: Request):
+    load_dotenv(find_dotenv())
+
+    tools = await get_tools()
+
+    model = AzureChatOpenAI(
+        api_key=os.getenv("AZURE_OPENAI_API_KEY"),
+        api_version=os.getenv("AZURE_OPENAI_API_VERSION"),
+        azure_deployment=os.getenv("AZURE_OPENAI_CHAT_DEPLOYMENT"),
+        azure_endpoint=os.getenv("AZURE_OPENAI_ENDPOINT"),
+    )
+
+    try:
+        system_prompt = load_prompt()
+    except Exception as e:
+        logger.warning("Phoenix prompt load failed (%s) — using fallback prompt", e)
+        system_prompt = _FALLBACK_PROMPT
+
+    body = await request.json()
+    user_message = body.get("message", "Check the fraud watchlist for this claim/entity")
+
+    graph = create_graph(model=model, tools=tools, prompt=system_prompt)
+
+    async def generate():
+        start = time.time()
+        last_event_at = start
+        last_tool = None
+        try:
+            async for event in stream_graph(
+                graph=graph,
+                initial_state={"messages": [user_message]},
+                config={"recursion_limit": 250},
+            ):
+                last_event_at = time.time()
+                if isinstance(event, str) and event.startswith("data: [Tool:"):
+                    try:
+                        last_tool = event.split("[Tool:", 1)[1].split("]", 1)[0]
+                    except Exception:
+                        pass
+                yield event
+        except BaseException as e:
+            elapsed = time.time() - start
+            since_last = time.time() - last_event_at
+            err = {
+                "exception_class": type(e).__name__,
+                "message": str(e),
+                "elapsed_total_seconds": round(elapsed, 2),
+                "seconds_since_last_event": round(since_last, 2),
+                "last_tool_invoked": last_tool,
+                "traceback": traceback.format_exc(),
+                "timestamp_utc": datetime.utcnow().isoformat(),
+            }
+            logger.error("AGENT_ERROR %s", json.dumps(err, default=str))
+            try:
+                yield f"data: [AGENT_ERROR] {json.dumps(err, default=str)}\n\n"
+            except Exception:
+                pass
+            import asyncio
+            if isinstance(e, asyncio.CancelledError):
+                raise
+
+    return StreamingResponse(generate(), media_type="text/event-stream")
+
+
+@app.get("/health")
+async def health():
+    return {"status": "healthy", "agent": "watchlist_update_agent"}
+
+
+if __name__ == "__main__":
+    uvicorn.run(app, host="0.0.0.0", port=AGENT_PORT)
 
-Background
 
-I have recently received this entire codebase and my objective is not to modify it yet.
 
-My first objective is to fully understand the complete architecture, workflow, dependencies, database interactions, and data flow across the entire claims platform.
-
-The platform contains multiple AI personas, including:
-
-* Policyholder Persona
-* FNOL
-* Intake
-* Document Processing
-* Policy Verification
-* Eligibility
-* Claim Classification
-* Risk Assessment
-* Fraud Screening
-* Adjuster Persona
-* SIU (Special Investigation Unit) Persona
-* Settlement
-* Payment
-* Communication
-* Other supporting agents
-
-The complete codebase will be provided.
-
-Your responsibility is to study the codebase and explain how the entire system works as if you are onboarding a new engineer.
-
-Do NOT generate code.
-
-Your goal is to explain the architecture in detail.
-
-⸻
-
-Primary Objective
-
-I want to completely understand the SIU Persona, including:
-
-* every agent
-* every tool
-* every MCP
-* every API
-* every database interaction
-* every dependency
-* every workflow
-* every input
-* every output
-
-I should be able to understand how the SIU Persona works without reading thousands of lines of code.
-
-⸻
-
-First Explain the Overall Claims Journey
-
-Start from the beginning.
-
-Explain the complete workflow from
-
-Policyholder
-
-↓
-
-FNOL
-
-↓
-
-Document Processing
-
-↓
-
-Policy Verification
-
-↓
-
-Eligibility
-
-↓
-
-Fraud Screening
-
-↓
-
-Adjuster Persona
-
-↓
-
-SIU Persona
-
-↓
-
-Settlement
-
-↓
-
-Payment
-
-↓
-
-Communication
-
-↓
-
-Claim Closure
-
-For every stage explain
-
-* What happens
-* Which agent is responsible
-* What data is produced
-* What data is consumed
-* Which database tables are updated
-* Which downstream agents depend on that data
-
-Create a complete end-to-end picture before diving into SIU.
-
-⸻
-
-SIU Persona Deep Dive
-
-After explaining the overall architecture, focus entirely on the SIU Persona.
-
-For every SIU agent explain:
-
-1. Purpose
-
-Why does this agent exist?
-
-What business problem does it solve?
-
-When is it invoked?
-
-Who invokes it?
-
-⸻
-
-2. Inputs
-
-Explain
-
-* APIs
-* MCP endpoints
-* JSON payloads
-* Database tables read
-* Blob files
-* Documents
-* Outputs from previous agents
-
-Mention exactly where every input comes from.
-
-⸻
-
-3. Processing
-
-Explain
-
-* Business rules
-* Validation
-* Decision logic
-* Prompt usage
-* LLM calls
-* External API calls
-* Tool usage
-* Internal helper functions
-
-Explain the complete execution flow.
-
-⸻
-
-4. Outputs
-
-Explain
-
-Exactly what this agent produces.
-
-Examples
-
-JSON
-
-Database rows
-
-Blob files
-
-Excel
-
-Prompt outputs
-
-Risk score
-
-Fraud score
-
-Recommendations
-
-Flags
-
-Investigation reports
-
-Anything else
-
-⸻
-
-5. Database Analysis
-
-For every SIU agent identify
-
-Every table it reads
-
-Every table it writes
-
-Every table it updates
-
-Every table it deletes from
-
-Explain
-
-WHEN
-
-WHY
-
-and
-
-HOW
-
-those tables change.
-
-⸻
-
-6. Dependency Analysis
-
-For every agent answer
-
-Which previous agent does it depend on?
-
-Which database tables must already contain data?
-
-What happens if those tables are empty?
-
-Which later agents consume its output?
-
-Which downstream workflows depend on it?
-
-⸻
-
-Database Lineage
-
-Create a complete data lineage.
-
-For every database table explain
-
-* Which agent first creates data
-* Which agents modify it
-* Which agents read it
-* Which agents depend on it
-* Whether it is temporary or permanent
-* Whether it acts as a source of truth
-
-I want to understand the lifecycle of every important table.
-
-⸻
-
-Agent Dependency Graph
-
-Create an agent dependency graph.
-
-For every agent explain
-
-Input Agent(s)
-
-↓
-
-Current Agent
-
-↓
-
-Output Agent(s)
-
-Explain this in words and also summarize it as a dependency chain.
-
-⸻
-
-Table Dependency Graph
-
-For every important database table explain
-
-Which agent populates it
-
-↓
-
-Which agents read it
-
-↓
-
-Which agents update it
-
-↓
-
-Which agents depend on it
-
-I want to understand the complete data movement.
-
-⸻
-
-API & MCP Analysis
-
-For every agent identify
-
-* FastAPI endpoints
-* MCP endpoints
-* Internal services
-* External APIs
-* Shared utilities
-* Helper modules
-* Configuration files
-* Prompt files
-
-Explain how everything is connected.
-
-⸻
-
-Tool Analysis
-
-For every agent explain every tool it uses.
-
-Examples
-
-Azure OpenAI
-
-Azure Blob Storage
-
-Azure SQL
-
-Vector Database
-
-OCR
-
-Document Intelligence
-
-External APIs
-
-Internal services
-
-Prompt templates
-
-Shared utilities
-
-Logging
-
-Configuration
-
-Environment variables
-
-Caching
-
-Explain why each tool is required.
-
-⸻
-
-Prompt Analysis
-
-For every LLM prompt explain
-
-Purpose
-
-Input
-
-Output
-
-Expected format
-
-Business reasoning
-
-How downstream agents use the result
-
-⸻
-
-Function-Level Flow
-
-For every SIU agent explain the execution flow.
-
-For example
-
-Request Received
-
-↓
-
-Router
-
-↓
-
-Service
-
-↓
-
-Handler
-
-↓
-
-Business Logic
-
-↓
-
-Database
-
-↓
-
-LLM
-
-↓
-
-Post Processing
-
-↓
-
-Database Update
-
-↓
-
-Response
-
-Explain the purpose of every important function.
-
-Do not explain every line of code.
-
-Explain the business logic behind each function.
-
-⸻
-
-Data Flow Tracking
-
-Trace one claim from beginning to end.
-
-Suppose Claim ID = ABC123.
-
-Track
-
-How this claim moves through every persona.
-
-Show
-
-Which tables are updated
-
-Which JSON is generated
-
-Which APIs are called
-
-Which prompts are executed
-
-Which agents consume the data
-
-Which agents enrich the data
-
-Which agents make decisions
-
-I want to understand the complete lifecycle of a claim.
-
-⸻
-
-Error Handling
-
-Explain
-
-What happens if
-
-* a table is empty
-* a previous agent fails
-* an API fails
-* the LLM fails
-* data is missing
-* validation fails
-
-Explain how the workflow recovers.
-
-⸻
-
-Configuration Analysis
-
-Identify
-
-* environment variables
-* configuration files
-* constants
-* prompt files
-* business rule files
-* routing configuration
-
-Explain how configuration controls the system.
-
-⸻
-
-Architecture Analysis
-
-Explain
-
-Why the project is structured this way.
-
-Explain
-
-* MCP architecture
-* FastAPI architecture
-* shared utilities
-* database abstraction
-* prompt organization
-* service layer
-* handler layer
-* router layer
-* orchestration
-
-Explain how all these pieces work together.
-
-⸻
-
-Produce Diagrams (Text Format)
-
-Generate easy-to-read text diagrams for:
-
-1. Overall Claims Workflow
-2. Policyholder Persona Workflow
-3. Adjuster Persona Workflow
-4. SIU Persona Workflow
-5. Agent Dependency Graph
-6. Database Dependency Graph
-7. Table Lineage
-8. API Call Flow
-9. Data Flow
-10. Claim Lifecycle
-
-⸻
-
-Final Deliverable
-
-Produce a structured onboarding document containing:
-
-1. Executive Summary
-2. High-Level Architecture Overview
-3. End-to-End Claims Workflow
-4. Policyholder Persona Explained
-5. Adjuster Persona Explained
-6. SIU Persona Deep Dive
-7. Agent-by-Agent Analysis
-8. Tool-by-Tool Analysis
-9. Database Table Analysis
-10. Database Lineage
-11. API & MCP Analysis
-12. Prompt Analysis
-13. Function-Level Flow
-14. Claim Lifecycle Walkthrough
-15. Agent Dependency Matrix
-16. Database Dependency Matrix
-17. Common Execution Paths
-18. Error Handling Flow
-19. Configuration Overview
-20. Important Files & Their Responsibilities
-21. Frequently Used Utility Modules
-22. Sequence of Execution from Claim Creation to Claim Closure
-
-The explanation should be written as if you are mentoring a new engineer joining the project. Prioritize clarity over brevity, explicitly explain dependencies between personas and agents, and make it possible to understand the entire system without manually tracing every code path.
-
-End-to-End Dummy Claim Walkthrough (Mandatory)
-
-After explaining the architecture and each individual agent, walk through a single dummy claim from the moment it is created until it is closed.
-
-Use one consistent example throughout the explanation.
-
-For example:
-
-* Claim Number: CLM-100001
-* Policy Number: POL-200001
-* Policyholder: John Smith
-* Vehicle: 2023 Toyota Camry
-* Incident: Rear-end collision at a traffic signal
-* Date of Loss: 15 July 2026
-* Location: Pune, Maharashtra
-* Estimated Damage: Front bumper, bonnet, left headlight
-* Police FIR: Available
-* Repair Garage: ABC Motors
-* Coverage: Comprehensive Policy
-
-Use this same claim throughout the entire explanation.
-
-For every agent, explain exactly what happens to this claim.
-
-For each step, include:
-
-1. Input
-
-Show exactly what data the agent receives.
-
-Examples:
-
-* Request payload
-* Database records
-* Previous agent output
-* Blob documents
-* JSON files
-* API responses
-
-⸻
-
-2. Processing
-
-Explain the business logic in simple language.
-
-Do not only explain the code.
-
-Explain why the agent performs each step.
-
-⸻
-
-3. Database Activity
-
-Show exactly which tables are accessed.
-
-For every table specify:
-
-* Read
-* Insert
-* Update
-* Delete
-
-Also explain why the operation is performed.
-
-⸻
-
-4. Output
-
-Show exactly what the agent produces.
-
-Examples:
-
-* JSON
-* Database row
-* Risk Score
-* Fraud Flag
-* Recommendation
-* Investigation Report
-* Settlement Amount
-* Notification
-
-⸻
-
-5. Downstream Dependency
-
-Explain:
-
-* Which next agent consumes this output.
-* Which database tables the next agent reads.
-* Why this output is required.
-
-⸻
-
-6. Data Evolution
-
-Track how the same claim changes after every stage.
-
-For example:
-
-FNOL
-
-↓
-
-Basic claim created
-
-↓
-
-Policy Verification
-
-↓
-
-Policy details added
-
-↓
-
-Eligibility
-
-↓
-
-Coverage verified
-
-↓
-
-Fraud Screening
-
-↓
-
-Fraud score generated
-
-↓
-
-Adjuster
-
-↓
-
-Damage estimate generated
-
-↓
-
-SIU
-
-↓
-
-Investigation report added
-
-↓
-
-Reserve Recommendation
-
-↓
-
-Reserve calculated
-
-↓
-
-Settlement Recommendation
-
-↓
-
-Settlement amount finalized
-
-↓
-
-Payment
-
-↓
-
-Payment processed
-
-↓
-
-Communication
-
-↓
-
-Customer notified
-
-↓
-
-Claim Closed
-
-At every stage, clearly explain:
-
-* What new information was added.
-* Which information was modified.
-* Which information remained unchanged.
-* Which agent performed the update.
-* Which database table was updated.
-
-The objective is to make it possible to follow the complete lifecycle of one claim from start to finish and understand how data flows through the entire system, how agents depend on each other, and how the database evolves after every step.
