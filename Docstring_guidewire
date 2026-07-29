@@ -1,3004 +1,406 @@
+Task: Perform a Complete Architecture & Workflow Analysis of the Claims Platform (Focus on SIU Persona)
 
+Background
 
+I have recently received this entire codebase and my objective is not to modify it yet.
 
+My first objective is to fully understand the complete architecture, workflow, dependencies, database interactions, and data flow across the entire claims platform.
 
-Monday 4:00 PM
-I was preparing for interview rag as a 2 years experience in genai 
-This is what i was preparing right now i hope i am on right path 
+The platform contains multiple AI personas, including:
 
-loaders
-# from langchain.document_loaders import PyPDFLoader, TextLoader
-from langchain_community.document_loaders import TextLoader
-loader = TextLoader("C:\\Users\\2000137378\\Desktop\\newproject\\RAG_PIPELINES\\mytext.txt",encoding ="utf-8")
-text = loader.load()
+* Policyholder Persona
+* FNOL
+* Intake
+* Document Processing
+* Policy Verification
+* Eligibility
+* Claim Classification
+* Risk Assessment
+* Fraud Screening
+* Adjuster Persona
+* SIU (Special Investigation Unit) Persona
+* Settlement
+* Payment
+* Communication
+* Other supporting agents
 
-print(text)
+The complete codebase will be provided.
 
+Your responsibility is to study the codebase and explain how the entire system works as if you are onboarding a new engineer.
 
-# TextLoader
-# PyPDFLoader
-# CSVLoader
-# JSONLoader
-# DocxLoader
+Do NOT generate code.
 
-# FLOW
-# file.txt
-#   ↓
-# read file
-#   ↓
-# convert text
-#   ↓
-# Document object
+Your goal is to explain the architecture in detail.
 
-# OUTPUT
-# documents is NOT text.
-# It is a list (array) of Document objects.documents is NOT text.
-# It is a list (array) of Document objects.
+⸻
 
-# [
-# Document(
-# page_content="text inside file",
-# metadata={'source':'file.txt'}
-# )
-# ]
+Primary Objective
 
+I want to completely understand the SIU Persona, including:
 
+* every agent
+* every tool
+* every MCP
+* every API
+* every database interaction
+* every dependency
+* every workflow
+* every input
+* every output
 
-# TEXT SPLITTING
+I should be able to understand how the SIU Persona works without reading thousands of lines of code.
 
+⸻
 
-splitters
-from langchain_text_splitters import (RecursiveCharacterTextSplitter, CharacterTextSplitter, TokenTextSplitter)
-from langchain_community.document_loaders import TextLoader
+First Explain the Overall Claims Journey
 
+Start from the beginning.
 
-loader = TextLoader("C:\\Users\\2000137378\\Desktop\\newproject\\RAG_PIPELINES\\mytext.txt",encoding ="utf-8")
-document = loader.load()
+Explain the complete workflow from
 
-# print(document)
-
-###Character text splitter
-text = document[0].page_content
-text_splitter = CharacterTextSplitter(separator="\n", chunk_size=100, chunk_overlap=20,length_function = len)
-#chunk size is characters 
-
-char_chunk = text_splitter.split_text(text)
-
-print(len(char_chunk))
-# print(f"first Chunk: {char_chunk[0][:100]}...")
-
-
-### Recursive character text splitter
-recursive_char_splitter = RecursiveCharacterTextSplitter(chunk_size=100, chunk_overlap=20)
-recursive_char_chunk = recursive_char_splitter.split_text(text)
-print(len(recursive_char_chunk))
-# print(f"first Chunk: {recursive_char_chunk[0][:100]}...")
-
-
-### Token text splitter
-token_text_splitter = TokenTextSplitter(chunk_size=100, chunk_overlap=20)
-token_chunk = token_text_splitter.split_text(text)
-print(len(token_chunk))
-# print(f"first Chunk: {token_chunk[0][:100]}...")
-
-
-
-loaders.pdf
-from langchain_community.document_loaders import PyPDFLoader
-loader = PyPDFLoader("C:\\Users\\2000137378\\Desktop\\newproject\\RAG_PIPELINES\\quote_20260325_114738.pdf")
-document = loader.load()
-print(document)
-
-
-embedding
-from langchain_chroma import Chroma
-from langchain_openai import AzureOpenAIEmbeddings
-from langchain_community.document_loaders import TextLoader
-from langchain_text_splitters import CharacterTextSplitter, RecursiveCharacterTextSplitter
-from dotenv import load_dotenv
-from langchain_core.documents import Document
-import os
-
-###split_text=--------------------------------------------------------------
-load_dotenv()
-
-# embeddings = AzureOpenAIEmbeddings(
-#     azure_deployment=os.getenv("AZURE_OPENAI_EMBEDDING_DEPLOYMENT_NAME"),
-#     openai_api_key=os.getenv("AZURE_OPENAI_API_KEY"),
-#     openai_api_version=os.getenv("AZURE_OPENAI_API_VERSION"),
-#     azure_endpoint=os.getenv("AZURE_OPENAI_ENDPOINT"),
-#     chunk_size=1024  # Adding required chunk_size parameter
-# )
-
-# text_splitter = RecursiveCharacterTextSplitter(
-#     chunk_size=int(os.getenv("CHUNK_SIZE", "800")),
-#     chunk_overlap=int(os.getenv("CHUNK_OVERLAP", "100")),
-#     length_function=len,
-# )
-
-# loader = TextLoader("C:\\Users\\2000137378\\Desktop\\newproject\\RAG_PIPELINES\\mytext.txt", encoding="utf-8")
-# documents = loader.load() #THIS GIVES US A LIST OF DOCUMENT OBJECTS BUT WE NEED STRING AS SPLIT_TEXT EXPECTS A STRING NOT A DOCUMENT OBJECT
-# document_text = documents[0].page_content #WE EXTRACT THE STRING FROM THE DOCUMENT OBJECT TO PASS IT TO SPLIT_TEXT
-
-# chunks = text_splitter.split_text(document_text) #THIS GIVES US A LIST OF STRINGS (CHUNKS) WHICH WE CAN THEN CONVERT TO DOCUMENT OBJECTS TO PASS TO CHROMA
-
-# my_dir = os.path.dirname(os.path.abspath(__file__))
-# print(f"Current directory: {my_dir}")
-
-
-# Now we have chunks as a list of strings. We need to convert them to Document objects to pass to Chroma.
-
-# docs = []
-# for chunk in chunks:
-#     docs.append(Document(page_content=chunk))
-
-# vectorstore = Chroma.from_documents(
-#     # documents=chunks, #WE CANNOT PASS THE LIST OF STRINGS (CHUNKS) TO CHROMA BECAUSE IT EXPECTS A LIST OF DOCUMENT OBJECTS. WE NEED TO CONVERT THE CHUNKS TO DOCUMENT OBJECTS FIRST.
-#     documents=docs,   #WE PASS THE LIST OF DOCUMENT OBJECTS TO CHROMA
-#     embedding=embeddings,
-#     collection_name="my_collection",
-#     persist_directory=my_dir
-#     )
-
-
-
-
-
-###------------------SPLIT DOCUMENT
-
-#below is the exact above code this time using SplitDocuments instead of split_text to directly get Document objects instead of strings which we then pass to Chroma without needing to convert them to Document objects again.
-
-load_dotenv()
-embeddings = AzureOpenAIEmbeddings(
-    azure_deployment=os.getenv("AZURE_OPENAI_EMBEDDING_DEPLOYMENT_NAME"),
-    openai_api_key=os.getenv("AZURE_OPENAI_API_KEY"),
-    openai_api_version=os.getenv("AZURE_OPENAI_API_VERSION"),
-    azure_endpoint=os.getenv("AZURE_OPENAI_ENDPOINT"),
-    chunk_size=1024  # Adding required chunk_size parameter
-)
-text_splitter = RecursiveCharacterTextSplitter(
-    chunk_size=int(os.getenv("CHUNK_SIZE", "800")),
-    chunk_overlap=int(os.getenv("CHUNK_OVERLAP", "100")),
-    length_function=len,
-)
-loader = TextLoader("C:\\Users\\2000137378\\Desktop\\newproject\\RAG_PIPELINES\\mytext.txt", encoding="utf-8")
-documents = loader.load() #THIS GIVES US A LIST OF DOCUMENT OBJECTS BUT WE NEED
-    # TO SPLIT THEM INTO CHUNKS AS DOCUMENT OBJECTS TO PASS TO CHROMA
-chunks = text_splitter.split_documents(documents)
-# my_dir = os.path.dirname(os.path.abspath(__file__))
-my_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "input")
-
-vectorstore = Chroma.from_documents(
-    documents=chunks, #NOW WE CAN PASS THE CHUNKS DIRECTLY TO CHROMA BECAUSE THEY ARE ALREADY DOCUMENT OBJECTS
-    embedding=embeddings,
-    collection_name="my_collection",
-    persist_directory=my_dir
-    )
-
-
-print(len(chunks))
-# print(f"first Chunk: {chunks[0][:100]}...")
-print(f"first Chunk: {chunks[0].page_content[:100]}...")
-
-
-queryretriever
-from langchain_chroma import Chroma
-from langchain_openai import AzureOpenAIEmbeddings
-from dotenv import load_dotenv
-import os
-
-load_dotenv()
-
-embeddings = AzureOpenAIEmbeddings(
-    azure_deployment=os.getenv("AZURE_OPENAI_EMBEDDING_DEPLOYMENT_NAME"),
-    openai_api_key=os.getenv("AZURE_OPENAI_API_KEY"),
-    openai_api_version=os.getenv("AZURE_OPENAI_API_VERSION"),
-    azure_endpoint=os.getenv("AZURE_OPENAI_ENDPOINT"),      
-    # chunk_size=1024  # Adding required chunk_size parameter
-)
-
-
-my_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "input")
-
-vectorstore = Chroma(
-    collection_name="my_collection",
-    embedding_function=embeddings,
-    persist_directory=my_dir
-)
-
-query = input("Enter your query: ")
-
-results = vectorstore.similarity_search(query, k=3)
-
-print("Top 3 similar documents:")
-
-for doc in results:
-    print(doc.page_content)
-    print("-----")
-
-
-
-retreiver.py
-from langchain_chroma import Chroma
-from langchain_openai import AzureOpenAIEmbeddings
-from dotenv import load_dotenv
-import os
-
-import logging
-from typing import Dict, Any, List
-# from langchain.chains import LLMChain
-from langchain_classic.chains.llm import LLMChain
-# from langchain.prompts import PromptTemplate
-from langchain_core.prompts import PromptTemplate
-# from langchain_community.chat_models import AzureChatOpenAI
-from langchain_openai import AzureChatOpenAI, AzureOpenAIEmbeddings
-# from langchain_community.vectorstores import Chroma
-from langchain_chroma import Chroma
-# from langchain_community.embeddings import AzureOpenAIEmbeddings
-# from azure.storage.blob import BlobServiceClient, ContainerClient
-from azure.core.exceptions import ResourceExistsError
-import re
-# from datetime import datetime
-# from urllib.parse import urlparse, unquote
-# from Jarvis.MCP.common.phoenix_prompt import build_prompt
-
-import asyncio
-# Load environment variables
-load_dotenv()
-
-# Configure logging
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger(__name__)
-
-# Initialize Azure OpenAI embeddings
-embeddings = AzureOpenAIEmbeddings(
-    azure_deployment=os.getenv("AZURE_OPENAI_EMBEDDING_DEPLOYMENT_NAME"),
-    openai_api_key=os.getenv("AZURE_OPENAI_API_KEY"),
-    openai_api_version=os.getenv("AZURE_OPENAI_API_VERSION"),
-    azure_endpoint=os.getenv("AZURE_OPENAI_ENDPOINT"),
-    chunk_size=1024
-)
-
-
-def query_documents(vectordb: Any, user_query: str) -> str:
-    """
-    Answer user questions by querying vectorized document content.
-    
-    Performs semantic search on the vectorized content to find relevant chunks,
-    then uses LLM to generate a direct answer based on the context.
-    
-    Args:
-        vectordb: Loaded ChromaDB instance with embeddings
-        user_query: User's question as a string
-    
-    Returns:
-        Direct answer string (not structured JSON)
-    """
-    print(f"🔍 Processing query: {user_query}")
-    
-    llm = AzureChatOpenAI(
-        openai_api_key=os.getenv("AZURE_OPENAI_API_KEY"),
-        azure_endpoint=os.getenv("AZURE_OPENAI_ENDPOINT"),
-        openai_api_version=os.getenv("AZURE_OPENAI_API_VERSION"),
-        deployment_name=os.getenv("AZURE_OPENAI_CHAT_DEPLOYMENT"),
-        temperature=0,
-        top_p=1
-    )
-    
-    # Perform semantic search with large k value for better context
-    print(f"📚 Performing semantic search...")
-    relevant_chunks = vectordb.similarity_search(
-        user_query,
-        k=5  # Large k for comprehensive context
-    )
-    
-    if not relevant_chunks:
-        print("⚠️ No relevant chunks found in the document")
-        return "I could not find any relevant information in the document to answer your question."
-    
-    # Combine relevant chunks into context
-    context = "\n".join([chunk.page_content for chunk in relevant_chunks])
-    print("This is my context",context)
-    # Create prompt for question answering
-    qa_prompt = PromptTemplate(
-        input_variables=["context", "question"],
-        template="""You are an expert assistant for answering questions about documents.
-
-Based on the provided document context, answer the user's question accurately and concisely.
-
-QUESTION: {question}
-
-CONTEXT:
-{context}
-
-ANSWER:
-Provide a clear, direct answer based only on the context provided. 
-If the answer is not found in the context, explicitly state "Not found in documents."
-Do not guess or use external knowledge.
-Keep your answer concise and relevant to the question."""
-    )
-    
-    chain = LLMChain(llm=llm, prompt=qa_prompt)
-    
-    try:
-        print(f"Generating answer...")
-        answer = chain.run({
-            "context": context,
-            "question": user_query
-        }).strip()
-        
-        print(f"Answer generated successfully")
-        return answer
-        
-    except Exception as e:
-        logger.error(f"Error generating answer: {e}")
-        return f"Error processing your query: {str(e)}"
-
-
-async def process_query_retrieval(vector_db_path: str, query: str) -> Dict[str, Any]:
-    """
-    Main processing function for query-based document retrieval.
-    
-    Takes a user query, performs semantic search on vectorized content,
-    and returns a direct answer without JSON extraction.
-    
-    Args:
-        vector_db_path: Can be either:
-            1. Local absolute path from pdf_vectorizer output: /home/jarvis/rohan/Document_Query_MCP/data/vec_db/pdf_name
-            2. Blob URL (fallback): https://... - will extract pdf name and construct local path
-        query: User's question as a string
-    
-    Returns:
-        Dict with answer and metadata
-    """
-    try:
-        # Handle both blob URLs and local paths
-        # if vector_db_path.startswith(("http://", "https://")):
-            # This is a blob URL - extract the PDF name and construct local path
-        #     logger.warning(f"Received blob URL instead of local path. Extracting PDF name...")
-        #     path = unquote(urlparse(vector_db_path).path)
-        #     file_name_with_ext = os.path.basename(path)
-        #     pdf_name = os.path.splitext(file_name_with_ext)[0]
-            
-        #     # Construct the local vector_db_path
-        #     vdb_base_path = os.getenv("QUERY_VDB_PATH", "./data/vec_db")
-        #     vector_db_path = os.path.abspath(os.path.join(vdb_base_path, pdf_name))
-        #     logger.info(f"Reconstructed local vector_db_path: {vector_db_path}")
-        # else:
-            # Ensure it's an absolute path
-        vector_db_path = os.path.abspath(vector_db_path)
-        
-        # Get safe collection name from vector_db_path
-        # ChromaDB only allows: [a-zA-Z0-9._-]
-        # safe_name = os.path.basename(vector_db_path).lower()
-        # safe_name = safe_name.replace(" ", "_").replace("-", "_").replace(".", "_")
-        # # Remove parentheses and other special characters
-        # safe_name = "".join(c if c.isalnum() or c in "._-" else "" for c in safe_name)
-        # # Ensure it starts and ends with alphanumeric
-        # safe_name = safe_name.strip("._-")
-        # collection_name = f"{safe_name}_collection"
-        # persist_directory = os.path.join(vector_db_path, "chroma_db", safe_name)
-        
-        # Verify the vector DB exists
-        if not os.path.exists(vector_db_path):
-            raise FileNotFoundError(f"Vector database not found at: {vector_db_path}")
-        
-        # Load the vector store
-        print(f"📚 Loading vector store from {vector_db_path}")
-        vectordb = Chroma(
-            embedding_function=embeddings,
-            persist_directory=vector_db_path,
-            collection_name="newbig_collection"
-        )
-        
-        # Get answer using semantic search and LLM
-        answer = query_documents(vectordb, query)
-        # Get PDF name for metadata
-        pdf_name = os.path.basename(vector_db_path)
-        
-        return {
-            "answer": answer,
-            "metadata": {
-                "is_error": False,
-                "error_message": None,
-                "query": query,
-                "source_pdf": pdf_name,
-                "vector_db_path": vector_db_path
-            }
-        }
-        
-    except Exception as e:
-        logger.exception("Error in query retrieval process")
-        return {
-            "answer": None,
-            "metadata": {
-                "is_error": True,
-                "error_message": str(e),
-                "query": query,
-                "source_pdf": None,
-                "vector_db_path": vector_db_path if 'vector_db_path' in locals() else None
-            }
-        }
-
-
-
-
-
-# if __name__ == "__main__":
-#     await process_query_retrieval("C:\\Users\\2000137378\\Desktop\\newproject\\RAG_PIPELINES\\input","What is Contact Number")
-    
-if __name__ == "__main__":
-    result = asyncio.run(process_query_retrieval(
-        r"C:\Users\2000137378\Desktop\newproject\RAG_PIPELINES\big_input",
-        "whose number is this +64 21 555 0198"
-    ))
-    print(result)    
-
-
-metadatafiltering laoader
-from langchain_chroma import Chroma
-from langchain_openai import AzureOpenAIEmbeddings
-from langchain_community.document_loaders import TextLoader
-from langchain_text_splitters import RecursiveCharacterTextSplitter
-from dotenv import load_dotenv
-import os
-load_dotenv()
-# Embedding model
-embeddings = AzureOpenAIEmbeddings(
-   azure_deployment=os.getenv("AZURE_OPENAI_EMBEDDING_DEPLOYMENT_NAME"),
-   openai_api_key=os.getenv("AZURE_OPENAI_API_KEY"),
-   openai_api_version=os.getenv("AZURE_OPENAI_API_VERSION"),
-   azure_endpoint=os.getenv("AZURE_OPENAI_ENDPOINT"),
-   chunk_size=1024
-)
-# Text splitter
-text_splitter = RecursiveCharacterTextSplitter(
-   chunk_size=800,
-   chunk_overlap=100
-)
-# Load document
-loader = TextLoader(
-   r"C:\Users\2000137378\Desktop\newproject\RAG_PIPELINES\mytext.txt",
-   encoding="utf-8"
-)
-documents = loader.load()
-# Split into chunks
-chunks = text_splitter.split_documents(documents)
-# ADD METADATA HERE
-for chunk in chunks:
-   chunk.metadata["doc_type"] = "insurance"
-   chunk.metadata["category"] = "underwriting"
-   chunk.metadata["source_file"] = "mytext.txt"
-
-# Directory to store vectors
-my_dir = os.path.join(
-   os.path.dirname(os.path.abspath(__file__)),
-   "input8.1"
-)
-# Create vector DB
-vectorstore = Chroma.from_documents(
-   documents=chunks,
-   embedding=embeddings,
-   collection_name="mynew_collection",
-   persist_directory=my_dir
-)
-print("\nTotal chunks:",len(chunks))
-print("\nFirst chunk text:")
-print(chunks[0].page_content[:150])
-print("\nFirst chunk metadata:")
-print(chunks[0].metadata)
-
-
-
-meta data filteringretreival
-from langchain_chroma import Chroma
-from langchain_openai import AzureOpenAIEmbeddings, AzureChatOpenAI
-from langchain_core.prompts import PromptTemplate
-from langchain_classic.chains.llm import LLMChain
-from dotenv import load_dotenv
-import os
-import asyncio
-load_dotenv()
-# Embeddings
-embeddings = AzureOpenAIEmbeddings(
-   azure_deployment=os.getenv("AZURE_OPENAI_EMBEDDING_DEPLOYMENT_NAME"),
-   openai_api_key=os.getenv("AZURE_OPENAI_API_KEY"),
-   openai_api_version=os.getenv("AZURE_OPENAI_API_VERSION"),
-   azure_endpoint=os.getenv("AZURE_OPENAI_ENDPOINT"),
-   chunk_size=1024
-)
-
-def query_documents(vectordb, user_query):
-   print("\nProcessing query:",user_query)
-   llm = AzureChatOpenAI(
-       openai_api_key=os.getenv("AZURE_OPENAI_API_KEY"),
-       azure_endpoint=os.getenv("AZURE_OPENAI_ENDPOINT"),
-       openai_api_version=os.getenv("AZURE_OPENAI_API_VERSION"),
-       deployment_name=os.getenv("AZURE_OPENAI_CHAT_DEPLOYMENT"),
-       temperature=0
-   )
-   print("\nPerforming metadata filtered search...")
-   # METADATA FILTER HERE
-   relevant_chunks = vectordb.similarity_search(
-       user_query,
-       k=5,
-       filter={"doc_type":"insurance"}
-   )
-   print("\nChunks retrieved:",len(relevant_chunks))
-   if not relevant_chunks:
-       return "No relevant information found"
-   # Print metadata to confirm filtering
-   print("\nMetadata of retrieved chunks:")
-   for chunk in relevant_chunks:
-       print(chunk.metadata)
-   # Build context
-   context = "\n".join(
-       chunk.page_content for chunk in relevant_chunks
-   )
-   # Prompt
-   qa_prompt = PromptTemplate(
-       input_variables=["context","question"],
-       template="""
-Answer the question using only the context.
-QUESTION:
-{question}
-CONTEXT:
-{context}
-ANSWER:
-"""
-   )
-   chain = LLMChain(
-       llm=llm,
-       prompt=qa_prompt
-   )
-   answer = chain.run({
-       "context":context,
-       "question":user_query
-   })
-   return answer
-
-async def process_query():
-   vector_db_path = r"C:\Users\2000137378\Desktop\newproject\RAG_PIPELINES\big_input"
-   vectordb = Chroma(
-       embedding_function=embeddings,
-       persist_directory=vector_db_path,
-       collection_name="big_collection"
-   )
-   answer = query_documents(
-       vectordb,
-       "whose number is this +64 21 555 0198"
-   )
-   print("\nFinal Answer:\n")
-   print(answer)
-
-if __name__ == "__main__":
-   asyncio.run(process_query())
-
-
-
-metadatafilteringloader.py
-from langchain_chroma import Chroma
-from langchain_openai import AzureOpenAIEmbeddings
-from langchain_community.document_loaders import TextLoader
-from langchain_text_splitters import RecursiveCharacterTextSplitter
-from dotenv import load_dotenv
-import os
-load_dotenv()
-# ================= EMBEDDINGS =================
-embeddings = AzureOpenAIEmbeddings(
-   azure_deployment=os.getenv("AZURE_OPENAI_EMBEDDING_DEPLOYMENT_NAME"),
-   openai_api_key=os.getenv("AZURE_OPENAI_API_KEY"),
-   openai_api_version=os.getenv("AZURE_OPENAI_API_VERSION"),
-   azure_endpoint=os.getenv("AZURE_OPENAI_ENDPOINT"),
-   chunk_size=1024
-)
-# ================= SPLITTER =================
-text_splitter = RecursiveCharacterTextSplitter(
-   chunk_size=800,
-   chunk_overlap=100
-)
-# ================= LOADER =================
-loader = TextLoader(
-   r"C:\Users\2000137378\Desktop\newproject\RAG_PIPELINES\mytext.txt",
-   encoding="utf-8"
-)
-documents = loader.load()
-# ================= CHUNKING =================
-chunks = text_splitter.split_documents(documents)
-# ================= AUTO METADATA TAGGING =================
-for chunk in chunks:
-   text = chunk.page_content.lower()
-   chunk.metadata["doc_type"] = "insurance"
-   chunk.metadata["source_file"] = "mytext.txt"
-   # SECTION DETECTION
-   if "property overview" in text or "year built" in text:
-       chunk.metadata["section"] = "property"
-   elif "claims history" in text or "amount paid" in text:
-       chunk.metadata["section"] = "claims"
-   elif "construction" in text:
-       chunk.metadata["section"] = "construction"
-   elif "security features" in text:
-       chunk.metadata["section"] = "security"
-   elif "policyholder" in text:
-       chunk.metadata["section"] = "policyholder"
-   else:
-       chunk.metadata["section"] = "general"
-# ================= VECTOR DB =================
-my_dir = os.path.join(
-   os.path.dirname(os.path.abspath(__file__)),
-   "input9.1"
-)
-vectorstore = Chroma.from_documents(
-   documents=chunks,
-   embedding=embeddings,
-   collection_name="my9.1_collection",
-   persist_directory=my_dir
-)
-# ================= DEBUG =================
-print("\nTotal chunks:",len(chunks))
-print("\nExample chunk:")
-print(chunks[0].page_content[:150])
-print("\nMetadata:")
-print(chunks[0].metadata)
-
-
-metadatafilteringquery
-from langchain_chroma import Chroma
-from langchain_openai import AzureOpenAIEmbeddings, AzureChatOpenAI
-from langchain_core.prompts import PromptTemplate
-from langchain_classic.chains.llm import LLMChain
-from dotenv import load_dotenv
-import os
-load_dotenv()
-# ================= EMBEDDINGS =================
-embeddings = AzureOpenAIEmbeddings(
-   azure_deployment=os.getenv("AZURE_OPENAI_EMBEDDING_DEPLOYMENT_NAME"),
-   openai_api_key=os.getenv("AZURE_OPENAI_API_KEY"),
-   openai_api_version=os.getenv("AZURE_OPENAI_API_VERSION"),
-   azure_endpoint=os.getenv("AZURE_OPENAI_ENDPOINT"),
-   chunk_size=1024
-)
-# ================= LOAD VECTOR DB =================
-vector_db_path = r"C:\Users\2000137378\Desktop\newproject\RAG_PIPELINES\big_input"
-vectordb = Chroma(
-   embedding_function=embeddings,
-   persist_directory=vector_db_path,
-   collection_name="my_collection"
-)
-# ================= QUERY =================
-user_query = "+64 21 555 0198"
-# CHANGE SECTION TO TEST
-section_filter="general"
-print("\nQuery:",user_query)
-print("\nFiltering section:",section_filter)
-# ================= FILTERED SEARCH =================
-relevant_chunks = vectordb.similarity_search(
-   user_query,
-   k=5,
-   filter={
-      "$and":[ {"doc_type":"insurance"},
-       {"section":section_filter}
-   ]
-   }
-)
-print("\nChunks found:",len(relevant_chunks))
-# ================= SHOW RETRIEVED =================
-for chunk in relevant_chunks:
-   print("\nMetadata:",chunk.metadata)
-   print("Text:",chunk.page_content[:150])
-# ================= BUILD CONTEXT =================
-context="\n".join(
-   chunk.page_content for chunk in relevant_chunks
-)
-# ================= LLM =================
-llm = AzureChatOpenAI(
-   openai_api_key=os.getenv("AZURE_OPENAI_API_KEY"),
-   azure_endpoint=os.getenv("AZURE_OPENAI_ENDPOINT"),
-   openai_api_version=os.getenv("AZURE_OPENAI_API_VERSION"),
-   deployment_name=os.getenv("AZURE_OPENAI_CHAT_DEPLOYMENT"),
-   temperature=0
-)
-prompt=PromptTemplate(
-   input_variables=["context","question"],
-   template="""
-Answer only from context.
-QUESTION:
-{question}
-CONTEXT:
-{context}
-ANSWER:
-"""
-)
-chain=LLMChain(
-   llm=llm,
-   prompt=prompt
-)
-answer=chain.run({
-   "context":context,
-   "question":user_query
-})
-print("\nFINAL ANSWER:\n")
-print(answer)
-
-
-metadatadynamic filtering missing i want you to give this file code
-
-
-metadatadynamicfilteringretrienval.py
-# (venv) PS C:\Users\2000137378\Desktop\newproject\RAG_PIPELINES> python .\9.1metadatafilteringloader.py
-
-
-from langchain_chroma import Chroma
-from langchain_openai import AzureOpenAIEmbeddings, AzureChatOpenAI
-from langchain_core.prompts import PromptTemplate
-from langchain_classic.chains.llm import LLMChain
-from dotenv import load_dotenv
-import os
-load_dotenv()
-# ================= EMBEDDINGS =================
-embeddings = AzureOpenAIEmbeddings(
-   azure_deployment=os.getenv("AZURE_OPENAI_EMBEDDING_DEPLOYMENT_NAME"),
-   openai_api_key=os.getenv("AZURE_OPENAI_API_KEY"),
-   openai_api_version=os.getenv("AZURE_OPENAI_API_VERSION"),
-   azure_endpoint=os.getenv("AZURE_OPENAI_ENDPOINT")
-)
-# ================= LOAD VECTOR DB =================
-vector_db_path = r"C:\Users\2000137378\Desktop\newproject\RAG_PIPELINES\big_input"
-vectordb = Chroma(
-   embedding_function=embeddings,
-   persist_directory=vector_db_path,
-   collection_name="big_collection"
-)
-# ================= LLM =================
-llm = AzureChatOpenAI(
-   openai_api_key=os.getenv("AZURE_OPENAI_API_KEY"),
-   azure_endpoint=os.getenv("AZURE_OPENAI_ENDPOINT"),
-   openai_api_version=os.getenv("AZURE_OPENAI_API_VERSION"),
-   deployment_name=os.getenv("AZURE_OPENAI_CHAT_DEPLOYMENT"),
-   temperature=0
-)
-# ================= USER QUERY =================
-user_query="whose number is this +64 21 555 0198"
-print("\nUser Query:",user_query)
-# ================= SECTION DETECTOR =================
-section_prompt = PromptTemplate(
-   input_variables=["question"],
-   template="""
-You are a document query classifier.
-Classify which section this question belongs to.
-Possible sections:
-property
-claims
-construction
-security
-policyholder
-general
-QUESTION:
-{question}
-Return ONLY the section name.
-"""
-)
-
-section_chain = LLMChain(
-   llm=llm,
-   prompt=section_prompt
-)
-
-section = section_chain.run({
-   "question":user_query
-}).strip().lower()
-print("\nDetected section:",section)
-# ================= RETRIEVAL =================
-
-relevant_chunks = vectordb.similarity_search(
-   user_query,
-   k=5,
-#    filter={
-#        "doc_type":"insurance",
-#        "section":section
-#    }
-
-
-  filter={
-      "$and":[ {"doc_type":"insurance"},
-       {"section":section}
-   ]
-    }
-)
-
-print("\nChunks retrieved:",len(relevant_chunks))
-# Debug retrieved chunks
-for chunk in relevant_chunks:
-   print("\nMetadata:",chunk.metadata)
-   print("Text:",chunk.page_content[:120])
-# ================= BUILD CONTEXT =================
-context="\n".join(
-   chunk.page_content for chunk in relevant_chunks
-)
-# ================= QA PROMPT =================
-qa_prompt=PromptTemplate(
-   input_variables=["context","question"],
-   template="""
-Answer using ONLY the context.
-QUESTION:
-{question}
-CONTEXT:
-{context}
-ANSWER:
-"""
-)
-qa_chain=LLMChain(
-   llm=llm,
-   prompt=qa_prompt
-)
-answer=qa_chain.run({
-   "context":context,
-   "question":user_query
-})
-print("\nFINAL ANSWER:\n")
-print(answer)
-
-
-
-hybrid reterieval.py
-from langchain_chroma import Chroma
-from langchain_openai import AzureOpenAIEmbeddings, AzureChatOpenAI
-from langchain_core.prompts import PromptTemplate
-from langchain_classic.chains.llm import LLMChain
-from dotenv import load_dotenv
-import os
-
-load_dotenv()
-
-# ================= EMBEDDINGS =================
-
-embeddings = AzureOpenAIEmbeddings(
-
-    azure_deployment=os.getenv("AZURE_OPENAI_EMBEDDING_DEPLOYMENT_NAME"),
-
-    openai_api_key=os.getenv("AZURE_OPENAI_API_KEY"),
-
-    openai_api_version=os.getenv("AZURE_OPENAI_API_VERSION"),
-
-    azure_endpoint=os.getenv("AZURE_OPENAI_ENDPOINT")
-)
-
-# ================= VECTOR DB =================
-
-vector_db_path=r"C:\Users\2000137378\Desktop\newproject\RAG_PIPELINES\big_input"
-
-vectordb=Chroma(
-
-    embedding_function=embeddings,
-
-    persist_directory=vector_db_path,
-
-    collection_name="big_collection"
-)
-
-# ================= LLM =================
-
-llm=AzureChatOpenAI(
-
-    openai_api_key=os.getenv("AZURE_OPENAI_API_KEY"),
-
-    azure_endpoint=os.getenv("AZURE_OPENAI_ENDPOINT"),
-
-    openai_api_version=os.getenv("AZURE_OPENAI_API_VERSION"),
-
-    deployment_name=os.getenv("AZURE_OPENAI_CHAT_DEPLOYMENT"),
-
-    temperature=0
-)
-
-# ================= USER QUERY =================
-
-user_query="whose number is this +64 21 555 0198"
-
-print("\nUser Query:",user_query)
-
-# ================= VECTOR SEARCH =================
-
-print("\nRunning vector search...")
-
-vector_results=vectordb.similarity_search(
-
-    user_query,
-
-    k=3
-)
-
-# ================= KEYWORD SEARCH =================
-
-print("\nRunning keyword search...")
-
-all_docs=vectordb.get()
-
-keyword_results=[]
-
-for text,metadata in zip(
-
-        all_docs["documents"],
-        all_docs["metadatas"]
-):
-
-    if user_query.lower() in text.lower():
-
-        keyword_results.append(text)
-
-# ================= MERGE RESULTS =================
-
-combined_texts=[]
-
-# Add vector results
-for doc in vector_results:
-
-    combined_texts.append(doc.page_content)
-
-# Add keyword results
-for text in keyword_results:
-
-    if text not in combined_texts:
-
-        combined_texts.append(text)
-
-print("\nTotal combined chunks:",len(combined_texts))
-
-# ================= CONTEXT =================
-
-context="\n".join(combined_texts)
-
-# ================= QA PROMPT =================
-
-qa_prompt=PromptTemplate(
-
-    input_variables=["context","question"],
-
-    template="""
-Answer using ONLY this context.
-
-QUESTION:
-{question}
-
-CONTEXT:
-{context}
-
-ANSWER:
-"""
-)
-
-qa_chain=LLMChain(
-
-    llm=llm,
-
-    prompt=qa_prompt
-)
-
-answer=qa_chain.invoke({
-
-    "context":context,
-
-    "question":user_query
-
-})["text"]
-
-# ================= ANSWER =================
-
-print("\nFINAL ANSWER:\n")
-
-print(answer)
-
-
-
-embedding my quryto pdf.py
-from langchain_chroma import Chroma
-from langchain_openai import AzureOpenAIEmbeddings
-from langchain_community.document_loaders import TextLoader
-from langchain_text_splitters import RecursiveCharacterTextSplitter
-from dotenv import load_dotenv
-import os
-import time
-
-load_dotenv()
-
-# ================= EMBEDDINGS =================
-
-embeddings = AzureOpenAIEmbeddings(
-
-    azure_deployment=os.getenv("AZURE_OPENAI_EMBEDDING_DEPLOYMENT_NAME"),
-
-    openai_api_key=os.getenv("AZURE_OPENAI_API_KEY"),
-
-    openai_api_version=os.getenv("AZURE_OPENAI_API_VERSION"),
-
-    azure_endpoint=os.getenv("AZURE_OPENAI_ENDPOINT"),
-
-    chunk_size=50,          # IMPORTANT → smaller batch
-
-    max_retries=10          # retry if rate limited
-)
-
-# ================= TEXT SPLITTER =================
-
-text_splitter = RecursiveCharacterTextSplitter(
-
-    chunk_size=800,
-
-    chunk_overlap=100
-)
-
-# ================= LOAD LARGE FILE =================
-
-loader = TextLoader(
-
-    r"C:\Users\2000137378\Desktop\newproject\RAG_PIPELINES\complex_realistic_corpus.txt",
-
-    encoding="utf-8"
-)
-
-documents = loader.load()
-
-print("\nDocuments loaded:",len(documents))
-
-# ================= SPLIT =================
-
-chunks = text_splitter.split_documents(documents)
-
-print("\nTotal chunks:",len(chunks))
-
-# ================= VECTOR DIRECTORY =================
-
-persist_dir = os.path.join(
-
-    os.path.dirname(os.path.abspath(__file__)),
-
-    "big_input"
-)
-
-# ================= CREATE EMPTY DB =================
-
-vectordb = Chroma(
-
-    embedding_function=embeddings,
-
-    persist_directory=persist_dir,
-
-    collection_name="newbig_collection"
-)
-
-# ================= BATCH INGESTION =================
-
-batch_size = 50
-
-print("\nStarting batched ingestion...")
-
-for i in range(0,len(chunks),batch_size):
-
-    batch = chunks[i:i+batch_size]
-
-    try:
-
-        vectordb.add_documents(batch)
-
-        print(f"Inserted batch {i} → {i+batch_size}")
-
-        # IMPORTANT → prevent rate limit
-        time.sleep(1)
-
-    except Exception as e:
-
-        print("Retrying batch due to:",e)
-
-        time.sleep(10)
-
-        vectordb.add_documents(batch)
-
-print("\nIngestion complete")
-
-print("\nVector DB stored at:",persist_dir)
-
-
-pdfloader.py
-import random
-
-names=[
-"Alex Taylor","Jordan Smith","Chris Morgan",
-"Taylor Holdings","Morgan Risk Ltd",
-"Pacific Underwriters","Summit Brokers"
-]
-
-phones=[
-"+64 21 555 0198",
-"021-555-0198",
-"64 21 5550198",
-"+64 (21) 555 0198",
-"0215550198"
-]
-
-zips=[
-"95123","94107","10001","400001","20005"
-]
-
-years=[
-"1998","2001","2005","2010","2015"
-]
-
-noise_blocks=[
-
-"""
-Inspection notes:
-Minor wear observed.
-Previous claim ref CL8821.
-Surveyor comments archived.
-""",
-
-"""
-Maintenance log fragment:
-Roof inspection passed.
-Drainage acceptable.
-Engineer reference ENG9921.
-""",
-
-"""
-Broker internal note:
-Client prefers digital comms.
-Risk appetite moderate.
-Underwriting review pending.
-""",
-
-"""
-Document appendix:
-Photos archived separately.
-Structural review recommended.
-Policy subject to renewal review.
-"""
-]
-
-formats=[
-
-lambda n,p,z,y: f"""
-INSURANCE SUBMISSION
-
-Client: {n}
-
-Contact pathways:
-Primary mobile -> {p}
-
-Construction metadata:
-Property likely built circa {y}
-
-Geographic code:
-ZIP:{z}
-""",
-
-lambda n,p,z,y: f"""
-CLIENT DATA RECORD
-
-Holder : {n}
-
-Reach at:
-Tel number {p}
-
-Asset notes:
-Construction year believed {y}
-
-Postal marker {z}
-""",
-
-lambda n,p,z,y: f"""
-UNDERWRITING SNAPSHOT
-
-Entity name {n}
-
-Communication:
-Mobile contact = {p}
-
-Risk notes:
-Dwelling erected approx {y}
-
-Location identifier {z}
-""",
-
-lambda n,p,z,y: f"""
-RISK REPORT
-
-Policy customer {n}
-
-Phone listing:
-{p}
-
-Asset built year {y}
-
-Area code {z}
-"""
-]
-
-output="complex_realistic_corpus.txt"
-
-with open(output,"w",encoding="utf-8") as f:
-
-    for i in range(15000):
-
-        name=random.choice(names)+"_"+str(i)
-
-        phone=random.choice(phones)
-
-        zipc=random.choice(zips)
-
-        year=random.choice(years)
-
-        template=random.choice(formats)
-
-        doc=template(name,phone,zipc,year)
-
-        doc+=random.choice(noise_blocks)
-
-        # Add random garbage lines
-        if random.random()>0.6:
-
-            doc+=f"\nReference ID: REF{i}{random.randint(100,999)}"
-
-        if random.random()>0.5:
-
-            doc+=f"\nInternal code ZX-{random.randint(1000,9999)}"
-
-        f.write(doc+"\n\n")
-
-print("Complex corpus generated")
-
-
-
-
-
-
-Yes. You are definitely on the right path for a 2 years GenAI Engineer interview. In fact, you have already covered more than what many candidates with 2 years of experience know.
-
-However, if I were the interviewer, I would say your preparation is currently 70-75% complete. The remaining 25-30% consists of concepts that companies actually ask in interviews but most online tutorials don't cover.
-
-What you have already covered
-Looking at your code, you've covered these topics.
-
-1. Document Loaders ✅
-You know
-
-TextLoader
-
-PyPDFLoader
-
-Loader returns Document object
-
-metadata
-
-page_content
-
-You also understand
-
-File
-      ↓
-Loader
-      ↓
-Document Object
-This is correct.
-
-2. Chunking ✅
-You covered
-
-CharacterTextSplitter
-
-RecursiveCharacterTextSplitter
-
-TokenTextSplitter
-
-Even better, you know
-
-split_text()
-
-vs
-
-split_documents()
-Many people don't know this difference.
-
-3. Embeddings ✅
-You know
-
-AzureOpenAIEmbeddings
-and
-
-Document
-↓
-
-Embedding
+Policyholder
 
 ↓
 
-Vector
+FNOL
 
 ↓
 
-Store in Chroma
-Good.
-
-4. Vector Database ✅
-You know
-
-Chroma.from_documents()
-
-persist_directory
-
-collection_name
-You also know how to reopen the DB.
-
-Good.
-
-5. Similarity Search ✅
-You covered
-
-similarity_search()
-
-k=3
-Excellent.
-
-6. Retriever + LLM ✅
-You created
-
-Query
+Document Processing
 
 ↓
 
-Embedding
+Policy Verification
 
 ↓
 
-Similarity Search
+Eligibility
 
 ↓
 
-Relevant Chunks
+Fraud Screening
 
 ↓
 
-Prompt
+Adjuster Persona
 
 ↓
 
-LLM
+SIU Persona
 
 ↓
 
-Answer
-Exactly how production RAG works.
-
-7. Metadata Filtering ✅
-Very good.
-
-You know
-
-chunk.metadata["doc_type"]
-
-chunk.metadata["section"]
-and
-
-filter={
-"doc_type":"insurance"
-}
-Excellent.
-
-8. Dynamic Metadata Filtering ✅
-Even better.
-
-Instead of
-
-section="claims"
-you ask GPT
-
-Which section should I search?
-This is production-level thinking.
-
-9. Hybrid Search ✅
-You implemented
-
-Vector Search
-
-+
-
-Keyword Search
+Settlement
 
 ↓
 
-Merge
+Payment
 
 ↓
 
-LLM
-Very nice.
-
-10. Large Dataset Ingestion ✅
-You know
-
-batch_size
-
-sleep()
-
-retry
-
-persist_directory
-Many candidates don't.
-
-Things you're still missing
-These are the interview topics companies ask for 2 years of experience.
-
-1. Why RecursiveCharacterTextSplitter is preferred
-This is probably the most asked question.
-
-If interviewer asks
-
-Why don't we use CharacterTextSplitter?
-
-You should answer
-
-CharacterTextSplitter always splits based on one separator.
-
-Example
-
-separator="\n"
-If one paragraph is very long
-
-AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
-it cannot intelligently split.
-
-Recursive splitter tries
-
-Paragraph
+Communication
 
 ↓
 
-Sentence
+Claim Closure
 
-↓
+For every stage explain
 
-Word
+* What happens
+* Which agent is responsible
+* What data is produced
+* What data is consumed
+* Which database tables are updated
+* Which downstream agents depend on that data
 
-↓
+Create a complete end-to-end picture before diving into SIU.
 
-Character
-So chunks remain meaningful.
+⸻
 
-2. Why chunk overlap?
-Very frequently asked.
+SIU Persona Deep Dive
 
-Example
+After explaining the overall architecture, focus entirely on the SIU Persona.
 
-Chunk1
+For every SIU agent explain:
 
-The customer purchased a premium policy covering...
+1. Purpose
 
-Chunk2
+Why does this agent exist?
 
-...covering fire and flood damage.
-Without overlap
+What business problem does it solve?
 
-Chunk2 misses
+When is it invoked?
 
-premium policy
-With overlap
+Who invokes it?
 
-Chunk1
+⸻
 
-premium policy covering
-Chunk2
-
-premium policy covering fire...
-Now context isn't lost.
-
-3. Why embeddings instead of keyword search?
-Interview favorite.
+2. Inputs
 
 Explain
 
-Keyword
+* APIs
+* MCP endpoints
+* JSON payloads
+* Database tables read
+* Blob files
+* Documents
+* Outputs from previous agents
 
-car
-won't find
+Mention exactly where every input comes from.
 
-automobile
-Embedding
+⸻
 
-car
+3. Processing
 
-↓
-
-vector
-
-automobile
-
-↓
-
-nearby vector
-Semantic meaning is preserved.
-
-4. Cosine Similarity
-You haven't studied this.
-
-Very important.
-
-Interviewer may ask
-
-How does Chroma know which chunk is closest?
-
-Need to explain
-
-Query embedding
-
-↓
-
-Vector
-
-↓
-
-Cosine similarity
-
-↓
-
-Highest similarity returned
-5. Why Vector DB?
-Don't answer
-
-"It stores vectors."
-
-Answer
-
-Traditional DB
-
-WHERE name='John'
-works on exact match.
-
-Vector DB
-
-Meaning
-
-Similarity
-
-Semantic Search
-This is a huge interview question.
-
-6. Retrieval parameters
-Need to know
-
-k
-
-fetch_k
-
-score_threshold
-
-MMR
-
-search_type
-Example
-
-retriever = vectordb.as_retriever(
-
-search_type="mmr",
-
-search_kwargs={
-
-"k":5,
-
-"fetch_k":20
-
-}
-)
-Interviewers ask
-
-"What is MMR?"
-
-7. Retriever vs Similarity Search
-Very common.
-
-similarity_search()
-
-returns documents
-
-Retriever
-
-returns documents
-
-but follows LangChain Retriever interface
-Retriever supports
-
-MMR
-
-Threshold Search
-
-Parent Document Retrieval
-
-Compression
-
-Ensemble Retrieval
-8. Context Window
-Very important.
-
-Suppose GPT accepts
-
-128k tokens
-But retrieval returns
-
-250k tokens
-What happens?
-
-Need to understand
-
-Only top chunks
-
-OR
-
-Compression
-
-OR
-
-Reranking
-9. Reranking
-Production systems almost always have this.
-
-Flow
-
-Top 20 chunks
-
-↓
-
-Cross Encoder
-
-↓
-
-Best 5
-
-↓
-
-GPT
-10. Hallucination
-Need to explain
-
-Without RAG
-
-↓
-
-GPT guesses
-
-With RAG
-
-↓
-
-Grounded answer
-Still
-
-Hallucination can happen if
-
-wrong chunk retrieved
-
-incomplete chunk
-
-prompt allows guessing
-
-11. Prompt Engineering inside RAG
-Your prompt
-
-Use only context
-Good.
-
-Need to know why.
-
-Otherwise GPT mixes
-
-Document
-
-+
-
-Model knowledge
-12. Different Retrieval Types
-Need to know
-
-Similarity Search
-
-Similarity with Score
-
-MMR
-
-Threshold
-
-Hybrid
-
-Metadata Filter
-13. Parent Document Retriever
-Frequently asked nowadays.
-
-Instead of
-
-800-character chunk
-Retrieve
-
-Entire section
-14. Multi Query Retriever
-GPT generates
-
-Question
-
-↓
-
-5 rewritten questions
-
-↓
-
-Search
-
-↓
-
-Merge
-Improves recall.
-
-15. Context Compression
-Instead of
-
-20 pages
-compress to
-
-Relevant sentences
-before GPT.
-
-16. Self Query Retriever
-Very popular.
-
-User asks
-
-Show claims after 2023.
-LLM converts into
-
-metadata filter
-
-year > 2023
-Automatically.
-
-17. Query Expansion
-Example
-
-vehicle
-
-↓
-
-car
-
-↓
-
-automobile
-
-↓
-
-SUV
-
-↓
-
-truck
-Improves search.
-
-18. Query Transformation
-Example
-
-Who owns this phone?
-↓
-
-Find owner using phone number
-Better retrieval.
-
-19. Different Embedding Models
-Need to know
-
-OpenAI
-
-Azure
-
-Sentence Transformers
-
-BGE
-
-E5
-
-Cohere
-20. Production Architecture
-Companies love this.
-
-PDF
-
-↓
-
-Loader
-
-↓
-
-Chunking
-
-↓
-
-Embedding
-
-↓
-
-Vector DB
-
-↓
-
-Retriever
-
-↓
-
-Prompt
-
-↓
-
-LLM
-
-↓
-
-Answer
-You should be able to draw this from memory.
-
-What I would add to your roadmap
-I would recommend learning in this exact order:
-
-Recursive splitter internals
-
-Chunk overlap
-
-Embeddings intuition
-
-Cosine similarity
-
-Vector databases
-
-Retriever vs similarity search
-
-Search types (similarity, MMR, threshold)
-
-Metadata filtering (static and dynamic)
-
-Hybrid search
-
-MultiQueryRetriever
-
-ParentDocumentRetriever
-
-SelfQueryRetriever
-
-Context compression
-
-Reranking
-
-Production RAG architecture
-
-Common interview questions and debugging scenarios
-
-Overall assessment
-For a 2-year GenAI Engineer role, I'd rate your current RAG preparation at 8.5/10.
-
-The biggest strength is that you're writing the code yourself instead of just reading theory. That's exactly what interviewers look for—they often ask you to explain each line, why you chose a particular splitter, why you used metadata filtering, or how your retrieval pipeline works.
-
-Based on our previous sessions, I also know you prefer understanding the concepts deeply rather than memorizing them. I think the next step should be to go through each missing topic exactly the way we've been doing—starting from first principles, then moving to code, interview questions, production usage, common mistakes, and follow-up questions. That approach will prepare you much better than simply adding more code examples.
-
-
-🎉 That's actually a very good answer.
-
-Even though you said "I don't know", you remembered something extremely important:
-
-k-Nearest Neighbors (k-NN)
-
-Most beginners don't even know that term, so you're already making connections.
-
-Now let's refine your understanding because there's one crucial distinction.
-
-There are actually TWO algorithms
-This is where many interview candidates get confused.
-
-Algorithm 1: k-Nearest Neighbors (k-NN)
-This means:
-
-Find the k most similar vectors.
-
-For example:
-
-User Query
-
-↓
-
-Find the top 5 nearest vectors.
-Here,
-
-k = 5
-So we return:
-
-Chunk A
-
-Chunk B
-
-Chunk C
-
-Chunk D
-
-Chunk E
-
-These are the 5 nearest neighbors.
-
-So k-NN answers "How many results do we want?"
-
-But here's the real question...
-Imagine you have:
-
-100,000,000 vectors
-To find the top 5...
-
-How do you actually find them?
-
-One naive way is:
-
-Compare query with Vector 1
-
-↓
-
-Compare query with Vector 2
-
-↓
-
-Compare query with Vector 3
-
-↓
-
-...
-
-↓
-
-Compare query with Vector 100,000,000
-Then sort all the similarities.
-
-Will this work?
-
-✅ Yes.
-
-Will it be fast?
-
-❌ Absolutely not.
-
-Imagine doing 100 million cosine similarity calculations for every single user question.
-
-If one user asks a question, maybe it's okay.
-
-But imagine:
-
-10,000 users
-
-Asking questions simultaneously
-
-Every second
-
-The servers would become overloaded.
-
-So now we have two separate problems
-Problem 1
-How many documents do we want?
-
-Answer:
-
-Top k documents
-That's k-NN.
-
-Problem 2
-How do we avoid comparing against all 100 million vectors?
-
-This is a completely different problem.
-
-The solution is called:
-
-Approximate Nearest Neighbor (ANN)
-
-Notice the extra word:
-
-Approximate
-That word is the key.
-
-Think about Google Maps
-Suppose you're in Pune and ask:
-
-"Find the nearest coffee shop."
-
-Does Google Maps check every coffee shop in India?
-
-Of course not.
-
-It immediately looks in your nearby area.
-
-Why?
-
-Because a coffee shop in Delhi is almost certainly not your nearest one.
-
-So Google Maps uses intelligent indexing.
-
-Vector databases do exactly the same thing
-Instead of checking all vectors...
-
-They organize vectors intelligently.
-
-Think of it like this:
-
-                  Vector Space
-
-        🚗 Vehicle Region
-
-      Car
-      Truck
-      Bike
-
-
-🏥 Medical Region
-
-Doctor
-Hospital
-
-
-💰 Insurance Region
-
-Policy
-Premium
-Claim
-Coverage
-When your query is:
-
-"My automobile crashed."
-
-The database thinks:
-
-"This looks like it's in the Vehicle region."
-
-So instead of searching the entire world, it searches only the nearby region.
-
-That dramatically reduces the amount of work.
-
-This is ANN
-ANN stands for:
-
-Approximate Nearest Neighbor
-
-Notice it does not guarantee the mathematically perfect nearest neighbor.
-
-Instead it says:
-
-"I'll find a result that's extremely close to the best one—but much, much faster."
-
-This trade-off is worth it.
-
-For example:
-
-Suppose the perfect similarity score is:
-
-0.982
-ANN might return:
-
-0.981
-You would never notice the difference.
-
-But the search might be 100× or even 1000× faster.
-
-Production systems almost always prefer that trade-off.
-
-Interview Question
-An interviewer may ask:
-
-Why don't vector databases use exact nearest neighbor search?
-
-A strong answer is:
-
-"Exact search compares the query against every vector, which becomes computationally expensive for millions or billions of embeddings. Production vector databases therefore use Approximate Nearest Neighbor (ANN) algorithms such as HNSW or IVF to dramatically reduce search time while sacrificing only a tiny amount of accuracy."
-
-That answer immediately tells the interviewer you understand production-scale RAG.
-
-Our next chapter is one of my favorites
-We'll answer:
-
-How does ANN actually know where to search?
-
-We'll explore:
-
-Why ANN is "approximate"
-
-HNSW (Hierarchical Navigable Small World graphs)
-
-Why HNSW is the default choice in many vector databases
-
-FAISS internals
-
-IVF (Inverted File Index)
-
-How Chroma, Pinecone, Weaviate, Milvus, and pgvector use these ideas
-
-By the end, you'll understand not just what these technologies are, but why they were invented and how they make large-scale semantic search possible. This is a very common interview topic for GenAI Engineer roles.
-
-
-Yesterday 9:42 AM
-Great man 
-
-Haha, we're entering the part that separates someone who has used LangChain from someone who actually understands RAG internally. 😄
-
-Everything we've learned so far has been building toward this.
-
-PDF
-   ↓
-Chunking
-   ↓
-Embeddings
-   ↓
-Cosine Similarity
-   ↓
-❓How do we search 100 million vectors quickly?
-Today we'll answer that.
-
-Chapter: Approximate Nearest Neighbor (ANN)
-Why was ANN invented?
-Imagine you're Google.
-
-You have:
-
-500 million documents
-
-2 billion embeddings
-
-A user asks:
-
-"My car met with an accident."
-
-The query embedding arrives.
-
-Now imagine doing this:
-
-Query
-
-↓
-
-Compare with Vector 1
-
-↓
-
-Compare with Vector 2
-
-↓
-
-Compare with Vector 3
-
-↓
-
-...
-
-↓
-
-Compare with Vector 2,000,000,000
-Let's do some rough math.
-
-Suppose one cosine similarity calculation takes only:
-
-0.00001 second
-Now imagine:
-
-2,000,000,000 vectors
-That becomes an enormous amount of computation for one query.
-
-Now imagine:
-
-5,000 users
-
-Asking simultaneously
-
-Your servers would be overwhelmed.
-
-So engineers asked:
-
-Can we avoid checking every vector?
-
-That question gave birth to ANN.
-
-Exact Search vs ANN
-Exact Search
-Imagine searching for a friend in a stadium with 100,000 people.
-
-You check:
-
-Person 1
-
-No
-
-↓
-
-Person 2
-
-No
-
-↓
-
-Person 3
-
-No
-
-...
-
-↓
-
-Person 100,000
-Eventually you'll find the correct person.
-
-Accuracy?
-
-✅ 100%
-
-Speed?
-
-❌ Terrible.
-
-ANN
-Instead, you ask:
-
-"Where is the VIP section?"
-
-Someone says:
-
-"He's probably there."
-
-You immediately go there.
-
-You check maybe:
-
-200 people
-instead of
+Explain
 
-100,000
-Did you check everyone?
+* Business rules
+* Validation
+* Decision logic
+* Prompt usage
+* LLM calls
+* External API calls
+* Tool usage
+* Internal helper functions
 
-No.
+Explain the complete execution flow.
 
-Did you find your friend?
+⸻
 
-Probably yes.
+4. Outputs
 
-Time saved?
+Explain
 
-Massive.
+Exactly what this agent produces.
 
-That's ANN.
+Examples
 
-Why is it called "Approximate"?
-This is one of the most common interview questions.
+JSON
 
-Suppose the true nearest vector has similarity:
+Database rows
 
-0.9982
-ANN might return:
+Blob files
 
-0.9978
-Practically identical.
+Excel
 
-The LLM won't notice.
+Prompt outputs
 
-The user won't notice.
+Risk score
 
-But the search became hundreds of times faster.
+Fraud score
 
-Production systems happily accept this trade-off.
+Recommendations
 
-But here's the real mystery
-Suppose I tell you:
+Flags
 
-"Don't search all 100 million vectors."
+Investigation reports
 
-Your next question should be:
+Anything else
 
-"Fine... but where do I search then?"
+⸻
 
-Exactly!
+5. Database Analysis
 
-How does the database know where to begin?
+For every SIU agent identify
 
-This is where the first ANN algorithm comes in.
+Every table it reads
 
-Meet HNSW
-This is probably the most important ANN algorithm for interviews.
+Every table it writes
 
-HNSW stands for:
+Every table it updates
 
-Hierarchical Navigable Small World
+Every table it deletes from
 
-I know...
+Explain
 
-That name sounds terrifying.
+WHEN
 
-Ignore it.
+WHY
 
-By the end of today you'll realize it's actually based on something you already do in real life.
+and
 
-Imagine you're in a new city
-Suppose I ask:
+HOW
 
-Find the nearest Starbucks.
+those tables change.
 
-Do you do this?
+⸻
 
-Street 1
+6. Dependency Analysis
 
-↓
-
-Street 2
-
-↓
-
-Street 3
-
-↓
-
-Street 4
-
-↓
-
-Street 5000
-No.
-
-Instead...
-
-You ask someone nearby.
-
-They say:
-
-"Walk two streets ahead."
-
-You go there.
-
-Then ask again.
-
-They say:
-
-"Turn left."
-
-You go there.
-
-Ask again.
-
-Eventually...
-
-You reach Starbucks.
-
-Notice something.
-
-You never explored the entire city.
-
-You simply kept moving toward better locations.
-
-That is the core idea behind HNSW.
-
-Imagine vectors as cities
-Instead of roads...
-
-Imagine each vector is connected to a few nearby vectors.
-
-Like this:
-
-           A
-         / | \
-        B  C  D
-       / \ |   \
-      E   F G   H
-Every vector knows only a handful of neighbors.
-
-Not all 100 million.
-
-Just nearby ones.
-
-Now your query arrives.
-
-Suppose it starts here:
-
-A
-The database asks:
-
-"Which neighbor looks closer?"
-
-Maybe:
-
-C
-Move there.
-
-Now from C...
-
-Which neighbor is closest?
-
-↓
-
-G
-Move there.
-
-Now from G...
-
-Closest?
-
-↓
-
-J
-Eventually...
-
-You can't find any neighbor that's closer.
-
-Congratulations.
-
-You've reached the nearest neighborhood.
-
-Notice what happened.
-
-You didn't compare against everyone.
-
-You kept making smart jumps.
-
-Real-life analogy
-Imagine hiking in the mountains.
-
-You're trying to reach the highest peak.
-
-Do you walk over every square meter of the mountain?
-
-No.
-
-You keep walking uphill.
-
-Every step gets you closer.
-
-Eventually...
-
-You reach the summit.
-
-HNSW works almost the same way, except instead of climbing a mountain, it walks through a graph of vectors toward increasingly similar neighbors.
+For every agent answer
 
-Then what does the "Hierarchical" part mean?
-Excellent question.
+Which previous agent does it depend on?
 
-Imagine Google Maps.
+Which database tables must already contain data?
 
-When traveling from Pune to Mumbai, do you immediately start navigating tiny lanes?
+What happens if those tables are empty?
 
-No.
+Which later agents consume its output?
 
-You think in levels.
+Which downstream workflows depend on it?
 
-India
+⸻
 
-↓
-
-Maharashtra
-
-↓
-
-Pune Region
-
-↓
-
-Specific Area
-
-↓
-
-Street
-
-↓
-
-Building
-Large jumps first.
-
-Small refinements later.
-
-That's hierarchy.
+Database Lineage
 
-HNSW also has multiple layers.
+Create a complete data lineage.
 
-Layer 3
+For every database table explain
 
-Few vectors
+* Which agent first creates data
+* Which agents modify it
+* Which agents read it
+* Which agents depend on it
+* Whether it is temporary or permanent
+* Whether it acts as a source of truth
 
-↓
-
-Layer 2
-
-More vectors
-
-↓
-
-Layer 1
-
-Many vectors
-
-↓
-
-Layer 0
-
-All vectors
-Search starts at the top.
-
-The top layer lets you make huge jumps across the graph.
+I want to understand the lifecycle of every important table.
 
-As you descend, you make finer and finer adjustments until you reach the closest vectors.
+⸻
 
-Why is this brilliant?
-Suppose there are:
+Agent Dependency Graph
 
-100,000,000 vectors
-Without HNSW:
+Create an agent dependency graph.
 
-Need
+For every agent explain
 
-100,000,000 comparisons
-With HNSW:
+Input Agent(s)
 
-Maybe only:
-
-100
-
 ↓
 
-150
+Current Agent
 
 ↓
-
-200
-comparisons.
-
-That's an enormous improvement.
-
-Interview Answer
-Question: Why is HNSW fast?
-
-A strong answer:
-
-"HNSW organizes vectors as a multi-layer graph where each vector connects to nearby neighbors. During search, the algorithm starts from higher layers for coarse navigation and progressively descends to lower layers for fine-grained search. Instead of comparing the query with every vector, it greedily moves toward increasingly similar neighbors, giving near-exact results with dramatically lower search time."
-
-That's the kind of answer that makes an interviewer think:
-
-"This person understands what's happening under the hood."
-
-Where does FAISS fit into all this?
-Many people think:
-
-FAISS = an algorithm.
-
-It isn't.
-
-FAISS is a library developed by Meta.
-
-Think of it like this:
-
-NumPy
-is a library.
-
-Inside NumPy there are many algorithms.
-
-Similarly,
-
-FAISS
-is a library that provides multiple indexing/search algorithms, including:
-
-Flat Index (Exact Search)
-
-IVF (Inverted File Index)
-
-HNSW
-
-Product Quantization (PQ)
-
-IVF + PQ
-
-GPU-accelerated indexes
-
-So HNSW is an algorithm, while FAISS is a toolkit that implements algorithms like HNSW.
-
-That distinction is another common interview question.
-
-We've now completed a huge milestone 🎉
-You now understand:
-
-✅ Why embeddings exist.
-
-✅ How embedding models learn semantic relationships.
-
-✅ Vectors.
-
-✅ Magnitude.
-
-✅ Dot product.
-
-✅ Cosine similarity.
-
-✅ Exact vs Approximate Nearest Neighbor.
-
-✅ HNSW intuition.
-
-✅ The difference between FAISS (library) and HNSW (algorithm).
 
-From here, we'll go deeper into IVF, Product Quantization (PQ), why different vector databases choose different indexes, and then connect all of it back to Chroma, pgvector, Pinecone, and the retriever code you've been working with. That's where the production engineering side of RAG really comes together.
+Output Agent(s)
 
+Explain this in words and also summarize it as a dependency chain.
 
-Yesterday 12:10 PM
-Okay
+⸻
 
-Perfect. Now we're moving from concepts to production systems. This is the part that companies like Microsoft, Google, OpenAI, Amazon, Hexaware, TCS, Infosys, etc., expect a GenAI Engineer to know.
+Table Dependency Graph
 
-Chapter: IVF (Inverted File Index)
-Before I explain IVF...
+For every important database table explain
 
-Let me ask you a question.
+Which agent populates it
 
-Imagine this library.
-There are 10 million books.
-
-You ask the librarian:
-
-"I need a book on Python."
-
-Method 1
-The librarian checks:
-
-Book 1
-
-↓
-
-Book 2
-
 ↓
 
-Book 3
+Which agents read it
 
 ↓
 
-...
+Which agents update it
 
 ↓
-
-Book 10,000,000
-Eventually you'll find it.
-
-But it'll take forever.
-
-Then a new librarian arrives.
-
-He first divides all books into sections.
-
-Library
-
-├── Computers
-├── Medicine
-├── History
-├── Sports
-├── Finance
-├── Cooking
-Now you ask:
-
-"Python Programming"
-
-Does he search the whole library?
-
-No.
-
-He immediately goes to:
-
-Computers
-Then searches only there.
-
-This is exactly the idea behind IVF.
-
-Step 1: Divide Vector Space
-Instead of one giant collection...
-
-The vector database creates many groups.
-
-Imagine:
-
-                 Vector Space
-
-       Cluster A
-      🚗 Vehicles
-
-Car
-Truck
-Bike
-
------------------------
-
-       Cluster B
-🏥 Medical
-
-Doctor
-Hospital
-Medicine
-
------------------------
-
-       Cluster C
-💰 Insurance
-
-Policy
-Premium
-Claim
-Coverage
-
------------------------
-
-       Cluster D
-🍎 Food
-
-Apple
-Banana
-Orange
-These groups are called clusters.
-
-Question
-Who creates these clusters?
-
-Not a human.
-
-The database runs a clustering algorithm.
-
-Do you remember one clustering algorithm from Machine Learning?
-
-Think back to your ML studies.
-
-👉 K-Means Clustering
-
-Exactly!
-
-This is why I kept telling you that your ML basics would become useful in GenAI.
-
-Step 2: User asks a question
-Suppose the query is:
-
-"My automobile crashed."
-
-Embedding model creates:
-
-Query Vector
-Now instead of searching all vectors...
-
-The database asks:
-
-"Which cluster is closest?"
-
-Maybe it finds:
-
-🚗 Vehicle Cluster
-Now it searches only inside that cluster.
-
-Instead of
-
-100 million vectors
-it may search only
-
-300,000 vectors
-Huge improvement.
-
-Analogy
-Think about a shopping mall.
-
-You want shoes.
-
-Do you search:
-
-Electronics
-
-Restaurants
-
-Books
-
-Toys
-
-Jewellery
-
-No.
-
-You immediately go to:
 
-Footwear Section
-Then compare shoes.
+Which agents depend on it
 
-IVF works exactly like this.
+I want to understand the complete data movement.
 
-But there is a problem...
-Suppose your query lies here.
+⸻
 
-Vehicle Cluster
+API & MCP Analysis
 
-Car
+For every agent identify
 
-Truck
+* FastAPI endpoints
+* MCP endpoints
+* Internal services
+* External APIs
+* Shared utilities
+* Helper modules
+* Configuration files
+* Prompt files
 
-Motorcycle
+Explain how everything is connected.
 
---------------------------
+⸻
 
-Insurance Cluster
+Tool Analysis
 
-Policy
+For every agent explain every tool it uses.
 
-Claim
+Examples
 
-Coverage
-Now imagine your query is exactly on the boundary between:
+Azure OpenAI
 
-Vehicle
+Azure Blob Storage
 
-Insurance
-
-Example:
-
-"Vehicle insurance claim"
-
-Oops.
-
-Which cluster should it search?
-
-Vehicle?
-
-Insurance?
-
-Both?
-
-This is a real problem.
-
-Solution
-Instead of searching one cluster...
-
-Search the nearest few clusters.
-
-Example:
-
-Nearest Cluster
-
-+
-
-Second Nearest Cluster
-
-+
-
-Third Nearest Cluster
-This improves accuracy while still being much faster than searching everything.
-
-HNSW vs IVF
-This is a classic interview question.
-
-IVF	HNSW
-Divides vectors into clusters	Connects vectors into a graph
-Searches selected clusters	Walks through neighboring vectors
-Faster indexing	Slower indexing
-Very memory efficient	Uses more memory
-Good for huge datasets	Often gives higher recall (finds results closer to the true nearest neighbors)
-Neither is "better" in every situation.
-
-It depends on your application.
-
-Where does Chroma use this?
-Remember our RAG code:
-
-vectorstore = Chroma(...)
-You never wrote:
-
-search all vectors
-Why?
-
-Because Chroma internally uses indexing algorithms.
-
-Depending on its configuration and backend, it builds indexes so retrieval stays fast.
-
-This is why a simple API call can search thousands or millions of embeddings quickly.
-
-Where does pgvector fit?
-Many interviewers ask:
-
-"What's the difference between Chroma and pgvector?"
-
-A lot of people answer incorrectly.
-
-Let's understand it.
-
-Chroma
-Think of Chroma as:
-
-A vector database.
-
-Its main job is storing and searching embeddings.
-
-It includes features built specifically for vector search.
-
-pgvector
-Think of pgvector as:
-
-PostgreSQL + vector support.
-
-Without pgvector:
-
-PostgreSQL
-
-Stores
-
-Text
-Numbers
-Dates
-After installing pgvector:
-
-PostgreSQL
-
-Stores
-
-Text
-Numbers
-Dates
-Vectors
-Now PostgreSQL can perform similarity searches using vector indexes.
-
-So if a company already uses PostgreSQL heavily, they may simply add pgvector instead of deploying a completely separate vector database.
-
-FAISS vs Chroma vs pgvector
-This confuses almost everyone initially.
-
-Think of it like this:
-
-FAISS
-↓
-
-A search library.
-
-Chroma
-↓
-
-A vector database that can use efficient indexing/search techniques internally.
-
-pgvector
-↓
-
-A PostgreSQL extension that adds vector storage and vector search capabilities to PostgreSQL.
-
-They are not competitors in exactly the same way—they solve related but different problems.
-
-Production Pipeline
-Now let's put everything together.
-
-PDF
-
-↓
-
-Chunking
-
-↓
-
-Embeddings
-
-↓
+Azure SQL
 
 Vector Database
 
+OCR
+
+Document Intelligence
+
+External APIs
+
+Internal services
+
+Prompt templates
+
+Shared utilities
+
+Logging
+
+Configuration
+
+Environment variables
+
+Caching
+
+Explain why each tool is required.
+
+⸻
+
+Prompt Analysis
+
+For every LLM prompt explain
+
+Purpose
+
+Input
+
+Output
+
+Expected format
+
+Business reasoning
+
+How downstream agents use the result
+
+⸻
+
+Function-Level Flow
+
+For every SIU agent explain the execution flow.
+
+For example
+
+Request Received
+
 ↓
 
-Index Creation
-(HNSW / IVF)
+Router
 
 ↓
 
-User Question
+Service
 
 ↓
 
-Embedding Model
+Handler
 
 ↓
 
-Query Vector
+Business Logic
 
 ↓
 
-ANN Search
-
-↓
-
-Top-k Chunks
+Database
 
 ↓
 
@@ -3006,81 +408,341 @@ LLM
 
 ↓
 
-Final Answer
-Notice something.
+Post Processing
 
-Everything we've spent the last several lessons learning appears in this one pipeline.
+↓
 
-Nothing is isolated.
+Database Update
 
-Every concept connects to the next.
+↓
 
-Interview Question
-Interviewer: "Why don't we use SQL LIKE instead of a vector database?"
+Response
 
-A strong answer:
+Explain the purpose of every important function.
 
-"SQL LIKE performs lexical matching based on exact text patterns. It cannot understand semantic similarity. Vector databases store embeddings and retrieve documents based on meaning using similarity metrics like cosine similarity and ANN indexes such as HNSW or IVF, allowing queries like 'automobile' to retrieve documents containing 'car' even when the exact words differ."
+Do not explain every line of code.
 
-That's the kind of answer expected from a GenAI Engineer rather than someone who's only followed tutorials.
+Explain the business logic behind each function.
 
-🎉 Congratulations!
-We've now covered almost all of the retrieval side of RAG, from first principles to production.
+⸻
 
-What we've mastered
-✅ Why RAG was invented.
+Data Flow Tracking
 
-✅ Documents and chunking.
+Trace one claim from beginning to end.
 
-✅ Chunk overlap.
+Suppose Claim ID = ABC123.
 
-✅ Embeddings.
+Track
 
-✅ Semantic space.
+How this claim moves through every persona.
 
-✅ How embeddings are trained.
+Show
 
-✅ Vectors.
+Which tables are updated
 
-✅ Magnitude.
+Which JSON is generated
 
-✅ Dot product.
+Which APIs are called
 
-✅ Cosine similarity.
+Which prompts are executed
 
-✅ k-NN.
+Which agents consume the data
 
-✅ ANN.
+Which agents enrich the data
 
-✅ HNSW.
+Which agents make decisions
 
-✅ IVF.
+I want to understand the complete lifecycle of a claim.
 
-✅ FAISS.
+⸻
 
-✅ Chroma.
+Error Handling
 
-✅ pgvector.
+Explain
 
-✅ Production retrieval pipeline.
+What happens if
 
-What comes next?
-This is where we leave "retrieval" and move into LLM orchestration, which is the next major pillar of RAG.
+* a table is empty
+* a previous agent fails
+* an API fails
+* the LLM fails
+* data is missing
+* validation fails
 
-We'll cover:
+Explain how the workflow recovers.
 
-Retriever (what actually happens inside retriever.invoke(query)).
+⸻
 
-Top-k and search parameters (k, fetch_k, similarity thresholds, MMR).
+Configuration Analysis
 
-Context construction (how retrieved chunks are combined).
+Identify
 
-Prompt engineering for RAG.
+* environment variables
+* configuration files
+* constants
+* prompt files
+* business rule files
+* routing configuration
 
-How the LLM generates the final answer from retrieved context.
+Explain how configuration controls the system.
 
-Hallucination prevention and why RAG reduces (but doesn't eliminate) hallucinations.
+⸻
 
-These are the topics you'll use every day when building production RAG systems, and they come up frequently in GenAI interviews.
+Architecture Analysis
 
+Explain
 
+Why the project is structured this way.
+
+Explain
+
+* MCP architecture
+* FastAPI architecture
+* shared utilities
+* database abstraction
+* prompt organization
+* service layer
+* handler layer
+* router layer
+* orchestration
+
+Explain how all these pieces work together.
+
+⸻
+
+Produce Diagrams (Text Format)
+
+Generate easy-to-read text diagrams for:
+
+1. Overall Claims Workflow
+2. Policyholder Persona Workflow
+3. Adjuster Persona Workflow
+4. SIU Persona Workflow
+5. Agent Dependency Graph
+6. Database Dependency Graph
+7. Table Lineage
+8. API Call Flow
+9. Data Flow
+10. Claim Lifecycle
+
+⸻
+
+Final Deliverable
+
+Produce a structured onboarding document containing:
+
+1. Executive Summary
+2. High-Level Architecture Overview
+3. End-to-End Claims Workflow
+4. Policyholder Persona Explained
+5. Adjuster Persona Explained
+6. SIU Persona Deep Dive
+7. Agent-by-Agent Analysis
+8. Tool-by-Tool Analysis
+9. Database Table Analysis
+10. Database Lineage
+11. API & MCP Analysis
+12. Prompt Analysis
+13. Function-Level Flow
+14. Claim Lifecycle Walkthrough
+15. Agent Dependency Matrix
+16. Database Dependency Matrix
+17. Common Execution Paths
+18. Error Handling Flow
+19. Configuration Overview
+20. Important Files & Their Responsibilities
+21. Frequently Used Utility Modules
+22. Sequence of Execution from Claim Creation to Claim Closure
+
+The explanation should be written as if you are mentoring a new engineer joining the project. Prioritize clarity over brevity, explicitly explain dependencies between personas and agents, and make it possible to understand the entire system without manually tracing every code path.
+
+End-to-End Dummy Claim Walkthrough (Mandatory)
+
+After explaining the architecture and each individual agent, walk through a single dummy claim from the moment it is created until it is closed.
+
+Use one consistent example throughout the explanation.
+
+For example:
+
+* Claim Number: CLM-100001
+* Policy Number: POL-200001
+* Policyholder: John Smith
+* Vehicle: 2023 Toyota Camry
+* Incident: Rear-end collision at a traffic signal
+* Date of Loss: 15 July 2026
+* Location: Pune, Maharashtra
+* Estimated Damage: Front bumper, bonnet, left headlight
+* Police FIR: Available
+* Repair Garage: ABC Motors
+* Coverage: Comprehensive Policy
+
+Use this same claim throughout the entire explanation.
+
+For every agent, explain exactly what happens to this claim.
+
+For each step, include:
+
+1. Input
+
+Show exactly what data the agent receives.
+
+Examples:
+
+* Request payload
+* Database records
+* Previous agent output
+* Blob documents
+* JSON files
+* API responses
+
+⸻
+
+2. Processing
+
+Explain the business logic in simple language.
+
+Do not only explain the code.
+
+Explain why the agent performs each step.
+
+⸻
+
+3. Database Activity
+
+Show exactly which tables are accessed.
+
+For every table specify:
+
+* Read
+* Insert
+* Update
+* Delete
+
+Also explain why the operation is performed.
+
+⸻
+
+4. Output
+
+Show exactly what the agent produces.
+
+Examples:
+
+* JSON
+* Database row
+* Risk Score
+* Fraud Flag
+* Recommendation
+* Investigation Report
+* Settlement Amount
+* Notification
+
+⸻
+
+5. Downstream Dependency
+
+Explain:
+
+* Which next agent consumes this output.
+* Which database tables the next agent reads.
+* Why this output is required.
+
+⸻
+
+6. Data Evolution
+
+Track how the same claim changes after every stage.
+
+For example:
+
+FNOL
+
+↓
+
+Basic claim created
+
+↓
+
+Policy Verification
+
+↓
+
+Policy details added
+
+↓
+
+Eligibility
+
+↓
+
+Coverage verified
+
+↓
+
+Fraud Screening
+
+↓
+
+Fraud score generated
+
+↓
+
+Adjuster
+
+↓
+
+Damage estimate generated
+
+↓
+
+SIU
+
+↓
+
+Investigation report added
+
+↓
+
+Reserve Recommendation
+
+↓
+
+Reserve calculated
+
+↓
+
+Settlement Recommendation
+
+↓
+
+Settlement amount finalized
+
+↓
+
+Payment
+
+↓
+
+Payment processed
+
+↓
+
+Communication
+
+↓
+
+Customer notified
+
+↓
+
+Claim Closed
+
+At every stage, clearly explain:
+
+* What new information was added.
+* Which information was modified.
+* Which information remained unchanged.
+* Which agent performed the update.
+* Which database table was updated.
+
+The objective is to make it possible to follow the complete lifecycle of one claim from start to finish and understand how data flows through the entire system, how agents depend on each other, and how the database evolves after every step.
