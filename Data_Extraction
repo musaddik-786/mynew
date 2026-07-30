@@ -1,732 +1,418 @@
-Task: Perform a Complete Gap Analysis to Extend the Existing Commercial Property Claims Platform to Motor Insurance
-
-Background
-
-The current claims platform has been developed exclusively for the Commercial Property Line of Business (LOB).
-
-The platform contains multiple AI agents (MCP/FastAPI based) that together handle the complete claims lifecycle, including but not limited to:
-
-* FNOL
-* Document Classification
-* Data Extraction
-* Eligibility Verification
-* Policy Coverage Verification
-* Risk Assessment
-* Fraud Screening
-* Claim Classification
-* Claim Routing
-* Damage Assessment
-* Evidence Validation
-* External Data Verification
-* Reserve Recommendation
-* Repair vs Replacement
-* Settlement Recommendation
-* Payment Eligibility
-* Payment Trigger
-* Communication Agent
-* Other supporting agents
-
-The complete codebase will be provided.
-
-The objective is NOT to rewrite the project.
-
-The objective is to identify everything that must change so that the platform can support Motor Insurance Claims in addition to Commercial Property.
+Yes, absolutely. And this is actually the best way to understand an agent. I’ll explain the SIU Watchlist Update Agent in the same style—following the claim as it moves through the system and showing exactly which tables are read, which ones are written, and what decisions are made.
 
 ⸻
 
-Your Task
+Initial Situation
 
-Perform a deep architectural review of the complete codebase and identify every place where Commercial Property assumptions exist.
+Assume the fraud investigation has already completed.
 
-Assume we want to support both
-
-* Commercial Property
-* Motor Insurance
-
-without breaking the existing implementation.
+Your database contains the following.
 
 ⸻
 
-Analyse Every Agent Individually
+claims
 
-For every agent, identify:
-
-1. Current Commercial Property Logic
-
-Explain
-
-* what the current agent is doing
-* which Commercial Property assumptions are hardcoded
-* why those assumptions do not work for Motor Insurance
+claim_number	policy_number	policyholder_name	loss_type	status
+CLM-2026-2983	POL-987654	John Smith	Motor Accident	Under Investigation
 
 ⸻
 
-2. Motor Insurance Requirements
+siu_case_master
 
-For Motor Insurance identify
-
-* new functionality
-* additional validations
-* additional business rules
-* additional calculations
-* additional mandatory fields
-* optional fields
-* additional APIs
-* additional external integrations
-* new document types
-* new prompts
-* new LLM context
-* new decision logic
+siu_case_id	claim_id	investigator
+SIU-5001	CLM-2026-2983	David Brown
 
 ⸻
 
-3. Existing Logic That Can Be Reused
+siu_decision
 
-Clearly mention
-
-* which functions remain unchanged
-* which modules are reusable
-* which prompts only need modification
-* which business rules are common across both LOBs
+siu_case_id	decision	remarks
+SIU-5001	Fraud Confirmed	Staged accident confirmed
 
 ⸻
 
-4. Code Changes Required
+fraud_watchlist
 
-For every agent list
-
-* new functions required
-* existing functions to modify
-* new helper utilities
-* new configuration
-* prompt changes
-* routing changes
-* orchestration changes
-* new validation logic
-
-Do NOT write code.
-
-Only explain what should change.
+Empty
 
 ⸻
 
-FNOL Analysis
+Customer / Investigator Request
 
-Pay special attention to FNOL.
+The investigator completes the SIU investigation.
 
-Identify
+The Watchlist Update Agent receives
 
-Commercial Property mandatory fields
+Update the fraud watchlist for claim CLM-2026-2983
+
+The LangGraph agent starts.
+
+⸻
+
+STEP 1 — Load MCP Tools
+
+The agent first loads its MCP tools.
+
+Available tools become
+
+add_to_watchlist()
+get_watchlist()
+check_watchlist()
+remove_from_watchlist()
+update_watchlist_from_case()
+
+No database activity yet.
+
+⸻
+
+STEP 2 — LLM Chooses the Tool
+
+The system prompt says
+
+After a case is resolved, call update_watchlist_from_case().
+
+The LLM therefore selects
+
+update_watchlist_from_case(
+    claim_id="CLM-2026-2983"
+)
+
+From this point onwards, the MCP performs all business logic.
+
+⸻
+
+STEP 3 — Read SIU Case
+
+Function
+
+_get_latest_siu_case()
+
+SQL
+
+SELECT *
+FROM siu_case_master
+WHERE claim_id='CLM-2026-2983'
+ORDER BY id DESC
+LIMIT 1;
+
+Current table
+
+siu_case_id	claim_id
+SIU-5001	CLM-2026-2983
+
+Result
+
+SIU Case Found
+SIU-5001
+
+No writes occur.
+
+⸻
+
+STEP 4 — Read Latest SIU Decision
+
+Function
+
+_get_latest_decision()
+
+SQL
+
+SELECT *
+FROM siu_decision
+WHERE siu_case_id='SIU-5001'
+ORDER BY id DESC
+LIMIT 1;
+
+Returns
+
+decision
+
+Fraud Confirmed
+
+Now the business rule is evaluated.
+
+⸻
+
+STEP 5 — Business Rule
+
+The code checks
+
+if decision != "Fraud Confirmed":
+
+Current value
+
+Fraud Confirmed
+
+Condition
+
+False
+
+Therefore
+
+The workflow continues.
+
+If instead the decision had been
+
+Fraud Not Proven
+
+the function would immediately return
+
+{
+    "watchlisted": false,
+    "reason":"No watchlist action taken"
+}
+
+No database writes would occur.
+
+⸻
+
+STEP 6 — Read Claim Details
+
+Function
+
+_get_claim()
+
+SQL
+
+SELECT *
+FROM claims
+WHERE claim_number='CLM-2026-2983';
+
+Returns
+
+Field	Value
+claim_number	CLM-2026-2983
+policy_number	POL-987654
+policyholder_name	John Smith
+
+These two fields become extremely important.
+
+policy_number
+↓
+entity_id
 
 and
 
-Motor mandatory fields.
+policyholder_name
+↓
+entity_name
 
-For example
-
-Vehicle Information
-
-VIN
-
-Registration Number
-
-Vehicle Make
-
-Vehicle Model
-
-Vehicle Year
-
-Engine Number
-
-Chassis Number
-
-Driver Details
-
-Driving Licence
-
-Accident Date
-
-Accident Location
-
-Police FIR
-
-Third Party Details
-
-Injuries
-
-Passenger Count
-
-Tow Requirement
-
-Garage Selection
-
-Repair Preference
-
-Vehicle Photos
-
-Dashcam Footage
-
-Telematics
-
-Roadside Assistance
-
-Loss Type
-
-Accident Type
-
-Collision
-
-Theft
-
-Fire
-
-Flood
-
-Vandalism
-
-Natural Disaster
-
-Hit and Run
-
-Glass Damage
-
-Animal Collision
-
-etc.
-
-Mention every field that should be mandatory or optional.
+Still no writes.
 
 ⸻
 
-Document Analysis
+STEP 7 — Build Watchlist Entry
 
-Compare Commercial Property documents with Motor Insurance documents.
+Now the code prepares
 
-Identify
+add_to_watchlist(
+    entity_type="policyholder",
+    entity_id="POL-987654",
+    entity_name="John Smith",
+    reason="Confirmed fraud on claim CLM-2026-2983",
+    severity="High"
+)
 
-new document types such as
+Notice something interesting.
 
-Driving Licence
+Nothing is coming from the API request except
 
-RC Book
+claim_id
 
-Insurance Certificate
-
-Vehicle Inspection Report
-
-Repair Estimate
-
-Garage Invoice
-
-Police FIR
-
-Medical Reports
-
-Vehicle Images
-
-Dashcam Video
-
-Theft Documents
-
-Recovery Report
-
-Surveyor Report
-
-Traffic Camera Evidence
-
-Tow Receipt
-
-Fitness Certificate
-
-PUC
-
-Vehicle Ownership Transfer Documents
-
-etc.
-
-Explain which existing document classifiers must be updated.
+Everything else is derived from the database.
 
 ⸻
 
-Policy Coverage Verification
+STEP 8 — Generate Watchlist ID
 
-Analyse how the current Property policy verification differs from Motor policies.
+Function
 
-Explain
+_rand_suffix(6)
 
-new coverages
+Suppose
 
-Own Damage
+834521
 
-Third Party
+Generated ID
 
-Comprehensive
-
-Zero Depreciation
-
-Engine Protection
-
-Consumables
-
-Roadside Assistance
-
-Personal Accident Cover
-
-Passenger Cover
-
-NCB
-
-Add-ons
-
-Deductibles
-
-IDV
-
-Total Loss
-
-Constructive Total Loss
-
-Salvage
-
-Coverage Limits
-
-Waiting Periods
-
-Exclusions
-
-Driver Restrictions
-
-Vehicle Usage Restrictions
-
-Commercial vs Private Vehicle
-
-Geographical Restrictions
-
-Driver Age Restrictions
-
-Licence Validation
-
-etc.
+WL-834521
 
 ⸻
 
-Damage Assessment
+STEP 9 — Insert into fraud_watchlist
 
-Explain how Motor damage assessment differs from Property.
+SQL executed
 
-Include
+INSERT INTO fraud_watchlist
+(
+    watchlist_id,
+    entity_type,
+    entity_id,
+    entity_name,
+    reason,
+    severity,
+    added_by,
+    status
+)
+VALUES
+(
+    'WL-834521',
+    'policyholder',
+    'POL-987654',
+    'John Smith',
+    'Confirmed fraud on claim CLM-2026-2983',
+    'High',
+    'SIU Investigator',
+    'Active'
+);
 
-vehicle parts
-
-repair labour
-
-paint cost
-
-garage estimates
-
-OEM vs aftermarket parts
-
-repair hours
-
-structural damage
-
-airbags
-
-engine
-
-transmission
-
-wheel alignment
-
-ADAS calibration
-
-battery inspection (EV)
-
-high voltage inspection
-
-salvage
-
-roadworthiness
-
-etc.
+This is the only database write performed by the automatic workflow.
 
 ⸻
 
-Fraud Detection
+fraud_watchlist
 
-Identify additional fraud indicators for Motor Insurance such as
+Before
 
-staged accidents
+Empty
 
-multiple claims
+After
 
-VIN mismatch
-
-RC mismatch
-
-odometer tampering
-
-driver mismatch
-
-garage fraud
-
-repair inflation
-
-duplicate invoices
-
-fake FIR
-
-telematics mismatch
-
-location inconsistency
-
-prior damage
-
-duplicate vehicle photos
-
-etc.
+watchlist_id	entity_type	entity_id	entity_name	severity	status
+WL-834521	policyholder	POL-987654	John Smith	High	Active
 
 ⸻
 
-Reserve Recommendation
+STEP 10 — Return Response
 
-Explain how reserve calculation should change for Motor Insurance.
+The MCP returns
 
-Include
-
-repair estimate
-
-vehicle value
-
-IDV
-
-garage quotation
-
-labour
-
-parts
-
-salvage value
-
-towing
-
-storage
-
-medical expenses
-
-third party liability
-
-legal expenses
-
-rental reimbursement
-
-supplements
-
-taxes
-
-etc.
+{
+  "claim_id":"CLM-2026-2983",
+  "watchlisted":true,
+  "watchlist_entry":{
+      "watchlist_id":"WL-834521",
+      "entity_type":"policyholder",
+      "entity_id":"POL-987654",
+      "entity_name":"John Smith",
+      "severity":"High",
+      "status":"Active"
+  }
+}
 
 ⸻
 
-Settlement Recommendation
+STEP 11 — LLM Explains the Result
 
-Identify all additional Motor-specific settlement logic.
+The user finally receives something like
 
-Include
-
-repair approval
-
-cash settlement
-
-total loss
-
-constructive total loss
-
-IDV settlement
-
-salvage deduction
-
-depreciation
-
-deductible
-
-betterment
-
-parts depreciation
-
-GST
-
-third party payment
-
-medical reimbursement
-
-garage payment
-
-network garage
-
-non-network garage
-
-cashless settlement
-
-etc.
+The SIU investigation concluded with a Fraud Confirmed decision. The policyholder John Smith (Policy POL-987654) has been successfully added to the active fraud watchlist with High severity.
 
 ⸻
 
-Communication Agent
+Negative Scenario
 
-Identify Motor-specific communication flows such as
+Suppose the SIU table contains
 
-garage appointment
+decision
 
-vehicle inspection
+Fraud Not Proven
 
-surveyor visit
+Then
 
-repair approval
+Step 3
 
-repair completion
+Reads SIU case
 
-vehicle pickup
+↓
 
-cashless approval
+Step 4
 
-payment updates
+Reads SIU decision
 
-salvage pickup
+↓
 
-third party updates
+Decision
 
-roadside assistance
+Fraud Not Proven
 
-claim closure
+↓
 
-etc.
+Immediately returns
 
-⸻
+{
+   "watchlisted":false,
+   "reason":"No watchlist action taken — SIU decision is not 'Fraud Confirmed'"
+}
 
-Database Review
+No claim lookup occurs.
 
-Review the entire database schema.
+No watchlist insertion occurs.
 
-Identify
-
-Existing Tables
-
-Explain
-
-which tables remain unchanged
-
-which tables require new columns
-
-which tables should become generic
-
-which tables are Property specific
+No write happens anywhere.
 
 ⸻
 
-New Tables Required
+Complete Data Movement
 
-Recommend all new Motor tables.
-
-For each table provide
-
-Purpose
-
-Suggested table name
-
-Suggested columns
-
-Primary Key
-
-Foreign Keys
-
-Relationships
-
-Indexes
-
-Do NOT generate SQL.
-
-Only provide schema recommendations.
-
-Possible examples include
-
-vehicle_details
-
-driver_details
-
-accident_details
-
-garage_details
-
-garage_estimates
-
-repair_orders
-
-repair_parts
-
-repair_labour
-
-vehicle_inspections
-
-telematics_data
-
-roadside_assistance
-
-motor_policy_coverages
-
-motor_claim_photos
-
-survey_reports
-
-salvage_details
-
-vehicle_damage_mapping
-
-accident_witnesses
-
-police_reports
-
-third_party_claims
-
-medical_claims
-
-tow_details
-
-vehicle_history
-
-etc.
-
-Also identify whether any existing Commercial Property tables should be generalized instead of creating duplicate Motor tables.
+                  User / Orchestrator
+                          │
+                          ▼
+      "Update watchlist for claim CLM-2026-2983"
+                          │
+                          ▼
+          update_watchlist_from_case()
+                          │
+                          ▼
+             siu_case_master (SELECT)
+                          │
+                          ▼
+              Latest SIU Decision
+                          │
+             Decision == Fraud Confirmed?
+                 │                    │
+                No                   Yes
+                 │                    │
+                 ▼                    ▼
+         Return No Action        claims (SELECT)
+                                      │
+                                      ▼
+                      policy_number = POL-987654
+                      policyholder = John Smith
+                                      │
+                                      ▼
+                         Build Watchlist Entry
+                                      │
+                                      ▼
+                      Generate WL-834521
+                                      │
+                                      ▼
+                  fraud_watchlist (INSERT)
+                                      │
+                                      ▼
+                     Return Success Response
 
 ⸻
 
-APIs
+One important observation about this implementation
 
-Identify
+Unlike many enterprise fraud systems, this implementation does not check whether the policyholder is already on the active watchlist before inserting a new record.
 
-new external integrations that may be required
+The flow is simply:
 
-Examples
+Fraud Confirmed
+        │
+        ▼
+Read Claim
+        │
+        ▼
+INSERT fraud_watchlist
 
-RTO
+There is no duplicate check such as:
 
-VIN Decoder
+SELECT *
+FROM fraud_watchlist
+WHERE entity_id = 'POL-987654'
+AND status = 'Active';
 
-Licence Verification
-
-Telematics
-
-Garage Network
-
-Surveyor Portal
-
-Roadside Assistance
-
-Police Verification
-
-Vehicle History
-
-OEM Parts Catalogue
-
-Repair Cost Database
-
-Maps
-
-Weather
-
-EV Battery Health
-
-etc.
-
-⸻
-
-Prompts
-
-Review every LLM prompt.
-
-Identify
-
-Commercial Property terminology
-
-Property-specific assumptions
-
-Property-specific examples
-
-Property-specific outputs
-
-Recommend how prompts should be redesigned so they support multiple LOBs.
-
-⸻
-
-Configuration
-
-Identify where configuration should become LOB-driven instead of hardcoded.
-
-Examples
-
-validation rules
-
-mandatory fields
-
-prompt templates
-
-database mappings
-
-business rules
-
-API routing
-
-document mappings
-
-coverage mappings
-
-claim workflows
-
-decision trees
-
-⸻
-
-Architecture Recommendations
-
-Recommend the best long-term architecture for supporting multiple Lines of Business.
-
-The solution should avoid code duplication.
-
-Prefer configurable architecture wherever possible.
-
-Explain
-
-* Strategy Pattern
-* Rule Engine
-* Configuration-driven workflows
-* LOB-specific plugins/modules
-* Prompt templates
-* Validation configuration
-* Database abstraction
-* Shared services
-
-if applicable.
-
-⸻
-
-Final Deliverable
-
-Produce a structured report containing
-
-1. Executive Summary
-2. Agent-wise Gap Analysis
-3. Database Changes
-4. API Changes
-5. Prompt Changes
-6. Business Rule Changes
-7. Validation Changes
-8. New Mandatory Fields
-9. New Optional Fields
-10. New Tables
-11. Existing Tables to Modify
-12. Configuration Changes
-13. Architecture Recommendations
-14. Estimated Development Effort (Low / Medium / High) for each agent
-15. Priority Order in which changes should be implemented
-
-The objective is to create a complete roadmap for extending the existing Commercial Property claims platform into a production-ready Motor Insurance claims platform while maximizing reuse of the existing codebase and minimizing duplication.
+This means that if update_watchlist_from_case() is triggered multiple times for the same confirmed fraud case, the system may create multiple active watchlist entries for the same policyholder unless the database enforces a uniqueness constraint. In a production-grade insurance platform, a common enhancement would be to perform this existence check first and only insert a new row if no active watchlist entry already exists.
