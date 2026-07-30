@@ -1,518 +1,177 @@
-"""
-server.py — SIU Closure Agent
-───────────────────────────────
-LangGraph agent that validates all investigation steps are complete before
-allowing an SIU case to be closed.
-
-Port: 9012
-MCP : http://localhost:9000/api/v1/siu_closure/mcp
-
-Run:
-    py -3 server.py
-"""
-
-import json
-import logging
-import os
-import sys
-import time
-import traceback
-from datetime import datetime, timedelta
-from typing import Annotated, TypedDict
-
-import uvicorn
-from dotenv import load_dotenv, find_dotenv
-from fastapi import FastAPI, Request
-from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import StreamingResponse
-from langchain_core.messages import AIMessage, SystemMessage
-from langchain_mcp_adapters.client import MultiServerMCPClient
-from langchain_openai.chat_models import AzureChatOpenAI
-from langgraph.graph import END, START, StateGraph
-from langgraph.graph.message import add_messages
-from langgraph.prebuilt import ToolNode
-
-load_dotenv(find_dotenv())
-
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s | %(levelname)-8s | %(name)s | %(message)s",
-    stream=sys.stdout,
-    force=True,
-)
-logger = logging.getLogger("siu_closure_agent")
-
-PHOENIX_API_KEY = os.getenv("PHOENIX_API_KEY", "")
-PHOENIX_ENDPOINT = os.getenv("PHOENIX_ENDPOINT", "")
-MCP_URL = os.getenv("MCP_URL", "http://localhost:9000/api/v1/siu_closure/mcp")
-AGENT_PORT = int(os.getenv("AGENT_PORT", "9012"))
-
-config_mcp_server = {
-    "siu_closure_mcp": {
-        "url": MCP_URL,
-        "transport": "streamable_http",
-        "timeout": timedelta(seconds=120),
-        "sse_read_timeout": timedelta(seconds=600),
-    }
-}
-
-app = FastAPI(title="SIU Closure Agent")
-
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
-
-
-class State(TypedDict):
-    messages: Annotated[list, add_messages]
-
-
-def router(state: State):
-    last = state["messages"][-1]
-    if isinstance(last, AIMessage) and getattr(last, "tool_calls", None):
-        return "tools"
-    if isinstance(last, AIMessage) and last.content:
-        if "Continue" in last.content:
-            return "tools"
-        if "End" in last.content:
-            return "End"
-    return "End"
-
-
-_FALLBACK_PROMPT = """
-You are the SIU Closure Agent for an insurance SIU.
-
-Given an siu_case_id, your workflow is:
-
-1. Call check_closure_readiness with the siu_case_id. This will:
-   - Validate each step of the closure checklist:
-     evidence correlation, network analysis, behavioral analysis,
-     final decision recorded, investigator report submitted.
-   - Compute a readiness percentage.
-   - Return a closure_verdict (Ready to Close / Pending Steps / Blocked).
-   - Persist results to siu_progress_tracker.
-
-2. Summarize for the SIU supervisor:
-   - The overall closure verdict.
-   - Which steps are complete and which are incomplete.
-   - Recommended next steps before closure.
-
-When you have completed the task, end your response with "End".
-"""
-
-
-def load_prompt() -> str:
-    if not PHOENIX_ENDPOINT:
-        raise RuntimeError("Phoenix not configured")
-    from phoenix.client import Client
-    client = Client(base_url=PHOENIX_ENDPOINT, api_key=PHOENIX_API_KEY)
-    prompt = client.prompts.get(name="siu_closure_agent", label="production")
-    prompt_set = prompt._template["messages"]
-    system_msg = next(
-        (item["content"][0]["text"] for item in prompt_set if item.get("role") == "system"), None
-    )
-    if not system_msg:
-        raise ValueError("System prompt is empty or missing in Phoenix")
-    return system_msg
-
-
-def create_graph(model, tools, prompt):
-    graph_builder = StateGraph(State)
-    llm_with_tools = model.bind_tools(tools)
-
-    async def agent_node(state: State):
-        all_messages = [SystemMessage(content=prompt)] + state["messages"]
-        message = await llm_with_tools.ainvoke(all_messages)
-        return {"messages": [message]}
-
-    graph_builder.add_node("agent", agent_node)
-    graph_builder.add_node("tools", ToolNode(tools=tools))
-    graph_builder.add_edge(START, "agent")
-    graph_builder.add_conditional_edges("agent", router, {"tools": "tools", "End": END})
-    graph_builder.add_edge("tools", "agent")
-    return graph_builder.compile()
-
-
-async def get_tools():
-    client = MultiServerMCPClient(config_mcp_server)
-    tools = await client.get_tools()
-    logger.info("Tools loaded from MCP: %s", [t.name for t in tools])
-    return tools
-
-
-async def stream_graph(graph, initial_state, config):
-    async for event in graph.astream_events(initial_state, config=config, version="v2"):
-        kind = event.get("event", "")
-        if kind == "on_chat_model_stream":
-            chunk = event["data"].get("chunk")
-            if chunk and hasattr(chunk, "content") and chunk.content:
-                yield f"data: {chunk.content}\n\n"
-        elif kind == "on_tool_start":
-            yield f"data: [Tool: {event.get('name', 'unknown_tool')}] Starting...\n\n"
-        elif kind == "on_tool_end":
-            yield f"data: [Tool: {event.get('name', 'unknown_tool')}] Done\n\n"
-
-
-@app.post("/chat")
-async def chat_stream(request: Request):
-    load_dotenv(find_dotenv())
-    tools = await get_tools()
-
-    model = AzureChatOpenAI(
-        api_key=os.getenv("AZURE_OPENAI_API_KEY"),
-        api_version=os.getenv("AZURE_OPENAI_API_VERSION"),
-        azure_deployment=os.getenv("AZURE_OPENAI_CHAT_DEPLOYMENT"),
-        azure_endpoint=os.getenv("AZURE_OPENAI_ENDPOINT"),
-    )
-
-    try:
-        system_prompt = load_prompt()
-    except Exception as e:
-        logger.warning("Phoenix prompt load failed (%s) — using fallback prompt", e)
-        system_prompt = _FALLBACK_PROMPT
-
-    body = await request.json()
-    user_message = body.get("message", "Check closure readiness for this SIU case")
-    graph = create_graph(model=model, tools=tools, prompt=system_prompt)
-
-    async def generate():
-        start = time.time()
-        last_event_at = start
-        last_tool = None
-        try:
-            async for event in stream_graph(
-                graph=graph,
-                initial_state={"messages": [user_message]},
-                config={"recursion_limit": 250},
-            ):
-                last_event_at = time.time()
-                if isinstance(event, str) and event.startswith("data: [Tool:"):
-                    try:
-                        last_tool = event.split("[Tool:", 1)[1].split("]", 1)[0]
-                    except Exception:
-                        pass
-                yield event
-        except BaseException as e:
-            elapsed = time.time() - start
-            since_last = time.time() - last_event_at
-            err = {
-                "exception_class": type(e).__name__,
-                "message": str(e),
-                "elapsed_total_seconds": round(elapsed, 2),
-                "seconds_since_last_event": round(since_last, 2),
-                "last_tool_invoked": last_tool,
-                "traceback": traceback.format_exc(),
-                "timestamp_utc": datetime.utcnow().isoformat(),
-            }
-            logger.error("AGENT_ERROR %s", json.dumps(err, default=str))
-            try:
-                yield f"data: [AGENT_ERROR] {json.dumps(err, default=str)}\n\n"
-            except Exception:
-                pass
-            import asyncio
-            if isinstance(e, asyncio.CancelledError):
-                raise
-
-    return StreamingResponse(generate(), media_type="text/event-stream")
-
-
-@app.get("/health")
-async def health():
-    return {"status": "healthy", "agent": "siu_closure_agent"}
-
-
-if __name__ == "__main__":
-    uvicorn.run(app, host="0.0.0.0", port=AGENT_PORT)
-
-
-
-"""
-siu_closure_router.py
-──────────────────────
-Tool / Endpoint map:
-  get_siu_progress_tracker    GET  /api/siu_closure/progress/{siu_case_id}
-  check_closure_readiness     POST /api/siu_closure/check/{siu_case_id}
-"""
-
-import logging
-from fastapi import APIRouter
-
-from siu_closure_mcp import handler
-
-log = logging.getLogger(__name__)
-
-router = APIRouter()
-
-
-@router.get(
-    "/api/siu_closure/progress/{siu_case_id}",
-    operation_id="get_siu_progress_tracker",
-    summary="Read siu_progress_tracker for an SIU case",
-    tags=["SiuClosure"],
-)
-def get_siu_progress_tracker(siu_case_id: str):
-    """Return the latest closure progress record for a given SIU case."""
-    record = handler.get_siu_progress_tracker(siu_case_id)
-    if not record:
-        return {"status": "not_found", "siu_case_id": siu_case_id}
-    return record
-
-
-@router.post(
-    "/api/siu_closure/check/{siu_case_id}",
-    operation_id="check_closure_readiness",
-    summary="Validate all investigation steps are complete before case closure",
-    tags=["SiuClosure"],
-)
-def check_closure_readiness(siu_case_id: str):
-    """
-    Run the closure readiness checklist: evidence correlation, network analysis,
-    behavioral analysis, final decision, and investigator report. Returns a
-    closure verdict and persists to siu_progress_tracker.
-    """
-    return handler.check_closure_readiness(siu_case_id)
-
-
-
-
-
-"""
-handler.py — SIU Closure
-──────────────────────────
-Validates closure readiness against a checklist of required investigation
-steps before allowing final case closure. Writes the checklist result to
-siu_progress_tracker.
-"""
-
-import json
-import logging
-import os
-import sys
-from datetime import datetime
-
-sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "common"))
-
-from db import get_db_connection, row_to_dict  # noqa: E402
-from dotenv import load_dotenv, find_dotenv
-from openai import AzureOpenAI
-
-load_dotenv(find_dotenv())
-
-log = logging.getLogger(__name__)
-
-AZURE_OPENAI_ENDPOINT = os.environ.get("AZURE_OPENAI_ENDPOINT", "")
-AZURE_OPENAI_API_KEY = os.environ.get("AZURE_OPENAI_API_KEY", "")
-AZURE_OPENAI_API_VERSION = os.environ.get("AZURE_OPENAI_API_VERSION", "2025-11-13")
-AZURE_OPENAI_CHAT_DEPLOYMENT = os.environ.get("AZURE_OPENAI_CHAT_DEPLOYMENT", "gpt-5.1")
-
-_CLOSURE_CHECKLIST = [
-    "evidence_correlation_complete",
-    "network_analysis_complete",
-    "behavioral_analysis_complete",
-    "final_decision_recorded",
-    "investigator_report_submitted",
-]
-
-
-def _get_openai_client() -> AzureOpenAI:
-    return AzureOpenAI(
-        api_key=AZURE_OPENAI_API_KEY,
-        api_version=AZURE_OPENAI_API_VERSION,
-        azure_endpoint=AZURE_OPENAI_ENDPOINT,
-    )
-
-
-def get_siu_progress_tracker(siu_case_id: str) -> dict:
-    conn = get_db_connection()
-    try:
-        cur = conn.cursor()
-        cur.execute(
-            "SELECT * FROM siu_progress_tracker WHERE siu_case_id = %s ORDER BY id DESC LIMIT 1",
-            (siu_case_id,),
-        )
-        return row_to_dict(cur.fetchone())
-    finally:
-        conn.close()
-
-
-def check_closure_readiness(siu_case_id: str) -> dict:
-    conn = get_db_connection()
-    try:
-        cur = conn.cursor()
-
-        cur.execute(
-            "SELECT * FROM siu_case_master WHERE siu_case_id = %s ORDER BY id DESC LIMIT 1",
-            (siu_case_id,),
-        )
-        case = row_to_dict(cur.fetchone())
-
-        if not case:
-            cur.execute(
-                "SELECT * FROM siu_case_master WHERE claim_id = %s ORDER BY id DESC LIMIT 1",
-                (siu_case_id,),
-            )
-            case = row_to_dict(cur.fetchone())
-
-        if not case:
-            return {"error": f"SIU case {siu_case_id} not found"}
-
-        claim_id = case.get("claim_id", "")
-
-        evidence_corr = None
-        try:
-            cur.execute(
-                "SELECT * FROM siu_evidence_correlation_results WHERE claim_id = %s ORDER BY correlated_at DESC LIMIT 1",
-                (claim_id,),
-            )
-            evidence_corr = row_to_dict(cur.fetchone())
-        except Exception:
-            pass
-
-        network_analysis = None
-        try:
-            cur.execute(
-                "SELECT * FROM siu_network_analysis_results WHERE claim_id = %s ORDER BY analyzed_at DESC LIMIT 1",
-                (claim_id,),
-            )
-            network_analysis = row_to_dict(cur.fetchone())
-        except Exception:
-            pass
-
-        behavioral_analysis = None
-        try:
-            cur.execute(
-                "SELECT * FROM siu_behavioral_analysis WHERE siu_case_id = %s ORDER BY analyzed_at DESC LIMIT 1",
-                (siu_case_id,),
-            )
-            behavioral_analysis = row_to_dict(cur.fetchone())
-        except Exception:
-            pass
-
-        decision = case.get("final_decision") or case.get("investigation_outcome")
-        investigator_report = case.get("report_submitted_at") or case.get("report_url")
-
-    finally:
-        conn.close()
-
-    checklist_status = {
-        "evidence_correlation_complete": evidence_corr is not None,
-        "network_analysis_complete": network_analysis is not None,
-        "behavioral_analysis_complete": behavioral_analysis is not None,
-        "final_decision_recorded": bool(decision),
-        "investigator_report_submitted": bool(investigator_report),
-    }
-
-    incomplete_steps = [k for k, v in checklist_status.items() if not v]
-    completed_count = len([v for v in checklist_status.values() if v])
-    readiness_pct = round((completed_count / len(_CLOSURE_CHECKLIST)) * 100)
-    is_ready = len(incomplete_steps) == 0
-
-    try:
-        client = _get_openai_client()
-        prompt = (
-            "You are an SIU case closure coordinator. Review the checklist below and "
-            "provide a closure recommendation. Respond with JSON: "
-            '{"closure_verdict": "Ready to Close|Pending Steps|Blocked", '
-            '"closure_notes": "...", "next_steps": ["..."]}.\n\n'
-            f"SIU Case: {siu_case_id}\n"
-            f"Claim: {claim_id}\n"
-            f"Checklist: {json.dumps(checklist_status)}\n"
-            f"Incomplete steps: {incomplete_steps}\n"
-            f"Readiness: {readiness_pct}%"
-        )
-        response = client.chat.completions.create(
-            model=AZURE_OPENAI_CHAT_DEPLOYMENT,
-            messages=[{"role": "user", "content": prompt}],
-            temperature=0.0,
-            response_format={"type": "json_object"},
-        )
-        llm_result = json.loads(response.choices[0].message.content)
-    except Exception as e:
-        log.warning("LLM closure check failed: %s", e)
-        llm_result = {
-            "closure_verdict": "Ready to Close" if is_ready else "Pending Steps",
-            "closure_notes": f"{readiness_pct}% complete",
-            "next_steps": incomplete_steps,
-        }
-
-    now = datetime.utcnow().isoformat()
-    conn2 = get_db_connection()
-    try:
-        cur2 = conn2.cursor()
-        cur2.execute(
-            """
-            INSERT INTO siu_progress_tracker
-              (siu_case_id, checklist_status, readiness_pct, incomplete_steps,
-               closure_verdict, closure_notes, checked_at)
-            VALUES (%s, %s, %s, %s, %s, %s, %s)
-            ON CONFLICT (siu_case_id) DO UPDATE SET
-              checklist_status = EXCLUDED.checklist_status,
-              readiness_pct = EXCLUDED.readiness_pct,
-              incomplete_steps = EXCLUDED.incomplete_steps,
-              closure_verdict = EXCLUDED.closure_verdict,
-              closure_notes = EXCLUDED.closure_notes,
-              checked_at = EXCLUDED.checked_at
-            """,
-            (
-                siu_case_id,
-                json.dumps(checklist_status),
-                readiness_pct,
-                json.dumps(incomplete_steps),
-                llm_result.get("closure_verdict"),
-                llm_result.get("closure_notes"),
-                now,
-            ),
-        )
-        conn2.commit()
-    except Exception as e:
-        conn2.rollback()
-        log.warning("Could not write siu_progress_tracker: %s", e)
-    finally:
-        conn2.close()
-
-    return {
-        "siu_case_id": siu_case_id,
-        "claim_id": claim_id,
-        "checklist_status": checklist_status,
-        "readiness_pct": readiness_pct,
-        "incomplete_steps": incomplete_steps,
-        **llm_result,
-    }
-
-
-
-main.py
-
-# ── Sub-app: siu_closure (PLACEHOLDER) ──────────────────────────────────────
-
-siu_closure_app = _make_cors_app(
-    title="siu_closure_agent_mcps",
-    description="[PLACEHOLDER] MCP tools for SIU case closure readiness.",
-)
-siu_closure_app.include_router(siu_closure_router)
-FastApiMCP(
-    siu_closure_app,
-    include_operations=["get_siu_progress_tracker"],
-).mount_http()
-app.mount("/api/v1/siu_closure", siu_closure_app)
+Task: Analyze and Fix the SIU Closure Agent to Match the Current Database Schema
 
+Background
 
+I have an SIU Closure Agent that was generated earlier, but after comparing the implementation with the actual PostgreSQL database, I found several schema mismatches.
 
+I do NOT want a blind fix.
 
+I want you to first analyze the existing database schema and determine the best approach.
 
+Priority Order
 
+1. Reuse existing tables and columns whenever possible.
+2. If equivalent information already exists in another table, modify the handler to use that table.
+3. Only if absolutely necessary, generate SQL migrations to create missing tables or columns.
+4. Do NOT duplicate information that already exists elsewhere.
 
+Current SIU Closure Agent Expectations
 
+The handler currently expects the following tables:
 
+✓ siu_case_master
+✓ siu_behavioral_analysis
+✓ siu_progress_tracker
+✗ siu_evidence_correlation_results
+✗ siu_network_analysis_results
 
+Current Database
 
+Existing Tables
 
+- siu_case_master
+- siu_behavioral_analysis
+- siu_progress_tracker
+- siu_decision
+- siu_activity_log
+- siu_timeline_events
+- siu_claim_master
+- siu_escalation_records
+- investigation_notes
+- fraud_risk_snapshots
+- fraud_watchlist
+- legal_escalations
 
+Tables Missing
 
+- siu_evidence_correlation_results
+- siu_network_analysis_results
 
+Observed Column Mismatches
 
+1. siu_case_master
 
+Visible columns:
+
+- id
+- siu_case_id
+- claim_id
+- status
+- assigned_investigator
+- created_date
+
+Current handler expects:
+
+- final_decision
+- investigation_outcome
+- report_submitted_at
+- report_url
+
+These columns either do not exist or are not being populated.
+
+-----------------------------------------------------
+
+2. siu_behavioral_analysis
+
+This table appears compatible.
+
+It contains:
+
+- siu_case_id
+- analyzed_at
+- anomaly_score
+- anomaly_flags
+- tone_shift_detected
+- timing_anomaly_detected
+- behavior_summary
+- recommendation
+
+No changes should be needed unless you find a better approach.
+
+-----------------------------------------------------
+
+3. siu_progress_tracker
+
+Existing table contains:
+
+- id
+- siu_case_id
+- claim_id
+- stage
+- progress_percent
+- estimated_duration
+- days_elapsed
+
+Current handler expects:
+
+- checklist_status
+- readiness_pct
+- incomplete_steps
+- closure_verdict
+- closure_notes
+- checked_at
+
+These do not match.
+
+Expected Work
+
+Please perform a complete analysis and decide the best implementation.
+
+For each mismatch:
+
+Step 1
+
+Determine whether another existing table already stores this information.
+
+Examples:
+
+- Could final decision come from siu_decision instead of siu_case_master?
+- Could investigator report completion be inferred from siu_activity_log or investigation_notes?
+- Could evidence correlation be derived from existing investigation data?
+- Could network analysis already exist under another name?
+
+Step 2
+
+If the information already exists somewhere else:
+
+Modify the handler to read from that location instead of creating new tables.
+
+Step 3
+
+Only if the information truly does not exist anywhere:
+
+Generate PostgreSQL ALTER TABLE or CREATE TABLE scripts.
+
+Do not create duplicate data structures.
+
+Deliverables
+
+I want the following:
+
+1. Complete analysis of every mismatch.
+
+2. Mapping table:
+
+Current Handler → Existing Database Table
+
+3. List of handler changes required.
+
+4. SQL migration scripts only for genuinely missing schema.
+
+5. Updated handler.py.
+
+6. Any required router or MCP changes.
+
+7. Explanation of why each change is required.
+
+Important
+
+Do not assume the existing handler is correct.
+
+Treat the current PostgreSQL schema as the source of truth.
+
+Prefer adapting the code to the existing database rather than modifying the database to fit the old code.
+
+If an existing table can satisfy the requirement, always reuse it.
+
+Only introduce new tables or columns when there is no reasonable existing alternative.
