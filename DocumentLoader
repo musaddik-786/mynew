@@ -1,91 +1,184 @@
-Perfect. This confirms the issue 100%.
+Based on all the screenshots you’ve shared (table list + actual data), here is the complete comparison.
 
-Your query shows:
+Note: This comparison is based on the tables and visible columns in your screenshots. If there are additional hidden columns, the column status may change.
 
-Column	Value
-data_type	integer
-numeric_precision	32
-numeric_scale	0
+Tables Comparison
 
-An integer column cannot store decimal values.
-
-So when Python sends
-
-confidence_score = 0.56
-
-PostgreSQL stores it as
-
-1
-
-(or rounds it depending on how PostgreSQL casts it).
+Table Expected by SIU Closure Agent	Present in DB	Status
+siu_case_master	✅ Yes	Present
+siu_behavioral_analysis	✅ Yes	Present
+siu_progress_tracker	✅ Yes	Present
+siu_evidence_correlation_results	❌ No	Missing
+siu_network_analysis_results	❌ No	Missing
 
 ⸻
 
-Step 2 — Change the datatype
+siu_case_master
 
-Run this SQL:
+Code expects
 
-ALTER TABLE estimates
-ALTER COLUMN confidence_score
-TYPE NUMERIC(4,2)
-USING confidence_score::NUMERIC(4,2);
+siu_case_id
+claim_id
+final_decision
+investigation_outcome
+report_submitted_at
+report_url
 
-Why NUMERIC(4,2)?
+Present (from your screenshot)
 
-It allows values like:
+id
+siu_case_id
+claim_id
+status
+assigned_investigator
+created_date
 
-0.56
-0.61
-0.95
-1.00
+Present
 
-which is exactly the range your confidence score uses (0.00–1.00).
+* ✅ id
+* ✅ siu_case_id
+* ✅ claim_id
 
-⸻
+Missing / Not Visible
 
-Step 3 — Verify the change
-
-After running the ALTER TABLE, execute the same query again:
-
-SELECT
-    column_name,
-    data_type,
-    numeric_precision,
-    numeric_scale
-FROM information_schema.columns
-WHERE table_name = 'estimates'
-AND column_name = 'confidence_score';
-
-You should now see something similar to:
-
-column_name	data_type	numeric_precision	numeric_scale
-confidence_score	numeric	4	2
+* ❌ final_decision
+* ❌ investigation_outcome
+* ❌ report_submitted_at
+* ❌ report_url
 
 ⸻
 
-Step 4 — Test
+siu_behavioral_analysis
 
-Once the datatype has changed:
+Code expects
 
-1. Delete the latest row from estimates for claim 37 (or clear the table if you’re just testing).
-2. Run your curl command again.
-3. Query the latest row:
+siu_case_id
+analyzed_at
 
-SELECT *
-FROM estimates
-ORDER BY id DESC
-LIMIT 1;
+along with the behavioral analysis record.
 
-You should now see:
+Present
 
-confidence_score
-----------------
-0.56
+id
+siu_case_id
+anomaly_score
+anomaly_flags
+tone_shift_detected
+timing_anomaly_detected
+behavior_summary
+recommendation
+analyzed_at
 
-instead of
+Present
 
-1
+* ✅ siu_case_id
+* ✅ analyzed_at
+
+This table is compatible with the handler.
 
 ⸻
 
-This is the only schema change needed. Your Python code does not need any modification because it is already calculating and passing the correct decimal value (0.56). The problem is solely that the database column is defined as an INTEGER.
+siu_progress_tracker
+
+Code expects
+
+siu_case_id
+checklist_status
+readiness_pct
+incomplete_steps
+closure_verdict
+closure_notes
+checked_at
+
+Present
+
+id
+siu_case_id
+claim_id
+stage
+progress_percent
+estimated_duration
+days_elapsed
+
+Present
+
+* ✅ siu_case_id
+* ✅ claim_id
+
+Missing / Not Visible
+
+* ❌ checklist_status
+* ❌ readiness_pct
+* ❌ incomplete_steps
+* ❌ closure_verdict
+* ❌ closure_notes
+* ❌ checked_at
+
+⸻
+
+Tables Missing Completely
+
+These tables are referenced in the code but do not exist in your database.
+
+siu_evidence_correlation_results
+siu_network_analysis_results
+
+⸻
+
+Final Summary
+
+✅ Present Tables
+
+* siu_case_master
+* siu_behavioral_analysis
+* siu_progress_tracker
+
+⸻
+
+❌ Missing Tables
+
+* siu_evidence_correlation_results
+* siu_network_analysis_results
+
+⸻
+
+⚠️ Missing / Not Visible Columns
+
+siu_case_master
+
+* final_decision
+* investigation_outcome
+* report_submitted_at
+* report_url
+
+siu_progress_tracker
+
+* checklist_status
+* readiness_pct
+* incomplete_steps
+* closure_verdict
+* closure_notes
+* checked_at
+
+⸻
+
+Overall Compatibility
+
+Component	Status
+Read siu_case_master	✅ Partially Compatible
+Read siu_behavioral_analysis	✅ Compatible
+Read siu_evidence_correlation_results	❌ Missing Table
+Read siu_network_analysis_results	❌ Missing Table
+Write siu_progress_tracker	❌ Column Mismatch
+
+Conclusion
+
+Based on the information you’ve shared, the SIU Closure Agent is not fully compatible with your current database schema. Specifically:
+
+* 2 required tables are missing:
+    * siu_evidence_correlation_results
+    * siu_network_analysis_results
+* The siu_progress_tracker table exists, but the handler expects different columns than those visible in your database.
+* The siu_case_master table exists, but the handler expects fields (final_decision, report_submitted_at, etc.) that are not visible in your screenshots.
+
+So before using this agent in production, these schema differences would need to be resolved, or the handler would need to be updated to match the current database design.
