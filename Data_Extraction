@@ -1,7 +1,8 @@
+
 JarvisClaims@JarvisClaims:~/Ramakrishna$ curl -N -X POST http://localhost:9106/chat \
 -H "Content-Type: application/json" \
 -d '{
-"message":"Update work order WO-756807 to In Progress. Action by Vendor Manager. Vendor has reached customer location."
+"message":"Complete work order WO-756807. Action by Vendor Manager. Inspection completed successfully."
 }'
 data: [Tool: update_work_order_status] Starting...
 
@@ -19,25 +20,23 @@ data: 756
 
 data: 807
 
-data:  status
-
 data:  has
 
 data:  been
 
-data:  updated
+data:  marked
 
-data:  to
+data:  as
 
 data:  "
 
-data: In
-
-data:  Progress
+data: Completed
 
 data: "
 
 data:  by
+
+data:  the
 
 data:  Vendor
 
@@ -47,28 +46,18 @@ data: .
 
 data:  The
 
-data:  reason
+data:  inspection
 
-data:  recorded
+data:  was
 
-data: :
+data:  completed
 
-data:  Vendor
-
-data:  has
-
-data:  reached
-
-data:  customer
-
-data:  location
+data:  successfully
 
 data: .
 
 
 
 data: End
-
-data: .
 
 JarvisClaims@JarvisClaims:~/Ramakrishna$ 
