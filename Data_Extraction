@@ -1,418 +1,278 @@
-Yes, absolutely. And this is actually the best way to understand an agent. I’ll explain the SIU Watchlist Update Agent in the same style—following the claim as it moves through the system and showing exactly which tables are read, which ones are written, and what decisions are made.
+JarvisClaims@JarvisClaims:~/Ramakrishna$ curl -N -X POST http://localhost:9106/chat \
+-H "Content-Type: application/json" \
+-d '{
+  "message":"Create a work order for claim CLAIM-001 (claim number CLM-2026-1001). Dispatch expert EXP-101 John Smith (Field Adjuster). Schedule the visit for 2026-08-08 at 10:30 AM. Customer address is 221B Baker Street, Pune. Assigned by Vendor Manager. Estimated arrival is 10:15 AM. Estimated cost is 2500. Priority is High. Notes: Inspect structural damage. Customer phone is 9876543210. Customer email is customer@test.com."
+}'
+data: [Tool: create_work_order] Starting...
 
-⸻
+data: [Tool: create_work_order] Done
 
-Initial Situation
+data: Work
 
-Assume the fraud investigation has already completed.
+data:  order
 
-Your database contains the following.
+data:  created
 
-⸻
+data:  for
 
-claims
+data:  claim
 
-claim_number	policy_number	policyholder_name	loss_type	status
-CLM-2026-2983	POL-987654	John Smith	Motor Accident	Under Investigation
+data:  CLAIM
 
-⸻
+data: -
 
-siu_case_master
+data: 001
 
-siu_case_id	claim_id	investigator
-SIU-5001	CLM-2026-2983	David Brown
+data:  (
 
-⸻
+data: CL
 
-siu_decision
+data: M
 
-siu_case_id	decision	remarks
-SIU-5001	Fraud Confirmed	Staged accident confirmed
+data: -
 
-⸻
+data: 202
 
-fraud_watchlist
+data: 6
 
-Empty
+data: -
 
-⸻
+data: 100
 
-Customer / Investigator Request
+data: 1
 
-The investigator completes the SIU investigation.
+data: ):
 
-The Watchlist Update Agent receives
 
-Update the fraud watchlist for claim CLM-2026-2983
 
-The LangGraph agent starts.
+data: -
 
-⸻
+data:  Expert
 
-STEP 1 — Load MCP Tools
+data: :
 
-The agent first loads its MCP tools.
+data:  John
 
-Available tools become
+data:  Smith
 
-add_to_watchlist()
-get_watchlist()
-check_watchlist()
-remove_from_watchlist()
-update_watchlist_from_case()
+data:  (
 
-No database activity yet.
+data: Field
 
-⸻
+data:  Adjust
 
-STEP 2 — LLM Chooses the Tool
+data: er
 
-The system prompt says
+data: ,
 
-After a case is resolved, call update_watchlist_from_case().
+data:  EXP
 
-The LLM therefore selects
+data: -
 
-update_watchlist_from_case(
-    claim_id="CLM-2026-2983"
-)
+data: 101
 
-From this point onwards, the MCP performs all business logic.
+data: )
 
-⸻
 
-STEP 3 — Read SIU Case
+data: -
 
-Function
+data:  Scheduled
 
-_get_latest_siu_case()
+data:  visit
 
-SQL
+data: :
 
-SELECT *
-FROM siu_case_master
-WHERE claim_id='CLM-2026-2983'
-ORDER BY id DESC
-LIMIT 1;
+data:  
 
-Current table
+data: 202
 
-siu_case_id	claim_id
-SIU-5001	CLM-2026-2983
+data: 6
 
-Result
+data: -
 
-SIU Case Found
-SIU-5001
+data: 08
 
-No writes occur.
+data: -
 
-⸻
+data: 08
 
-STEP 4 — Read Latest SIU Decision
+data:  at
 
-Function
+data:  
 
-_get_latest_decision()
+data: 10
 
-SQL
+data: :
 
-SELECT *
-FROM siu_decision
-WHERE siu_case_id='SIU-5001'
-ORDER BY id DESC
-LIMIT 1;
+data: 30
 
-Returns
+data:  AM
 
-decision
+data: 
 
-Fraud Confirmed
 
-Now the business rule is evaluated.
+data: -
 
-⸻
+data:  Estimated
 
-STEP 5 — Business Rule
+data:  arrival
 
-The code checks
+data: :
 
-if decision != "Fraud Confirmed":
+data:  
 
-Current value
+data: 10
 
-Fraud Confirmed
+data: :
 
-Condition
+data: 15
 
-False
+data:  AM
 
-Therefore
+data: 
 
-The workflow continues.
 
-If instead the decision had been
+data: -
 
-Fraud Not Proven
+data:  Customer
 
-the function would immediately return
+data:  address
 
-{
-    "watchlisted": false,
-    "reason":"No watchlist action taken"
-}
+data: :
 
-No database writes would occur.
+data:  
 
-⸻
+data: 221
 
-STEP 6 — Read Claim Details
+data: B
 
-Function
+data:  Baker
 
-_get_claim()
+data:  Street
 
-SQL
+data: ,
 
-SELECT *
-FROM claims
-WHERE claim_number='CLM-2026-2983';
+data:  Pune
 
-Returns
+data: 
 
-Field	Value
-claim_number	CLM-2026-2983
-policy_number	POL-987654
-policyholder_name	John Smith
 
-These two fields become extremely important.
+data: -
 
-policy_number
-↓
-entity_id
+data:  Assigned
 
-and
+data:  by
 
-policyholder_name
-↓
-entity_name
+data: :
 
-Still no writes.
+data:  Vendor
 
-⸻
+data:  Manager
 
-STEP 7 — Build Watchlist Entry
+data: 
 
-Now the code prepares
 
-add_to_watchlist(
-    entity_type="policyholder",
-    entity_id="POL-987654",
-    entity_name="John Smith",
-    reason="Confirmed fraud on claim CLM-2026-2983",
-    severity="High"
-)
+data: -
 
-Notice something interesting.
+data:  Estimated
 
-Nothing is coming from the API request except
+data:  cost
 
-claim_id
+data: :
 
-Everything else is derived from the database.
+data:  
 
-⸻
+data: 250
 
-STEP 8 — Generate Watchlist ID
+data: 0
 
-Function
+data: 
 
-_rand_suffix(6)
 
-Suppose
+data: -
 
-834521
+data:  Priority
 
-Generated ID
+data: :
 
-WL-834521
+data:  High
 
-⸻
+data: 
 
-STEP 9 — Insert into fraud_watchlist
 
-SQL executed
+data: -
 
-INSERT INTO fraud_watchlist
-(
-    watchlist_id,
-    entity_type,
-    entity_id,
-    entity_name,
-    reason,
-    severity,
-    added_by,
-    status
-)
-VALUES
-(
-    'WL-834521',
-    'policyholder',
-    'POL-987654',
-    'John Smith',
-    'Confirmed fraud on claim CLM-2026-2983',
-    'High',
-    'SIU Investigator',
-    'Active'
-);
+data:  Notes
 
-This is the only database write performed by the automatic workflow.
+data: :
 
-⸻
+data:  Inspect
 
-fraud_watchlist
+data:  structural
 
-Before
+data:  damage
 
-Empty
+data: .
 
-After
 
-watchlist_id	entity_type	entity_id	entity_name	severity	status
-WL-834521	policyholder	POL-987654	John Smith	High	Active
+data: -
 
-⸻
+data:  Customer
 
-STEP 10 — Return Response
+data:  contact
 
-The MCP returns
+data: :
 
-{
-  "claim_id":"CLM-2026-2983",
-  "watchlisted":true,
-  "watchlist_entry":{
-      "watchlist_id":"WL-834521",
-      "entity_type":"policyholder",
-      "entity_id":"POL-987654",
-      "entity_name":"John Smith",
-      "severity":"High",
-      "status":"Active"
-  }
-}
+data:  
 
-⸻
+data: 987
 
-STEP 11 — LLM Explains the Result
+data: 654
 
-The user finally receives something like
+data: 321
 
-The SIU investigation concluded with a Fraud Confirmed decision. The policyholder John Smith (Policy POL-987654) has been successfully added to the active fraud watchlist with High severity.
+data: 0
 
-⸻
+data:  /
 
-Negative Scenario
+data:  customer
 
-Suppose the SIU table contains
+data: @test
 
-decision
+data: .com
 
-Fraud Not Proven
+data: 
 
-Then
 
-Step 3
 
-Reads SIU case
+data: Work
 
-↓
+data:  order
 
-Step 4
+data:  ID
 
-Reads SIU decision
+data: :
 
-↓
+data:  WO
 
-Decision
+data: -
 
-Fraud Not Proven
+data: 756
 
-↓
+data: 807
 
-Immediately returns
+data:  (
 
-{
-   "watchlisted":false,
-   "reason":"No watchlist action taken — SIU decision is not 'Fraud Confirmed'"
-}
+data: status
 
-No claim lookup occurs.
+data: :
 
-No watchlist insertion occurs.
+data:  Scheduled
 
-No write happens anywhere.
+data: )
 
-⸻
 
-Complete Data Movement
 
-                  User / Orchestrator
-                          │
-                          ▼
-      "Update watchlist for claim CLM-2026-2983"
-                          │
-                          ▼
-          update_watchlist_from_case()
-                          │
-                          ▼
-             siu_case_master (SELECT)
-                          │
-                          ▼
-              Latest SIU Decision
-                          │
-             Decision == Fraud Confirmed?
-                 │                    │
-                No                   Yes
-                 │                    │
-                 ▼                    ▼
-         Return No Action        claims (SELECT)
-                                      │
-                                      ▼
-                      policy_number = POL-987654
-                      policyholder = John Smith
-                                      │
-                                      ▼
-                         Build Watchlist Entry
-                                      │
-                                      ▼
-                      Generate WL-834521
-                                      │
-                                      ▼
-                  fraud_watchlist (INSERT)
-                                      │
-                                      ▼
-                     Return Success Response
+data: End
 
-⸻
-
-One important observation about this implementation
-
-Unlike many enterprise fraud systems, this implementation does not check whether the policyholder is already on the active watchlist before inserting a new record.
-
-The flow is simply:
-
-Fraud Confirmed
-        │
-        ▼
-Read Claim
-        │
-        ▼
-INSERT fraud_watchlist
-
-There is no duplicate check such as:
-
-SELECT *
-FROM fraud_watchlist
-WHERE entity_id = 'POL-987654'
-AND status = 'Active';
-
-This means that if update_watchlist_from_case() is triggered multiple times for the same confirmed fraud case, the system may create multiple active watchlist entries for the same policyholder unless the database enforces a uniqueness constraint. In a production-grade insurance platform, a common enhancement would be to perform this existence check first and only insert a new row if no active watchlist entry already exists.
+JarvisClaims@JarvisClaims:~/Ramakrishna$ 
