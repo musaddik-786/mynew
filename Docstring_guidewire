@@ -1,6 +1,4 @@
-JarvisClaims@JarvisClaims:~/Ramakrishna$ curl -X POST "http://localhost:9100/api/v1/dispatch/api/dispatch/work_orders" \
--H "Content-Type: application/json" \
--d '{
+arvisClaims@JarvisClaims:~/Ramakrishna$ curl -X POST "http://localhost:9100/api/v1/dispatch/api/dispatch/work_orders" -H "Content-Type: application/json" -d '{
 "claim_id":"SHOULD_BE_IGNORED",
 "claim_number":"CLM-2026-1859",
 "expert_id":"EXP-001",
@@ -17,66 +15,4 @@ JarvisClaims@JarvisClaims:~/Ramakrishna$ curl -X POST "http://localhost:9100/api
 "customer_phone":"9999999999",
 "customer_email":"test@example.com"
 }'
-{"detail":"operator does not exist: text = date\nLINE 3: ...   WHERE expert_id = 'EXP-001' AND scheduled_date = '2026-08...\n                                                             ^\nHINT:  No operator matches the given name and argument types. You might need to add explicit type casts.\n"}JarvisClaims@JarvisClaims:~/Ramakrishna$ 
-
-
-
-(venv) JarvisClaims@JarvisClaims:~/Ramakrishna/Jarvis_claims_agents_v3_copy/VendorManagerAgents/MCP$ python3 main.py 
-/home/JarvisClaims/Ramakrishna/Jarvis_claims_agents_v3_copy/VendorManagerAgents/MCP/main.py:254: DeprecationWarning: 
-        on_event is deprecated, use lifespan event handlers instead.
-
-        Read more about it in the
-        [FastAPI docs for Lifespan Events](https://fastapi.tiangolo.com/advanced/events/).
-        
-  @app.on_event("startup")
-INFO:     Started server process [46882]
-INFO:     Waiting for application startup.
-INFO:     Application startup complete.
-INFO:     Uvicorn running on http://0.0.0.0:9100 (Press CTRL+C to quit)
-INFO:     127.0.0.1:38546 - "POST /api/dispatch/work_orders HTTP/1.1" 404 Not Found
-create_work_order error
-Traceback (most recent call last):
-  File "/home/JarvisClaims/Ramakrishna/Jarvis_claims_agents_v3_copy/VendorManagerAgents/MCP/dispatch_router.py", line 141, in create_work_order
-    return handler.create_work_order(
-           ^^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "/home/JarvisClaims/Ramakrishna/Jarvis_claims_agents_v3_copy/VendorManagerAgents/MCP/dispatch_mcp/handler.py", line 260, in create_work_order
-    if v.is_expert_double_booked(cur, true_expert_id, parsed_scheduled_date, scheduled_time):
-       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "/home/JarvisClaims/Ramakrishna/Jarvis_claims_agents_v3_copy/VendorManagerAgents/MCP/dispatch_mcp/validation.py", line 247, in is_expert_double_booked
-    cur.execute(
-  File "/home/JarvisClaims/Ramakrishna/Jarvis_claims_agents_v3/AdjusterAgents/venv/lib/python3.11/site-packages/psycopg2/extras.py", line 236, in execute
-    return super().execute(query, vars)
-           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-psycopg2.errors.UndefinedFunction: operator does not exist: text = date
-LINE 3: ...   WHERE expert_id = 'EXP-001' AND scheduled_date = '2026-08...
-                                                             ^
-HINT:  No operator matches the given name and argument types. You might need to add explicit type casts.
-
-INFO:     127.0.0.1:39574 - "POST /api/v1/dispatch/api/dispatch/work_orders HTTP/1.1" 500 Internal Server Error
-create_work_order error
-Traceback (most recent call last):
-  File "/home/JarvisClaims/Ramakrishna/Jarvis_claims_agents_v3_copy/VendorManagerAgents/MCP/dispatch_router.py", line 141, in create_work_order
-    return handler.create_work_order(
-           ^^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "/home/JarvisClaims/Ramakrishna/Jarvis_claims_agents_v3_copy/VendorManagerAgents/MCP/dispatch_mcp/handler.py", line 260, in create_work_order
-    if v.is_expert_double_booked(cur, true_expert_id, parsed_scheduled_date, scheduled_time):
-       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "/home/JarvisClaims/Ramakrishna/Jarvis_claims_agents_v3_copy/VendorManagerAgents/MCP/dispatch_mcp/validation.py", line 247, in is_expert_double_booked
-    cur.execute(
-  File "/home/JarvisClaims/Ramakrishna/Jarvis_claims_agents_v3/AdjusterAgents/venv/lib/python3.11/site-packages/psycopg2/extras.py", line 236, in execute
-    return super().execute(query, vars)
-           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-psycopg2.errors.UndefinedFunction: operator does not exist: text = date
-LINE 3: ...   WHERE expert_id = 'EXP-001' AND scheduled_date = '2026-08...
-                                                             ^
-HINT:  No operator matches the given name and argument types. You might need to add explicit type casts.
-
-INFO:     127.0.0.1:39584 - "POST /api/v1/dispatch/api/dispatch/work_orders HTTP/1.1" 500 Internal Server Error
-
-(venv) JarvisClaims@JarvisClaims:~/Ramakrishna/Jarvis_claims_agents_v3_copy/VendorManagerAgents/DispatchAgent$ ^C
-(venv) JarvisClaims@JarvisClaims:~/Ramakrishna/Jarvis_claims_agents_v3_copy/VendorManagerAgents/DispatchAgent$ ^C
-(venv) JarvisClaims@JarvisClaims:~/Ramakrishna/Jarvis_claims_agents_v3_copy/VendorManagerAgents/DispatchAgent$ python3 server.py 
-INFO:     Started server process [44723]
-INFO:     Waiting for application startup.
-INFO:     Application startup complete.
-INFO:     Uvicorn running on http://0.0.0.0:9106 (Press CTRL+C to quit)
+{"id":3,"work_order_id":"WO-112207","claim_id":"130","claim_number":"CLM-2026-1859","expert_id":"EXP-001","expert_name":"Maria Chen","expert_type":"Property Inspector","scheduled_date":"2026-08-07","scheduled_time":"14:30:00","estimated_arrival":"30 minutes","travel_time_minutes":null,"equipment_needed":[],"safety_level":"Low","permit_required":false,"drone_required":false,"drone_dispatch_id":null,"estimated_cost":2500,"actual_cost":null,"status":"Scheduled","priority":"Normal","notes_to_expert":"Inspect kitchen fire damage","customer_address":"2850 S. Delaware St.\nSan Mateo, CA 94403","customer_phone":"9999999999","customer_email":"test@example.com","assigned_by":"Musaddique","started_at":null,"completed_at":null,"canceled_at":null,"cancel_reason":null,"created_at":"2026-08-06T12:23:50.202189","dispatch_type":"Site Visit"}JarvisClaims@JarvisClaims:~/Ramakrishna$ 
