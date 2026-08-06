@@ -1,95 +1,233 @@
-(venv) JarvisClaims@JarvisClaims:~/Ramakrishna/Jarvis_claims_agents_v3_copy/VendorManagerAgents/DispatchAgent$ python3 server.py 
-INFO:     Started server process [30266]
-INFO:     Waiting for application startup.
-INFO:     Application startup complete.
-INFO:     Uvicorn running on http://0.0.0.0:9106 (Press CTRL+C to quit)
-2026-08-06 09:31:34,934 | INFO     | httpx | HTTP Request: POST http://localhost:9100/api/v1/dispatch/mcp "HTTP/1.1 200 OK"
-2026-08-06 09:31:34,934 | INFO     | mcp.client.streamable_http | Received session ID: ad076013675c4a158544cad04057cacb
-2026-08-06 09:31:34,936 | INFO     | mcp.client.streamable_http | Negotiated protocol version: 2025-11-25
-2026-08-06 09:31:34,941 | INFO     | httpx | HTTP Request: POST http://localhost:9100/api/v1/dispatch/mcp "HTTP/1.1 202 Accepted"
-2026-08-06 09:31:34,947 | INFO     | httpx | HTTP Request: POST http://localhost:9100/api/v1/dispatch/mcp "HTTP/1.1 200 OK"
-2026-08-06 09:31:34,950 | INFO     | httpx | HTTP Request: DELETE http://localhost:9100/api/v1/dispatch/mcp "HTTP/1.1 200 OK"
-2026-08-06 09:31:34,951 | INFO     | dispatch_agent | Tools loaded from MCP: ['create_work_order', 'list_work_orders', 'get_work_order', 'update_work_order_status', 'get_dispatch_logs']
-2026-08-06 09:31:36,050 | WARNING  | dispatch_agent | Phoenix prompt load failed (Phoenix not configured) — using fallback prompt
-INFO:     127.0.0.1:52530 - "POST /chat HTTP/1.1" 500 Internal Server Error
-ERROR:    Exception in ASGI application
-Traceback (most recent call last):
-  File "/home/JarvisClaims/Ramakrishna/Jarvis_claims_agents_v3/AdjusterAgents/venv/lib/python3.11/site-packages/uvicorn/protocols/http/h11_impl.py", line 416, in run_asgi
-    result = await app(  # type: ignore[func-returns-value]
-             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "/home/JarvisClaims/Ramakrishna/Jarvis_claims_agents_v3/AdjusterAgents/venv/lib/python3.11/site-packages/uvicorn/middleware/proxy_headers.py", line 63, in __call__
-    return await self.app(scope, receive, send)
-           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "/home/JarvisClaims/Ramakrishna/Jarvis_claims_agents_v3/AdjusterAgents/venv/lib/python3.11/site-packages/fastapi/applications.py", line 1163, in __call__
-    await super().__call__(scope, receive, send)
-  File "/home/JarvisClaims/Ramakrishna/Jarvis_claims_agents_v3/AdjusterAgents/venv/lib/python3.11/site-packages/starlette/applications.py", line 90, in __call__
-    await self.middleware_stack(scope, receive, send)
-  File "/home/JarvisClaims/Ramakrishna/Jarvis_claims_agents_v3/AdjusterAgents/venv/lib/python3.11/site-packages/starlette/middleware/errors.py", line 186, in __call__
-    raise exc
-  File "/home/JarvisClaims/Ramakrishna/Jarvis_claims_agents_v3/AdjusterAgents/venv/lib/python3.11/site-packages/starlette/middleware/errors.py", line 164, in __call__
-    await self.app(scope, receive, _send)
-  File "/home/JarvisClaims/Ramakrishna/Jarvis_claims_agents_v3/AdjusterAgents/venv/lib/python3.11/site-packages/starlette/middleware/cors.py", line 88, in __call__
-    await self.app(scope, receive, send)
-  File "/home/JarvisClaims/Ramakrishna/Jarvis_claims_agents_v3/AdjusterAgents/venv/lib/python3.11/site-packages/starlette/middleware/exceptions.py", line 63, in __call__
-    await wrap_app_handling_exceptions(self.app, conn)(scope, receive, send)
-  File "/home/JarvisClaims/Ramakrishna/Jarvis_claims_agents_v3/AdjusterAgents/venv/lib/python3.11/site-packages/starlette/_exception_handler.py", line 53, in wrapped_app
-    raise exc
-  File "/home/JarvisClaims/Ramakrishna/Jarvis_claims_agents_v3/AdjusterAgents/venv/lib/python3.11/site-packages/starlette/_exception_handler.py", line 42, in wrapped_app
-    await app(scope, receive, sender)
-  File "/home/JarvisClaims/Ramakrishna/Jarvis_claims_agents_v3/AdjusterAgents/venv/lib/python3.11/site-packages/fastapi/middleware/asyncexitstack.py", line 18, in __call__
-    await self.app(scope, receive, send)
-  File "/home/JarvisClaims/Ramakrishna/Jarvis_claims_agents_v3/AdjusterAgents/venv/lib/python3.11/site-packages/starlette/routing.py", line 660, in __call__
-    await self.middleware_stack(scope, receive, send)
-  File "/home/JarvisClaims/Ramakrishna/Jarvis_claims_agents_v3/AdjusterAgents/venv/lib/python3.11/site-packages/fastapi/routing.py", line 2689, in app
-    await route.handle(scope, receive, send)
-  File "/home/JarvisClaims/Ramakrishna/Jarvis_claims_agents_v3/AdjusterAgents/venv/lib/python3.11/site-packages/fastapi/routing.py", line 1272, in handle
-    await super().handle(scope, receive, send)
-  File "/home/JarvisClaims/Ramakrishna/Jarvis_claims_agents_v3/AdjusterAgents/venv/lib/python3.11/site-packages/starlette/routing.py", line 276, in handle
-    await self.app(scope, receive, send)
-  File "/home/JarvisClaims/Ramakrishna/Jarvis_claims_agents_v3/AdjusterAgents/venv/lib/python3.11/site-packages/fastapi/routing.py", line 156, in app
-    await wrap_app_handling_exceptions(app, request)(scope, receive, send)
-  File "/home/JarvisClaims/Ramakrishna/Jarvis_claims_agents_v3/AdjusterAgents/venv/lib/python3.11/site-packages/starlette/_exception_handler.py", line 53, in wrapped_app
-    raise exc
-  File "/home/JarvisClaims/Ramakrishna/Jarvis_claims_agents_v3/AdjusterAgents/venv/lib/python3.11/site-packages/starlette/_exception_handler.py", line 42, in wrapped_app
-    await app(scope, receive, sender)
-  File "/home/JarvisClaims/Ramakrishna/Jarvis_claims_agents_v3/AdjusterAgents/venv/lib/python3.11/site-packages/fastapi/routing.py", line 142, in app
-    response = await f(request)
-               ^^^^^^^^^^^^^^^^
-  File "/home/JarvisClaims/Ramakrishna/Jarvis_claims_agents_v3/AdjusterAgents/venv/lib/python3.11/site-packages/fastapi/routing.py", line 698, in app
-    raw_response = await run_endpoint_function(
-                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "/home/JarvisClaims/Ramakrishna/Jarvis_claims_agents_v3/AdjusterAgents/venv/lib/python3.11/site-packages/fastapi/routing.py", line 350, in run_endpoint_function
-    return await dependant.call(**values)
-           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "/home/JarvisClaims/Ramakrishna/Jarvis_claims_agents_v3_copy/VendorManagerAgents/DispatchAgent/server.py", line 190, in chat_stream
-    body = await request.json()
-           ^^^^^^^^^^^^^^^^^^^^
-  File "/home/JarvisClaims/Ramakrishna/Jarvis_claims_agents_v3/AdjusterAgents/venv/lib/python3.11/site-packages/starlette/requests.py", line 265, in json
-    self._json = json.loads(body)
-                 ^^^^^^^^^^^^^^^^
-  File "/usr/lib/python3.11/json/__init__.py", line 346, in loads
-    return _default_decoder.decode(s)
-           ^^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "/usr/lib/python3.11/json/decoder.py", line 337, in decode
-    obj, end = self.raw_decode(s, idx=_w(s, 0).end())
-               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "/usr/lib/python3.11/json/decoder.py", line 355, in raw_decode
-    raise JSONDecodeError("Expecting value", s, err.value) from None
-json.decoder.JSONDecodeError: Expecting value: line 1 column 1 (char 0)
+Perfect. Since your Dispatch Agent exposes only one endpoint (POST /chat), every test goes through that endpoint. The LLM decides which MCP tool to invoke based on your prompt.
 
+Below are the curl commands I’d use to validate the entire agent end-to-end.
 
+⸻
 
+1. Create a Work Order
 
+This should call:
 
+create_work_order
+curl -N -X POST http://localhost:9106/chat \
+-H "Content-Type: application/json" \
+-d '{
+  "message":"Create a work order for claim CLAIM-001 (claim number CLM-2026-1001). Dispatch expert EXP-101 John Smith (Field Adjuster). Schedule the visit for 2026-08-08 at 10:30 AM. Customer address is 221B Baker Street, Pune. Assigned by Vendor Manager. Estimated arrival is 10:15 AM. Estimated cost is 2500. Priority is High. Notes: Inspect structural damage. Customer phone is 9876543210. Customer email is customer@test.com."
+}'
 
+Expected MCP Tool:
 
+create_work_order
 
+Expected DB changes:
 
+* ✅ work_orders → 1 new row
+* ✅ dispatch_logs → 1 new row (“Created”)
 
+⸻
 
-JarvisClaims@JarvisClaims:~/Ramakrishna$ curl -N -X POST http://localhost:9106/chat ^
--H "Content-Type: application/json" ^
--d "{\"message\":\"Create a work order for claim CLM-2026-1001 using expert EXP-101 John Smith.\"}"
-Internal Server Errorcurl: (3) URL using bad/illegal format or missing URL
-bash: -H: command not found
-bash: -d: command not found
+2. Get Work Order
+
+Replace WO-XXXXXX with the work_order_id created above.
+
+Should call
+
+get_work_order
+curl -N -X POST http://localhost:9106/chat \
+-H "Content-Type: application/json" \
+-d '{
+  "message":"Show me work order WO-XXXXXX."
+}'
+
+Expected:
+
+* No DB changes
+* Returns work order details
+
+⸻
+
+3. List Work Orders for a Claim
+
+Should call
+
+list_work_orders
+curl -N -X POST http://localhost:9106/chat \
+-H "Content-Type: application/json" \
+-d '{
+  "message":"List all work orders for claim CLAIM-001."
+}'
+
+Expected:
+
+* Reads work_orders
+* No inserts/updates
+
+⸻
+
+4. List Scheduled Work Orders
+
+Should call
+
+list_work_orders
+curl -N -X POST http://localhost:9106/chat \
+-H "Content-Type: application/json" \
+-d '{
+  "message":"Show all Scheduled work orders."
+}'
+
+Expected:
+
+Returns every Scheduled work order.
+
+⸻
+
+5. Update Status → In Progress
+
+Replace WO-XXXXXX.
+
+Should call
+
+update_work_order_status
+curl -N -X POST http://localhost:9106/chat \
+-H "Content-Type: application/json" \
+-d '{
+  "message":"Update work order WO-XXXXXX to In Progress. Action by Vendor Manager. Vendor has reached the customer location."
+}'
+
+Expected DB
+
+work_orders
+
+status = In Progress
+started_at populated
+
+dispatch_logs
+
+Status Update
+Previous = Scheduled
+New = In Progress
+
+⸻
+
+6. Complete Work Order
+
+Should call
+
+update_work_order_status
+curl -N -X POST http://localhost:9106/chat \
+-H "Content-Type: application/json" \
+-d '{
+  "message":"Complete work order WO-XXXXXX. Action by Vendor Manager. Inspection completed successfully."
+}'
+
+Expected DB
+
+work_orders
+
+status = Completed
+completed_at populated
+
+dispatch_logs
+
+Previous = In Progress
+New = Completed
+
+⸻
+
+7. Cancel Work Order
+
+Create another work order first.
+
+Then
+
+curl -N -X POST http://localhost:9106/chat \
+-H "Content-Type: application/json" \
+-d '{
+  "message":"Cancel work order WO-XXXXXX. Action by Vendor Manager. Customer was unavailable."
+}'
+
+Expected DB
+
+work_orders
+
+status = Canceled
+canceled_at populated
+cancel_reason = Customer was unavailable
+
+dispatch_logs
+
+Previous = Scheduled
+New = Canceled
+
+⸻
+
+8. Get Dispatch Logs
+
+Should call
+
+get_dispatch_logs
+curl -N -X POST http://localhost:9106/chat \
+-H "Content-Type: application/json" \
+-d '{
+  "message":"Show dispatch logs for work order WO-XXXXXX."
+}'
+
+Expected
+
+Returns complete audit history.
+
+⸻
+
+9. Invalid Work Order
+
+Should call
+
+get_work_order
+curl -N -X POST http://localhost:9106/chat \
+-H "Content-Type: application/json" \
+-d '{
+  "message":"Show work order WO-999999."
+}'
+
+Expected
+
+No work order found
+
+No DB changes.
+
+⸻
+
+10. Invalid Status Update
+
+Should call
+
+update_work_order_status
+curl -N -X POST http://localhost:9106/chat \
+-H "Content-Type: application/json" \
+-d '{
+  "message":"Mark work order WO-999999 as Completed."
+}'
+
+Expected
+
+Work order WO-999999 not found
+
+⸻
+
+Recommended execution order
+
+This sequence validates the complete lifecycle:
+
+1. ✅ Create Work Order
+2. ✅ Get Work Order
+3. ✅ List Work Orders
+4. ✅ Update → In Progress
+5. ✅ Get Dispatch Logs
+6. ✅ Update → Completed
+7. ✅ Get Dispatch Logs Again
+8. ✅ Create Second Work Order
+9. ✅ Cancel Second Work Order
+10. ✅ Invalid Work Order
+11. ✅ Invalid Status Update
+
+This is the same style of end-to-end validation we used for the Settlement and Reserve agents: you verify the agent chooses the correct MCP tool, then confirm the corresponding changes (or lack of changes) in work_orders and dispatch_logs after each step.
