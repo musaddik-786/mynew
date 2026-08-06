@@ -1,56 +1,716 @@
+"""
+server.py — Dispatch Agent
+──────────────────────────
+LangGraph agent.
 
-Now let’s check main.py include_operations for these two, and check the vendor init_db.py schema for vendor_master_input and vendor_jobs_input.
+Port: 9106
+MCP : http://localhost:9100/api/v1/dispatch/mcp
 
-I went through all 10 Vendor Manager agent handlers directly (not just the README, since — like SIU — it turned out to be stale in two places). Here’s both pieces.
+Run:
+    py -3 server.py
+"""
 
-1. Complexity ranking (simplest → most complex)
+import json
+import logging
+import os
+import sys
+import time
+import traceback
+from datetime import datetime, timedelta
+from typing import Annotated, TypedDict
 
-Tier 1 — Simple (pure SQL/arithmetic, no LLM, single-purpose)
+import uvicorn
+from dotenv import load_dotenv, find_dotenv
+from fastapi import FastAPI, Request
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import StreamingResponse
+from langchain_core.messages import AIMessage, SystemMessage
+from langchain_mcp_adapters.client import MultiServerMCPClient
+from langchain_openai.chat_models import AzureChatOpenAI
+from langgraph.graph import END, START, StateGraph
+from langgraph.graph.message import add_messages
+from langgraph.prebuilt import ToolNode
+
+load_dotenv(find_dotenv())
+
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s | %(levelname)-8s | %(name)s | %(message)s",
+    stream=sys.stdout,
+    force=True,
+)
+logger = logging.getLogger("dispatch_agent")
+
+PHOENIX_API_KEY = os.getenv("PHOENIX_API_KEY", "")
+PHOENIX_ENDPOINT = os.getenv("PHOENIX_ENDPOINT", "")
+MCP_URL = os.getenv("MCP_URL", "http://localhost:9100/api/v1/dispatch/mcp")
+AGENT_PORT = int(os.getenv("AGENT_PORT", "9106"))
+
+config_mcp_server = {
+    "dispatch_mcp": {
+        "url": MCP_URL,
+        "transport": "streamable_http",
+        "timeout": timedelta(seconds=120),
+        "sse_read_timeout": timedelta(seconds=600),
+    }
+}
+
+app = FastAPI(title="Dispatch Agent")
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+
+class State(TypedDict):
+    messages: Annotated[list, add_messages]
+
+
+def router(state: State):
+    last = state["messages"][-1]
+    if isinstance(last, AIMessage) and getattr(last, "tool_calls", None):
+        return "tools"
+    if isinstance(last, AIMessage) and last.content:
+        if "Continue" in last.content:
+            return "tools"
+        if "End" in last.content:
+            return "End"
+    return "End"
+
+
+_FALLBACK_PROMPT = """
+You are the Dispatch Agent for an insurance claims platform, assisting a
+Vendor Manager in creating and tracking work orders for vendor/expert
+dispatch.
+
+Your workflow:
+
+1. To schedule a vendor/expert visit, call create_work_order with the
+   claim_id, claim_number, expert_id, expert_name, expert_type,
+   scheduled_date, scheduled_time, customer_address, and assigned_by (plus
+   any optional fields like estimated_arrival, estimated_cost, priority,
+   notes_to_expert, customer_phone, customer_email). This creates a
+   work_orders row (status 'Scheduled') and logs a 'Created' dispatch_logs
+   entry.
+2. Use get_work_order or list_work_orders to look up existing work orders by
+   claim_id and/or status.
+3. As work progresses, call update_work_order_status with the
+   work_order_id, new status (e.g. 'In Progress', 'Completed', 'Canceled'),
+   action_by, and optional details. This updates work_orders.status (setting
+   started_at/completed_at/canceled_at as appropriate) and logs the
+   transition in dispatch_logs.
+4. Use get_dispatch_logs to retrieve the full audit trail for a work order.
+
+When you have completed the task, end your response with "End".
+"""
+
+
+def load_prompt() -> str:
+    if not PHOENIX_ENDPOINT:
+        raise RuntimeError("Phoenix not configured")
+    from phoenix.client import Client
+    client = Client(base_url=PHOENIX_ENDPOINT, api_key=PHOENIX_API_KEY)
+    prompt = client.prompts.get(name="dispatch_agent", label="production")
+    prompt_set = prompt._template["messages"]
+    system_msg = next(
+        (item["content"][0]["text"] for item in prompt_set if item.get("role") == "system"),
+        None,
+    )
+    if not system_msg:
+        raise ValueError("System prompt is empty or missing in Phoenix")
+    return system_msg
+
+
+def create_graph(model, tools, prompt):
+    graph_builder = StateGraph(State)
+    llm_with_tools = model.bind_tools(tools)
+
+    async def agent_node(state: State):
+        messages = state["messages"]
+        all_messages = [SystemMessage(content=prompt)] + messages
+        message = await llm_with_tools.ainvoke(all_messages)
+        return {"messages": [message]}
+
+    graph_builder.add_node("agent", agent_node)
+    graph_builder.add_node("tools", ToolNode(tools=tools))
+    graph_builder.add_edge(START, "agent")
+    graph_builder.add_conditional_edges("agent", router, {"tools": "tools", "End": END})
+    graph_builder.add_edge("tools", "agent")
+    return graph_builder.compile()
+
+
+async def get_tools():
+    client = MultiServerMCPClient(config_mcp_server)
+    tools = await client.get_tools()
+    logger.info("Tools loaded from MCP: %s", [t.name for t in tools])
+    return tools
+
+
+async def stream_graph(graph, initial_state, config):
+    async for event in graph.astream_events(initial_state, config=config, version="v2"):
+        kind = event.get("event", "")
+
+        if kind == "on_chat_model_stream":
+            chunk = event["data"].get("chunk")
+            if chunk and hasattr(chunk, "content") and chunk.content:
+                yield f"data: {chunk.content}\n\n"
+
+        elif kind == "on_tool_start":
+            tool_name = event.get("name", "unknown_tool")
+            yield f"data: [Tool: {tool_name}] Starting...\n\n"
+
+        elif kind == "on_tool_end":
+            tool_name = event.get("name", "unknown_tool")
+            yield f"data: [Tool: {tool_name}] Done\n\n"
+
+
+@app.post("/chat")
+async def chat_stream(request: Request):
+    load_dotenv(find_dotenv())
+
+    tools = await get_tools()
+
+    model = AzureChatOpenAI(
+        api_key=os.getenv("AZURE_OPENAI_API_KEY"),
+        api_version=os.getenv("AZURE_OPENAI_API_VERSION"),
+        azure_deployment=os.getenv("AZURE_OPENAI_CHAT_DEPLOYMENT"),
+        azure_endpoint=os.getenv("AZURE_OPENAI_ENDPOINT"),
+    )
+
+    try:
+        system_prompt = load_prompt()
+    except Exception as e:
+        logger.warning("Phoenix prompt load failed (%s) — using fallback prompt", e)
+        system_prompt = _FALLBACK_PROMPT
+
+    body = await request.json()
+    user_message = body.get("message", "Create a work order to dispatch a vendor for claim CLM-2026-1001")
+
+    graph = create_graph(model=model, tools=tools, prompt=system_prompt)
+
+    async def generate():
+        start = time.time()
+        last_event_at = start
+        last_tool = None
+        try:
+            async for event in stream_graph(
+                graph=graph,
+                initial_state={"messages": [user_message]},
+                config={"recursion_limit": 250},
+            ):
+                last_event_at = time.time()
+                if isinstance(event, str) and event.startswith("data: [Tool:"):
+                    try:
+                        last_tool = event.split("[Tool:", 1)[1].split("]", 1)[0]
+                    except Exception:
+                        pass
+                yield event
+        except BaseException as e:
+            elapsed = time.time() - start
+            since_last = time.time() - last_event_at
+            err = {
+                "exception_class": type(e).__name__,
+                "message": str(e),
+                "elapsed_total_seconds": round(elapsed, 2),
+                "seconds_since_last_event": round(since_last, 2),
+                "last_tool_invoked": last_tool,
+                "traceback": traceback.format_exc(),
+                "timestamp_utc": datetime.utcnow().isoformat(),
+            }
+            logger.error("AGENT_ERROR %s", json.dumps(err, default=str))
+            try:
+                yield f"data: [AGENT_ERROR] {json.dumps(err, default=str)}\n\n"
+            except Exception:
+                pass
+            import asyncio
+            if isinstance(e, asyncio.CancelledError):
+                raise
+
+    return StreamingResponse(generate(), media_type="text/event-stream")
+
+
+@app.get("/health")
+async def health():
+    return {"status": "healthy", "agent": "dispatch_agent"}
+
+
+if __name__ == "__main__":
+    uvicorn.run(app, host="0.0.0.0", port=AGENT_PORT)
 
 
 
-|Agent                       |Why it’s simple                                                                                                                                                    |
-|----------------------------|-------------------------------------------------------------------------------------------------------------------------------------------------------------------|
-|**SLAComplianceAgent**      |3 functions. `compute_sla_compliance` is just `% of vendor_jobs_input rows where sla_status != 'Overdue'` + an upsert. No LLM, no branching logic worth mentioning.|
-|**VendorPerformanceAgent**  |3 functions. `compute_vendor_performance_score` = average of 3 simple ratios (completion rate, avg rating scaled, 100−                                             |
-|**EscalationAgent**         |3 functions. `escalate_overdue_jobs` just scans `vendor_jobs_input` for `sla_status='Overdue'` and inserts a log row per hit. No LLM, no scoring.                  |
-|**VendorCostBenchmarkAgent**|4 functions. `compute_cost_variance` is a straight average/variance calculation over `vendor_cost_input` rows. No LLM.                                             |
 
-Tier 2 — Moderate (more functions/state, still no LLM)
+"""
+handler.py — Dispatch
+────────────────────────
+Creates and tracks work orders for vendor/expert dispatch, with a
+dispatch_logs audit trail.
+"""
+
+import logging
+import os
+import random
+import sys
+from datetime import datetime
+from typing import Optional
+
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "common"))
+
+from db import get_db_connection, row_to_dict  # noqa: E402
+
+log = logging.getLogger(__name__)
+
+
+def _rand_suffix(n: int) -> str:
+    return "".join(random.choices("0123456789", k=n))
+
+
+def create_work_order(claim_id: str, claim_number: str, expert_id: str, expert_name: str,
+                       expert_type: str, scheduled_date: str, scheduled_time: str,
+                       customer_address: str, assigned_by: str,
+                       estimated_arrival: Optional[str] = None,
+                       estimated_cost: Optional[float] = None,
+                       priority: str = "Normal",
+                       notes_to_expert: Optional[str] = None,
+                       customer_phone: Optional[str] = None,
+                       customer_email: Optional[str] = None) -> dict:
+    work_order_id = f"WO-{_rand_suffix(6)}"
+    conn = get_db_connection()
+    try:
+        cur = conn.cursor()
+        cur.execute(
+            """
+            INSERT INTO work_orders (work_order_id, claim_id, claim_number, expert_id, expert_name,
+                                      expert_type, scheduled_date, scheduled_time, estimated_arrival,
+                                      estimated_cost, status, priority, notes_to_expert,
+                                      customer_address, customer_phone, customer_email, assigned_by)
+            VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s, 'Scheduled', %s, %s, %s, %s, %s, %s)
+            """,
+            (work_order_id, claim_id, claim_number, expert_id, expert_name, expert_type,
+             scheduled_date, scheduled_time, estimated_arrival, estimated_cost, priority,
+             notes_to_expert, customer_address, customer_phone, customer_email, assigned_by),
+        )
+
+        log_id = f"LOG-{_rand_suffix(6)}"
+        cur.execute(
+            """
+            INSERT INTO dispatch_logs (log_id, work_order_id, claim_id, action, action_by, details,
+                                        previous_status, new_status)
+            VALUES (%s,%s,%s, 'Created', %s, %s, NULL, 'Scheduled')
+            """,
+            (log_id, work_order_id, claim_id, assigned_by,
+             f"Work order created for {expert_name} ({expert_type}) on {scheduled_date} {scheduled_time}"),
+        )
+        conn.commit()
+
+        cur.execute("SELECT * FROM work_orders WHERE work_order_id = %s", (work_order_id,))
+        return row_to_dict(cur.fetchone())
+    finally:
+        conn.close()
+
+
+def get_work_order(work_order_id: str) -> Optional[dict]:
+    conn = get_db_connection()
+    try:
+        cur = conn.cursor()
+        cur.execute("SELECT * FROM work_orders WHERE work_order_id = %s", (work_order_id,))
+        return row_to_dict(cur.fetchone())
+    finally:
+        conn.close()
+
+
+def list_work_orders(claim_id: Optional[str] = None, status: Optional[str] = None) -> list:
+    conn = get_db_connection()
+    try:
+        cur = conn.cursor()
+        query = "SELECT * FROM work_orders WHERE 1=1"
+        params = []
+        if claim_id:
+            query += " AND claim_id = %s"
+            params.append(claim_id)
+        if status:
+            query += " AND status = %s"
+            params.append(status)
+        query += " ORDER BY id DESC"
+        cur.execute(query, params)
+        return row_to_dict(cur.fetchall())
+    finally:
+        conn.close()
+
+
+def update_work_order_status(work_order_id: str, status: str, action_by: str,
+                              details: Optional[str] = None) -> dict:
+    conn = get_db_connection()
+    try:
+        cur = conn.cursor()
+        cur.execute("SELECT * FROM work_orders WHERE work_order_id = %s", (work_order_id,))
+        wo = row_to_dict(cur.fetchone())
+        if not wo:
+            raise ValueError(f"Work order {work_order_id} not found")
+
+        previous_status = wo["status"]
+        now = datetime.now().isoformat()
+
+        updates = ["status = %s"]
+        params = [status]
+        if status == "In Progress":
+            updates.append("started_at = %s")
+            params.append(now)
+        elif status == "Completed":
+            updates.append("completed_at = %s")
+            params.append(now)
+        elif status == "Canceled":
+            updates.append("canceled_at = %s")
+            params.append(now)
+            if details:
+                updates.append("cancel_reason = %s")
+                params.append(details)
+
+        params.append(work_order_id)
+        cur.execute(f"UPDATE work_orders SET {', '.join(updates)} WHERE work_order_id = %s", params)
+
+        log_id = f"LOG-{_rand_suffix(6)}"
+        cur.execute(
+            """
+            INSERT INTO dispatch_logs (log_id, work_order_id, claim_id, action, action_by, details,
+                                        previous_status, new_status)
+            VALUES (%s,%s,%s, 'Status Update', %s,%s,%s,%s)
+            """,
+            (log_id, work_order_id, wo["claim_id"], action_by, details, previous_status, status),
+        )
+        conn.commit()
+
+        cur.execute("SELECT * FROM work_orders WHERE work_order_id = %s", (work_order_id,))
+        return row_to_dict(cur.fetchone())
+    finally:
+        conn.close()
+
+
+def get_dispatch_logs(work_order_id: str) -> list:
+    conn = get_db_connection()
+    try:
+        cur = conn.cursor()
+        cur.execute("SELECT * FROM dispatch_logs WHERE work_order_id = %s ORDER BY id ASC", (work_order_id,))
+        return row_to_dict(cur.fetchall())
+    finally:
+        conn.close()
 
 
 
-|Agent                    |Why it’s moderate                                                                                                                                                                                      |
-|-------------------------|-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
-|**VendorMatchingAgent**  |6 functions incl. a heuristic loss_type→specialty map and a ranked top-3 vendor query, plus an assignment upsert. No LLM but more moving parts.                                                        |
-|**VendorOnboardingAgent**|6 functions; `approve_vendor_application` is a multi-table provisioning step (application → `vendors` row → `vendor_master_input` row with derived defaults). No LLM, but touches 3 tables in one call.|
-|**DispatchAgent**        |5 functions; `work_orders` has ~25 columns and a status state machine (Scheduled/In Progress/Completed/Canceled) with timestamp side-effects. No LLM, but the widest single table in the persona.      |
-
-Tier 3 — Most complex (LLM-in-the-loop, multi-signal reasoning)
+from typing import Optional
+from pydantic import BaseModel
 
 
+class CreateWorkOrderRequest(BaseModel):
+    claim_id: str
+    claim_number: str
+    expert_id: str
+    expert_name: str
+    expert_type: str
+    scheduled_date: str
+    scheduled_time: str
+    customer_address: str
+    assigned_by: str
+    estimated_arrival: Optional[str] = None
+    estimated_cost: Optional[float] = None
+    priority: str = "Normal"
+    notes_to_expert: Optional[str] = None
+    customer_phone: Optional[str] = None
+    customer_email: Optional[str] = None
 
-|Agent                            |Why it’s complex                                                                                                                      |
-|---------------------------------|--------------------------------------------------------------------------------------------------------------------------------------|
-|**ETAPredictionAgent**           |LLM call (with heuristic fallback) reasoning over baseline ETA + loss_type/complexity to produce a prediction with confidence/factors.|
-|**VendorQualificationAgent**     |LLM call over 4 compliance checks to decide eligibility/risk. **Also currently broken end-to-end** — see note below.                  |
-|**VendorCapacityManagementAgent**|LLM call over active-job-count vs. threshold to decide throttling. **Also currently broken end-to-end** — see note below.             |
 
-Important, not in the README: VendorQualificationAgent and VendorCapacityManagementAgent are labeled “PLACEHOLDER” in README.md, but their real functions (score_vendor_qualification, manage_vendor_capacity) are fully implemented in handler.py and registered as FastAPI routes with proper operation_ids. However, VendorManagerAgents/MCP/main.py‘s include_operations list for both sub-apps still only exposes the old read-only tool (get_vendor_master, get_vendor_active_jobs) — so the LLM agent’s own prompt tells it to call a tool that was never bound to it. This is the exact same bug pattern I found in 6 of the SIU agents. On top of that, both handlers write to columns that don’t exist in vendor_master_input as declared in init_db.py (qualification_score, qualified_at, capacity_status, capacity_checked_at, capacity_threshold, throttle_threshold, license_valid, insurance_verified, certifications_current, background_check_passed are all referenced but never created) — so even called directly via HTTP, these two would currently fail against a fresh database.
+class UpdateWorkOrderStatusRequest(BaseModel):
+    status: str
+    action_by: str
+    details: Optional[str] = None
 
-2. Database read/write mapping
+"""
+main.py
+───────
+MCP server entry point for the Vendor Manager Agents platform — hosts 10
+agent MCP sub-apps on a single FastAPI app (port 9100), backed by the SQLite
+database SHARED with PolicyholderAgents
+(`PolicyholderAgents/data/policyholder.db`).
 
-|Agent                            |Reads                                                             |Writes (Insert/Update)                                                                                                       |
-|---------------------------------|------------------------------------------------------------------|-----------------------------------------------------------------------------------------------------------------------------|
-|**VendorOnboardingAgent**        |`vendor_applications`                                             |`vendor_applications` (insert/update status), `vendors` (insert, on approval), `vendor_master_input` (insert, on approval)   |
-|**VendorMatchingAgent**          |`claims`, `vendors`, `vendor_master_input`                        |`vendor_assignment` (upsert)                                                                                                 |
-|**VendorQualificationAgent**     |`vendor_master_input`                                             |`vendor_master_input` (update `assignment_eligible` + 2 undeclared columns — see above)                                      |
-|**VendorCapacityManagementAgent**|`vendor_master_input`, `vendor_jobs_input`                        |`vendor_master_input` (update `assignment_eligible` + 2 undeclared columns)                                                  |
-|**VendorCostBenchmarkAgent**     |`vendor_benchmarks`, `vendor_cost_input`                          |`vendor_cost_input` (insert), `cost_variance_output` (upsert)                                                                |
-|**DispatchAgent**                |`work_orders`                                                     |`work_orders` (insert/update), `dispatch_logs` (insert per transition)                                                       |
-|**VendorPerformanceAgent**       |`vendor_jobs_input`, `vendor_rating_input`, `cost_variance_output`|`vendor_rating_input` (insert), `vendor_performance_score_output` (delete+insert), `vendor_master_input` (update `vis_score`)|
-|**SLAComplianceAgent**           |`vendor_jobs_input`, `vendors`                                    |`sla_tracker_output` (upsert)                                                                                                |
-|**EscalationAgent**              |`vendor_jobs_input`                                               |`escalation_log_output` (insert per overdue job), `job_status_update_output` (upsert)                                        |
-|**ETAPredictionAgent**           |`vendor_benchmarks`, `vendors`, `claims`                          |`eta_predictions` (insert)                                                                                                   |
+Registered sub-apps:
+  /api/v1/vendor_onboarding     — Vendor Onboarding       [FULL]
+  /api/v1/vendor_matching        — Vendor Matching         [FULL]
+  /api/v1/vendor_qualification     — Vendor Qualification    [PLACEHOLDER]
+  /api/v1/vendor_capacity            — Vendor Capacity Mgmt    [PLACEHOLDER]
+  /api/v1/vendor_cost_benchmark        — Vendor Cost Benchmark   [FULL]
+  /api/v1/dispatch                       — Dispatch                [FULL]
+  /api/v1/vendor_performance               — Vendor Performance     [FULL]
+  /api/v1/sla_compliance                     — SLA Compliance         [FULL]
+  /api/v1/vendor_escalation                    — Vendor Escalation      [FULL]
+  /api/v1/eta_prediction                         — ETA Prediction         [FULL]
 
-Want me to package this as a doc, or is the chat answer sufficient for now?
+Run:
+    py -3 main.py
+"""
+
+import os
+import sys
+
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "common"))
+
+from dotenv import load_dotenv, find_dotenv
+load_dotenv(find_dotenv())
+
+from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi_mcp import FastApiMCP
+
+from init_db import init_db
+
+from vendor_onboarding_router import router as vendor_onboarding_router
+from vendor_matching_router import router as vendor_matching_router
+from vendor_qualification_router import router as vendor_qualification_router
+from vendor_capacity_router import router as vendor_capacity_router
+from vendor_cost_benchmark_router import router as vendor_cost_benchmark_router
+from dispatch_router import router as dispatch_router
+from vendor_performance_router import router as vendor_performance_router
+from sla_compliance_router import router as sla_compliance_router
+from vendor_escalation_router import router as vendor_escalation_router
+from eta_prediction_router import router as eta_prediction_router
+
+import uvicorn
+
+
+app = FastAPI(docs_url="/docs", title="Jarvis Vendor Manager Agents MCP Server")
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+
+def _make_cors_app(title: str, description: str = "") -> FastAPI:
+    sub = FastAPI(title=title, description=description)
+    sub.add_middleware(
+        CORSMiddleware,
+        allow_origins=["*"],
+        allow_methods=["*"],
+        allow_headers=["*"],
+    )
+    return sub
+
+
+# ── Sub-app: vendor_onboarding (FULL) ──────────────────────────────────────
+
+vendor_onboarding_app = _make_cors_app(
+    title="vendor_onboarding_agent_mcps",
+    description="MCP tools for reviewing and processing vendor applications.",
+)
+vendor_onboarding_app.include_router(vendor_onboarding_router)
+FastApiMCP(
+    vendor_onboarding_app,
+    include_operations=[
+        "list_vendor_applications",
+        "get_vendor_application",
+        "submit_vendor_application",
+        "approve_vendor_application",
+        "reject_vendor_application",
+    ],
+).mount_http()
+app.mount("/api/v1/vendor_onboarding", vendor_onboarding_app)
+
+
+# ── Sub-app: vendor_matching (FULL) ─────────────────────────────────────────
+
+vendor_matching_app = _make_cors_app(
+    title="vendor_matching_agent_mcps",
+    description="MCP tools for matching and assigning vendors to claims.",
+)
+vendor_matching_app.include_router(vendor_matching_router)
+FastApiMCP(
+    vendor_matching_app,
+    include_operations=[
+        "get_vendors",
+        "get_vendor_master",
+        "match_vendor_for_claim",
+        "assign_vendor_to_claim",
+    ],
+).mount_http()
+app.mount("/api/v1/vendor_matching", vendor_matching_app)
+
+
+# ── Sub-app: vendor_qualification (PLACEHOLDER) ─────────────────────────────
+
+vendor_qualification_app = _make_cors_app(
+    title="vendor_qualification_agent_mcps",
+    description="[PLACEHOLDER] MCP tools for vendor qualification/compliance scoring.",
+)
+vendor_qualification_app.include_router(vendor_qualification_router)
+FastApiMCP(
+    vendor_qualification_app,
+    include_operations=["get_vendor_master"],
+).mount_http()
+app.mount("/api/v1/vendor_qualification", vendor_qualification_app)
+
+
+# ── Sub-app: vendor_capacity (PLACEHOLDER) ──────────────────────────────────
+
+vendor_capacity_app = _make_cors_app(
+    title="vendor_capacity_agent_mcps",
+    description="[PLACEHOLDER] MCP tools for vendor capacity/workload management.",
+)
+vendor_capacity_app.include_router(vendor_capacity_router)
+FastApiMCP(
+    vendor_capacity_app,
+    include_operations=["get_vendor_active_jobs"],
+).mount_http()
+app.mount("/api/v1/vendor_capacity", vendor_capacity_app)
+
+
+# ── Sub-app: vendor_cost_benchmark (FULL) ───────────────────────────────────
+
+vendor_cost_benchmark_app = _make_cors_app(
+    title="vendor_cost_benchmark_agent_mcps",
+    description="MCP tools for vendor cost benchmarking and variance analysis.",
+)
+vendor_cost_benchmark_app.include_router(vendor_cost_benchmark_router)
+FastApiMCP(
+    vendor_cost_benchmark_app,
+    include_operations=[
+        "get_vendor_benchmark",
+        "get_vendor_cost_inputs",
+        "record_vendor_cost",
+        "compute_cost_variance",
+    ],
+).mount_http()
+app.mount("/api/v1/vendor_cost_benchmark", vendor_cost_benchmark_app)
+
+
+# ── Sub-app: dispatch (FULL) ────────────────────────────────────────────────
+
+dispatch_app = _make_cors_app(
+    title="dispatch_agent_mcps",
+    description="MCP tools for creating and tracking vendor/expert work orders.",
+)
+dispatch_app.include_router(dispatch_router)
+FastApiMCP(
+    dispatch_app,
+    include_operations=[
+        "create_work_order",
+        "get_work_order",
+        "list_work_orders",
+        "update_work_order_status",
+        "get_dispatch_logs",
+    ],
+).mount_http()
+app.mount("/api/v1/dispatch", dispatch_app)
+
+
+# ── Sub-app: vendor_performance (FULL) ──────────────────────────────────────
+
+vendor_performance_app = _make_cors_app(
+    title="vendor_performance_agent_mcps",
+    description="MCP tools for computing the Vendor Intelligence Score (VIS).",
+)
+vendor_performance_app.include_router(vendor_performance_router)
+FastApiMCP(
+    vendor_performance_app,
+    include_operations=[
+        "get_vendor_jobs",
+        "record_vendor_rating",
+        "compute_vendor_performance_score",
+    ],
+).mount_http()
+app.mount("/api/v1/vendor_performance", vendor_performance_app)
+
+
+# ── Sub-app: sla_compliance (FULL) ──────────────────────────────────────────
+
+sla_compliance_app = _make_cors_app(
+    title="sla_compliance_agent_mcps",
+    description="MCP tools for tracking vendor SLA compliance.",
+)
+sla_compliance_app.include_router(sla_compliance_router)
+FastApiMCP(
+    sla_compliance_app,
+    include_operations=[
+        "get_vendor_jobs_sla",
+        "compute_sla_compliance",
+        "get_sla_tracker",
+    ],
+).mount_http()
+app.mount("/api/v1/sla_compliance", sla_compliance_app)
+
+
+# ── Sub-app: vendor_escalation (FULL) ───────────────────────────────────────
+
+vendor_escalation_app = _make_cors_app(
+    title="vendor_escalation_agent_mcps",
+    description="MCP tools for escalating overdue vendor jobs.",
+)
+vendor_escalation_app.include_router(vendor_escalation_router)
+FastApiMCP(
+    vendor_escalation_app,
+    include_operations=[
+        "create_vendor_escalation",
+        "get_vendor_escalations",
+        "escalate_overdue_jobs",
+    ],
+).mount_http()
+app.mount("/api/v1/vendor_escalation", vendor_escalation_app)
+
+
+# ── Sub-app: eta_prediction (FULL) ──────────────────────────────────────────
+
+eta_prediction_app = _make_cors_app(
+    title="eta_prediction_agent_mcps",
+    description="MCP tools for predicting vendor work ETA for a claim.",
+)
+eta_prediction_app.include_router(eta_prediction_router)
+FastApiMCP(
+    eta_prediction_app,
+    include_operations=[
+        "get_eta_prediction",
+        "predict_eta",
+    ],
+).mount_http()
+app.mount("/api/v1/eta_prediction", eta_prediction_app)
+
+
+# ── Health ────────────────────────────────────────────────────────────────────
+
+@app.on_event("startup")
+def _startup():
+    init_db()
+
+
+@app.get("/health")
+def health():
+    return {
+        "status": "healthy",
+        "service": "jarvis_vendor_manager_agents_mcp",
+        "sub_apps": [
+            "vendor_onboarding",
+            "vendor_matching",
+            "vendor_qualification",
+            "vendor_capacity",
+            "vendor_cost_benchmark",
+            "dispatch",
+            "vendor_performance",
+            "sla_compliance",
+            "vendor_escalation",
+            "eta_prediction",
+        ],
+    }
+
+
+if __name__ == "__main__":
+    uvicorn.run(app, host="0.0.0.0", port=9100)
+
+
+
+
+
+
