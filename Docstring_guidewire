@@ -1,125 +1,961 @@
-😂 Fair point. I shouldn’t invent claim numbers. We’ve been using real data throughout this project.
+(venv) JarvisClaims@JarvisClaims:~/Ramakrishna/Jarvis_claims_agents_v3_copy/VendorManagerAgents/DispatchAgent$ ^C
+(venv) JarvisClaims@JarvisClaims:~/Ramakrishna/Jarvis_claims_agents_v3_copy/VendorManagerAgents/DispatchAgent$ ^C
+(venv) JarvisClaims@JarvisClaims:~/Ramakrishna/Jarvis_claims_agents_v3_copy/VendorManagerAgents/DispatchAgent$ python3 server.py 
+INFO:     Started server process [44723]
+INFO:     Waiting for application startup.
+INFO:     Application startup complete.
+INFO:     Uvicorn running on http://0.0.0.0:9106 (Press CTRL+C to quit)
 
-Let’s use your actual claim:
 
-Claim Number = CLM-2026-1859
 
-Everything should be validated against that.
+(venv) JarvisClaims@JarvisClaims:~/Ramakrishna/Jarvis_claims_agents_v3/VendorManagerAgents/MCP$ python3 main.py 
+/home/JarvisClaims/Ramakrishna/Jarvis_claims_agents_v3/VendorManagerAgents/MCP/main.py:254: DeprecationWarning: 
+        on_event is deprecated, use lifespan event handlers instead.
 
-⸻
+        Read more about it in the
+        [FastAPI docs for Lifespan Events](https://fastapi.tiangolo.com/advanced/events/).
+        
+  @app.on_event("startup")
+INFO:     Started server process [44782]
+INFO:     Waiting for application startup.
+INFO:     Application startup complete.
+INFO:     Uvicorn running on http://0.0.0.0:9100 (Press CTRL+C to quit)
 
-Step 1 - Verify Claim Exists
 
-SELECT
-    id,
-    claim_number,
-    status,
-    location,
-    policyholder_name
-FROM claims
-WHERE claim_number = 'CLM-2026-1859';
 
-Expected
 
-* Exactly 1 row
-* Note down:
-    * id
-    * status
-    * location
 
-These will later be copied into work_orders.
 
-⸻
 
-Step 2 - Find an Active Expert
 
-Instead of guessing EXP-1001, let’s query the database.
 
-SELECT
-    expert_id,
-    name,
-    expert_type,
-    active
-FROM experts
-WHERE active = true
-LIMIT 5;
 
-Pick one expert from the results.
-
-Suppose it returns
-
-EXP-0007
-John Smith
-Fire Damage Expert
-true
-
-We’ll use that exact expert_id.
-
-⸻
-
-Step 3 - Ensure No Active Work Order Already Exists
-
-SELECT *
-FROM work_orders
-WHERE claim_number='CLM-2026-1859'
-AND status IN ('Scheduled','In Progress');
-
-Expected
-
-0 rows
-
-If rows exist, we’ll either complete/cancel that work order or use another claim.
-
-⸻
-
-Step 4 - Ensure Expert Isn’t Already Booked
-
-Replace EXP-0007 with the expert you selected.
-
-SELECT *
-FROM work_orders
-WHERE expert_id='EXP-0007'
-AND scheduled_date='2026-08-06'
-AND scheduled_time='14:30:00'
-AND status IN ('Scheduled','In Progress');
-
-Expected
-
-0 rows
-
-⸻
-
-Step 5 - API Call
-
-Now we finally call Dispatch.
-
-curl -X POST "http://localhost:8900/api/dispatch/work_orders" \
+JarvisClaims@JarvisClaims:~/Ramakrishna$ curl -X POST "http://localhost:8900/api/dispatch/work_orders" \
 -H "Content-Type: application/json" \
 -d '{
-  "claim_id":"IGNORE",
-  "claim_number":"CLM-2026-1859",
-  "expert_id":"EXP-0007",
-  "expert_name":"IGNORE",
-  "expert_type":"IGNORE",
-  "scheduled_date":"2026-08-06",
-  "scheduled_time":"2:30 PM",
-  "customer_address":"IGNORE",
-  "assigned_by":"Adjuster-1",
-  "estimated_arrival":"30 mins",
-  "estimated_cost":2500,
-  "priority":"Normal",
-  "notes_to_expert":"Inspect fire damage",
-  "customer_phone":"9999999999",
-  "customer_email":"abc@test.com"
+ "claim_id":"SHOULD_BE_IGNORED",
+ "claim_number":"CLM-2026-1859",
+ "expert_id":"EXP-001",
+ "expert_name":"SHOULD_BE_IGNORED",
+ "expert_type":"SHOULD_BE_IGNORED",
+ "scheduled_date":"2026-08-07",
+ "scheduled_time":"2:30 PM",
+ "customer_address":"SHOULD_BE_IGNORED",
+ "assigned_by":"Musaddique",
+ "estimated_arrival":"30 minutes",
+ "estimated_cost":2500,
+ "priority":"Normal",
+ "notes_to_expert":"Inspect kitchen fire damage",
+ "customer_phone":"9999999999",
+ "customer_email":"test@example.com"
 }'
+curl: (7) Failed to connect to localhost port 8900 after 0 ms: Couldn't connect to server
+JarvisClaims@JarvisClaims:~/Ramakrishna$ 
 
-⸻
 
-After that we’ll verify exactly what got inserted into:
 
-* ✅ work_orders
-* ✅ dispatch_logs
 
-We’ll compare every column with the source tables (claims and experts) to make sure the handler is pulling the correct values instead of trusting the request.
 
-Let’s do it with your actual database. First, run the first two SQL queries (claim lookup and active experts) and paste the results. Then I’ll generate the exact curl command using your real expert_id instead of a made-up one.
+
+
+"""
+handler.py — Dispatch
+────────────────────────
+Creates and tracks work orders for vendor/expert dispatch, with a
+dispatch_logs audit trail.
+
+PostgreSQL is always the source of truth. The LLM/caller only expresses
+intent (which claim, which expert, when); claim_id, expert_name,
+expert_type, and customer_address are never taken from the request — they
+are always fetched fresh from claims/experts and written as-is, overwriting
+whatever (if anything) the request supplied. See validation.py for the
+shared checks and the exact column list each query relies on.
+
+Known, confirmed schema gaps (do not touch, per the actual DB):
+  - claims has no customer_phone / customer_email columns, so those two
+    work_orders fields are left exactly as supplied by the caller.
+"""
+
+import logging
+import os
+import sys
+from datetime import datetime
+from typing import Optional
+
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "common"))
+
+from db import get_db_connection, row_to_dict  # noqa: E402
+
+from dispatch_mcp import validation as v  # noqa: E402
+
+log = logging.getLogger(__name__)
+
+def create_work_order(claim_id: str, claim_number: str, expert_id: str, expert_name: str,
+                       expert_type: str, scheduled_date: str, scheduled_time: str,
+                       customer_address: str, assigned_by: str,
+                       estimated_arrival: Optional[str] = None,
+                       estimated_cost: Optional[float] = None,
+                       priority: str = "Normal",
+                       notes_to_expert: Optional[str] = None,
+                       customer_phone: Optional[str] = None,
+                       customer_email: Optional[str] = None) -> dict:
+    """
+    Creates a work_orders row and a matching 'Created' dispatch_logs row.
+
+    claim_id, expert_name, expert_type, and customer_address are function
+    parameters only for public-API compatibility with the existing MCP
+    tool/model signature — their values are IGNORED. The real values always
+    come from claims.id, experts.name, experts.expert_type, and
+    claims.location respectively.
+
+    customer_phone/customer_email are passed through unchanged: claims has
+    no columns for either, so there is no database source of truth to
+    validate or overwrite them against.
+    """
+    v.require_non_empty(assigned_by, "assigned_by")
+    priority = v.validate_priority(priority or "Normal")
+    v.validate_estimated_cost(estimated_cost)
+    parsed_scheduled_date = v.parse_scheduled_date(scheduled_date)
+    scheduled_time = v.validate_scheduled_time(scheduled_time)
+
+    conn = get_db_connection()
+    try:
+        cur = conn.cursor()
+
+        # 1 & 2 — claim must exist (looked up by claim_number).
+        claim = v.get_claim_by_number(cur, claim_number)
+
+        # claim must be in a dispatch-eligible status (not Closed/Rejected/etc).
+        v.validate_claim_dispatch_eligible(claim)
+
+        # 3 — claims.id is the only source of truth for work_orders.claim_id.
+        true_claim_id = claim["id"]
+
+        # 4 — customer_address always comes from claims.location.
+        true_customer_address = claim.get("location")
+
+        # 6 & 7 — expert must exist; expert_name/expert_type always come from experts.
+        expert = v.get_expert_by_id(cur, expert_id)
+
+        # expert must be active (experts.active BOOLEAN column).
+        v.validate_expert_active(expert)
+
+        true_expert_id = expert["expert_id"]
+        true_expert_name = expert["name"]
+        true_expert_type = expert["expert_type"]
+
+        # 8 — only one active (Scheduled/In Progress) work order per claim.
+        if v.has_active_work_order(cur, claim["claim_number"]):
+            raise v.ValidationError(
+                f"Claim '{claim['claim_number']}' already has an active work order"
+            )
+
+        # 17 — the expert can't already be booked at this date/time.
+        if v.is_expert_double_booked(cur, true_expert_id, parsed_scheduled_date, scheduled_time):
+            raise v.ValidationError(
+                f"Expert '{true_expert_id}' is already booked on "
+                f"{parsed_scheduled_date.isoformat()} at {scheduled_time}"
+            )
+
+        # 15 — generate a unique work_order_id.
+        work_order_id = v.generate_unique_id(cur, "WO", "work_order_id", "work_orders")
+
+        cur.execute(
+            """
+            INSERT INTO work_orders (work_order_id, claim_id, claim_number, expert_id, expert_name,
+                                      expert_type, scheduled_date, scheduled_time, estimated_arrival,
+                                      estimated_cost, status, priority, notes_to_expert,
+                                      customer_address, customer_phone, customer_email, assigned_by)
+            VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s, 'Scheduled', %s, %s, %s, %s, %s, %s)
+            """,
+            (work_order_id, true_claim_id, claim["claim_number"], true_expert_id, true_expert_name,
+             true_expert_type, parsed_scheduled_date, scheduled_time, estimated_arrival, estimated_cost,
+             priority, notes_to_expert, true_customer_address, customer_phone, customer_email, assigned_by),
+        )
+
+        # 15 — generate a unique log_id.
+        log_id = v.generate_unique_id(cur, "LOG", "log_id", "dispatch_logs")
+        cur.execute(
+            """
+            INSERT INTO dispatch_logs (log_id, work_order_id, claim_id, action, action_by, details,
+                                        previous_status, new_status)
+            VALUES (%s,%s,%s, 'Created', %s, %s, NULL, 'Scheduled')
+            """,
+            (log_id, work_order_id, true_claim_id, assigned_by,
+             f"Work order created for {true_expert_name} ({true_expert_type}) on "
+             f"{parsed_scheduled_date.isoformat()} {scheduled_time}"),
+        )
+        conn.commit()
+
+        cur.execute("SELECT * FROM work_orders WHERE work_order_id = %s", (work_order_id,))
+        return row_to_dict(cur.fetchone())
+    except Exception:
+        conn.rollback()
+        raise
+    finally:
+        conn.close()
+
+def get_work_order(work_order_id: str) -> Optional[dict]:
+    conn = get_db_connection()
+    try:
+        cur = conn.cursor()
+        cur.execute("SELECT * FROM work_orders WHERE work_order_id = %s", (work_order_id,))
+        return row_to_dict(cur.fetchone())
+    finally:
+        conn.close()
+
+def list_work_orders(claim_id: Optional[str] = None, status: Optional[str] = None) -> list:
+    conn = get_db_connection()
+    try:
+        cur = conn.cursor()
+        query = "SELECT * FROM work_orders WHERE 1=1"
+        params = []
+        if claim_id:
+            query += " AND claim_id = %s"
+            params.append(claim_id)
+        if status:
+            query += " AND status = %s"
+            params.append(status)
+        query += " ORDER BY id DESC"
+        cur.execute(query, params)
+        return row_to_dict(cur.fetchall())
+    finally:
+        conn.close()
+
+def update_work_order_status(work_order_id: str, status: str, action_by: str,
+                              details: Optional[str] = None) -> dict:
+    v.require_non_empty(action_by, "action_by")
+
+    conn = get_db_connection()
+    try:
+        cur = conn.cursor()
+        cur.execute("SELECT * FROM work_orders WHERE work_order_id = %s", (work_order_id,))
+        wo = row_to_dict(cur.fetchone())
+        if not wo:
+            raise v.NotFoundError(f"Work order '{work_order_id}' not found")
+
+        previous_status = wo["status"]
+        # 9 & 10 — only known statuses, only allowed transitions.
+        v.validate_transition(previous_status, status)
+
+        now = datetime.now().isoformat()
+
+        updates = ["status = %s"]
+        params = [status]
+        if status == "In Progress":
+            updates.append("started_at = %s")
+            params.append(now)
+        elif status == "Completed":
+            updates.append("completed_at = %s")
+            params.append(now)
+        elif status == "Canceled":
+            updates.append("canceled_at = %s")
+            params.append(now)
+            if details:
+                updates.append("cancel_reason = %s")
+                params.append(details)
+
+        params.append(work_order_id)
+        cur.execute(f"UPDATE work_orders SET {', '.join(updates)} WHERE work_order_id = %s", params)
+
+        # 16 — log references the real work order/claim and the real previous status.
+        log_id = v.generate_unique_id(cur, "LOG", "log_id", "dispatch_logs")
+        cur.execute(
+            """
+            INSERT INTO dispatch_logs (log_id, work_order_id, claim_id, action, action_by, details,
+                                        previous_status, new_status)
+            VALUES (%s,%s,%s, 'Status Update', %s,%s,%s,%s)
+            """,
+            (log_id, work_order_id, wo["claim_id"], action_by, details, previous_status, status),
+        )
+        conn.commit()
+
+        cur.execute("SELECT * FROM work_orders WHERE work_order_id = %s", (work_order_id,))
+        return row_to_dict(cur.fetchone())
+    except Exception:
+        conn.rollback()
+        raise
+    finally:
+        conn.close()
+
+def get_dispatch_logs(work_order_id: str) -> list:
+    conn = get_db_connection()
+    try:
+        cur = conn.cursor()
+        cur.execute("SELECT * FROM dispatch_logs WHERE work_order_id = %s ORDER BY id ASC", (work_order_id,))
+        return row_to_dict(cur.fetchall())
+    finally:
+        conn.close()
+
+
+
+
+
+models.py
+from typing import Optional
+from pydantic import BaseModel
+
+
+class CreateWorkOrderRequest(BaseModel):
+    claim_id: str
+    claim_number: str
+    expert_id: str
+    expert_name: str
+    expert_type: str
+    scheduled_date: str
+    scheduled_time: str
+    customer_address: str
+    assigned_by: str
+    estimated_arrival: Optional[str] = None
+    estimated_cost: Optional[float] = None
+    priority: str = "Normal"
+    notes_to_expert: Optional[str] = None
+    customer_phone: Optional[str] = None
+    customer_email: Optional[str] = None
+
+
+class UpdateWorkOrderStatusRequest(BaseModel):
+    status: str
+    action_by: str
+    details: Optional[str] = None
+
+
+
+validation.py
+"""
+validation.py — Dispatch
+─────────────────────────
+Shared validation helpers for the Dispatch MCP. PostgreSQL is always the
+source of truth for claims, experts, and work-order state; nothing here
+trusts caller/LLM-supplied IDs or master data.
+
+Every query here references only columns confirmed to exist:
+
+  claims:        id, claim_number, policy_number, policyholder_name,
+                  loss_type, location, status, assigned_adjuster,
+                  assigned_vendor, created_at, updated_at
+  experts:       expert_id, name, expert_type, email, phone, active
+                  (active is a BOOLEAN column — experts are enabled/disabled
+                  via this flag, confirmed against the live database; there
+                  is no experts.status column)
+  work_orders:   id, work_order_id, claim_id, claim_number, expert_id,
+                  expert_name, expert_type, scheduled_date, scheduled_time,
+                  estimated_arrival, estimated_cost, status, priority,
+                  notes_to_expert, customer_address, customer_phone,
+                  customer_email, assigned_by, started_at, completed_at,
+                  canceled_at, cancel_reason, created_at, updated_at
+  dispatch_logs: id, log_id, work_order_id, claim_id, action, action_by,
+                  details, previous_status, new_status, created_at
+
+No other columns or tables are referenced.
+
+NotFoundError   -> caller should translate to HTTP 404 (missing claim/
+                   expert/work order).
+ValidationError -> caller should translate to HTTP 400 (bad input, invalid
+                   state transition, duplicate/conflicting booking, etc.).
+"""
+
+import os
+import random
+import sys
+from datetime import date, datetime
+from typing import Optional
+
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "common"))
+
+from db import row_to_dict  # noqa: E402
+
+VALID_STATUSES = ("Scheduled", "In Progress", "Completed", "Canceled")
+VALID_PRIORITIES = ("Low", "Normal", "High")
+ACTIVE_STATUSES = ("Scheduled", "In Progress")
+
+# Allowed forward transitions. Canceled and Completed are terminal.
+ALLOWED_TRANSITIONS = {
+    "Scheduled": {"In Progress", "Canceled"},
+    "In Progress": {"Completed", "Canceled"},
+    "Completed": set(),
+    "Canceled": set(),
+}
+
+# scheduled_date is treated strictly as a calendar date. We accept a couple
+# of common input encodings but always compare/store as a real date object
+# — never as a string.
+_DATE_FORMATS = ("%Y-%m-%d", "%m/%d/%Y")
+
+# scheduled_time is parsed (not regex-matched) so "25:00" / "99:88" / "abcd"
+# are all rejected by datetime.strptime rather than a hand-rolled pattern.
+# Both 24-hour ("14:30") and 12-hour with AM/PM ("10:30 AM", "02:45 PM") are
+# accepted, since that's what the LLM naturally produces. Whatever format
+# matches, the value is normalized to "HH:MM:SS" (24-hour) before it's
+# stored or compared, so double-booking checks never miss a match just
+# because one caller sent "2:00 PM" and another sent "14:00".
+_TIME_FORMATS = ("%H:%M", "%H:%M:%S", "%I:%M %p", "%I:%M:%S %p")
+_TIME_STORAGE_FORMAT = "%H:%M:%S"
+
+# Derived from the current repository workflow (AdjusterOrchestrator's
+# claim-lifecycle logic and journey-stage tracking), not a placeholder.
+# Dispatch belongs to the investigation/loss-assessment phase of a claim
+# (claim_journey_master stages "Loss Investigation"/"Loss Assessment"),
+# which only ever runs while claims.status is "Open". Approved, Rejected,
+# Payment Initiated, and Settled all represent claims that have already
+# passed the adjuster's decision point and moved beyond the dispatch stage:
+#   - Approved / Rejected — the adjuster's final decision has been made;
+#     confirm_payment_approval's own docstring describes this point as
+#     having "nothing left to reason about."
+#   - Payment Initiated — set in the same call chain that advances the
+#     claim's journey stage to "Claim Closed."
+#   - Settled — terminal: payment released, policy coverage decremented.
+DISPATCH_INELIGIBLE_CLAIM_STATUSES = ("Approved", "Rejected", "Payment Initiated", "Settled")
+
+# Cached lowercase lookup set, built once at import time, so
+# validate_claim_dispatch_eligible doesn't re-build a set comprehension on
+# every call.
+DISPATCH_INELIGIBLE_CLAIM_STATUS_SET = {s.lower() for s in DISPATCH_INELIGIBLE_CLAIM_STATUSES}
+
+# Bounded retry cap for unique-ID generation (see generate_unique_id).
+_UNIQUE_ID_MAX_ATTEMPTS = 100
+
+class ValidationError(ValueError):
+    """Bad/invalid input -> HTTP 400."""
+
+class NotFoundError(ValueError):
+    """Referenced claim/expert/work order does not exist -> HTTP 404."""
+
+def _rand_suffix(n: int) -> str:
+    return "".join(random.choices("0123456789", k=n))
+
+def generate_unique_id(cur, prefix: str, column: str, table: str, digits: int = 6) -> str:
+    """
+    Generates a `{prefix}-{digits}` style ID and re-generates until no row in
+    `table` has that value in `column`. Trusts only the database's answer,
+    never assumes a randomly generated ID is free. Bounded to
+    _UNIQUE_ID_MAX_ATTEMPTS retries so a pathological run of collisions
+    can't hang the request indefinitely.
+    """
+    for _ in range(_UNIQUE_ID_MAX_ATTEMPTS):
+        candidate = f"{prefix}-{_rand_suffix(digits)}"
+        cur.execute(f"SELECT 1 FROM {table} WHERE {column} = %s", (candidate,))
+        if cur.fetchone() is None:
+            return candidate
+    raise RuntimeError(
+        f"Could not generate a unique {prefix}-prefixed ID for {table}.{column} "
+        f"after {_UNIQUE_ID_MAX_ATTEMPTS} attempts"
+    )
+
+def require_non_empty(value: Optional[str], field: str) -> str:
+    if value is None or not str(value).strip():
+        raise ValidationError(f"{field} must not be empty")
+    return str(value).strip()
+
+def validate_status_value(status: str) -> str:
+    if status not in VALID_STATUSES:
+        raise ValidationError(f"Invalid status '{status}'. Must be one of {list(VALID_STATUSES)}")
+    return status
+
+def validate_priority(priority: str) -> str:
+    if priority not in VALID_PRIORITIES:
+        raise ValidationError(f"Invalid priority '{priority}'. Must be one of {list(VALID_PRIORITIES)}")
+    return priority
+
+def validate_estimated_cost(estimated_cost) -> None:
+    if estimated_cost is not None and estimated_cost < 0:
+        raise ValidationError("estimated_cost cannot be negative")
+
+def parse_scheduled_date(scheduled_date) -> date:
+    """
+    Parses scheduled_date into a real `date` object and rejects anything
+    earlier than today. Today itself is allowed. Comparison is always
+    date-vs-date, never string-vs-string.
+    """
+    if isinstance(scheduled_date, date) and not isinstance(scheduled_date, datetime):
+        parsed = scheduled_date
+    else:
+        raw = require_non_empty(scheduled_date, "scheduled_date")
+        parsed = None
+        for fmt in _DATE_FORMATS:
+            try:
+                parsed = datetime.strptime(raw, fmt).date()
+                break
+            except ValueError:
+                continue
+        if parsed is None:
+            raise ValidationError(
+                f"scheduled_date '{raw}' is not a recognized date (expected YYYY-MM-DD)"
+            )
+    if parsed < date.today():
+        raise ValidationError(f"scheduled_date '{parsed.isoformat()}' cannot be in the past")
+    return parsed
+
+def validate_transition(previous_status: str, new_status: str) -> None:
+    validate_status_value(new_status)
+    if previous_status not in ALLOWED_TRANSITIONS:
+        raise ValidationError(f"Work order has unrecognized current status '{previous_status}'")
+    if new_status not in ALLOWED_TRANSITIONS[previous_status]:
+        raise ValidationError(
+            f"Cannot transition work order from '{previous_status}' to '{new_status}'"
+        )
+
+def get_claim_by_number(cur, claim_number: str) -> dict:
+    """Looks up the claims row that is the source of truth for this claim_number."""
+    claim_number = require_non_empty(claim_number, "claim_number")
+    cur.execute("SELECT * FROM claims WHERE claim_number = %s", (claim_number,))
+    row = row_to_dict(cur.fetchone())
+    if not row:
+        raise NotFoundError(f"Claim with claim_number '{claim_number}' not found")
+    return row
+
+def get_expert_by_id(cur, expert_id: str) -> dict:
+    """Looks up the experts row that is the source of truth for this expert_id."""
+    expert_id = require_non_empty(expert_id, "expert_id")
+    cur.execute("SELECT * FROM experts WHERE expert_id = %s", (expert_id,))
+    row = row_to_dict(cur.fetchone())
+    if not row:
+        raise NotFoundError(f"Expert with expert_id '{expert_id}' not found")
+    return row
+
+def validate_scheduled_time(scheduled_time: str) -> str:
+    """
+    Parses scheduled_time with datetime.strptime (not regex) so malformed
+    values ('abcd', '99:88', '25:00') are rejected by real time parsing.
+    Accepts 24-hour ('14:30', '14:30:00') or 12-hour with AM/PM
+    ('10:30 AM', '02:45 PM'). Always returns the normalized 'HH:MM:SS'
+    (24-hour) form, so storage and the double-booking comparison both work
+    off one consistent representation regardless of how it was entered.
+    """
+    raw = require_non_empty(scheduled_time, "scheduled_time")
+    for fmt in _TIME_FORMATS:
+        try:
+            parsed = datetime.strptime(raw, fmt)
+            return parsed.strftime(_TIME_STORAGE_FORMAT)
+        except ValueError:
+            continue
+    raise ValidationError(
+        f"scheduled_time '{raw}' is not a valid time (expected e.g. '14:30' or '2:30 PM')"
+    )
+
+def validate_claim_dispatch_eligible(claim: dict) -> None:
+    """
+    Rejects dispatch for claims that have already passed the
+    investigation/loss-assessment phase. See the DISPATCH_INELIGIBLE_CLAIM_STATUSES
+    comment above for the repository evidence behind this list.
+    """
+    status = (claim.get("status") or "").strip()
+    if status and status.lower() in DISPATCH_INELIGIBLE_CLAIM_STATUS_SET:
+        raise ValidationError(
+            f"Claim '{claim.get('claim_number')}' is not eligible for dispatch (status: '{status}')"
+        )
+
+def validate_expert_active(expert: dict) -> None:
+    """
+    Rejects dispatch to an expert who is disabled. experts.active is a real
+    BOOLEAN column (confirmed against the live database) — experts are
+    enabled/disabled via this flag, not a status enum. active == True
+    allows dispatch; active == False is rejected. No string comparison is
+    involved.
+    """
+    if expert.get("active") is False:
+        raise ValidationError(
+            f"Expert '{expert.get('expert_id')}' is inactive and cannot be assigned"
+        )
+
+def has_active_work_order(cur, claim_number: str) -> bool:
+    """True if this claim already has a Scheduled/In Progress work order."""
+    cur.execute(
+        "SELECT 1 FROM work_orders WHERE claim_number = %s AND status = ANY(%s) LIMIT 1",
+        (claim_number, list(ACTIVE_STATUSES)),
+    )
+    return cur.fetchone() is not None
+
+def is_expert_double_booked(cur, expert_id: str, scheduled_date: date, scheduled_time: str) -> bool:
+    """True if this expert already has an active work order at this date/time."""
+    cur.execute(
+        """
+        SELECT 1 FROM work_orders
+        WHERE expert_id = %s AND scheduled_date = %s AND scheduled_time = %s
+          AND status = ANY(%s)
+        LIMIT 1
+        """,
+        (expert_id, scheduled_date, scheduled_time, list(ACTIVE_STATUSES)),
+    )
+    return cur.fetchone() is not None
+
+
+
+
+dispatch router.py
+
+
+
+
+"""
+dispatch_router.py
+─────────────────────
+FastAPI routes for the Dispatch MCP.
+
+Tool / Endpoint map:
+  create_work_order         POST /api/dispatch/work_orders
+  get_work_order            GET  /api/dispatch/work_orders/{work_order_id}
+  list_work_orders          GET  /api/dispatch/work_orders
+  update_work_order_status  POST /api/dispatch/work_orders/{work_order_id}/status
+  get_dispatch_logs         GET  /api/dispatch/work_orders/{work_order_id}/logs
+"""
+
+import logging
+from typing import Optional
+
+from fastapi import APIRouter, HTTPException
+
+from dispatch_mcp import handler
+from dispatch_mcp.models import CreateWorkOrderRequest, UpdateWorkOrderStatusRequest
+from dispatch_mcp.validation import NotFoundError, ValidationError
+
+log = logging.getLogger(__name__)
+
+router = APIRouter()
+
+@router.post(
+    "/api/dispatch/work_orders",
+    operation_id="create_work_order",
+    summary="Create a new work order and dispatch log entry",
+    tags=["Dispatch"],
+)
+def create_work_order(body: CreateWorkOrderRequest):
+    """Inserts a new work_orders row (status 'Scheduled') and a 'Created' dispatch_logs row."""
+    try:
+        return handler.create_work_order(
+            body.claim_id, body.claim_number, body.expert_id, body.expert_name, body.expert_type,
+            body.scheduled_date, body.scheduled_time, body.customer_address, body.assigned_by,
+            body.estimated_arrival, body.estimated_cost, body.priority, body.notes_to_expert,
+            body.customer_phone, body.customer_email,
+        )
+    except NotFoundError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    except ValidationError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        log.exception("create_work_order error")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@router.get(
+    "/api/dispatch/work_orders/{work_order_id}",
+    operation_id="get_work_order",
+    summary="Get a work order by work_order_id",
+    tags=["Dispatch"],
+)
+def get_work_order(work_order_id: str):
+    """Returns the work_orders row for the given work_order_id, or null."""
+    return handler.get_work_order(work_order_id)
+
+@router.get(
+    "/api/dispatch/work_orders",
+    operation_id="list_work_orders",
+    summary="List work orders, optionally filtered by claim_id and/or status",
+    tags=["Dispatch"],
+)
+def list_work_orders(claim_id: Optional[str] = None, status: Optional[str] = None):
+    """Returns work_orders rows, optionally filtered."""
+    return handler.list_work_orders(claim_id, status)
+
+@router.post(
+    "/api/dispatch/work_orders/{work_order_id}/status",
+    operation_id="update_work_order_status",
+    summary="Update a work order's status and log the transition",
+    tags=["Dispatch"],
+)
+def update_work_order_status(work_order_id: str, body: UpdateWorkOrderStatusRequest):
+    """
+    Updates work_orders.status (setting started_at/completed_at/canceled_at
+    as appropriate) and inserts a dispatch_logs row recording the previous
+    and new status.
+    """
+    try:
+        return handler.update_work_order_status(work_order_id, body.status, body.action_by, body.details)
+    except NotFoundError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    except ValidationError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        log.exception("update_work_order_status error")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@router.get(
+    "/api/dispatch/work_orders/{work_order_id}/logs",
+    operation_id="get_dispatch_logs",
+    summary="Get the dispatch audit trail for a work order",
+    tags=["Dispatch"],
+)
+def get_dispatch_logs(work_order_id: str):
+    """Returns dispatch_logs rows for the given work_order_id, ordered chronologically."""
+    return handler.get_dispatch_logs(work_order_id)
+
+
+
+
+
+
+main.py
+
+# ── Sub-app: dispatch (FULL) ────────────────────────────────────────────────
+
+dispatch_app = _make_cors_app(
+    title="dispatch_agent_mcps",
+    description="MCP tools for creating and tracking vendor/expert work orders.",
+)
+dispatch_app.include_router(dispatch_router)
+FastApiMCP(
+    dispatch_app,
+    include_operations=[
+        "create_work_order",
+        "get_work_order",
+        "list_work_orders",
+        "update_work_order_status",
+        "get_dispatch_logs",
+    ],
+).mount_http()
+app.mount("/api/v1/dispatch", dispatch_app)
+
+
+server.py
+"""
+server.py — Dispatch Agent
+──────────────────────────
+LangGraph agent.
+
+Port: 9106
+MCP : http://localhost:9100/api/v1/dispatch/mcp
+
+Run:
+    py -3 server.py
+"""
+
+import json
+import logging
+import os
+import sys
+import time
+import traceback
+from datetime import datetime, timedelta
+from typing import Annotated, TypedDict
+
+import uvicorn
+from dotenv import load_dotenv, find_dotenv
+from fastapi import FastAPI, Request
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import StreamingResponse
+from langchain_core.messages import AIMessage, SystemMessage
+from langchain_mcp_adapters.client import MultiServerMCPClient
+from langchain_openai.chat_models import AzureChatOpenAI
+from langgraph.graph import END, START, StateGraph
+from langgraph.graph.message import add_messages
+from langgraph.prebuilt import ToolNode
+
+load_dotenv(find_dotenv())
+
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s | %(levelname)-8s | %(name)s | %(message)s",
+    stream=sys.stdout,
+    force=True,
+)
+logger = logging.getLogger("dispatch_agent")
+
+PHOENIX_API_KEY = os.getenv("PHOENIX_API_KEY", "")
+PHOENIX_ENDPOINT = os.getenv("PHOENIX_ENDPOINT", "")
+MCP_URL = os.getenv("MCP_URL", "http://localhost:9100/api/v1/dispatch/mcp")
+AGENT_PORT = int(os.getenv("AGENT_PORT", "9106"))
+
+config_mcp_server = {
+    "dispatch_mcp": {
+        "url": MCP_URL,
+        "transport": "streamable_http",
+        "timeout": timedelta(seconds=120),
+        "sse_read_timeout": timedelta(seconds=600),
+    }
+}
+
+app = FastAPI(title="Dispatch Agent")
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+
+class State(TypedDict):
+    messages: Annotated[list, add_messages]
+
+
+def router(state: State):
+    last = state["messages"][-1]
+    if isinstance(last, AIMessage) and getattr(last, "tool_calls", None):
+        return "tools"
+    if isinstance(last, AIMessage) and last.content:
+        if "Continue" in last.content:
+            return "tools"
+        if "End" in last.content:
+            return "End"
+    return "End"
+
+
+_FALLBACK_PROMPT = """
+You are the Dispatch Agent for an insurance claims platform, assisting a
+Vendor Manager in creating and tracking work orders for vendor/expert
+dispatch.
+
+Your workflow:
+
+1. To schedule a vendor/expert visit, call create_work_order with the
+   claim_id, claim_number, expert_id, expert_name, expert_type,
+   scheduled_date, scheduled_time, customer_address, and assigned_by (plus
+   any optional fields like estimated_arrival, estimated_cost, priority,
+   notes_to_expert, customer_phone, customer_email). This creates a
+   work_orders row (status 'Scheduled') and logs a 'Created' dispatch_logs
+   entry.
+2. Use get_work_order or list_work_orders to look up existing work orders by
+   claim_id and/or status.
+3. As work progresses, call update_work_order_status with the
+   work_order_id, new status (e.g. 'In Progress', 'Completed', 'Canceled'),
+   action_by, and optional details. This updates work_orders.status (setting
+   started_at/completed_at/canceled_at as appropriate) and logs the
+   transition in dispatch_logs.
+4. Use get_dispatch_logs to retrieve the full audit trail for a work order.
+
+When you have completed the task, end your response with "End".
+"""
+
+
+def load_prompt() -> str:
+    if not PHOENIX_ENDPOINT:
+        raise RuntimeError("Phoenix not configured")
+    from phoenix.client import Client
+    client = Client(base_url=PHOENIX_ENDPOINT, api_key=PHOENIX_API_KEY)
+    prompt = client.prompts.get(name="dispatch_agent", label="production")
+    prompt_set = prompt._template["messages"]
+    system_msg = next(
+        (item["content"][0]["text"] for item in prompt_set if item.get("role") == "system"),
+        None,
+    )
+    if not system_msg:
+        raise ValueError("System prompt is empty or missing in Phoenix")
+    return system_msg
+
+
+def create_graph(model, tools, prompt):
+    graph_builder = StateGraph(State)
+    llm_with_tools = model.bind_tools(tools)
+
+    async def agent_node(state: State):
+        messages = state["messages"]
+        all_messages = [SystemMessage(content=prompt)] + messages
+        message = await llm_with_tools.ainvoke(all_messages)
+        return {"messages": [message]}
+
+    graph_builder.add_node("agent", agent_node)
+    graph_builder.add_node("tools", ToolNode(tools=tools))
+    graph_builder.add_edge(START, "agent")
+    graph_builder.add_conditional_edges("agent", router, {"tools": "tools", "End": END})
+    graph_builder.add_edge("tools", "agent")
+    return graph_builder.compile()
+
+
+async def get_tools():
+    client = MultiServerMCPClient(config_mcp_server)
+    tools = await client.get_tools()
+    logger.info("Tools loaded from MCP: %s", [t.name for t in tools])
+    return tools
+
+
+async def stream_graph(graph, initial_state, config):
+    async for event in graph.astream_events(initial_state, config=config, version="v2"):
+        kind = event.get("event", "")
+
+        if kind == "on_chat_model_stream":
+            chunk = event["data"].get("chunk")
+            if chunk and hasattr(chunk, "content") and chunk.content:
+                yield f"data: {chunk.content}\n\n"
+
+        elif kind == "on_tool_start":
+            tool_name = event.get("name", "unknown_tool")
+            yield f"data: [Tool: {tool_name}] Starting...\n\n"
+
+        elif kind == "on_tool_end":
+            tool_name = event.get("name", "unknown_tool")
+            yield f"data: [Tool: {tool_name}] Done\n\n"
+
+
+@app.post("/chat")
+async def chat_stream(request: Request):
+    load_dotenv(find_dotenv())
+
+    tools = await get_tools()
+
+    model = AzureChatOpenAI(
+        api_key=os.getenv("AZURE_OPENAI_API_KEY"),
+        api_version=os.getenv("AZURE_OPENAI_API_VERSION"),
+        azure_deployment=os.getenv("AZURE_OPENAI_CHAT_DEPLOYMENT"),
+        azure_endpoint=os.getenv("AZURE_OPENAI_ENDPOINT"),
+    )
+
+    try:
+        system_prompt = load_prompt()
+    except Exception as e:
+        logger.warning("Phoenix prompt load failed (%s) — using fallback prompt", e)
+        system_prompt = _FALLBACK_PROMPT
+
+    body = await request.json()
+    user_message = body.get("message", "Create a work order to dispatch a vendor for claim CLM-2026-1001")
+
+    graph = create_graph(model=model, tools=tools, prompt=system_prompt)
+
+    async def generate():
+        start = time.time()
+        last_event_at = start
+        last_tool = None
+        try:
+            async for event in stream_graph(
+                graph=graph,
+                initial_state={"messages": [user_message]},
+                config={"recursion_limit": 250},
+            ):
+                last_event_at = time.time()
+                if isinstance(event, str) and event.startswith("data: [Tool:"):
+                    try:
+                        last_tool = event.split("[Tool:", 1)[1].split("]", 1)[0]
+                    except Exception:
+                        pass
+                yield event
+        except BaseException as e:
+            elapsed = time.time() - start
+            since_last = time.time() - last_event_at
+            err = {
+                "exception_class": type(e).__name__,
+                "message": str(e),
+                "elapsed_total_seconds": round(elapsed, 2),
+                "seconds_since_last_event": round(since_last, 2),
+                "last_tool_invoked": last_tool,
+                "traceback": traceback.format_exc(),
+                "timestamp_utc": datetime.utcnow().isoformat(),
+            }
+            logger.error("AGENT_ERROR %s", json.dumps(err, default=str))
+            try:
+                yield f"data: [AGENT_ERROR] {json.dumps(err, default=str)}\n\n"
+            except Exception:
+                pass
+            import asyncio
+            if isinstance(e, asyncio.CancelledError):
+                raise
+
+    return StreamingResponse(generate(), media_type="text/event-stream")
+
+
+@app.get("/health")
+async def health():
+    return {"status": "healthy", "agent": "dispatch_agent"}
+
+
+if __name__ == "__main__":
+    uvicorn.run(app, host="0.0.0.0", port=AGENT_PORT)
+
