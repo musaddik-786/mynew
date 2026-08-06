@@ -1,257 +1,15 @@
 JarvisClaims@JarvisClaims:~/Ramakrishna$ curl -N -X POST http://localhost:9106/chat \
 -H "Content-Type: application/json" \
 -d '{
-  "message":"Create a work order for claim CLAIM-001 (claim number CLM-2026-1001). Dispatch expert EXP-101 John Smith (Field Adjuster). Schedule the visit for 2026-08-08 at 10:30 AM. Customer address is 221B Baker Street, Pune. Assigned by Vendor Manager. Estimated arrival is 10:15 AM. Estimated cost is 2500. Priority is High. Notes: Inspect structural damage. Customer phone is 9876543210. Customer email is customer@test.com."
+"message":"Update work order WO-756807 to In Progress. Action by Vendor Manager. Vendor has reached customer location."
 }'
-data: [Tool: create_work_order] Starting...
+data: [Tool: update_work_order_status] Starting...
 
-data: [Tool: create_work_order] Done
+data: [Tool: update_work_order_status] Done
 
 data: Work
 
 data:  order
-
-data:  created
-
-data:  for
-
-data:  claim
-
-data:  CLAIM
-
-data: -
-
-data: 001
-
-data:  (
-
-data: CL
-
-data: M
-
-data: -
-
-data: 202
-
-data: 6
-
-data: -
-
-data: 100
-
-data: 1
-
-data: ):
-
-
-
-data: -
-
-data:  Expert
-
-data: :
-
-data:  John
-
-data:  Smith
-
-data:  (
-
-data: Field
-
-data:  Adjust
-
-data: er
-
-data: ,
-
-data:  EXP
-
-data: -
-
-data: 101
-
-data: )
-
-
-data: -
-
-data:  Scheduled
-
-data:  visit
-
-data: :
-
-data:  
-
-data: 202
-
-data: 6
-
-data: -
-
-data: 08
-
-data: -
-
-data: 08
-
-data:  at
-
-data:  
-
-data: 10
-
-data: :
-
-data: 30
-
-data:  AM
-
-data: 
-
-
-data: -
-
-data:  Estimated
-
-data:  arrival
-
-data: :
-
-data:  
-
-data: 10
-
-data: :
-
-data: 15
-
-data:  AM
-
-data: 
-
-
-data: -
-
-data:  Customer
-
-data:  address
-
-data: :
-
-data:  
-
-data: 221
-
-data: B
-
-data:  Baker
-
-data:  Street
-
-data: ,
-
-data:  Pune
-
-data: 
-
-
-data: -
-
-data:  Assigned
-
-data:  by
-
-data: :
-
-data:  Vendor
-
-data:  Manager
-
-data: 
-
-
-data: -
-
-data:  Estimated
-
-data:  cost
-
-data: :
-
-data:  
-
-data: 250
-
-data: 0
-
-data: 
-
-
-data: -
-
-data:  Priority
-
-data: :
-
-data:  High
-
-data: 
-
-
-data: -
-
-data:  Notes
-
-data: :
-
-data:  Inspect
-
-data:  structural
-
-data:  damage
-
-data: .
-
-
-data: -
-
-data:  Customer
-
-data:  contact
-
-data: :
-
-data:  
-
-data: 987
-
-data: 654
-
-data: 321
-
-data: 0
-
-data:  /
-
-data:  customer
-
-data: @test
-
-data: .com
-
-data: 
-
-
-
-data: Work
-
-data:  order
-
-data:  ID
-
-data: :
 
 data:  WO
 
@@ -261,18 +19,56 @@ data: 756
 
 data: 807
 
-data:  (
+data:  status
 
-data: status
+data:  has
+
+data:  been
+
+data:  updated
+
+data:  to
+
+data:  "
+
+data: In
+
+data:  Progress
+
+data: "
+
+data:  by
+
+data:  Vendor
+
+data:  Manager
+
+data: .
+
+data:  The
+
+data:  reason
+
+data:  recorded
 
 data: :
 
-data:  Scheduled
+data:  Vendor
 
-data: )
+data:  has
+
+data:  reached
+
+data:  customer
+
+data:  location
+
+data: .
 
 
 
 data: End
+
+data: .
 
 JarvisClaims@JarvisClaims:~/Ramakrishna$ 
