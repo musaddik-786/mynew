@@ -1,167 +1,160 @@
-"""
-handler.py — SLA Compliance
-───────────────────────────────
-Computes SLA compliance percentage and avg response/completion times for a
-vendor.
-"""
+Perfect. We’ll do this exactly like we did for the Dispatch Agent—one test at a time, understanding every step before moving to the next.
 
-import logging
-import os
-import sys
-from typing import Optional
+⸻
 
-sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "common"))
+Test Case 1 – Happy Path
 
-from db import get_db_connection, row_to_dict  # noqa: E402
+Objective
 
-log = logging.getLogger(__name__)
+Verify that the agent correctly computes SLA compliance for a valid vendor and updates sla_tracker_output.
 
-SLA_NON_COMPLIANT_STATUSES = {"overdue"}
+⸻
 
-def _is_sla_compliant(sla_status: str) -> bool:
-    normalized = (sla_status or "").strip().lower()
-    return normalized not in SLA_NON_COMPLIANT_STATUSES
+Step 1 – Verify Initial Database State
 
-class VendorNotFoundError(Exception):
-    """Raised when vendor_id has no rows at all in vendor_jobs_input."""
+Before running the agent, let’s make sure the data is correct.
 
-def get_vendor_jobs_sla(vendor_id: str) -> list:
-    conn = get_db_connection()
-    try:
-        cur = conn.cursor()
-        cur.execute("SELECT * FROM vendor_jobs_input WHERE vendor_id = %s ORDER BY id DESC", (vendor_id,))
-        return row_to_dict(cur.fetchall())
-    finally:
-        conn.close()
+1. Verify vendor_jobs_input
 
-def compute_sla_compliance(vendor_id: str) -> dict:
-    conn = get_db_connection()
-    try:
-        cur = conn.cursor()
+Run:
 
-        cur.execute("SELECT sla_status FROM vendor_jobs_input WHERE vendor_id = %s", (vendor_id,))
-        all_rows = cur.fetchall()
-        job_count = len(all_rows)
+SELECT *
+FROM vendor_jobs_input
+WHERE vendor_id = 'VEN-001'
+ORDER BY id;
 
-        if job_count == 0:
-            raise VendorNotFoundError(f"No jobs found for vendor {vendor_id}")
+Verify:
 
-        non_null_rows = [r for r in all_rows if r["sla_status"] is not None]
-        if non_null_rows:
-            met = sum(1 for r in non_null_rows if _is_sla_compliant(r["sla_status"]))
-            sla_compliance = (met / len(non_null_rows)) * 100
-        else:
-            sla_compliance = None
+* ✅ Vendor exists.
+* ✅ Number of jobs.
+* ✅ sla_status values.
+* ✅ No unexpected NULLs (or note if they exist).
 
-        cur.execute(
-            "SELECT avg_turnaround_days FROM vendors v JOIN vendor_master_input m ON m.name = v.name "
-            "WHERE m.vendor_id = %s",
-            (vendor_id,),
-        )
-        row = cur.fetchone()
-        avg_turnaround = row["avg_turnaround_days"] if row else None
+⸻
 
-        avg_response_time = f"{avg_turnaround} days" if avg_turnaround is not None else "N/A"
-        avg_completion_time = f"{avg_turnaround} days" if avg_turnaround is not None else "N/A"
+2. Verify vendor_master_input
 
-        cur.execute(
-            """
-            INSERT INTO sla_tracker_output (vendor_id, avg_response_time, avg_completion_time, sla_compliance)
-            VALUES (%s, %s, %s, %s)
-            ON CONFLICT (vendor_id) DO UPDATE SET
-                avg_response_time = EXCLUDED.avg_response_time,
-                avg_completion_time = EXCLUDED.avg_completion_time,
-                sla_compliance = EXCLUDED.sla_compliance
-            """,
-            (vendor_id, avg_response_time, avg_completion_time, sla_compliance),
-        )
-        conn.commit()
+Run:
 
-        return {
-            "vendor_id": vendor_id,
-            "sla_compliance_pct": round(sla_compliance, 2) if sla_compliance is not None else None,
-            "avg_response_time": avg_response_time,
-            "avg_completion_time": avg_completion_time,
-            "job_count": job_count,
-        }
-    except VendorNotFoundError:
-        conn.rollback()
-        raise
-    except Exception:
-        conn.rollback()
-        log.exception("Failed to compute SLA compliance for vendor %s", vendor_id)
-        raise
-    finally:
-        conn.close()
+SELECT *
+FROM vendor_master_input
+WHERE vendor_id = 'VEN-001';
 
-def get_sla_tracker(vendor_id: str) -> Optional[dict]:
-    conn = get_db_connection()
-    try:
-        cur = conn.cursor()
-        cur.execute("SELECT * FROM sla_tracker_output WHERE vendor_id = %s", (vendor_id,))
-        return row_to_dict(cur.fetchone())
-    finally:
-        conn.close()
+Verify:
 
-"""
-sla_compliance_router.py
-─────────────────────────────
-FastAPI routes for the SLA Compliance MCP.
+* ✅ Vendor exists.
+* ✅ name value (important because of the JOIN).
 
-Tool / Endpoint map:
-  get_vendor_jobs_sla     GET  /api/sla_compliance/jobs/{vendor_id}
-  compute_sla_compliance  POST /api/sla_compliance/compliance/{vendor_id}
-  get_sla_tracker         GET  /api/sla_compliance/tracker/{vendor_id}
-"""
+⸻
 
-import logging
-from fastapi import APIRouter, HTTPException
+3. Verify vendors
 
-from sla_compliance_mcp import handler
-from sla_compliance_mcp.handler import VendorNotFoundError
+Run:
 
-log = logging.getLogger(__name__)
+SELECT *
+FROM vendors
+WHERE name = '<name from vendor_master_input>';
 
-router = APIRouter()
+Verify:
 
-@router.get(
-    "/api/sla_compliance/jobs/{vendor_id}",
-    operation_id="get_vendor_jobs_sla",
-    summary="List vendor_jobs_input rows for a vendor (SLA view)",
-    tags=["SLACompliance"],
-)
-def get_vendor_jobs_sla(vendor_id: str):
-    """Returns vendor_jobs_input rows for the given vendor_id."""
-    return handler.get_vendor_jobs_sla(vendor_id)
+* ✅ Vendor exists.
+* ✅ avg_turnaround_days value.
 
-@router.post(
-    "/api/sla_compliance/compliance/{vendor_id}",
-    operation_id="compute_sla_compliance",
-    summary="Compute SLA compliance percentage for a vendor",
-    tags=["SLACompliance"],
-)
-def compute_sla_compliance(vendor_id: str):
-    """
-    Computes the percentage of vendor_jobs_input rows with sla_status !=
-    'Overdue' (case-insensitive, whitespace-trimmed), derives placeholder
-    avg_response_time/avg_completion_time from the vendor's
-    avg_turnaround_days, and upserts sla_tracker_output. Raises 404 if the
-    vendor has no rows in vendor_jobs_input at all.
-    """
-    try:
-        return handler.compute_sla_compliance(vendor_id)
-    except VendorNotFoundError as e:
-        raise HTTPException(status_code=404, detail=str(e))
-    except Exception as e:
-        log.exception("compute_sla_compliance error")
-        raise HTTPException(status_code=500, detail=str(e))
+⸻
 
-@router.get(
-    "/api/sla_compliance/tracker/{vendor_id}",
-    operation_id="get_sla_tracker",
-    summary="Get the latest sla_tracker_output record for a vendor",
-    tags=["SLACompliance"],
-)
-def get_sla_tracker(vendor_id: str):
-    """Returns the sla_tracker_output row for the given vendor_id, or null."""
-    return handler.get_sla_tracker(vendor_id)
+4. Verify sla_tracker_output
+
+Run:
+
+SELECT *
+FROM sla_tracker_output
+WHERE vendor_id = 'VEN-001';
+
+Just note:
+
+* Does a row already exist?
+* If yes, what are the current values?
+
+We’ll compare this after execution.
+
+⸻
+
+Step 2 – Run the Agent
+
+Send:
+
+Check SLA compliance for vendor VEN-001
+
+or invoke the API:
+
+POST /chat
+{
+    "message": "Check SLA compliance for vendor VEN-001"
+}
+
+⸻
+
+Step 3 – Observe Tool Execution
+
+The expected sequence is:
+
+LLM
+↓
+compute_sla_compliance()
+↓
+Read vendor_jobs_input
+↓
+Calculate compliance
+↓
+Read vendors + vendor_master_input
+↓
+UPSERT sla_tracker_output
+↓
+Return response
+
+(Notice that after your latest implementation, the compliance calculation is done within compute_sla_compliance(). The separate get_vendor_jobs_sla() tool may no longer be needed for this workflow if the LLM chooses not to call it.)
+
+⸻
+
+Step 4 – Verify Database After Execution
+
+Run again:
+
+SELECT *
+FROM sla_tracker_output
+WHERE vendor_id = 'VEN-001';
+
+Verify:
+
+* ✅ Only one row exists.
+* ✅ sla_compliance is correct.
+* ✅ avg_response_time is correct.
+* ✅ avg_completion_time is correct.
+
+⸻
+
+What I need from you
+
+Please send me:
+
+1. Output of
+
+SELECT * FROM vendor_jobs_input WHERE vendor_id='VEN-001';
+
+2. Output of
+
+SELECT * FROM vendor_master_input WHERE vendor_id='VEN-001';
+
+3. Output of
+
+SELECT * FROM vendors WHERE name='<vendor name>';
+
+4. Output of
+
+SELECT * FROM sla_tracker_output WHERE vendor_id='VEN-001';
+
+5. The agent response after you run:
+
+Check SLA compliance for vendor VEN-001
+
+Once I have those, we’ll verify line by line whether every part of the new implementation is behaving exactly as expected before moving on to the next test case.
