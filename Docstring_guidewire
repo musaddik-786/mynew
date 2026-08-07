@@ -1,143 +1,37 @@
+After the adjuster forwards the claim to the SIU, typically because the fraud score is high or other indicators suggest suspicious activity, the claim enters the SIU investigation workflow.
 
-Musaddique Lalkot
-0 minutes 4 seconds0:04
-Musaddique Lalkot 0 minutes 4 seconds
-After adjuster has forwarded the claim to SIU.
-Musaddique Lalkot 0 minutes 10 seconds
-because maybe he saw that the fraud score was high or some other parameters which he thought was doubtful. So we forwarded that to SIU.
-Musaddique Lalkot 0 minutes 23 seconds
-Now, SIU logs in into SIU investigation and comes into SIU investigation workbench.
-Musaddique Lalkot 0 minutes 34 seconds
-Page.
-Musaddique Lalkot 0 minutes 37 seconds
-Then he sees the claim that has been forwarded.
-Musaddique Lalkot 0 minutes 42 seconds
-And with the fraud score, which is higher, now we open that particular claim.
-Musaddique Lalkot 0 minutes 52 seconds
-And.
-Musaddique Lalkot 0 minutes 55 seconds
-He sees the estimated assigned completion time is 10 days based on some parameters, and he sees the estimated settlement amount that.
-Musaddique Lalkot 1 minute 9 seconds
-We get.
-Musaddique Lalkot 1 minute 11 seconds
-From the adjuster screens, adjuster persona, and the fraud risk core.
-Musaddique Lalkot 1 minute 20 seconds
-Along with other details, such as the risk.
-Musaddique Lalkot 1 minute 25 seconds
-Now.
-Musaddique Lalkot 1 minute 28 seconds
-He clicks on the Run AI Analysis button.
-Musaddique Lalkot 1 minute 34 seconds
-Which?
-Musaddique Lalkot 1 minute 36 seconds
-enables and triggers agents such as entity relationship agent, network analysis agent, behavior analytic agent, evidence correlation agent.
-Musaddique Lalkot 2 minutes 59 seconds
-And...
-Musaddique Lalkot 3 minutes 1 second
-He sees that.
-Musaddique Lalkot 3 minutes 38 seconds
-The agents.
-Musaddique Lalkot 3 minutes 40 seconds
-are executed and have provided some scores.
-Musaddique Lalkot 3 minutes 46 seconds
-and decisions.
-Musaddique Lalkot 3 minutes 54 seconds
-We see in the summary section that those AI agents and their corresponding.
-Musaddique Lalkot 4 minutes 1 second
-functionality has been.
-Musaddique Lalkot 4 minutes 3 seconds
-Simply has been.
-Musaddique Lalkot 4 minutes 7 seconds
-Figured and is visible.
-Musaddique Lalkot 4 minutes 17 seconds
-And an investigator has also been assigned.
-Musaddique Lalkot 4 minutes 21 seconds
-We get a fraud risk summary section in which we see that key fraud indicators along with.
-Musaddique Lalkot 4 minutes 34 seconds
-The.
-Musaddique Lalkot 4 minutes 40 seconds
-State of.
-Musaddique Lalkot 4 minutes 42 seconds
-that particular fraud indicator.
-Musaddique Lalkot 4 minutes 47 seconds
-Scrolling down.
-Musaddique Lalkot 4 minutes 49 seconds
-SIU now sees investigation action button, where action section, sorry, it is investigation action section, where he sees request additional proof, schedule an interview.
-Musaddique Lalkot 5 minutes 4 seconds
-through which he can request some additional proof and send the request.
-Musaddique Lalkot 5 minutes 12 seconds
-And also, we can schedule an interview.
-Musaddique Lalkot 5 minutes 15 seconds
-Based on the data, if he requires from.
-Musaddique Lalkot 5 minutes 19 seconds
-policy holder. So these will notify the adjusters.
-Musaddique Lalkot 5 minutes 27 seconds
-Fix and sends the interview notification to the admister.
-Musaddique Lalkot 5 minutes 35 seconds
-In the timeline view section.
-Musaddique Lalkot 5 minutes 38 seconds
-You see the...
-Musaddique Lalkot 5 minutes 41 seconds
-overall progress.
-Musaddique Lalkot 5 minutes 44 seconds
-Of the.
-Musaddique Lalkot 5 minutes 46 seconds
-SIU investigation timeline.
-Musaddique Lalkot 5 minutes 49 seconds
-Along with the entity type status.
-Musaddique Lalkot 5 minutes 53 seconds
-And...
-Musaddique Lalkot 5 minutes 57 seconds
-No.
-Musaddique Lalkot 6 minutes
-In the activity section, we see...
-Musaddique Lalkot 6 minutes 3 seconds
-The sequence of activities that has been carried out till now, which is still interview scheduled.
-Musaddique Lalkot 6 minutes 12 seconds
-In the fraud decision section, we see three buttons which are confirmed fraud, clear claim and inconclusive.
-Musaddique Lalkot 6 minutes 22 seconds
-Clicking on confirm fraud button.
-Musaddique Lalkot 6 minutes 27 seconds
-executes the next set of four AI agents in the background.
-Musaddique Lalkot 6 minutes 35 seconds
-Similarly for clear claim button.
-Musaddique Lalkot 6 minutes 39 seconds
-Those 40 agents are freakard.
-Musaddique Lalkot 6 minutes 43 seconds
-which are fraud resolution agent.
-Musaddique Lalkot 6 minutes 47 seconds
-Legal escalation agent, watch list agent, AI agent, and a SIU closure agent.
-Musaddique Lalkot 6 minutes 57 seconds
-So once clicked on the button, confirm fraud based on the SIO investigation.
-Musaddique Lalkot 7 minutes 11 seconds
-The decision gets recorded, which is fraud confirmed.
-Musaddique Lalkot 7 minutes 16 seconds
-And.
-Musaddique Lalkot 7 minutes 27 seconds
-This is how the SIU persona deals with the claim.
-Musaddique Lalkot 7 minutes 33 seconds
-And he sees that in the timeline view and the activity section.
-Musaddique Lalkot 7 minutes 43 seconds
-It has reached to the final stage.
-Musaddique Lalkot 7 minutes 49 seconds
-In the vendor fraud check agent.
-Musaddique Lalkot 7 minutes 53 seconds
-Sorry, in the vendor fraud check section.
-Musaddique Lalkot 8 minutes
-He sees many multiple data entries.
-Musaddique Lalkot 8 minutes 4 seconds
-Also, he can.
-Musaddique Lalkot 8 minutes 6 seconds
-Go and.
-Musaddique Lalkot 8 minutes 9 seconds
-Upload the document if required.
-Musaddique Lalkot 8 minutes 14 seconds
-If.
-Musaddique Lalkot 8 minutes 15 seconds
-To see if I just uploaded any document.
-Musaddique Lalkot 8 minutes 20 seconds
-Or vice versa.
-Musaddique Lalkot 8 minutes 25 seconds
-So this was the assign.
-Musaddique Lalkot 8 minutes 27 seconds
-Persona.
+The SIU investigator logs into the SIU Investigation Workbench, where all claims assigned for investigation are displayed. The investigator can identify the newly forwarded claim along with its fraud score and other key claim details.
+
+Opening the claim displays important information such as the estimated investigation completion time, which in this case is ten days, the estimated settlement amount received from the adjuster workflow, the fraud risk score, and other investigation-related details.
+
+The investigator now clicks Run AI Analysis.
+
+This triggers multiple AI agents in the background, including the Entity Relationship Agent, Network Analysis Agent, Behavior Analytics Agent, and Evidence Correlation Agent.
+
+Once the analysis is complete, each agent generates its respective scores, findings, and recommendations.
+
+The Summary section consolidates the outputs from all these AI agents, providing the investigator with a comprehensive view of the claim. An investigator is also automatically assigned to the case.
+
+The Fraud Risk Summary section highlights the key fraud indicators along with their current status, enabling the investigator to quickly understand the primary risk factors associated with the claim.
+
+Scrolling further down, we reach the Investigation Actions section. From here, the investigator can request additional proof from the policyholder or schedule an interview whenever further clarification is required.
+
+If additional documents are needed, the investigator can send a request directly through the system. Similarly, an interview can be scheduled, and the notification is automatically sent to the adjuster for further coordination with the policyholder.
+
+The Timeline View provides complete visibility into the SIU investigation progress, showing every stage of the investigation along with its current status.
+
+The Activity section maintains a chronological record of all investigation activities performed so far, such as document requests, interview scheduling, and other investigation events.
+
+Once the investigation is complete, the investigator proceeds to the Fraud Decision section, where three possible outcomes are available: Confirm Fraud, Clear Claim, and Inconclusive.
+
+Selecting either Confirm Fraud or Clear Claim automatically triggers the next set of AI agents in the background. These include the Fraud Resolution Agent, Legal Escalation Agent, Watchlist Agent, and the SIU Closure Agent.
+
+Based on the investigator’s decision, the selected outcome is recorded in the system. In this demonstration, the investigator selects Confirm Fraud, and the claim status is updated as Fraud Confirmed.
+
+The decision is immediately reflected throughout the SIU investigation workflow, including the Timeline View and the Activity section, indicating that the investigation has reached its final stage.
+
+The investigator can also review the Vendor Fraud Check section, which provides vendor-related fraud information and supporting details.
+
+Finally, through the Document Hub, the investigator can upload additional documents whenever required or review documents that have already been uploaded during the investigation.
+
+This completes the SIU investigation workflow, demonstrating how Agentic AI assists investigators with intelligent fraud analysis, structured investigations, AI-powered decision support, and complete visibility throughout the investigation lifecycle.
