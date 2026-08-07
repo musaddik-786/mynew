@@ -1,56 +1,167 @@
-PART 1 — Vendor Validation (vendor_jobs_input)
-Q1: Validation before SLA calc?None exists. If vendor_id is not found, rows = [], sla_compliance = None, and the code still proceeds to DELETE+INSERT a row into sla_tracker_output with NULL compliance. No "Vendor not found" error is raised anywhere. — handler.py:30-68
-Q2: All distinct sla_status values in the codebase:
-Value	Where
-"On Track"	init_db.py:330-331 (seed for vendor_jobs_input)
-"Overdue"	handler.py:40, vendor_escalation_mcp/handler.py:90, vendor_performance_mcp/handler.py:58
-"At Risk"	seed_siu_test_claims.py:341, seed_siu_test_claims_2.py:266 (vendor_assignment, different table)
-No CHECK constraint. No enum. No fixed list enforced by schema. These are the only strings appearing in code.
-Q3: SLA-met vs failure logic:handler.py:40 — met = sum(1 for r in rows if r["sla_status"] != "Overdue")Only "Overdue" = failure. "On Track", "At Risk", or any other non-NULL string = met.
-Q4: Case-sensitive?Yes — exact match != "Overdue". No .strip(), .lower(), or any normalization anywhere in the file.
-Q5: NULL handling:handler.py:35 — AND sla_status IS NOT NULL. NULLs excluded from both numerator and denominator. If all rows are NULL, sla_compliance = None and a NULL row is written to sla_tracker_output.
-PART 2 — vendor_master_input + vendors join
-Q1: Validation before join?None. Query fires immediately. No pre-check on either table.
-Q2: Exact JOIN condition:handler.py:45 — JOIN vendor_master_input m ON m.name = v.name — joined on name (TEXT), not vendor_id.
-Q3: Is name UNIQUE in vendors?No. init_db.py:50-65 — name TEXT with no UNIQUE constraint in either vendors or vendor_master_input. A name mismatch or name collision silently returns wrong/no data; fetchone() picks the first row.
-Q4: Can avg_turnaround_days be NULL?Yes — column is REAL with no NOT NULL or DEFAULT in vendors schema. If row is None or turnaround is None: "N/A" for both time fields. No error.
-Q5: Who populates avg_turnaround_days?Seed script only (init_db.py:272-283, hardcoded values 3/6/5/2/8). vendor_onboarding_mcp/handler.py:112 hardcodes 5 for new vendors. No agent ever recalculates it from actual job data.
-Q6: Are avg_response_time and avg_completion_time identical?Yes — handler.py:49-50:
-avg_response_time  = f"{avg_turnaround} days" if avg_turnaround is not None else "N/A"
-avg_completion_time = f"{avg_turnaround} days" if avg_turnaround is not None else "N/A"
-Same variable, same format string, always identical. Not two separate metrics.
-PART 3 — SLA compliance calculation
-Q1: NULL handling: AND sla_status IS NOT NULL at handler.py:35. NULLs invisible to both counts.
-Q2: Only "Overdue" as failure? Yes — single comparison in the entire handler. "At Risk" if it appeared would count as met.
-Q3: Normalization? None. Zero occurrences of strip/lower/upper in the handler.
-Q4: Zero valid jobs? Returns sla_compliance = None, writes NULL to DB, returns "sla_compliance_pct": None in response. No error raised.
-Q5: Rounding — DB vs response?
-DB write (handler.py:58): raw float stored unrounded
-Response (handler.py:64): round(sla_compliance, 2)
-Column type: REAL (init_db.py:169)
-PART 4 — DELETE+INSERT pattern
-Q1: Exact code (handler.py:52-59):
-cur.execute("DELETE FROM sla_tracker_output WHERE vendor_id = %s", (vendor_id,))
-cur.execute(
-    "INSERT INTO sla_tracker_output (vendor_id, avg_response_time, avg_completion_time, sla_compliance) VALUES (%s,%s,%s,%s)",
-    (vendor_id, avg_response_time, avg_completion_time, sla_compliance),
+"""
+handler.py — SLA Compliance
+───────────────────────────────
+Computes SLA compliance percentage and avg response/completion times for a
+vendor.
+"""
+
+import logging
+import os
+import sys
+from typing import Optional
+
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "common"))
+
+from db import get_db_connection, row_to_dict  # noqa: E402
+
+log = logging.getLogger(__name__)
+
+SLA_NON_COMPLIANT_STATUSES = {"overdue"}
+
+def _is_sla_compliant(sla_status: str) -> bool:
+    normalized = (sla_status or "").strip().lower()
+    return normalized not in SLA_NON_COMPLIANT_STATUSES
+
+class VendorNotFoundError(Exception):
+    """Raised when vendor_id has no rows at all in vendor_jobs_input."""
+
+def get_vendor_jobs_sla(vendor_id: str) -> list:
+    conn = get_db_connection()
+    try:
+        cur = conn.cursor()
+        cur.execute("SELECT * FROM vendor_jobs_input WHERE vendor_id = %s ORDER BY id DESC", (vendor_id,))
+        return row_to_dict(cur.fetchall())
+    finally:
+        conn.close()
+
+def compute_sla_compliance(vendor_id: str) -> dict:
+    conn = get_db_connection()
+    try:
+        cur = conn.cursor()
+
+        cur.execute("SELECT sla_status FROM vendor_jobs_input WHERE vendor_id = %s", (vendor_id,))
+        all_rows = cur.fetchall()
+        job_count = len(all_rows)
+
+        if job_count == 0:
+            raise VendorNotFoundError(f"No jobs found for vendor {vendor_id}")
+
+        non_null_rows = [r for r in all_rows if r["sla_status"] is not None]
+        if non_null_rows:
+            met = sum(1 for r in non_null_rows if _is_sla_compliant(r["sla_status"]))
+            sla_compliance = (met / len(non_null_rows)) * 100
+        else:
+            sla_compliance = None
+
+        cur.execute(
+            "SELECT avg_turnaround_days FROM vendors v JOIN vendor_master_input m ON m.name = v.name "
+            "WHERE m.vendor_id = %s",
+            (vendor_id,),
+        )
+        row = cur.fetchone()
+        avg_turnaround = row["avg_turnaround_days"] if row else None
+
+        avg_response_time = f"{avg_turnaround} days" if avg_turnaround is not None else "N/A"
+        avg_completion_time = f"{avg_turnaround} days" if avg_turnaround is not None else "N/A"
+
+        cur.execute(
+            """
+            INSERT INTO sla_tracker_output (vendor_id, avg_response_time, avg_completion_time, sla_compliance)
+            VALUES (%s, %s, %s, %s)
+            ON CONFLICT (vendor_id) DO UPDATE SET
+                avg_response_time = EXCLUDED.avg_response_time,
+                avg_completion_time = EXCLUDED.avg_completion_time,
+                sla_compliance = EXCLUDED.sla_compliance
+            """,
+            (vendor_id, avg_response_time, avg_completion_time, sla_compliance),
+        )
+        conn.commit()
+
+        return {
+            "vendor_id": vendor_id,
+            "sla_compliance_pct": round(sla_compliance, 2) if sla_compliance is not None else None,
+            "avg_response_time": avg_response_time,
+            "avg_completion_time": avg_completion_time,
+            "job_count": job_count,
+        }
+    except VendorNotFoundError:
+        conn.rollback()
+        raise
+    except Exception:
+        conn.rollback()
+        log.exception("Failed to compute SLA compliance for vendor %s", vendor_id)
+        raise
+    finally:
+        conn.close()
+
+def get_sla_tracker(vendor_id: str) -> Optional[dict]:
+    conn = get_db_connection()
+    try:
+        cur = conn.cursor()
+        cur.execute("SELECT * FROM sla_tracker_output WHERE vendor_id = %s", (vendor_id,))
+        return row_to_dict(cur.fetchone())
+    finally:
+        conn.close()
+
+"""
+sla_compliance_router.py
+─────────────────────────────
+FastAPI routes for the SLA Compliance MCP.
+
+Tool / Endpoint map:
+  get_vendor_jobs_sla     GET  /api/sla_compliance/jobs/{vendor_id}
+  compute_sla_compliance  POST /api/sla_compliance/compliance/{vendor_id}
+  get_sla_tracker         GET  /api/sla_compliance/tracker/{vendor_id}
+"""
+
+import logging
+from fastapi import APIRouter, HTTPException
+
+from sla_compliance_mcp import handler
+from sla_compliance_mcp.handler import VendorNotFoundError
+
+log = logging.getLogger(__name__)
+
+router = APIRouter()
+
+@router.get(
+    "/api/sla_compliance/jobs/{vendor_id}",
+    operation_id="get_vendor_jobs_sla",
+    summary="List vendor_jobs_input rows for a vendor (SLA view)",
+    tags=["SLACompliance"],
 )
-conn.commit()
-Plain DELETE then INSERT. Not an UPSERT (ON CONFLICT DO UPDATE).
-Q2: History preserved? No. No audit table, no history table. Previous record unconditionally deleted. Confirmed — only two references to sla_tracker_output in all Python files, both in this handler.
-Q3: vendor_id UNIQUE in sla_tracker_output? Yes — init_db.py:166: vendor_id TEXT UNIQUE.
-Q4: Rollback on exception? No except block and no conn.rollback() anywhere in compute_sla_compliance. Structure is try: ... finally: conn.close(). Rollback is implicit only (PostgreSQL rolls back uncommitted transaction when connection closes). Explicit conn.rollback() exists in other handlers (vendor_capacity_mcp, vendor_qualification_mcp) but not here.
-Q5: Check for unchanged values before write? None. Always deletes and inserts regardless.
-Q6: Full schema of sla_tracker_output (init_db.py:164-170):
-id SERIAL PRIMARY KEY,
-vendor_id TEXT UNIQUE,
-avg_response_time TEXT,
-avg_completion_time TEXT,
-sla_compliance REAL
-5 columns only. No calculation_timestamp, no total_jobs, no sla_met_jobs, no overdue_jobs.
-PART 5 — Misc
-Q1: Explicit rollback()? No — not in this handler. finally: conn.close() only.
-Q2: sla_compliance column type? REAL (init_db.py:169).
-Q3: DISTINCT/dedup on vendor_jobs_input? No. No DISTINCT, no dedup. vendor_jobs_input has only id SERIAL PRIMARY KEY — no UNIQUE constraint on (vendor_id, claim_id) or any other combination. Duplicate rows would inflate both numerator and denominator equally (so compliance % stays unchanged), but total_jobs count would be wrong.
-Q4: Equal weighting? Yes — sum(1 for ...) counts every row as 1. vendor_jobs_input has no weight, priority, or severity column.
-Q5: Other writers to sla_tracker_output? None. Exactly 4 references across the entire codebase — DELETE, INSERT, SELECT (read), and CREATE TABLE — all in sla_compliance_mcp/handler.py and common/init_db.py. No other agent touches this table.
+def get_vendor_jobs_sla(vendor_id: str):
+    """Returns vendor_jobs_input rows for the given vendor_id."""
+    return handler.get_vendor_jobs_sla(vendor_id)
+
+@router.post(
+    "/api/sla_compliance/compliance/{vendor_id}",
+    operation_id="compute_sla_compliance",
+    summary="Compute SLA compliance percentage for a vendor",
+    tags=["SLACompliance"],
+)
+def compute_sla_compliance(vendor_id: str):
+    """
+    Computes the percentage of vendor_jobs_input rows with sla_status !=
+    'Overdue' (case-insensitive, whitespace-trimmed), derives placeholder
+    avg_response_time/avg_completion_time from the vendor's
+    avg_turnaround_days, and upserts sla_tracker_output. Raises 404 if the
+    vendor has no rows in vendor_jobs_input at all.
+    """
+    try:
+        return handler.compute_sla_compliance(vendor_id)
+    except VendorNotFoundError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    except Exception as e:
+        log.exception("compute_sla_compliance error")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@router.get(
+    "/api/sla_compliance/tracker/{vendor_id}",
+    operation_id="get_sla_tracker",
+    summary="Get the latest sla_tracker_output record for a vendor",
+    tags=["SLACompliance"],
+)
+def get_sla_tracker(vendor_id: str):
+    """Returns the sla_tracker_output row for the given vendor_id, or null."""
+    return handler.get_sla_tracker(vendor_id)
