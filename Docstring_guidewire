@@ -1,411 +1,563 @@
-"""
-server.py — SLA Compliance Agent
-────────────────────────────────
-LangGraph agent.
+Yes, exactly. You’re not trying to understand the business process. You’re trying to identify what validations or code improvements are needed before the current logic executes.
 
-Port: 9108
-MCP : http://localhost:9100/api/v1/sla_compliance/mcp
+For the first SQL, I would only ask questions that can lead to a code change.
 
-Run:
-    py -3 server.py
-"""
+1. Vendor Validation
 
-import json
-import logging
-import os
-import sys
-import time
-import traceback
-from datetime import datetime, timedelta
-from typing import Annotated, TypedDict
+Should we first validate whether the vendor_id provided by the user exists in vendor_jobs_input before proceeding?
 
-import uvicorn
-from dotenv import load_dotenv, find_dotenv
-from fastapi import FastAPI, Request
-from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import StreamingResponse
-from langchain_core.messages import AIMessage, SystemMessage
-from langchain_mcp_adapters.client import MultiServerMCPClient
-from langchain_openai.chat_models import AzureChatOpenAI
-from langgraph.graph import END, START, StateGraph
-from langgraph.graph.message import add_messages
-from langgraph.prebuilt import ToolNode
+* If no rows are found, should we return:
+    * “Vendor not found”?
+    * “No jobs found for this vendor”?
+    * Or continue with NULL compliance?
 
-load_dotenv(find_dotenv())
+Possible code change: Add a validation before calculating SLA.
 
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s | %(levelname)-8s | %(name)s | %(message)s",
-    stream=sys.stdout,
-    force=True,
+⸻
+
+2. Allowed Values of sla_status
+
+What are all the possible values that sla_status can have?
+
+* Is it a fixed list?
+* Is it an enum?
+* Can new values be added?
+
+Reason: The current code assumes everything except "Overdue" is SLA compliant.
+
+⸻
+
+3. Business Meaning of sla_status
+
+Which values should actually be considered SLA compliant?
+For example:
+
+sla_status	Count as SLA Met?
+On Track	?
+Completed	?
+Overdue	?
+Delayed	?
+Pending	?
+
+Possible code change: Instead of
+
+sla_status != "Overdue"
+
+use
+
+sla_status in ALLOWED_SLA_MET_STATUSES
+
+⸻
+
+4. Case Sensitivity
+
+Can sla_status be stored as overdue, OVERDUE, or Over Due?
+
+Possible code change:
+
+sla_status.strip().lower() != "overdue"
+
+instead of a direct string comparison.
+
+⸻
+
+5. NULL Handling
+
+Can sla_status be NULL? If yes, should those jobs be ignored or treated as SLA failures?
+
+Right now they’re ignored.
+
+Maybe the business expects otherwise.
+
+⸻
+
+I think these five questions are enough before moving to the second SQL. They are all directly tied to possible code changes and avoid unnecessary discussion about the broader agent flow. They also mirror the way we analyzed the Dispatch Agent: first validate inputs, then validate assumptions, then improve the logic.
+
+
+
+
+Great. Now let’s analyze the second SQL exactly like we did for the first one.
+
+SELECT avg_turnaround_days
+FROM vendors v
+JOIN vendor_master_input m
+ON m.name = v.name
+WHERE m.vendor_id = %s;
+
+Instead of asking many questions, let’s only ask the ones that could lead to code changes.
+
+⸻
+
+1. Does the vendor exist in both tables?
+
+The code assumes the vendor exists in:
+
+* vendor_master_input
+* vendors
+
+because of the INNER JOIN.
+
+If the vendor exists in vendor_master_input but not in vendors, this query returns no rows.
+
+Question:
+
+Should we validate that the vendor exists in both tables before proceeding?
+
+Possible code change:
+Return a meaningful message like:
+
+Vendor details not found.
+
+instead of
+
+avg_response_time = "N/A"
+
+⸻
+
+2. Is the join on name reliable?
+
+The join is
+
+ON m.name = v.name
+
+This immediately raises a question.
+
+Why are we joining using vendor name instead of a unique key like
+
+vendor_id
+
+Suppose
+
+vendor_master_input
+ABC Repairs
+
+and
+
+vendors
+ABC REPAIRS
+
+or
+
+ABC Repairs Pvt Ltd
+
+The join fails.
+
+Question:
+
+Can vendor names differ between the two tables? If yes, should we join using vendor_id instead?
+
+This is probably the biggest question for this SQL.
+
+⸻
+
+3. Can there be duplicate vendor names?
+
+Suppose
+
+vendors
+ABC Repairs
+ABC Repairs
+
+The join now returns two rows.
+
+Then
+
+row = cur.fetchone()
+
+simply picks the first one.
+
+Question:
+
+Is name unique in the vendors table?
+
+If not, this logic is unsafe.
+
+⸻
+
+4. Can avg_turnaround_days be NULL?
+
+Current code:
+
+if avg_turnaround is not None:
+    "4 days"
+else:
+    "N/A"
+
+Question:
+
+If turnaround days are missing, should the agent return "N/A" or should it fail because SLA metrics cannot be calculated?
+
+⸻
+
+5. Where does avg_turnaround_days come from?
+
+This is useful because it affects whether this value can be trusted.
+
+Question:
+
+Which process or agent populates avg_turnaround_days? Is it manually maintained or automatically calculated?
+
+If it’s manually entered, "4 days" may not reflect actual vendor performance.
+
+⸻
+
+6. Why are response time and completion time identical?
+
+The code does
+
+avg_response_time = f"{avg_turnaround} days"
+avg_completion_time = f"{avg_turnaround} days"
+
+They’re exactly the same value.
+
+Question:
+
+Is this intentional, or should average response time and average completion time be calculated separately?
+
+This could lead to a future code change if the business expects two different metrics.
+
+⸻
+
+These are the six questions I’d stop at for the second SQL:
+
+1. Should we validate that the vendor exists in both vendor_master_input and vendors?
+2. Why are we joining on name instead of vendor_id?
+3. Is name guaranteed to be unique in the vendors table?
+4. Can avg_turnaround_days be NULL, and how should that be handled?
+5. Who populates avg_turnaround_days, and can it be trusted?
+6. Should avg_response_time and avg_completion_time really be the same value, or are they placeholders that should be calculated independently?
+
+These are all focused, actionable questions that could directly result in improvements to the current implementation.
+
+
+
+
+
+Yes. Let’s continue in the same style.
+
+The next section is where the actual calculation starts.
+
+cur.execute(
+    "SELECT sla_status FROM vendor_jobs_input WHERE vendor_id = %s AND sla_status IS NOT NULL",
+    (vendor_id,),
 )
-logger = logging.getLogger("sla_compliance_agent")
+rows = cur.fetchall()
+if rows:
+    met = sum(1 for r in rows if r["sla_status"] != "Overdue")
+    sla_compliance = (met / len(rows)) * 100
+else:
+    sla_compliance = None
 
-PHOENIX_API_KEY = os.getenv("PHOENIX_API_KEY", "")
-PHOENIX_ENDPOINT = os.getenv("PHOENIX_ENDPOINT", "")
-MCP_URL = os.getenv("MCP_URL", "http://localhost:9100/api/v1/sla_compliance/mcp")
-AGENT_PORT = int(os.getenv("AGENT_PORT", "9108"))
+At this point, I would only ask questions that can change the code.
 
-config_mcp_server = {
-    "sla_compliance_mcp": {
-        "url": MCP_URL,
-        "transport": "streamable_http",
-        "timeout": timedelta(seconds=120),
-        "sse_read_timeout": timedelta(seconds=600),
-    }
-}
+1. Should NULL sla_status records be ignored?
 
-app = FastAPI(title="SLA Compliance Agent")
+Currently they are ignored because of
 
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+AND sla_status IS NOT NULL
+
+Question:
+
+Is ignoring these records the correct business logic, or should they be counted as SLA failures?
+
+⸻
+
+2. Is "Overdue" the only SLA failure status?
+
+Currently
+
+sla_status != "Overdue"
+
+means every other value is treated as SLA compliant.
+
+Question:
+
+Is "Overdue" the only non-compliant status, or are there other statuses like "Breached" or "Delayed" that should also be considered SLA failures?
+
+⸻
+
+3. Should the comparison be case-insensitive?
+
+Current code
+
+sla_status != "Overdue"
+
+Question:
+
+Should we normalize the value using .strip().lower() before comparing?
+
+⸻
+
+4. What should happen if there are zero valid jobs?
+
+Current code returns
+
+sla_compliance = None
+
+Question:
+
+Should the API return None, 0%, or an error like "No SLA records found for this vendor"?
+
+⸻
+
+5. Should the compliance percentage be rounded before storing?
+
+Currently
+
+sla_compliance
+
+is stored as the raw floating-point value, while only the response returns
+
+round(sla_compliance, 2)
+
+Question:
+
+Should the database also store the rounded value for consistency?
+
+⸻
+
+I think these are enough for this block.
+
+After this, we move to the DELETE + INSERT into sla_tracker_output, where there are several important design questions (like why delete instead of update, whether history should be preserved, and transaction safety). That’s the next logical section.
+
+
+
+
+Perfect. The next block is the DELETE + INSERT.
+
+cur.execute(
+    "DELETE FROM sla_tracker_output WHERE vendor_id = %s",
+    (vendor_id,),
 )
-
-
-class State(TypedDict):
-    messages: Annotated[list, add_messages]
-
-
-def router(state: State):
-    last = state["messages"][-1]
-    if isinstance(last, AIMessage) and getattr(last, "tool_calls", None):
-        return "tools"
-    if isinstance(last, AIMessage) and last.content:
-        if "Continue" in last.content:
-            return "tools"
-        if "End" in last.content:
-            return "End"
-    return "End"
-
-
-_FALLBACK_PROMPT = """
-You are the SLA Compliance Agent for an insurance claims platform,
-assisting a Vendor Manager in checking a vendor's SLA compliance.
-
-Your workflow:
-
-1. Use get_vendor_jobs_sla to review a vendor's jobs (vendor_jobs_input) and
-   their sla_status values.
-2. Call compute_sla_compliance with the vendor_id. This computes the
-   percentage of jobs that are not 'Overdue' (sla_compliance), derives
-   placeholder avg_response_time / avg_completion_time from the vendor's
-   avg_turnaround_days, and writes/updates an sla_tracker_output row.
-3. Use get_sla_tracker to retrieve the latest stored SLA tracker record for
-   a vendor.
-4. Report the SLA compliance percentage and average response/completion
-   times to the user.
-
-When you have completed the task, end your response with "End".
-"""
-
-
-def load_prompt() -> str:
-    if not PHOENIX_ENDPOINT:
-        raise RuntimeError("Phoenix not configured")
-    from phoenix.client import Client
-    client = Client(base_url=PHOENIX_ENDPOINT, api_key=PHOENIX_API_KEY)
-    prompt = client.prompts.get(name="sla_compliance_agent", label="production")
-    prompt_set = prompt._template["messages"]
-    system_msg = next(
-        (item["content"][0]["text"] for item in prompt_set if item.get("role") == "system"),
-        None,
-    )
-    if not system_msg:
-        raise ValueError("System prompt is empty or missing in Phoenix")
-    return system_msg
-
-
-def create_graph(model, tools, prompt):
-    graph_builder = StateGraph(State)
-    llm_with_tools = model.bind_tools(tools)
-
-    async def agent_node(state: State):
-        messages = state["messages"]
-        all_messages = [SystemMessage(content=prompt)] + messages
-        message = await llm_with_tools.ainvoke(all_messages)
-        return {"messages": [message]}
-
-    graph_builder.add_node("agent", agent_node)
-    graph_builder.add_node("tools", ToolNode(tools=tools))
-    graph_builder.add_edge(START, "agent")
-    graph_builder.add_conditional_edges("agent", router, {"tools": "tools", "End": END})
-    graph_builder.add_edge("tools", "agent")
-    return graph_builder.compile()
-
-
-async def get_tools():
-    client = MultiServerMCPClient(config_mcp_server)
-    tools = await client.get_tools()
-    logger.info("Tools loaded from MCP: %s", [t.name for t in tools])
-    return tools
-
-
-async def stream_graph(graph, initial_state, config):
-    async for event in graph.astream_events(initial_state, config=config, version="v2"):
-        kind = event.get("event", "")
-
-        if kind == "on_chat_model_stream":
-            chunk = event["data"].get("chunk")
-            if chunk and hasattr(chunk, "content") and chunk.content:
-                yield f"data: {chunk.content}\n\n"
-
-        elif kind == "on_tool_start":
-            tool_name = event.get("name", "unknown_tool")
-            yield f"data: [Tool: {tool_name}] Starting...\n\n"
-
-        elif kind == "on_tool_end":
-            tool_name = event.get("name", "unknown_tool")
-            yield f"data: [Tool: {tool_name}] Done\n\n"
-
-
-@app.post("/chat")
-async def chat_stream(request: Request):
-    load_dotenv(find_dotenv())
-
-    tools = await get_tools()
-
-    model = AzureChatOpenAI(
-        api_key=os.getenv("AZURE_OPENAI_API_KEY"),
-        api_version=os.getenv("AZURE_OPENAI_API_VERSION"),
-        azure_deployment=os.getenv("AZURE_OPENAI_CHAT_DEPLOYMENT"),
-        azure_endpoint=os.getenv("AZURE_OPENAI_ENDPOINT"),
-    )
-
-    try:
-        system_prompt = load_prompt()
-    except Exception as e:
-        logger.warning("Phoenix prompt load failed (%s) — using fallback prompt", e)
-        system_prompt = _FALLBACK_PROMPT
-
-    body = await request.json()
-    user_message = body.get("message", "Check SLA compliance for vendor VEN-001")
-
-    graph = create_graph(model=model, tools=tools, prompt=system_prompt)
-
-    async def generate():
-        start = time.time()
-        last_event_at = start
-        last_tool = None
-        try:
-            async for event in stream_graph(
-                graph=graph,
-                initial_state={"messages": [user_message]},
-                config={"recursion_limit": 250},
-            ):
-                last_event_at = time.time()
-                if isinstance(event, str) and event.startswith("data: [Tool:"):
-                    try:
-                        last_tool = event.split("[Tool:", 1)[1].split("]", 1)[0]
-                    except Exception:
-                        pass
-                yield event
-        except BaseException as e:
-            elapsed = time.time() - start
-            since_last = time.time() - last_event_at
-            err = {
-                "exception_class": type(e).__name__,
-                "message": str(e),
-                "elapsed_total_seconds": round(elapsed, 2),
-                "seconds_since_last_event": round(since_last, 2),
-                "last_tool_invoked": last_tool,
-                "traceback": traceback.format_exc(),
-                "timestamp_utc": datetime.utcnow().isoformat(),
-            }
-            logger.error("AGENT_ERROR %s", json.dumps(err, default=str))
-            try:
-                yield f"data: [AGENT_ERROR] {json.dumps(err, default=str)}\n\n"
-            except Exception:
-                pass
-            import asyncio
-            if isinstance(e, asyncio.CancelledError):
-                raise
-
-    return StreamingResponse(generate(), media_type="text/event-stream")
-
-
-@app.get("/health")
-async def health():
-    return {"status": "healthy", "agent": "sla_compliance_agent"}
-
-
-if __name__ == "__main__":
-    uvicorn.run(app, host="0.0.0.0", port=AGENT_PORT)
-
-
-
-"""
-handler.py — SLA Compliance
-───────────────────────────────
-Computes SLA compliance percentage and avg response/completion times for a
-vendor.
-"""
-
-import logging
-import os
-import sys
-from typing import Optional
-
-sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "common"))
-
-from db import get_db_connection, row_to_dict  # noqa: E402
-
-log = logging.getLogger(__name__)
-
-
-def get_vendor_jobs_sla(vendor_id: str) -> list:
-    conn = get_db_connection()
-    try:
-        cur = conn.cursor()
-        cur.execute("SELECT * FROM vendor_jobs_input WHERE vendor_id = %s ORDER BY id DESC", (vendor_id,))
-        return row_to_dict(cur.fetchall())
-    finally:
-        conn.close()
-
-
-def compute_sla_compliance(vendor_id: str) -> dict:
-    conn = get_db_connection()
-    try:
-        cur = conn.cursor()
-        cur.execute(
-            "SELECT sla_status FROM vendor_jobs_input WHERE vendor_id = %s AND sla_status IS NOT NULL",
-            (vendor_id,),
-        )
-        rows = cur.fetchall()
-        if rows:
-            met = sum(1 for r in rows if r["sla_status"] != "Overdue")
-            sla_compliance = (met / len(rows)) * 100
-        else:
-            sla_compliance = None
-
-        cur.execute("SELECT avg_turnaround_days FROM vendors v JOIN vendor_master_input m ON m.name = v.name WHERE m.vendor_id = %s", (vendor_id,))
-        row = cur.fetchone()
-        avg_turnaround = row["avg_turnaround_days"] if row else None
-
-        avg_response_time = f"{avg_turnaround} days" if avg_turnaround is not None else "N/A"
-        avg_completion_time = f"{avg_turnaround} days" if avg_turnaround is not None else "N/A"
-
-        cur.execute("DELETE FROM sla_tracker_output WHERE vendor_id = %s", (vendor_id,))
-        cur.execute(
-            """
-            INSERT INTO sla_tracker_output (vendor_id, avg_response_time, avg_completion_time, sla_compliance)
-            VALUES (%s,%s,%s,%s)
-            """,
-            (vendor_id, avg_response_time, avg_completion_time, sla_compliance),
-        )
-        conn.commit()
-
-        return {
-            "vendor_id": vendor_id,
-            "sla_compliance_pct": round(sla_compliance, 2) if sla_compliance is not None else None,
-            "avg_response_time": avg_response_time,
-            "avg_completion_time": avg_completion_time,
-            "job_count": len(rows),
-        }
-    finally:
-        conn.close()
-
-
-def get_sla_tracker(vendor_id: str) -> Optional[dict]:
-    conn = get_db_connection()
-    try:
-        cur = conn.cursor()
-        cur.execute("SELECT * FROM sla_tracker_output WHERE vendor_id = %s", (vendor_id,))
-        return row_to_dict(cur.fetchone())
-    finally:
-        conn.close()
-
-
-"""
-sla_compliance_router.py
-─────────────────────────────
-FastAPI routes for the SLA Compliance MCP.
-
-Tool / Endpoint map:
-  get_vendor_jobs_sla     GET  /api/sla_compliance/jobs/{vendor_id}
-  compute_sla_compliance  POST /api/sla_compliance/compliance/{vendor_id}
-  get_sla_tracker         GET  /api/sla_compliance/tracker/{vendor_id}
-"""
-
-import logging
-from fastapi import APIRouter, HTTPException
-
-from sla_compliance_mcp import handler
-
-log = logging.getLogger(__name__)
-
-router = APIRouter()
-
-
-@router.get(
-    "/api/sla_compliance/jobs/{vendor_id}",
-    operation_id="get_vendor_jobs_sla",
-    summary="List vendor_jobs_input rows for a vendor (SLA view)",
-    tags=["SLACompliance"],
-)
-def get_vendor_jobs_sla(vendor_id: str):
-    """Returns vendor_jobs_input rows for the given vendor_id."""
-    return handler.get_vendor_jobs_sla(vendor_id)
-
-
-@router.post(
-    "/api/sla_compliance/compliance/{vendor_id}",
-    operation_id="compute_sla_compliance",
-    summary="Compute SLA compliance percentage for a vendor",
-    tags=["SLACompliance"],
-)
-def compute_sla_compliance(vendor_id: str):
+cur.execute(
     """
-    Computes the percentage of vendor_jobs_input rows with sla_status !=
-    'Overdue', derives placeholder avg_response_time/avg_completion_time
-    from the vendor's avg_turnaround_days, and upserts sla_tracker_output.
-    """
-    try:
-        return handler.compute_sla_compliance(vendor_id)
-    except Exception as e:
-        log.exception("compute_sla_compliance error")
-        raise HTTPException(status_code=500, detail=str(e))
-
-
-@router.get(
-    "/api/sla_compliance/tracker/{vendor_id}",
-    operation_id="get_sla_tracker",
-    summary="Get the latest sla_tracker_output record for a vendor",
-    tags=["SLACompliance"],
+    INSERT INTO sla_tracker_output
+    (vendor_id, avg_response_time, avg_completion_time, sla_compliance)
+    VALUES (%s,%s,%s,%s)
+    """,
+    (vendor_id, avg_response_time, avg_completion_time, sla_compliance),
 )
-def get_sla_tracker(vendor_id: str):
-    """Returns the sla_tracker_output row for the given vendor_id, or null."""
-    return handler.get_sla_tracker(vendor_id)
+conn.commit()
+
+Again, let’s only ask questions that can lead to code improvements.
+
+⸻
+
+1. Why are we deleting instead of updating?
+
+Currently the flow is
+
+DELETE
+↓
+INSERT
+
+Question:
+
+If one record already exists for the vendor, shouldn’t we simply UPDATE it instead of deleting and inserting a new one?
+
+Possible code improvement:
+
+* Replace DELETE + INSERT with UPDATE.
+* Or use an UPSERT (INSERT ... ON CONFLICT DO UPDATE) if vendor_id is unique.
+
+⸻
+
+2. Should we preserve history?
+
+Right now every execution removes the previous record.
+
+Question:
+
+Do we want to keep historical SLA snapshots for reporting and auditing, or is only the latest SLA record required?
+
+If history is needed, deleting old records is incorrect.
+
+⸻
+
+3. Is vendor_id unique in sla_tracker_output?
+
+The code assumes one row per vendor.
+
+Question:
+
+Is there a unique constraint on vendor_id in sla_tracker_output?
+
+If not, duplicate rows could exist, and the design becomes inconsistent.
+
+⸻
+
+4. What happens if the INSERT fails after DELETE?
+
+Imagine this sequence:
+
+DELETE ✅
+INSERT ❌
+
+Now the vendor has no SLA record.
+
+Question:
+
+Should we use an UPSERT or another safer approach to avoid temporarily losing the SLA record if the insert fails?
+
+(Although both statements are in one transaction and commit() happens later, it’s still a good design question.)
+
+⸻
+
+5. Should we update only when values actually change?
+
+Currently every execution
+
+* Deletes
+* Inserts
+
+even if nothing has changed.
+
+Question:
+
+Should we first check whether the SLA values have changed before writing to the database?
+
+This avoids unnecessary writes.
+
+⸻
+
+6. Should we store additional metadata?
+
+Currently only these fields are stored:
+
+vendor_id
+avg_response_time
+avg_completion_time
+sla_compliance
+
+Question:
+
+Should we also store fields like:
+
+* calculation_timestamp
+* total_jobs
+* sla_met_jobs
+* overdue_jobs
+
+to make the tracker more useful for reporting and debugging?
+
+⸻
+
+These are the key questions for this block:
+
+1. Why use DELETE + INSERT instead of UPDATE or UPSERT?
+2. Should historical SLA records be preserved instead of deleting them?
+3. Is vendor_id guaranteed to be unique in sla_tracker_output?
+4. What happens if the insert fails after the delete?
+5. Should we avoid rewriting unchanged data?
+6. Should the tracker store more metrics (like total jobs, met jobs, overdue jobs, timestamp) for better traceability?
+
+These are the kinds of implementation questions that often come up in code reviews because they affect reliability, performance, and future reporting.
 
 
-main.py
 
-# ── Sub-app: sla_compliance (FULL) ──────────────────────────────────────────
+Yes, but not many. We’ve already covered about 90% of the important implementation questions. The remaining ones are more about robustness than business logic.
 
-sla_compliance_app = _make_cors_app(
-    title="sla_compliance_agent_mcps",
-    description="MCP tools for tracking vendor SLA compliance.",
-)
-sla_compliance_app.include_router(sla_compliance_router)
-FastApiMCP(
-    sla_compliance_app,
-    include_operations=[
-        "get_vendor_jobs_sla",
-        "compute_sla_compliance",
-        "get_sla_tracker",
-    ],
-).mount_http()
-app.mount("/api/v1/sla_compliance", sla_compliance_app)
+Here are the ones I’d still ask:
 
+⸻
 
+1. Transaction Handling
 
+The code does
 
+DELETE
+INSERT
+commit()
 
+Question:
 
+If any exception occurs before commit(), will the transaction automatically roll back, or should we explicitly call rollback() in the exception block?
 
+This is more of a reliability improvement.
 
+⸻
 
+2. Data Type of sla_compliance
+
+Question:
+
+What is the datatype of the sla_compliance column in sla_tracker_output?
+
+* INTEGER
+* FLOAT
+* NUMERIC
+* DECIMAL
+
+Because the code calculates
+
+66.6666666667
+
+but only rounds it in the response.
+
+⸻
+
+3. Duplicate Jobs
+
+Question:
+
+Can the same vendor job appear multiple times in vendor_jobs_input?
+
+If duplicate jobs exist, the compliance percentage becomes inaccurate.
+
+⸻
+
+4. Is Every Job Weighted Equally?
+
+Current logic:
+
+met / total_jobs
+
+Question:
+
+Should every job contribute equally, or should high-priority/critical jobs have more weight?
+
+This is a business-rule question that could change the algorithm.
+
+⸻
+
+5. Is sla_tracker_output Only an Output Table?
+
+Question:
+
+Is any other agent updating sla_tracker_output, or is this SLA Compliance Agent the only writer?
+
+If multiple agents write to it, deleting rows could affect them.
+
+⸻
+
+I think that’s it.
+
+If I were reviewing this agent in a real project, my final checklist would be:
+
+Input Validation
+
+* ✅ Validate vendor_id exists.
+* ✅ Handle “no jobs found.”
+
+Business Logic
+
+* ✅ Confirm all possible sla_status values.
+* ✅ Decide which statuses count as SLA met.
+* ✅ Handle NULL statuses.
+* ✅ Handle case sensitivity.
+
+Data Retrieval
+
+* ✅ Validate the vendors ↔ vendor_master_input join.
+* ✅ Confirm avg_turnaround_days availability.
+* ✅ Decide whether response/completion time should be calculated separately.
+
+Database Writes
+
+* ✅ Decide between DELETE + INSERT vs UPDATE/UPSERT.
+* ✅ Decide whether history should be preserved.
+* ✅ Verify uniqueness of vendor_id.
+* ✅ Confirm transaction behavior.
+
+Beyond these, we’d start getting into architectural redesign rather than understanding or improving the current implementation. This checklist is about as complete as you’d typically produce during a senior code review.
 
