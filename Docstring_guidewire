@@ -1,76 +1,74 @@
 JarvisClaims@JarvisClaims:~/Ramakrishna$ curl -X POST http://localhost:9108/chat \
 -H "Content-Type: application/json" \
 -d '{
- "message":"Check SLA compliance for vendor VEN-991"
+ "message":"Hello"
 }'
-data: [Tool: get_vendor_jobs_sla] Starting...
+data: Hello
 
-data: [Tool: compute_sla_compliance] Starting...
+data: !
 
-data: [Tool: compute_sla_compliance] Done
+data:  How
 
-data: [Tool: get_vendor_jobs_sla] Done
+data:  can
 
-data: There
+data:  I
 
-data:  are
+data:  assist
 
-data:  no
+data:  you
 
-data:  jobs
+data:  today
 
-data:  found
-
-data:  for
+data:  regarding
 
 data:  vendor
-
-data:  VEN
-
-data: -
-
-data: 991
-
-data:  in
-
-data:  the
-
-data:  system
-
-data: .
-
-data:  As
-
-data:  a
-
-data:  result
-
-data: ,
-
-data:  no
 
 data:  SLA
 
 data:  compliance
 
-data:  calculation
+data: ?
 
-data:  can
+data:  If
 
-data:  be
+data:  you
 
-data:  performed
+data:  have
 
-data:  for
-
-data:  this
+data:  a
 
 data:  vendor
 
+data:  ID
+
+data:  or
+
+data:  want
+
+data:  to
+
+data:  check
+
+data:  a
+
+data:  vendor
+
+data: ’s
+
+data:  SLA
+
+data:  status
+
+data: ,
+
+data:  please
+
+data:  let
+
+data:  me
+
+data:  know
+
 data: .
-
-
-
-data: End
 
 JarvisClaims@JarvisClaims:~/Ramakrishna$ 
