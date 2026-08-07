@@ -1,25 +1,25 @@
 JarvisClaims@JarvisClaims:~/Ramakrishna$ curl -X POST http://localhost:9108/chat \
 -H "Content-Type: application/json" \
 -d '{
- "message":"Check SLA compliance for vendor VEN-001"
+ "message":"Check SLA compliance for vendor VEN-991"
 }'
 data: [Tool: get_vendor_jobs_sla] Starting...
 
 data: [Tool: compute_sla_compliance] Starting...
 
-data: [Tool: get_vendor_jobs_sla] Done
-
 data: [Tool: compute_sla_compliance] Done
 
-data: [Tool: get_sla_tracker] Starting...
+data: [Tool: get_vendor_jobs_sla] Done
 
-data: [Tool: get_sla_tracker] Done
+data: There
 
-data: The
+data:  are
 
-data:  SLA
+data:  no
 
-data:  compliance
+data:  jobs
+
+data:  found
 
 data:  for
 
@@ -29,53 +29,43 @@ data:  VEN
 
 data: -
 
-data: 001
+data: 991
 
-data:  is
-
-data:  
-
-data: 50
-
-data: %.
-
-data:  The
-
-data:  average
-
-data:  response
-
-data:  time
-
-data:  is
-
-data:  
-
-data: 3
-
-data:  days
-
-data: ,
-
-data:  and
+data:  in
 
 data:  the
 
-data:  average
+data:  system
 
-data:  completion
+data: .
 
-data:  time
+data:  As
 
-data:  is
+data:  a
 
-data:  also
+data:  result
 
-data:  
+data: ,
 
-data: 3
+data:  no
 
-data:  days
+data:  SLA
+
+data:  compliance
+
+data:  calculation
+
+data:  can
+
+data:  be
+
+data:  performed
+
+data:  for
+
+data:  this
+
+data:  vendor
 
 data: .
 
