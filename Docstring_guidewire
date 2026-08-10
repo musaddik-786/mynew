@@ -1,37 +1,21 @@
-After the adjuster forwards the claim to the SIU, typically because the fraud score is high or other indicators suggest suspicious activity, the claim enters the SIU investigation workflow.
+i want to write a follow up mail on this these are my senior and leaders so it should be a good mail
+below are the mails whom i want to write follow up
++Mani
 
-The SIU investigator logs into the SIU Investigation Workbench, where all claims assigned for investigation are displayed. The investigator can identify the newly forwarded claim along with its fraud score and other key claim details.
+ 
 
-Opening the claim displays important information such as the estimated investigation completion time, which in this case is ten days, the estimated settlement amount received from the adjuster workflow, the fraud risk score, and other investigation-related details.
+Hi @Manikandan V p,
 
-The investigator now clicks Run AI Analysis.
+ 
 
-This triggers multiple AI agents in the background, including the Entity Relationship Agent, Network Analysis Agent, Behavior Analytics Agent, and Evidence Correlation Agent.
+In case of Rohith’s unavailability, can someone else help with this GW sandbox-related request?
 
-Once the analysis is complete, each agent generates its respective scores, findings, and recommendations.
+ 
 
-The Summary section consolidates the outputs from all these AI agents, providing the investigator with a comprehensive view of the claim. An investigator is also automatically assigned to the case.
+Thanks,
 
-The Fraud Risk Summary section highlights the key fraud indicators along with their current status, enabling the investigator to quickly understand the primary risk factors associated with the claim.
+Ashok
 
-Scrolling further down, we reach the Investigation Actions section. From here, the investigator can request additional proof from the policyholder or schedule an interview whenever further clarification is required.
+Hi @Eswara satya sai rama Rohith dondapati,
 
-If additional documents are needed, the investigator can send a request directly through the system. Similarly, an interview can be scheduled, and the notification is automatically sent to the adjuster for further coordination with the policyholder.
-
-The Timeline View provides complete visibility into the SIU investigation progress, showing every stage of the investigation along with its current status.
-
-The Activity section maintains a chronological record of all investigation activities performed so far, such as document requests, interview scheduling, and other investigation events.
-
-Once the investigation is complete, the investigator proceeds to the Fraud Decision section, where three possible outcomes are available: Confirm Fraud, Clear Claim, and Inconclusive.
-
-Selecting either Confirm Fraud or Clear Claim automatically triggers the next set of AI agents in the background. These include the Fraud Resolution Agent, Legal Escalation Agent, Watchlist Agent, and the SIU Closure Agent.
-
-Based on the investigator’s decision, the selected outcome is recorded in the system. In this demonstration, the investigator selects Confirm Fraud, and the claim status is updated as Fraud Confirmed.
-
-The decision is immediately reflected throughout the SIU investigation workflow, including the Timeline View and the Activity section, indicating that the investigation has reached its final stage.
-
-The investigator can also review the Vendor Fraud Check section, which provides vendor-related fraud information and supporting details.
-
-Finally, through the Document Hub, the investigator can upload additional documents whenever required or review documents that have already been uploaded during the investigation.
-
-This completes the SIU investigation workflow, demonstrating how Agentic AI assists investigators with intelligent fraud analysis, structured investigations, AI-powered decision support, and complete visibility throughout the investigation lifecycle.
+In addition to the expiry date fix, could you also please share the names of the respective Guidewire team members? This will help us reach out to them to clarify any queries in your absence.
