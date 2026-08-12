@@ -1,10 +1,12 @@
-"""
-server.py — SLA Compliance Agent
-────────────────────────────────
-LangGraph agent.
 
-Port: 9108
-MCP : http://localhost:9100/api/v1/sla_compliance/mcp
+"""
+server.py — Policy Coverage Verification Agent
+───────────────────────────────────────────────
+LangGraph agent that verifies whether a claim's reported loss falls within
+the linked policy's coverage terms, deductible, limit, and exclusions.
+
+Port: 8807
+MCP : http://localhost:8800/api/v1/policy_coverage/mcp
 
 Run:
     py -3 server.py
@@ -39,15 +41,15 @@ logging.basicConfig(
     stream=sys.stdout,
     force=True,
 )
-logger = logging.getLogger("sla_compliance_agent")
+logger = logging.getLogger("policy_coverage_agent")
 
 PHOENIX_API_KEY = os.getenv("PHOENIX_API_KEY", "")
 PHOENIX_ENDPOINT = os.getenv("PHOENIX_ENDPOINT", "")
-MCP_URL = os.getenv("MCP_URL", "http://localhost:9100/api/v1/sla_compliance/mcp")
-AGENT_PORT = int(os.getenv("AGENT_PORT", "9108"))
+MCP_URL = os.getenv("MCP_URL", "http://localhost:7720/api/v1/policy_coverage/mcp")
+AGENT_PORT = int(os.getenv("AGENT_PORT", "7707"))
 
 config_mcp_server = {
-    "sla_compliance_mcp": {
+    "policy_coverage_mcp": {
         "url": MCP_URL,
         "transport": "streamable_http",
         "timeout": timedelta(seconds=120),
@@ -55,7 +57,7 @@ config_mcp_server = {
     }
 }
 
-app = FastAPI(title="SLA Compliance Agent")
+app = FastAPI(title="Policy Coverage Verification Agent")
 
 app.add_middleware(
     CORSMiddleware,
@@ -82,24 +84,117 @@ def router(state: State):
     return "End"
 
 
+# _FALLBACK_PROMPT = """
+# You are the Policy Coverage Verification Agent for an insurance claims platform,
+# assisting a Policyholder.
+
+# ─── STEP 0 — Determine whether a tool call is needed ───────────────────────
+# Only call tools when the policyholder is asking about coverage status or
+# verification for a SPECIFIC claim.
+
+# If the message is a general question (e.g. "What does deductible mean?",
+# "How does coverage work?") — answer it from your knowledge WITHOUT calling
+# any tools, then end with "End".
+
+# ─── STEP 1 — Extract the claim number ──────────────────────────────────────
+# Before calling any tool, identify the claim number from the CURRENT message
+# only. Do NOT use claim numbers from earlier in the conversation.
+
+# If no claim number is present in the current message, ask:
+#   "Could you please share your claim number so I can check the coverage?"
+# Do not call any tool until the policyholder provides it.
+
+# ─── STEP 2 — Check for an existing verification result ─────────────────────
+# Call get_coverage_verification_result with the claim number.
+# - If a result already exists, use it to answer the policyholder directly.
+#   Do NOT call verify_coverage again unless they explicitly ask for a recheck.
+# - If no result exists, proceed to Step 3.
+
+# ─── STEP 3 — Ensure policy is in the local database ────────────────────────
+# Call get_policy_details with the policy number linked to the claim.
+# - If policy details exist locally, proceed directly to Step 4.
+# - If not found locally:
+#     a. Call gw_search_policy to find the policy in Guidewire.
+#     b. Call save_policy_details to persist it locally.
+
+# ─── STEP 4 — Run coverage verification ─────────────────────────────────────
+# Call verify_coverage with the claim number.
+
+# ─── STEP 5 — Explain the result in plain language ──────────────────────────
+# Tell the policyholder:
+# - Whether their loss is Covered, Partially Covered, or Not Covered.
+# - Any exclusions that apply and why, in plain terms.
+# - The deductible that applies to their claim.
+# - The estimated net payable amount after the deductible.
+# - Recommended next steps.
+
+# ─── RULES ───────────────────────────────────────────────────────────────────
+# - NEVER show internal IDs (gw_policy_id, claim_id integers, etc.).
+# - NEVER expose remaining_coverage_limit as a raw number — describe it in
+#   context (e.g. "Your remaining coverage for this period is $X").
+# - NEVER assume or guess a claim number. Always take it from the current message.
+# - When you have completed the full response, end with "End".
+# """
+
+
+
+
 _FALLBACK_PROMPT = """
-You are the SLA Compliance Agent for an insurance claims platform,
-assisting a Vendor Manager in checking a vendor's SLA compliance.
+You are the Policy Coverage Verification Agent for an insurance claims platform,
+assisting a Policyholder.
 
-Your workflow:
+─── STEP 0 — Determine whether a tool call is needed ───────────────────────
+Only call tools when the policyholder is asking about coverage status or
+verification for a SPECIFIC claim.
 
-1. Use get_vendor_jobs_sla to review a vendor's jobs (vendor_jobs_input) and
-   their sla_status values.
-2. Call compute_sla_compliance with the vendor_id. This computes the
-   percentage of jobs that are not 'Overdue' (sla_compliance), derives
-   placeholder avg_response_time / avg_completion_time from the vendor's
-   avg_turnaround_days, and writes/updates an sla_tracker_output row.
-3. Use get_sla_tracker to retrieve the latest stored SLA tracker record for
-   a vendor.
-4. Report the SLA compliance percentage and average response/completion
-   times to the user.
+If the message is a general question (e.g. "What does deductible mean?",
+"How does coverage work?") — answer it from your knowledge WITHOUT calling
+any tools, then end with "End".
 
-When you have completed the task, end your response with "End".
+─── STEP 1 — Extract the claim number ──────────────────────────────────────
+Before calling any tool, identify the claim number from the CURRENT message
+only. Do NOT use claim numbers from earlier in the conversation.
+
+If no claim number is present in the current message, ask:
+  "Could you please share your claim number so I can check the coverage?"
+Do not call any tool until the policyholder provides it.
+
+─── STEP 2 — Check for an existing verification result ─────────────────────
+Call get_coverage_verification_result with the claim number.
+- If a result already exists, use it to answer the policyholder directly.
+  Do NOT call verify_coverage again unless they explicitly ask for a recheck.
+- If no result exists, proceed to Step 3.
+
+─── STEP 3 — Retrieve the linked policy ─────────────────────────────
+Call get_claim_details using the claim number.
+If the claim is not found:
+Explain that the claim does not exist and stop.
+Otherwise:
+Read the policy_number returned by get_claim_details.
+Do not guess or invent a policy number.
+Proceed to Step 4.
+
+─── STEP 4 — Ensure policy is available locally ─────────────────────
+Call get_policy_details using the policy_number returned from
+get_claim_details.
+If the policy exists locally:
+Proceed to Step 5.
+Otherwise:
+1. Call gw_search_policy(policy_number)
+2. Call save_policy_details(policy_number)
+3. Call get_policy_details(policy_number) again
+Proceed to Step 5.
+
+─── STEP 5 — Explain the result in plain language ──────────────────────────
+Run verify_coverage(claim_number)
+ 
+
+─── RULES ───────────────────────────────────────────────────────────────────
+- NEVER show internal IDs (gw_policy_id, claim_id integers, etc.).
+- NEVER expose remaining_coverage_limit as a raw number — describe it in
+  context (e.g. "Your remaining coverage for this period is $X").
+- NEVER assume or guess a claim number. Always take it from the current message.
+- When you have completed the full response, end with "End".
 """
 
 
@@ -108,11 +203,10 @@ def load_prompt() -> str:
         raise RuntimeError("Phoenix not configured")
     from phoenix.client import Client
     client = Client(base_url=PHOENIX_ENDPOINT, api_key=PHOENIX_API_KEY)
-    prompt = client.prompts.get(name="sla_compliance_agent", label="production")
+    prompt = client.prompts.get(name="policy_coverage_agent", label="production")
     prompt_set = prompt._template["messages"]
     system_msg = next(
-        (item["content"][0]["text"] for item in prompt_set if item.get("role") == "system"),
-        None,
+        (item["content"][0]["text"] for item in prompt_set if item.get("role") == "system"), None
     )
     if not system_msg:
         raise ValueError("System prompt is empty or missing in Phoenix")
@@ -124,10 +218,23 @@ def create_graph(model, tools, prompt):
     llm_with_tools = model.bind_tools(tools)
 
     async def agent_node(state: State):
-        messages = state["messages"]
-        all_messages = [SystemMessage(content=prompt)] + messages
+        all_messages = [SystemMessage(content=prompt)] + state["messages"]
+        # message = await llm_with_tools.ainvoke(all_messages)
         message = await llm_with_tools.ainvoke(all_messages)
+        logger.info("=" * 80)
+        logger.info("LLM Response")
+        logger.info("Content: %s", message.content)
+        if getattr(message, "tool_calls", None):
+            logger.info("Tool Calls:")
+        for tool in message.tool_calls:
+            logger.info(
+                    "Tool=%s Args=%s",
+                    tool.get("name"),
+                    tool.get("args"),
+                )
+        logger.info("=" * 80)
         return {"messages": [message]}
+        # return {"messages": [message]}
 
     graph_builder.add_node("agent", agent_node)
     graph_builder.add_node("tools", ToolNode(tools=tools))
@@ -147,25 +254,42 @@ async def get_tools():
 async def stream_graph(graph, initial_state, config):
     async for event in graph.astream_events(initial_state, config=config, version="v2"):
         kind = event.get("event", "")
-
         if kind == "on_chat_model_stream":
             chunk = event["data"].get("chunk")
             if chunk and hasattr(chunk, "content") and chunk.content:
                 yield f"data: {chunk.content}\n\n"
-
+        # elif kind == "on_tool_start":
+        #     yield f"data: [Tool: {event.get('name', 'unknown_tool')}] Starting...\n\n"
         elif kind == "on_tool_start":
-            tool_name = event.get("name", "unknown_tool")
-            yield f"data: [Tool: {tool_name}] Starting...\n\n"
+            logger.info(
+                "TOOL START: %s | INPUT=%s",
+                event.get("name"),
+                event["data"].get("input"),
+            )
+            yield f"data: [Tool: {event.get('name')}] Starting...\n\n"
+        # elif kind == "on_tool_end":
+        #     yield f"data: [Tool: {event.get('name', 'unknown_tool')}] Done\n\n"
 
         elif kind == "on_tool_end":
-            tool_name = event.get("name", "unknown_tool")
-            yield f"data: [Tool: {tool_name}] Done\n\n"
+            logger.info(
+
+                    "TOOL END: %s | OUTPUT=%s",
+
+                    event.get("name"),
+
+                    event["data"].get("output"),
+
+                )
+
+            yield f"data: [Tool: {event.get('name')}] Done\n\n"
+
+ 
+
 
 
 @app.post("/chat")
 async def chat_stream(request: Request):
     load_dotenv(find_dotenv())
-
     tools = await get_tools()
 
     model = AzureChatOpenAI(
@@ -182,8 +306,10 @@ async def chat_stream(request: Request):
         system_prompt = _FALLBACK_PROMPT
 
     body = await request.json()
-    user_message = body.get("message", "Check SLA compliance for vendor VEN-001")
+    history = body.get("history", [])
+    user_message = body.get("message", "Verify policy coverage for this claim")
 
+    initial_messages = history + [user_message] if history else [user_message]
     graph = create_graph(model=model, tools=tools, prompt=system_prompt)
 
     async def generate():
@@ -193,7 +319,7 @@ async def chat_stream(request: Request):
         try:
             async for event in stream_graph(
                 graph=graph,
-                initial_state={"messages": [user_message]},
+                initial_state={"messages": initial_messages},
                 config={"recursion_limit": 250},
             ):
                 last_event_at = time.time()
@@ -229,7 +355,7 @@ async def chat_stream(request: Request):
 
 @app.get("/health")
 async def health():
-    return {"status": "healthy", "agent": "sla_compliance_agent"}
+    return {"status": "healthy", "agent": "policy_coverage_agent"}
 
 
 if __name__ == "__main__":
@@ -242,202 +368,798 @@ if __name__ == "__main__":
 
 
 
-
-
-
-# """
-# handler.py — SLA Compliance
-# ───────────────────────────────
-# Computes SLA compliance percentage and avg response/completion times for a
-# vendor.
-# """
-
-# import logging
-# import os
-# import sys
-# from typing import Optional
-
-# sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "common"))
-
-# from db import get_db_connection, row_to_dict  # noqa: E402
-
-# log = logging.getLogger(__name__)
-
-
-# def get_vendor_jobs_sla(vendor_id: str) -> list:
-#     conn = get_db_connection()
-#     try:
-#         cur = conn.cursor()
-#         cur.execute("SELECT * FROM vendor_jobs_input WHERE vendor_id = %s ORDER BY id DESC", (vendor_id,))
-#         return row_to_dict(cur.fetchall())
-#     finally:
-#         conn.close()
-
-
-# def compute_sla_compliance(vendor_id: str) -> dict:
-#     conn = get_db_connection()
-#     try:
-#         cur = conn.cursor()
-#         cur.execute(
-#             "SELECT sla_status FROM vendor_jobs_input WHERE vendor_id = %s AND sla_status IS NOT NULL",
-#             (vendor_id,),
-#         )
-#         rows = cur.fetchall()
-#         if rows:
-#             met = sum(1 for r in rows if r["sla_status"] != "Overdue")
-#             sla_compliance = (met / len(rows)) * 100
-#         else:
-#             sla_compliance = None
-
-#         cur.execute("SELECT avg_turnaround_days FROM vendors v JOIN vendor_master_input m ON m.name = v.name WHERE m.vendor_id = %s", (vendor_id,))
-#         row = cur.fetchone()
-#         avg_turnaround = row["avg_turnaround_days"] if row else None
-
-#         avg_response_time = f"{avg_turnaround} days" if avg_turnaround is not None else "N/A"
-#         avg_completion_time = f"{avg_turnaround} days" if avg_turnaround is not None else "N/A"
-
-#         cur.execute("DELETE FROM sla_tracker_output WHERE vendor_id = %s", (vendor_id,))
-#         cur.execute(
-#             """
-#             INSERT INTO sla_tracker_output (vendor_id, avg_response_time, avg_completion_time, sla_compliance)
-#             VALUES (%s,%s,%s,%s)
-#             """,
-#             (vendor_id, avg_response_time, avg_completion_time, sla_compliance),
-#         )
-#         conn.commit()
-
-#         return {
-#             "vendor_id": vendor_id,
-#             "sla_compliance_pct": round(sla_compliance, 2) if sla_compliance is not None else None,
-#             "avg_response_time": avg_response_time,
-#             "avg_completion_time": avg_completion_time,
-#             "job_count": len(rows),
-#         }
-#     finally:
-#         conn.close()
-
-
-# def get_sla_tracker(vendor_id: str) -> Optional[dict]:
-#     conn = get_db_connection()
-#     try:
-#         cur = conn.cursor()
-#         cur.execute("SELECT * FROM sla_tracker_output WHERE vendor_id = %s", (vendor_id,))
-#         return row_to_dict(cur.fetchone())
-#     finally:
-#         conn.close()
-
-
-
-
-
-
-
-
-
 """
-handler.py — SLA Compliance
-───────────────────────────────
-Computes SLA compliance percentage and avg response/completion times for a
-vendor.
+handler.py — Policy Coverage Verification
+──────────────────────────────────────────
+Functions:
+  gw_search_policy          Search Guidewire for a policy by number
+  gw_get_policy_coverages   Fetch full coverage detail from Guidewire
+  save_policy_details       Persist Guidewire policy data to local DB
+  get_policy_details        Read policy from local DB
+  verify_coverage           LLM-based coverage verdict for a claim
+  record_claim_payment      Record an approved payment and reduce remaining coverage
 """
 
+import json
 import logging
 import os
+import random
 import sys
-from typing import Optional
+from datetime import datetime
+from zoneinfo import ZoneInfo
 
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "common"))
 
 from db import get_db_connection, row_to_dict  # noqa: E402
+from dotenv import load_dotenv, find_dotenv
+from openai import AzureOpenAI
+from policy_coverage_mcp import guidewire_client
+
+load_dotenv(find_dotenv())
 
 log = logging.getLogger(__name__)
 
-SLA_NON_COMPLIANT_STATUSES = {"overdue"}
+AZURE_OPENAI_ENDPOINT = os.environ.get("AZURE_OPENAI_ENDPOINT", "")
+AZURE_OPENAI_API_KEY = os.environ.get("AZURE_OPENAI_API_KEY", "")
+AZURE_OPENAI_API_VERSION = os.environ.get("AZURE_OPENAI_API_VERSION", "2025-01-01-preview")
+AZURE_OPENAI_CHAT_DEPLOYMENT = os.environ.get("AZURE_OPENAI_CHAT_DEPLOYMENT", "gpt-4.1-claims")
 
-def _is_sla_compliant(sla_status: str) -> bool:
-    normalized = (sla_status or "").strip().lower()
-    return normalized not in SLA_NON_COMPLIANT_STATUSES
 
-class VendorNotFoundError(Exception):
-    """Raised when vendor_id has no rows at all in vendor_jobs_input."""
+def _get_openai_client() -> AzureOpenAI:
+    return AzureOpenAI(
+        api_key=AZURE_OPENAI_API_KEY,
+        api_version=AZURE_OPENAI_API_VERSION,
+        azure_endpoint=AZURE_OPENAI_ENDPOINT,
+    )
 
-def get_vendor_jobs_sla(vendor_id: str) -> list:
-    conn = get_db_connection()
+
+# ── Guidewire: Policy Search ──────────────────────────────────────────────────
+
+def gw_search_policy(policy_number: str) -> dict:
+    """
+    Search Guidewire PolicyCenter for the given policy number.
+    Returns found=True with normalised policy dict, or found=False with error.
+    """
     try:
-        cur = conn.cursor()
-        cur.execute("SELECT * FROM vendor_jobs_input WHERE vendor_id = %s ORDER BY id DESC", (vendor_id,))
-        return row_to_dict(cur.fetchall())
-    finally:
-        conn.close()
+        raw = guidewire_client.search_policy(policy_number)
+        parsed = guidewire_client.parse_policy_from_search(raw)
 
-def compute_sla_compliance(vendor_id: str) -> dict:
-    conn = get_db_connection()
-    try:
-        cur = conn.cursor()
-
-        cur.execute("SELECT sla_status FROM vendor_jobs_input WHERE vendor_id = %s", (vendor_id,))
-        all_rows = cur.fetchall()
-        job_count = len(all_rows)
-
-        if job_count == 0:
-            raise VendorNotFoundError(f"No jobs found for vendor {vendor_id}")
-
-        non_null_rows = [r for r in all_rows if r["sla_status"] is not None]
-        if non_null_rows:
-            met = sum(1 for r in non_null_rows if _is_sla_compliant(r["sla_status"]))
-            sla_compliance = (met / len(non_null_rows)) * 100
-        else:
-            sla_compliance = None
-
-        cur.execute(
-            "SELECT avg_turnaround_days FROM vendors v JOIN vendor_master_input m ON m.name = v.name "
-            "WHERE m.vendor_id = %s",
-            (vendor_id,),
-        )
-        row = cur.fetchone()
-        avg_turnaround = row["avg_turnaround_days"] if row else None
-
-        avg_response_time = f"{avg_turnaround} days" if avg_turnaround is not None else "N/A"
-        avg_completion_time = f"{avg_turnaround} days" if avg_turnaround is not None else "N/A"
-
-        cur.execute(
-            """
-            INSERT INTO sla_tracker_output (vendor_id, avg_response_time, avg_completion_time, sla_compliance)
-            VALUES (%s, %s, %s, %s)
-            ON CONFLICT (vendor_id) DO UPDATE SET
-                avg_response_time = EXCLUDED.avg_response_time,
-                avg_completion_time = EXCLUDED.avg_completion_time,
-                sla_compliance = EXCLUDED.sla_compliance
-            """,
-            (vendor_id, avg_response_time, avg_completion_time, sla_compliance),
-        )
-        conn.commit()
+        if not parsed:
+            return {
+                "found": False,
+                "policy": None,
+                "error": f"No policy found in Guidewire for policy number '{policy_number}'.",
+                "raw_gw_response": raw,
+            }
 
         return {
-            "vendor_id": vendor_id,
-            "sla_compliance_pct": round(sla_compliance, 2) if sla_compliance is not None else None,
-            "avg_response_time": avg_response_time,
-            "avg_completion_time": avg_completion_time,
-            "job_count": job_count,
+            "found": True,
+            "policy": parsed,
+            "error": None,
+            "raw_gw_response": raw,
         }
-    except VendorNotFoundError:
-        conn.rollback()
-        raise
+
+    except Exception as exc:
+        status_code = getattr(getattr(exc, "response", None), "status_code", None)
+        if status_code == 404:
+            return {
+                "found": False,
+                "policy": None,
+                "error": f"Policy '{policy_number}' not found in Guidewire (HTTP 404).",
+                "raw_gw_response": {},
+            }
+        log.exception("Guidewire policy search failed for %s", policy_number)
+        return {
+            "found": False,
+            "policy": None,
+            "error": f"Guidewire API error: {str(exc)}",
+            "raw_gw_response": {},
+        }
+
+
+# ── Guidewire: Policy Coverages ───────────────────────────────────────────────
+
+def gw_get_policy_coverages(policy_number: str) -> dict:
+    """
+    Fetch full coverage details for a policy from Guidewire.
+    Searches by policy number first, then fetches the detail record.
+    """
+    search_result = gw_search_policy(policy_number)
+    if not search_result["found"]:
+        return search_result
+
+    gw_policy_id = search_result["policy"]["gw_policy_id"]
+    try:
+        detail = guidewire_client.get_policy_coverages(gw_policy_id)
+        return {
+            "found": True,
+            "policy_id": gw_policy_id,
+            "coverage_detail": detail,
+            "error": None,
+        }
+    except Exception as exc:
+        log.exception("gw_get_policy_coverages failed for %s", gw_policy_id)
+        return {
+            "found": False,
+            "policy_id": gw_policy_id,
+            "coverage_detail": None,
+            "error": str(exc),
+        }
+
+
+# ── Local DB: Save & Read policy_details ─────────────────────────────────────
+
+def save_policy_details(policy_number: str) -> dict:
+    """
+    Fetch policy from Guidewire (search + coverage detail) and persist to the
+    local policy_details table.  Deductible, coverage limit, and exclusions are
+    extracted from the Guidewire coverage response where available.
+    """
+    search_result = gw_search_policy(policy_number)
+    if not search_result["found"]:
+        return search_result
+
+    policy = search_result["policy"]
+    gw_policy_id = policy.get("gw_policy_id")
+    effective_date = policy.get("effective_date")
+    expiration_date = policy.get("expiration_date")
+    policyholder_name = policy.get("policyholder_name")
+    account_number = policy.get("account_number")
+    policy_address = policy.get("policyholder_address") or (
+        policy.get("raw", {})
+        .get("data", [{}])[0]
+        .get("attributes", {})
+        .get("policyAddress")
+    )
+
+    coverage_result = gw_get_policy_coverages(policy_number)
+    attrs = {}
+    if coverage_result.get("found"):
+        raw_detail = coverage_result.get("coverage_detail", {})
+        log.info("[GW DEBUG] raw_detail top-level keys: %s", list(raw_detail.keys()) if isinstance(raw_detail, dict) else type(raw_detail).__name__)
+        data_node = raw_detail.get("data", {}) if isinstance(raw_detail, dict) else {}
+        log.info("[GW DEBUG] data_node type=%s", type(data_node).__name__)
+        # Guidewire detail endpoint may return data as a dict (single record) or as a list
+        if isinstance(data_node, list):
+            log.info("[GW DEBUG] data is a LIST with %d items — taking first element", len(data_node))
+            data_node = data_node[0] if data_node else {}
+        attrs = data_node.get("attributes", {}) if isinstance(data_node, dict) else {}
+        log.info("[GW DEBUG] attrs keys: %s", sorted(attrs.keys()))
+        log.info("[GW DEBUG] totalPremium=%s  lines_type=%s", attrs.get("totalPremium"), type(attrs.get("lines")).__name__)
+    else:
+        log.warning("[GW DEBUG] gw_get_policy_coverages not found for %s: %s", policy_number, coverage_result.get("error"))
+
+    state = attrs.get("baseState", {}).get("name") if isinstance(attrs.get("baseState"), dict) else None
+    term_type = attrs.get("termType", {}).get("name") if isinstance(attrs.get("termType"), dict) else None
+    premium_amount = (attrs.get("totalPremium") or {}).get("amount") if isinstance(attrs.get("totalPremium"), dict) else None
+    currency = (attrs.get("preferredCoverageCurrency") or {}).get("code") if isinstance(attrs.get("preferredCoverageCurrency"), dict) else None
+
+    addr = attrs.get("policyAddress") or {}
+    city = addr.get("city") if isinstance(addr, dict) else None
+    country = addr.get("country") if isinstance(addr, dict) else None
+    postal_code = addr.get("postalCode") if isinstance(addr, dict) else None
+
+    product_name = (attrs.get("product") or {}).get("displayName", "") if isinstance(attrs.get("product"), dict) else ""
+    coverage_type = "Homeowners" if "Homeowners" in product_name else (product_name or policy.get("product_name", ""))
+    status = "Active" if coverage_result.get("found") else (policy.get("status") or "Unknown")
+
+    # Extract deductible, coverage limit, and exclusions from Guidewire coverage lines
+    # deductible = None
+    # coverage_limit = None
+    # exclusions_list = []
+
+    # lines_data = (attrs.get("lines") or {}).get("data", []) if isinstance(attrs.get("lines"), dict) else []
+    # for line in lines_data:
+    #     line_attrs = line.get("attributes", {}) if isinstance(line, dict) else {}
+    #     coverages_data = (line_attrs.get("coverages") or {}).get("data", []) if isinstance(line_attrs.get("coverages"), dict) else []
+    #     for cov in coverages_data:
+    #         cov_attrs = cov.get("attributes", {}) if isinstance(cov, dict) else {}
+    #         # Deductible — take the first non-null value found
+    #         if deductible is None:
+    #             ded = cov_attrs.get("deductible") or {}
+    #             if isinstance(ded, dict) and ded.get("amount") is not None:
+    #                 try:
+    #                     deductible = float(ded["amount"])
+    #                 except (TypeError, ValueError):
+    #                     pass
+    #         # Coverage limit
+    #         if coverage_limit is None:
+    #             lim = cov_attrs.get("coverageAmount") or cov_attrs.get("limit") or {}
+    #             if isinstance(lim, dict) and lim.get("amount") is not None:
+    #                 try:
+    #                     # coverage_limit = float(lim["amount"])
+    #                     coverage_limit = 500000
+    #                 except (TypeError, ValueError):
+    #                     pass
+    #         # Exclusions
+    #         for excl in (cov_attrs.get("exclusions") or []):
+    #             name = (excl.get("attributes") or {}).get("name") if isinstance(excl, dict) else None
+    #             if name:
+    #                 exclusions_list.append(name)
+
+    # exclusions = ",".join(exclusions_list) if exclusions_list else None
+
+
+
+
+
+
+
+# Extract deductible, coverage limit, and exclusions from Guidewire coverage lines
+    # deductible = None
+    # coverage_limit = None
+    # exclusions_list = []
+    # lines_data = (attrs.get("lines") or {}).get("data", []) if isinstance(attrs.get("lines"), dict) else []
+    # for line in lines_data:
+    #     line_attrs = line.get("attributes", {}) if isinstance(line, dict) else {}
+    #     coverages_data = (
+    #         (line_attrs.get("coverages") or {}).get("data", [])
+    #         if isinstance(line_attrs.get("coverages"), dict)
+    #         else []
+    #     )
+    #     for cov in coverages_data:
+    #         cov_attrs = cov.get("attributes", {}) if isinstance(cov, dict) else {}
+    #         # Deductible
+    #         if deductible is None:
+    #             ded = cov_attrs.get("deductible") or {}
+    #             if isinstance(ded, dict) and ded.get("amount") is not None:
+    #                 try:
+    #                     deductible = float(ded["amount"])
+    #                 except (TypeError, ValueError):
+    #                     pass
+    #         # Coverage Limit
+    #         if coverage_limit is None:
+    #             lim = cov_attrs.get("coverageAmount") or cov_attrs.get("limit") or {}
+    #             if isinstance(lim, dict) and lim.get("amount") is not None:
+    #                 try:
+    #                     coverage_limit = float(lim["amount"])
+    #                 except (TypeError, ValueError):
+    #                     pass
+    #         # Exclusions
+    #         for excl in (cov_attrs.get("exclusions") or []):
+    #             name = (
+    #                 (excl.get("attributes") or {}).get("name")
+    #                 if isinstance(excl, dict)
+    #                 else None
+    #             )
+    #             if name:
+    #                 exclusions_list.append(name)
+    # # Fallback ONLY if Guidewire did not provide a coverage limit
+    # if coverage_limit is None:
+    #     log.warning(
+    #         "Guidewire did not return a coverage limit for policy %s. Using default PoC value 500000.",
+    #         policy_number,
+    #     )
+    #     coverage_limit = 500000.0
+    # exclusions = ",".join(exclusions_list) if exclusions_list else None
+
+
+
+
+
+
+
+
+    # Extract deductible, coverage limit, and exclusions from Guidewire coverage lines
+    deductible = None
+    coverage_limit = None
+    exclusions_list = []
+
+    lines_data = (
+        (attrs.get("lines") or {}).get("data", [])
+        if isinstance(attrs.get("lines"), dict)
+        else []
+    )
+
+    for line in lines_data:
+        line_attrs = line.get("attributes", {}) if isinstance(line, dict) else {}
+
+        coverages_data = (
+            (line_attrs.get("coverages") or {}).get("data", [])
+            if isinstance(line_attrs.get("coverages"), dict)
+            else []
+        )
+
+        for cov in coverages_data:
+            cov_attrs = cov.get("attributes", {}) if isinstance(cov, dict) else {}
+
+            # Deductible from Guidewire
+            if deductible is None:
+                ded = cov_attrs.get("deductible") or {}
+                if isinstance(ded, dict) and ded.get("amount") is not None:
+                    try:
+                        deductible = float(ded["amount"])
+                    except (TypeError, ValueError):
+                        pass
+
+            # Coverage Limit from Guidewire
+            if coverage_limit is None:
+                lim = cov_attrs.get("coverageAmount") or cov_attrs.get("limit") or {}
+                if isinstance(lim, dict) and lim.get("amount") is not None:
+                    try:
+                        coverage_limit = float(lim["amount"])
+                    except (TypeError, ValueError):
+                        pass
+
+            # Exclusions
+            for excl in (cov_attrs.get("exclusions") or []):
+                name = (
+                    (excl.get("attributes") or {}).get("name")
+                    if isinstance(excl, dict)
+                    else None
+                )
+                if name:
+                    exclusions_list.append(name)
+
+    # ------------------------------------------------------------------
+    # PoC fallback logic when Guidewire does not provide values
+    # ------------------------------------------------------------------
+    coverage = (coverage_type or "").lower()
+
+    if premium_amount is not None:
+        premium_amount = float(premium_amount)
+
+        # Coverage Limit
+        # Industry benchmark: homeowners premium ≈ 0.7% of dwelling coverage → limit = premium / 0.007
+        # Vehicle premium ≈ 3% of vehicle value → limit = premium / 0.03
+        if coverage_limit is None:
+            if "vehicle" in coverage:
+                coverage_limit = round(premium_amount / 0.03, 2)
+            elif "homeowners" in coverage or "personal" in coverage:
+                coverage_limit = round(premium_amount / 0.007, 2)
+            log.info(
+                "Coverage limit not returned by Guidewire. Calculated value: %s",
+                coverage_limit,
+            )
+
+        # Deductible
+        # Homeowners: typically $1,000–$2,500; approximate as 1% of coverage limit
+        # Vehicle: typically $500–$1,000; approximate as 1% of coverage limit
+        if deductible is None:
+            if coverage_limit is not None:
+                deductible = round(coverage_limit * 0.01, 2)
+            elif "vehicle" in coverage:
+                deductible = round(premium_amount * 0.35, 2)
+            elif "homeowners" in coverage or "personal" in coverage:
+                deductible = round(premium_amount * 0.65, 2)
+            log.info(
+                "Deductible not returned by Guidewire. Calculated value: %s",
+                deductible,
+            )
+
+    exclusions = ",".join(exclusions_list) if exclusions_list else None
+
+
+
+    conn = get_db_connection()
+    try:
+        cur = conn.cursor()
+        cur.execute(
+            """
+            INSERT INTO policy_details (
+                policy_number, gw_policy_id, status, coverage_type,
+                deductible, coverage_limit, remaining_coverage_limit, exclusions,
+                effective_date, expiration_date, premium_amount,
+                policyholder_name, account_number, policy_address,
+                state, term_type, currency, city, country, postal_code
+            ) VALUES (
+                %s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s
+            )
+            ON CONFLICT (policy_number) DO UPDATE SET
+                gw_policy_id = EXCLUDED.gw_policy_id,
+                status = EXCLUDED.status,
+                coverage_type = EXCLUDED.coverage_type,
+                deductible = EXCLUDED.deductible,
+                coverage_limit = EXCLUDED.coverage_limit,
+                remaining_coverage_limit = COALESCE(
+                    policy_details.remaining_coverage_limit, EXCLUDED.coverage_limit
+                ),
+                exclusions = EXCLUDED.exclusions,
+                effective_date = EXCLUDED.effective_date,
+                expiration_date = EXCLUDED.expiration_date,
+                premium_amount = EXCLUDED.premium_amount,
+                policyholder_name = EXCLUDED.policyholder_name,
+                account_number = EXCLUDED.account_number,
+                policy_address = EXCLUDED.policy_address,
+                state = EXCLUDED.state,
+                term_type = EXCLUDED.term_type,
+                currency = EXCLUDED.currency,
+                city = EXCLUDED.city,
+                country = EXCLUDED.country,
+                postal_code = EXCLUDED.postal_code
+            """,
+            (
+                policy_number, gw_policy_id, status, coverage_type,
+                deductible, coverage_limit, coverage_limit, exclusions,
+                effective_date, expiration_date, premium_amount,
+                policyholder_name, account_number, policy_address,
+                state, term_type, currency, city, country, postal_code,
+            ),
+        )
+        conn.commit()
     except Exception:
         conn.rollback()
-        log.exception("Failed to compute SLA compliance for vendor %s", vendor_id)
         raise
     finally:
         conn.close()
 
-def get_sla_tracker(vendor_id: str) -> Optional[dict]:
+    return {
+        "saved": True,
+        "policy_number": policy_number,
+        "gw_policy_id": gw_policy_id,
+        "status": status,
+        "coverage_type": coverage_type,
+        "deductible": deductible,
+        "coverage_limit": coverage_limit,
+        "exclusions": exclusions,
+        "premium_amount": premium_amount,
+        "currency": currency,
+    }
+
+
+def get_policy_details(policy_number: str) -> dict:
+    """Read a policy record from the local policy_details table."""
     conn = get_db_connection()
     try:
         cur = conn.cursor()
-        cur.execute("SELECT * FROM sla_tracker_output WHERE vendor_id = %s", (vendor_id,))
+        cur.execute("SELECT * FROM policy_details WHERE policy_number = %s", (policy_number,))
         return row_to_dict(cur.fetchone())
     finally:
         conn.close()
+
+
+# ── Coverage Verification ─────────────────────────────────────────────────────
+
+def get_coverage_verification_result(claim_id: str) -> dict:
+    """
+    Read an existing coverage verification result for the claim.
+    Returns the record if found, or {"found": False} if none exists yet.
+    """
+    conn = get_db_connection()
+    try:
+        cur = conn.cursor()
+        cur.execute(
+            "SELECT * FROM coverage_verification_results WHERE claim_number = %s",
+            (claim_id,),
+        )
+        row = row_to_dict(cur.fetchone())
+        if row:
+            return {"found": True, **row}
+        return {"found": False, "claim_number": claim_id}
+    finally:
+        conn.close()
+
+
+def verify_coverage(claim_id: str) -> dict:
+    """
+    Look up the claim and its linked policy from the local DB, send to the LLM
+    to determine the coverage verdict, and persist the result to
+    coverage_verification_results.
+    """
+    conn = get_db_connection()
+    try:
+        cur = conn.cursor()
+        cur.execute("SELECT * FROM claims WHERE claim_number = %s", (claim_id,))
+        claim = row_to_dict(cur.fetchone())
+        if not claim:
+            return {"error": f"Claim {claim_id} not found"}
+
+        policy_number = claim.get("policy_number")
+        if not policy_number:
+            return {"error": "No policy_number on claim", "claim": claim}
+
+        cur.execute("SELECT * FROM policy_details WHERE policy_number = %s", (policy_number,))
+        policy = row_to_dict(cur.fetchone())
+        if not policy:
+            return {"error": f"Policy {policy_number} not found in local DB — run save_policy_details first", "claim": claim}
+    finally:
+        conn.close()
+
+    loss_type = claim.get("loss_type", "")
+    cause_of_loss = claim.get("detected_cause") or claim.get("cause_of_loss", "")
+    coverage_type = policy.get("coverage_type", "")
+    coverage_limit = float(policy.get("remaining_coverage_limit") or policy.get("coverage_limit") or 0)
+    deductible = float(policy.get("deductible") or 0)
+    exclusions_raw = policy.get("exclusions") or ""
+    exclusions = (
+        json.loads(exclusions_raw)
+        if isinstance(exclusions_raw, str) and exclusions_raw.startswith("[")
+        else [x.strip() for x in exclusions_raw.split(",") if x.strip()]
+    )
+    loss_amount = float(
+        claim.get("loss_amount") or claim.get("estimated_loss_amount") or claim.get("estimated_cost") or 0
+    )
+
+    try:
+        client = _get_openai_client()
+        prompt = (
+            "You are a policy coverage analyst. Determine whether the claim is covered.\n"
+            "IMPORTANT: If Estimated Loss Amount is 0 or not provided, the damage has not yet been assessed. "
+            "Do NOT return 'Needs Investigation' solely because the loss amount is zero. "
+            "Instead, evaluate whether the loss type and cause of loss are covered under the policy type "
+            "and whether any exclusions apply. "
+            "If covered with no exclusion triggered, return coverage_verdict='Covered - Pending Assessment' "
+            "with net_payable=0 and coverage_notes explaining that the net payable will be calculated "
+            "once the damage assessment is complete.\n"
+            "Respond with JSON only: "
+            '{"coverage_verdict": "Covered|Covered - Pending Assessment|Partially Covered|Not Covered|Needs Investigation", '
+            '"exclusion_triggered": true/false, '
+            '"exclusion_details": "...", '
+            '"net_payable": <number>, '
+            '"coverage_notes": "..."}.\n\n'
+            f"Policy Coverage Type: {coverage_type}\n"
+            f"Remaining Coverage Limit: {coverage_limit}\n"
+            f"Deductible: {deductible}\n"
+            f"Policy Exclusions: {exclusions}\n"
+            f"Claim Loss Type: {loss_type}\n"
+            f"Cause of Loss: {cause_of_loss}\n"
+            f"Estimated Loss Amount: {loss_amount}"
+        )
+        response = client.chat.completions.create(
+            model=AZURE_OPENAI_CHAT_DEPLOYMENT,
+            messages=[{"role": "user", "content": prompt}],
+            temperature=0.0,
+            response_format={"type": "json_object"},
+        )
+        llm_result = json.loads(response.choices[0].message.content)
+    except Exception as e:
+        log.warning("LLM coverage check failed: %s", e)
+        net_payable = max(0.0, loss_amount - deductible)
+        if coverage_limit:
+            net_payable = min(net_payable, coverage_limit)
+        llm_result = {
+            "coverage_verdict": "Needs Investigation",
+            "exclusion_triggered": False,
+            "exclusion_details": "",
+            "net_payable": net_payable,
+            "coverage_notes": "Automated LLM check failed; manual review needed",
+        }
+
+    conn2 = get_db_connection()
+    try:
+        cur2 = conn2.cursor()
+        cur2.execute(
+            """
+            INSERT INTO coverage_verification_results
+              (claim_number, policy_number, coverage_verdict, exclusion_triggered,
+               exclusion_details, net_payable, coverage_notes, verified_at)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+            ON CONFLICT (claim_number) DO UPDATE SET
+              coverage_verdict = EXCLUDED.coverage_verdict,
+              exclusion_triggered = EXCLUDED.exclusion_triggered,
+              exclusion_details = EXCLUDED.exclusion_details,
+              net_payable = EXCLUDED.net_payable,
+              coverage_notes = EXCLUDED.coverage_notes,
+              verified_at = EXCLUDED.verified_at
+            """,
+            (
+                claim_id, str(policy_number),
+                llm_result.get("coverage_verdict"),
+                llm_result.get("exclusion_triggered", False),
+                llm_result.get("exclusion_details"),
+                llm_result.get("net_payable"),
+                llm_result.get("coverage_notes"),
+                datetime.now(ZoneInfo("UTC")).isoformat(),
+            ),
+        )
+        conn2.commit()
+    except Exception as e:
+        conn2.rollback()
+        log.warning("Could not write coverage_verification_results: %s", e)
+    finally:
+        conn2.close()
+
+    return {
+        "claim_number": claim_id,
+        "policy_number": str(policy_number),
+        "coverage_type": coverage_type,
+        "remaining_coverage_limit": coverage_limit,
+        "deductible": deductible,
+        "loss_amount": loss_amount,
+        "exclusions": exclusions,
+        **llm_result,
+    }
+
+
+# ── Payment Tracking ──────────────────────────────────────────────────────────
+
+def record_claim_payment(
+    claim_id: str,
+    amount_paid: float,
+    approved_by: str = None,
+    notes: str = None,
+) -> dict:
+    """
+    Record an approved claim payment and reduce the policy's remaining_coverage_limit
+    in the local policy_details table.
+
+    This tracks how much of the coverage has been consumed so future verify_coverage
+    calls use the correct remaining limit, not the original full limit.
+    """
+    conn = get_db_connection()
+    try:
+        cur = conn.cursor()
+        cur.execute("SELECT * FROM claims WHERE claim_number = %s", (claim_id,))
+        claim = row_to_dict(cur.fetchone())
+    finally:
+        conn.close()
+
+    if not claim:
+        return {"error": f"Claim {claim_id} not found"}
+
+    policy_number = claim.get("policy_number")
+    if not policy_number:
+        return {"error": "No policy_number on claim"}
+
+    conn2 = get_db_connection()
+    try:
+        cur2 = conn2.cursor()
+        cur2.execute(
+            "SELECT coverage_limit, remaining_coverage_limit FROM policy_details WHERE policy_number = %s",
+            (policy_number,),
+        )
+        policy = row_to_dict(cur2.fetchone())
+    finally:
+        conn2.close()
+
+    if not policy:
+        return {"error": f"Policy {policy_number} not found in local DB — run save_policy_details first"}
+
+    coverage_before = float(
+        policy.get("remaining_coverage_limit") or policy.get("coverage_limit") or 0
+    )
+    coverage_after = max(0.0, coverage_before - amount_paid)
+
+    payment_id = f"PAY-{datetime.now().strftime('%Y%m%d%H%M%S')}-{random.randint(1000, 9999)}"
+    payment_date = datetime.now(ZoneInfo("UTC")).isoformat()
+
+    conn3 = get_db_connection()
+    try:
+        cur3 = conn3.cursor()
+        cur3.execute(
+            """
+            INSERT INTO claim_payments (
+                payment_id, claim_number, policy_number, amount_paid, payment_date,
+                approved_by, payment_status, coverage_before, coverage_after, notes
+            ) VALUES (%s,%s,%s,%s,%s,%s,'Released',%s,%s,%s)
+            """,
+            (
+                payment_id, claim_id, policy_number, amount_paid, payment_date,
+                approved_by, coverage_before, coverage_after, notes,
+            ),
+        )
+        cur3.execute(
+            "UPDATE policy_details SET remaining_coverage_limit = %s WHERE policy_number = %s",
+            (coverage_after, policy_number),
+        )
+        cur3.execute(
+            "UPDATE claims SET status = 'Settled' WHERE claim_number = %s",
+            (claim_id,),
+        )
+        conn3.commit()
+    except Exception:
+        conn3.rollback()
+        raise
+    finally:
+        conn3.close()
+
+    return {
+        "payment_id": payment_id,
+        "claim_number": claim_id,
+        "policy_number": policy_number,
+        "amount_paid": amount_paid,
+        "coverage_before": coverage_before,
+        "coverage_after": coverage_after,
+        "payment_status": "Released",
+        "payment_date": payment_date,
+    }
+
+
+def get_claim_details(claim_id: str) -> dict:
+
+    """
+
+    Fetch claim details from the local claims table.
+
+    Used by the Policy Coverage Agent to obtain the linked policy number.
+
+    """
+
+    conn = get_db_connection()
+
+    try:
+
+        cur = conn.cursor()
+
+        cur.execute(
+
+            "SELECT * FROM claims WHERE claim_number = %s",
+
+            (claim_id,),
+
+        )
+
+        claim = row_to_dict(cur.fetchone())
+
+        if not claim:
+
+            return {
+
+                "found": False,
+
+                "claim_id": claim_id,
+
+                "error": f"Claim '{claim_id}' not found"
+
+            }
+
+        return {
+
+            "found": True,
+
+            "claim": claim
+
+        }
+
+    finally:
+
+        conn.close()
+
+
+
+
+
+
+
+
+models.py
+
+from pydantic import BaseModel, Field
+from typing import Optional
+
+
+class GetClaimDetailsRequest(BaseModel):
+   claim_number: str = Field(
+       ...,
+       description="Claim number, e.g. CLM-2024-1003"
+   )
+   
+class GwSearchPolicyRequest(BaseModel):
+    policy_number: str = Field(..., description="Policy number to look up in Guidewire, e.g. '9802322834'")
+
+
+class GwReportLossRequest(BaseModel):
+    policy_number: str = Field(..., description="Policy number the loss is reported against")
+    claim_number: str = Field(..., description="Local claim number, e.g. CLM-2026-1234")
+    loss_type: str = Field(..., description="Type of loss, e.g. 'Water Damage', 'Fire'")
+    loss_date: str = Field(..., description="Date of loss in YYYY-MM-DD format")
+    loss_description: str = Field(..., description="Free-text description of what happened")
+    loss_location: Optional[str] = Field(None, description="Address or area where loss occurred")
+    policyholder_name: str = Field(..., description="Name of the insured policyholder")
+    estimated_amount: Optional[float] = Field(None, description="Policyholder's estimated loss amount")
+
+
+class SavePolicyDetailsRequest(BaseModel):
+    policy_number: str = Field(..., description="Policy number to fetch from Guidewire and save locally")
+
+
+class RecordClaimPaymentRequest(BaseModel):
+    claim_number: str = Field(..., description="Claim number (e.g. CLM-2026-1001) for which payment is released")
+    amount_paid: float = Field(..., description="Amount paid out for this claim")
+    approved_by: Optional[str] = Field(None, description="Name or ID of the adjuster who approved the payment")
+    notes: Optional[str] = Field(None, description="Optional notes about the payment")
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -448,1967 +1170,25 @@ def get_sla_tracker(vendor_id: str) -> Optional[dict]:
 
 main.py
 
-# ── Sub-app: sla_compliance (FULL) ──────────────────────────────────────────
-
-sla_compliance_app = _make_cors_app(
-    title="sla_compliance_agent_mcps",
-    description="MCP tools for tracking vendor SLA compliance.",
+policy_coverage_app = _make_cors_app(
+    title="policy_coverage_agent_mcps",
+    description="MCP tools for Guidewire policy lookup, coverage verification, and payment tracking.",
 )
-sla_compliance_app.include_router(sla_compliance_router)
+policy_coverage_app.include_router(policy_coverage_router)
 FastApiMCP(
-    sla_compliance_app,
+    policy_coverage_app,
     include_operations=[
-        "get_vendor_jobs_sla",
-        "compute_sla_compliance",
-        "get_sla_tracker",
+        "gw_search_policy",
+        "gw_get_policy_coverages",
+        "save_policy_details",
+        "get_policy_details",
+        "get_coverage_verification_result",
+        "verify_coverage",
+        "record_claim_payment",
+        "get_claim_details",
     ],
 ).mount_http()
-app.mount("/api/v1/sla_compliance", sla_compliance_app)
-
-
-
-
-
-
-
-
-
-# """
-# sla_compliance_router.py
-# ─────────────────────────────
-# FastAPI routes for the SLA Compliance MCP.
-
-# Tool / Endpoint map:
-#   get_vendor_jobs_sla     GET  /api/sla_compliance/jobs/{vendor_id}
-#   compute_sla_compliance  POST /api/sla_compliance/compliance/{vendor_id}
-#   get_sla_tracker         GET  /api/sla_compliance/tracker/{vendor_id}
-# """
-
-# import logging
-# from fastapi import APIRouter, HTTPException
-
-# from sla_compliance_mcp import handler
-
-# log = logging.getLogger(__name__)
-
-# router = APIRouter()
-
-
-# @router.get(
-#     "/api/sla_compliance/jobs/{vendor_id}",
-#     operation_id="get_vendor_jobs_sla",
-#     summary="List vendor_jobs_input rows for a vendor (SLA view)",
-#     tags=["SLACompliance"],
-# )
-# def get_vendor_jobs_sla(vendor_id: str):
-#     """Returns vendor_jobs_input rows for the given vendor_id."""
-#     return handler.get_vendor_jobs_sla(vendor_id)
-
-
-# @router.post(
-#     "/api/sla_compliance/compliance/{vendor_id}",
-#     operation_id="compute_sla_compliance",
-#     summary="Compute SLA compliance percentage for a vendor",
-#     tags=["SLACompliance"],
-# )
-# def compute_sla_compliance(vendor_id: str):
-#     """
-#     Computes the percentage of vendor_jobs_input rows with sla_status !=
-#     'Overdue', derives placeholder avg_response_time/avg_completion_time
-#     from the vendor's avg_turnaround_days, and upserts sla_tracker_output.
-#     """
-#     try:
-#         return handler.compute_sla_compliance(vendor_id)
-#     except Exception as e:
-#         log.exception("compute_sla_compliance error")
-#         raise HTTPException(status_code=500, detail=str(e))
-
-
-# @router.get(
-#     "/api/sla_compliance/tracker/{vendor_id}",
-#     operation_id="get_sla_tracker",
-#     summary="Get the latest sla_tracker_output record for a vendor",
-#     tags=["SLACompliance"],
-# )
-# def get_sla_tracker(vendor_id: str):
-#     """Returns the sla_tracker_output row for the given vendor_id, or null."""
-#     return handler.get_sla_tracker(vendor_id)
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-"""
-sla_compliance_router.py
-─────────────────────────────
-FastAPI routes for the SLA Compliance MCP.
-
-Tool / Endpoint map:
-  get_vendor_jobs_sla     GET  /api/sla_compliance/jobs/{vendor_id}
-  compute_sla_compliance  POST /api/sla_compliance/compliance/{vendor_id}
-  get_sla_tracker         GET  /api/sla_compliance/tracker/{vendor_id}
-"""
-
-import logging
-from fastapi import APIRouter, HTTPException
-
-from sla_compliance_mcp import handler
-from sla_compliance_mcp.handler import VendorNotFoundError
-
-log = logging.getLogger(__name__)
-
-router = APIRouter()
-
-@router.get(
-    "/api/sla_compliance/jobs/{vendor_id}",
-    operation_id="get_vendor_jobs_sla",
-    summary="List vendor_jobs_input rows for a vendor (SLA view)",
-    tags=["SLACompliance"],
-)
-def get_vendor_jobs_sla(vendor_id: str):
-    """Returns vendor_jobs_input rows for the given vendor_id."""
-    return handler.get_vendor_jobs_sla(vendor_id)
-
-@router.post(
-    "/api/sla_compliance/compliance/{vendor_id}",
-    operation_id="compute_sla_compliance",
-    summary="Compute SLA compliance percentage for a vendor",
-    tags=["SLACompliance"],
-)
-def compute_sla_compliance(vendor_id: str):
-    """
-    Computes the percentage of vendor_jobs_input rows with sla_status !=
-    'Overdue' (case-insensitive, whitespace-trimmed), derives placeholder
-    avg_response_time/avg_completion_time from the vendor's
-    avg_turnaround_days, and upserts sla_tracker_output. Raises 404 if the
-    vendor has no rows in vendor_jobs_input at all.
-    """
-    try:
-        return handler.compute_sla_compliance(vendor_id)
-    except VendorNotFoundError as e:
-        raise HTTPException(status_code=404, detail=str(e))
-    except Exception as e:
-        log.exception("compute_sla_compliance error")
-        raise HTTPException(status_code=500, detail=str(e))
-
-@router.get(
-    "/api/sla_compliance/tracker/{vendor_id}",
-    operation_id="get_sla_tracker",
-    summary="Get the latest sla_tracker_output record for a vendor",
-    tags=["SLACompliance"],
-)
-def get_sla_tracker(vendor_id: str):
-    """Returns the sla_tracker_output row for the given vendor_id, or null."""
-    return handler.get_sla_tracker(vendor_id)
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-DISPACTH AGENT----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
-
-
-# """
-# server.py — Dispatch Agent
-# ──────────────────────────
-# LangGraph agent.
-
-# Port: 9106
-# MCP : http://localhost:9100/api/v1/dispatch/mcp
-
-# Run:
-#     py -3 server.py
-# """
-
-# import json
-# import logging
-# import os
-# import sys
-# import time
-# import traceback
-# from datetime import datetime, timedelta
-# from typing import Annotated, TypedDict
-
-# import uvicorn
-# from dotenv import load_dotenv, find_dotenv
-# from fastapi import FastAPI, Request
-# from fastapi.middleware.cors import CORSMiddleware
-# from fastapi.responses import StreamingResponse
-# from langchain_core.messages import AIMessage, SystemMessage
-# from langchain_mcp_adapters.client import MultiServerMCPClient
-# from langchain_openai.chat_models import AzureChatOpenAI
-# from langgraph.graph import END, START, StateGraph
-# from langgraph.graph.message import add_messages
-# from langgraph.prebuilt import ToolNode
-
-# load_dotenv(find_dotenv())
-
-# logging.basicConfig(
-#     level=logging.INFO,
-#     format="%(asctime)s | %(levelname)-8s | %(name)s | %(message)s",
-#     stream=sys.stdout,
-#     force=True,
-# )
-# logger = logging.getLogger("dispatch_agent")
-
-# PHOENIX_API_KEY = os.getenv("PHOENIX_API_KEY", "")
-# PHOENIX_ENDPOINT = os.getenv("PHOENIX_ENDPOINT", "")
-# MCP_URL = os.getenv("MCP_URL", "http://localhost:9100/api/v1/dispatch/mcp")
-# AGENT_PORT = int(os.getenv("AGENT_PORT", "9106"))
-
-# config_mcp_server = {
-#     "dispatch_mcp": {
-#         "url": MCP_URL,
-#         "transport": "streamable_http",
-#         "timeout": timedelta(seconds=120),
-#         "sse_read_timeout": timedelta(seconds=600),
-#     }
-# }
-
-# app = FastAPI(title="Dispatch Agent")
-
-# app.add_middleware(
-#     CORSMiddleware,
-#     allow_origins=["*"],
-#     allow_credentials=True,
-#     allow_methods=["*"],
-#     allow_headers=["*"],
-# )
-
-
-# class State(TypedDict):
-#     messages: Annotated[list, add_messages]
-
-
-# def router(state: State):
-#     last = state["messages"][-1]
-#     if isinstance(last, AIMessage) and getattr(last, "tool_calls", None):
-#         return "tools"
-#     if isinstance(last, AIMessage) and last.content:
-#         if "Continue" in last.content:
-#             return "tools"
-#         if "End" in last.content:
-#             return "End"
-#     return "End"
-
-
-# _FALLBACK_PROMPT = """
-# You are the Dispatch Agent for an insurance claims platform, assisting a
-# Vendor Manager in creating and tracking work orders for vendor/expert
-# dispatch.
-
-# Your workflow:
-
-# 1. To schedule a vendor/expert visit, call create_work_order with the
-#    claim_id, claim_number, expert_id, expert_name, expert_type,
-#    scheduled_date, scheduled_time, customer_address, and assigned_by (plus
-#    any optional fields like estimated_arrival, estimated_cost, priority,
-#    notes_to_expert, customer_phone, customer_email). This creates a
-#    work_orders row (status 'Scheduled') and logs a 'Created' dispatch_logs
-#    entry.
-# 2. Use get_work_order or list_work_orders to look up existing work orders by
-#    claim_id and/or status.
-# 3. As work progresses, call update_work_order_status with the
-#    work_order_id, new status (e.g. 'In Progress', 'Completed', 'Canceled'),
-#    action_by, and optional details. This updates work_orders.status (setting
-#    started_at/completed_at/canceled_at as appropriate) and logs the
-#    transition in dispatch_logs.
-# 4. Use get_dispatch_logs to retrieve the full audit trail for a work order.
-
-# When you have completed the task, end your response with "End".
-# """
-
-
-# def load_prompt() -> str:
-#     if not PHOENIX_ENDPOINT:
-#         raise RuntimeError("Phoenix not configured")
-#     from phoenix.client import Client
-#     client = Client(base_url=PHOENIX_ENDPOINT, api_key=PHOENIX_API_KEY)
-#     prompt = client.prompts.get(name="dispatch_agent", label="production")
-#     prompt_set = prompt._template["messages"]
-#     system_msg = next(
-#         (item["content"][0]["text"] for item in prompt_set if item.get("role") == "system"),
-#         None,
-#     )
-#     if not system_msg:
-#         raise ValueError("System prompt is empty or missing in Phoenix")
-#     return system_msg
-
-
-# def create_graph(model, tools, prompt):
-#     graph_builder = StateGraph(State)
-#     llm_with_tools = model.bind_tools(tools)
-
-#     async def agent_node(state: State):
-#         messages = state["messages"]
-#         all_messages = [SystemMessage(content=prompt)] + messages
-#         message = await llm_with_tools.ainvoke(all_messages)
-#         return {"messages": [message]}
-
-#     graph_builder.add_node("agent", agent_node)
-#     graph_builder.add_node("tools", ToolNode(tools=tools))
-#     graph_builder.add_edge(START, "agent")
-#     graph_builder.add_conditional_edges("agent", router, {"tools": "tools", "End": END})
-#     graph_builder.add_edge("tools", "agent")
-#     return graph_builder.compile()
-
-
-# async def get_tools():
-#     client = MultiServerMCPClient(config_mcp_server)
-#     tools = await client.get_tools()
-#     logger.info("Tools loaded from MCP: %s", [t.name for t in tools])
-#     return tools
-
-
-# async def stream_graph(graph, initial_state, config):
-#     async for event in graph.astream_events(initial_state, config=config, version="v2"):
-#         kind = event.get("event", "")
-
-#         if kind == "on_chat_model_stream":
-#             chunk = event["data"].get("chunk")
-#             if chunk and hasattr(chunk, "content") and chunk.content:
-#                 yield f"data: {chunk.content}\n\n"
-
-#         elif kind == "on_tool_start":
-#             tool_name = event.get("name", "unknown_tool")
-#             yield f"data: [Tool: {tool_name}] Starting...\n\n"
-
-#         elif kind == "on_tool_end":
-#             tool_name = event.get("name", "unknown_tool")
-#             yield f"data: [Tool: {tool_name}] Done\n\n"
-
-
-# @app.post("/chat")
-# async def chat_stream(request: Request):
-#     load_dotenv(find_dotenv())
-
-#     tools = await get_tools()
-
-#     model = AzureChatOpenAI(
-#         api_key=os.getenv("AZURE_OPENAI_API_KEY"),
-#         api_version=os.getenv("AZURE_OPENAI_API_VERSION"),
-#         azure_deployment=os.getenv("AZURE_OPENAI_CHAT_DEPLOYMENT"),
-#         azure_endpoint=os.getenv("AZURE_OPENAI_ENDPOINT"),
-#     )
-
-#     try:
-#         system_prompt = load_prompt()
-#     except Exception as e:
-#         logger.warning("Phoenix prompt load failed (%s) — using fallback prompt", e)
-#         system_prompt = _FALLBACK_PROMPT
-
-#     body = await request.json()
-#     user_message = body.get("message", "Create a work order to dispatch a vendor for claim CLM-2026-1001")
-
-#     graph = create_graph(model=model, tools=tools, prompt=system_prompt)
-
-#     async def generate():
-#         start = time.time()
-#         last_event_at = start
-#         last_tool = None
-#         try:
-#             async for event in stream_graph(
-#                 graph=graph,
-#                 initial_state={"messages": [user_message]},
-#                 config={"recursion_limit": 250},
-#             ):
-#                 last_event_at = time.time()
-#                 if isinstance(event, str) and event.startswith("data: [Tool:"):
-#                     try:
-#                         last_tool = event.split("[Tool:", 1)[1].split("]", 1)[0]
-#                     except Exception:
-#                         pass
-#                 yield event
-#         except BaseException as e:
-#             elapsed = time.time() - start
-#             since_last = time.time() - last_event_at
-#             err = {
-#                 "exception_class": type(e).__name__,
-#                 "message": str(e),
-#                 "elapsed_total_seconds": round(elapsed, 2),
-#                 "seconds_since_last_event": round(since_last, 2),
-#                 "last_tool_invoked": last_tool,
-#                 "traceback": traceback.format_exc(),
-#                 "timestamp_utc": datetime.utcnow().isoformat(),
-#             }
-#             logger.error("AGENT_ERROR %s", json.dumps(err, default=str))
-#             try:
-#                 yield f"data: [AGENT_ERROR] {json.dumps(err, default=str)}\n\n"
-#             except Exception:
-#                 pass
-#             import asyncio
-#             if isinstance(e, asyncio.CancelledError):
-#                 raise
-
-#     return StreamingResponse(generate(), media_type="text/event-stream")
-
-
-# @app.get("/health")
-# async def health():
-#     return {"status": "healthy", "agent": "dispatch_agent"}
-
-
-# if __name__ == "__main__":
-#     uvicorn.run(app, host="0.0.0.0", port=AGENT_PORT)
-
-
-
-
-"""
-server.py — Dispatch Agent
-──────────────────────────
-LangGraph agent.
-Port: 9106
-MCP : http://localhost:9100/api/v1/dispatch/mcp
-Run:
-   py -3 server.py
-"""
-import json
-import logging
-import os
-import sys
-import time
-import traceback
-from datetime import datetime, timedelta
-from typing import Annotated, TypedDict
-import uvicorn
-from dotenv import load_dotenv, find_dotenv
-from fastapi import FastAPI, Request
-from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import StreamingResponse
-from langchain_core.messages import AIMessage, SystemMessage
-from langchain_mcp_adapters.client import MultiServerMCPClient
-from langchain_openai.chat_models import AzureChatOpenAI
-from langgraph.graph import END, START, StateGraph
-from langgraph.graph.message import add_messages
-from langgraph.prebuilt import ToolNode
-load_dotenv(find_dotenv())
-logging.basicConfig(
-   level=logging.INFO,
-   format="%(asctime)s | %(levelname)-8s | %(name)s | %(message)s",
-   stream=sys.stdout,
-   force=True,
-)
-logger = logging.getLogger("dispatch_agent")
-PHOENIX_API_KEY = os.getenv("PHOENIX_API_KEY", "")
-PHOENIX_ENDPOINT = os.getenv("PHOENIX_ENDPOINT", "")
-MCP_URL = os.getenv("MCP_URL", "http://localhost:9100/api/v1/dispatch/mcp")
-AGENT_PORT = int(os.getenv("AGENT_PORT", "9106"))
-config_mcp_server = {
-   "dispatch_mcp": {
-       "url": MCP_URL,
-       "transport": "streamable_http",
-       "timeout": timedelta(seconds=120),
-       "sse_read_timeout": timedelta(seconds=600),
-   }
-}
-app = FastAPI(title="Dispatch Agent")
-app.add_middleware(
-   CORSMiddleware,
-   allow_origins=["*"],
-   allow_credentials=True,
-   allow_methods=["*"],
-   allow_headers=["*"],
-)
-
-class State(TypedDict):
-   messages: Annotated[list, add_messages]
-
-def router(state: State):
-   last = state["messages"][-1]
-   if isinstance(last, AIMessage) and getattr(last, "tool_calls", None):
-       return "tools"
-   if isinstance(last, AIMessage) and last.content:
-       if "Continue" in last.content:
-           return "tools"
-       if "End" in last.content:
-           return "End"
-   return "End"
-
-_FALLBACK_PROMPT = """
-You are the Dispatch Agent for an insurance claims platform, assisting a
-Vendor Manager in creating and tracking work orders for vendor/expert
-dispatch.
-Your workflow:
-1. To schedule a vendor/expert visit, call create_work_order with
-  claim_number, expert_id, scheduled_date, scheduled_time, and
-  assigned_by (plus any optional fields like estimated_arrival,
-  estimated_cost, priority, notes_to_expert, customer_phone,
-  customer_email). claim_number identifies the claim and expert_id
-  identifies the expert — the MCP automatically looks up claim_id,
-  expert_name, expert_type, and customer_address from the database;
-  do NOT supply those fields yourself. This creates a work_orders row
-  (status 'Scheduled') and logs a 'Created' dispatch_logs entry.
-2. Use get_work_order or list_work_orders to look up existing work orders by
-  claim_id and/or status.
-3. As work progresses, call update_work_order_status with the
-  work_order_id, new status (e.g. 'In Progress', 'Completed', 'Canceled'),
-  action_by, and optional details. This updates work_orders.status (setting
-  started_at/completed_at/canceled_at as appropriate) and logs the
-  transition in dispatch_logs.
-4. Use get_dispatch_logs to retrieve the full audit trail for a work order.
-When you have completed the task, end your response with "End".
-"""
-
-def load_prompt() -> str:
-   if not PHOENIX_ENDPOINT:
-       raise RuntimeError("Phoenix not configured")
-   from phoenix.client import Client
-   client = Client(base_url=PHOENIX_ENDPOINT, api_key=PHOENIX_API_KEY)
-   prompt = client.prompts.get(name="dispatch_agent", label="production")
-   prompt_set = prompt._template["messages"]
-   system_msg = next(
-       (item["content"][0]["text"] for item in prompt_set if item.get("role") == "system"),
-       None,
-   )
-   if not system_msg:
-       raise ValueError("System prompt is empty or missing in Phoenix")
-   return system_msg
-
-def create_graph(model, tools, prompt):
-   graph_builder = StateGraph(State)
-   llm_with_tools = model.bind_tools(tools)
-   async def agent_node(state: State):
-       messages = state["messages"]
-       all_messages = [SystemMessage(content=prompt)] + messages
-       message = await llm_with_tools.ainvoke(all_messages)
-       return {"messages": [message]}
-   graph_builder.add_node("agent", agent_node)
-   graph_builder.add_node("tools", ToolNode(tools=tools))
-   graph_builder.add_edge(START, "agent")
-   graph_builder.add_conditional_edges("agent", router, {"tools": "tools", "End": END})
-   graph_builder.add_edge("tools", "agent")
-   return graph_builder.compile()
-
-async def get_tools():
-    client = MultiServerMCPClient(config_mcp_server)
-    tools = await client.get_tools()
-    logger.info("Tools loaded from MCP: %s", [t.name for t in tools])
-    return tools
-
-async def stream_graph(graph, initial_state, config):
-   async for event in graph.astream_events(initial_state, config=config, version="v2"):
-       kind = event.get("event", "")
-       if kind == "on_chat_model_stream":
-           chunk = event["data"].get("chunk")
-           if chunk and hasattr(chunk, "content") and chunk.content:
-               yield f"data: {chunk.content}\n\n"
-       elif kind == "on_tool_start":
-           tool_name = event.get("name", "unknown_tool")
-           yield f"data: [Tool: {tool_name}] Starting...\n\n"
-       elif kind == "on_tool_end":
-           tool_name = event.get("name", "unknown_tool")
-           yield f"data: [Tool: {tool_name}] Done\n\n"
-
-@app.post("/chat")
-async def chat_stream(request: Request):
-   load_dotenv(find_dotenv())
-   tools = await get_tools()
-   model = AzureChatOpenAI(
-       api_key=os.getenv("AZURE_OPENAI_API_KEY"),
-       api_version=os.getenv("AZURE_OPENAI_API_VERSION"),
-       azure_deployment=os.getenv("AZURE_OPENAI_CHAT_DEPLOYMENT"),
-       azure_endpoint=os.getenv("AZURE_OPENAI_ENDPOINT"),
-   )
-   try:
-       system_prompt = load_prompt()
-   except Exception as e:
-       logger.warning("Phoenix prompt load failed (%s) — using fallback prompt", e)
-       system_prompt = _FALLBACK_PROMPT
-   body = await request.json()
-   user_message = body.get("message", "Create a work order to dispatch a vendor for claim CLM-2026-1001")
-   graph = create_graph(model=model, tools=tools, prompt=system_prompt)
-   async def generate():
-       start = time.time()
-       last_event_at = start
-       last_tool = None
-       try:
-           async for event in stream_graph(
-               graph=graph,
-               initial_state={"messages": [user_message]},
-               config={"recursion_limit": 250},
-           ):
-               last_event_at = time.time()
-               if isinstance(event, str) and event.startswith("data: [Tool:"):
-                   try:
-                       last_tool = event.split("[Tool:", 1)[1].split("]", 1)[0]
-                   except Exception:
-                       pass
-               yield event
-       except BaseException as e:
-           elapsed = time.time() - start
-           since_last = time.time() - last_event_at
-           err = {
-               "exception_class": type(e).__name__,
-               "message": str(e),
-               "elapsed_total_seconds": round(elapsed, 2),
-               "seconds_since_last_event": round(since_last, 2),
-               "last_tool_invoked": last_tool,
-               "traceback": traceback.format_exc(),
-               "timestamp_utc": datetime.utcnow().isoformat(),
-           }
-           logger.error("AGENT_ERROR %s", json.dumps(err, default=str))
-           try:
-               yield f"data: [AGENT_ERROR] {json.dumps(err, default=str)}\n\n"
-           except Exception:
-               pass
-           import asyncio
-           if isinstance(e, asyncio.CancelledError):
-               raise
-   return StreamingResponse(generate(), media_type="text/event-stream")
-
-@app.get("/health")
-async def health():
-   return {"status": "healthy", "agent": "dispatch_agent"}
-
-if __name__ == "__main__":
-   uvicorn.run(app, host="0.0.0.0", port=AGENT_PORT)
-
-
-
-
-
-
-
-
-
-
-
-
-
-# # """
-# # dispatch_router.py
-# # ─────────────────────
-# # FastAPI routes for the Dispatch MCP.
-
-# # Tool / Endpoint map:
-# #   create_work_order         POST /api/dispatch/work_orders
-# #   get_work_order            GET  /api/dispatch/work_orders/{work_order_id}
-# #   list_work_orders          GET  /api/dispatch/work_orders
-# #   update_work_order_status  POST /api/dispatch/work_orders/{work_order_id}/status
-# #   get_dispatch_logs         GET  /api/dispatch/work_orders/{work_order_id}/logs
-# # """
-
-# # import logging
-# # from typing import Optional
-
-# # from fastapi import APIRouter, HTTPException
-
-# # from dispatch_mcp import handler
-# # from dispatch_mcp.models import CreateWorkOrderRequest, UpdateWorkOrderStatusRequest
-
-# # log = logging.getLogger(__name__)
-
-# # router = APIRouter()
-
-
-# # @router.post(
-# #     "/api/dispatch/work_orders",
-# #     operation_id="create_work_order",
-# #     summary="Create a new work order and dispatch log entry",
-# #     tags=["Dispatch"],
-# # )
-# # def create_work_order(body: CreateWorkOrderRequest):
-# #     """Inserts a new work_orders row (status 'Scheduled') and a 'Created' dispatch_logs row."""
-# #     try:
-# #         return handler.create_work_order(
-# #             body.claim_id, body.claim_number, body.expert_id, body.expert_name, body.expert_type,
-# #             body.scheduled_date, body.scheduled_time, body.customer_address, body.assigned_by,
-# #             body.estimated_arrival, body.estimated_cost, body.priority, body.notes_to_expert,
-# #             body.customer_phone, body.customer_email,
-# #         )
-# #     except Exception as e:
-# #         log.exception("create_work_order error")
-# #         raise HTTPException(status_code=500, detail=str(e))
-
-
-# # @router.get(
-# #     "/api/dispatch/work_orders/{work_order_id}",
-# #     operation_id="get_work_order",
-# #     summary="Get a work order by work_order_id",
-# #     tags=["Dispatch"],
-# # )
-# # def get_work_order(work_order_id: str):
-# #     """Returns the work_orders row for the given work_order_id, or null."""
-# #     return handler.get_work_order(work_order_id)
-
-
-# # @router.get(
-# #     "/api/dispatch/work_orders",
-# #     operation_id="list_work_orders",
-# #     summary="List work orders, optionally filtered by claim_id and/or status",
-# #     tags=["Dispatch"],
-# # )
-# # def list_work_orders(claim_id: Optional[str] = None, status: Optional[str] = None):
-# #     """Returns work_orders rows, optionally filtered."""
-# #     return handler.list_work_orders(claim_id, status)
-
-
-# # @router.post(
-# #     "/api/dispatch/work_orders/{work_order_id}/status",
-# #     operation_id="update_work_order_status",
-# #     summary="Update a work order's status and log the transition",
-# #     tags=["Dispatch"],
-# # )
-# # def update_work_order_status(work_order_id: str, body: UpdateWorkOrderStatusRequest):
-# #     """
-# #     Updates work_orders.status (setting started_at/completed_at/canceled_at
-# #     as appropriate) and inserts a dispatch_logs row recording the previous
-# #     and new status.
-# #     """
-# #     try:
-# #         return handler.update_work_order_status(work_order_id, body.status, body.action_by, body.details)
-# #     except ValueError as e:
-# #         raise HTTPException(status_code=404, detail=str(e))
-# #     except Exception as e:
-# #         log.exception("update_work_order_status error")
-# #         raise HTTPException(status_code=500, detail=str(e))
-
-
-# # @router.get(
-# #     "/api/dispatch/work_orders/{work_order_id}/logs",
-# #     operation_id="get_dispatch_logs",
-# #     summary="Get the dispatch audit trail for a work order",
-# #     tags=["Dispatch"],
-# # )
-# # def get_dispatch_logs(work_order_id: str):
-# #     """Returns dispatch_logs rows for the given work_order_id, ordered chronologically."""
-# #     return handler.get_dispatch_logs(work_order_id)
-
-
-
-
-
-
-
-# """
-# dispatch_router.py
-# ─────────────────────
-# FastAPI routes for the Dispatch MCP.
-
-# Tool / Endpoint map:
-#   create_work_order         POST /api/dispatch/work_orders
-#   get_work_order            GET  /api/dispatch/work_orders/{work_order_id}
-#   list_work_orders          GET  /api/dispatch/work_orders
-#   update_work_order_status  POST /api/dispatch/work_orders/{work_order_id}/status
-#   get_dispatch_logs         GET  /api/dispatch/work_orders/{work_order_id}/logs
-# """
-
-# import logging
-# from typing import Optional
-
-# from fastapi import APIRouter, HTTPException
-
-# from dispatch_mcp import handler
-# from dispatch_mcp.models import CreateWorkOrderRequest, UpdateWorkOrderStatusRequest
-# from dispatch_mcp.validation import NotFoundError, ValidationError
-
-# log = logging.getLogger(__name__)
-
-# router = APIRouter()
-
-# @router.post(
-#     "/api/dispatch/work_orders",
-#     operation_id="create_work_order",
-#     summary="Create a new work order and dispatch log entry",
-#     tags=["Dispatch"],
-# )
-# def create_work_order(body: CreateWorkOrderRequest):
-#     """Inserts a new work_orders row (status 'Scheduled') and a 'Created' dispatch_logs row."""
-#     try:
-#         return handler.create_work_order(
-#             body.claim_id, body.claim_number, body.expert_id, body.expert_name, body.expert_type,
-#             body.scheduled_date, body.scheduled_time, body.customer_address, body.assigned_by,
-#             body.estimated_arrival, body.estimated_cost, body.priority, body.notes_to_expert,
-#             body.customer_phone, body.customer_email,
-#         )
-#     except NotFoundError as e:
-#         raise HTTPException(status_code=404, detail=str(e))
-#     except ValidationError as e:
-#         raise HTTPException(status_code=400, detail=str(e))
-#     except Exception as e:
-#         log.exception("create_work_order error")
-#         raise HTTPException(status_code=500, detail=str(e))
-
-# @router.get(
-#     "/api/dispatch/work_orders/{work_order_id}",
-#     operation_id="get_work_order",
-#     summary="Get a work order by work_order_id",
-#     tags=["Dispatch"],
-# )
-# def get_work_order(work_order_id: str):
-#     """Returns the work_orders row for the given work_order_id, or null."""
-#     return handler.get_work_order(work_order_id)
-
-# @router.get(
-#     "/api/dispatch/work_orders",
-#     operation_id="list_work_orders",
-#     summary="List work orders, optionally filtered by claim_id and/or status",
-#     tags=["Dispatch"],
-# )
-# def list_work_orders(claim_id: Optional[str] = None, status: Optional[str] = None):
-#     """Returns work_orders rows, optionally filtered."""
-#     return handler.list_work_orders(claim_id, status)
-
-# @router.post(
-#     "/api/dispatch/work_orders/{work_order_id}/status",
-#     operation_id="update_work_order_status",
-#     summary="Update a work order's status and log the transition",
-#     tags=["Dispatch"],
-# )
-# def update_work_order_status(work_order_id: str, body: UpdateWorkOrderStatusRequest):
-#     """
-#     Updates work_orders.status (setting started_at/completed_at/canceled_at
-#     as appropriate) and inserts a dispatch_logs row recording the previous
-#     and new status.
-#     """
-#     try:
-#         return handler.update_work_order_status(work_order_id, body.status, body.action_by, body.details)
-#     except NotFoundError as e:
-#         raise HTTPException(status_code=404, detail=str(e))
-#     except ValidationError as e:
-#         raise HTTPException(status_code=400, detail=str(e))
-#     except Exception as e:
-#         log.exception("update_work_order_status error")
-#         raise HTTPException(status_code=500, detail=str(e))
-
-# @router.get(
-#     "/api/dispatch/work_orders/{work_order_id}/logs",
-#     operation_id="get_dispatch_logs",
-#     summary="Get the dispatch audit trail for a work order",
-#     tags=["Dispatch"],
-# )
-# def get_dispatch_logs(work_order_id: str):
-#     """Returns dispatch_logs rows for the given work_order_id, ordered chronologically."""
-#     return handler.get_dispatch_logs(work_order_id)
-
-
-
-
-
-
-
-
-
-"""
-dispatch_router.py
-─────────────────────
-FastAPI routes for the Dispatch MCP.
-Tool / Endpoint map:
- create_work_order         POST /api/dispatch/work_orders
- get_work_order            GET  /api/dispatch/work_orders/{work_order_id}
- list_work_orders          GET  /api/dispatch/work_orders
- update_work_order_status  POST /api/dispatch/work_orders/{work_order_id}/status
- get_dispatch_logs         GET  /api/dispatch/work_orders/{work_order_id}/logs
-"""
-import logging
-from typing import Optional
-from fastapi import APIRouter, HTTPException
-from dispatch_mcp import handler
-from dispatch_mcp.models import CreateWorkOrderRequest, UpdateWorkOrderStatusRequest
-from dispatch_mcp.validation import NotFoundError, ValidationError
-log = logging.getLogger(__name__)
-router = APIRouter()
-
-@router.post(
-   "/api/dispatch/work_orders",
-   operation_id="create_work_order",
-   summary="Create a new work order and dispatch log entry",
-   tags=["Dispatch"],
-)
-def create_work_order(body: CreateWorkOrderRequest):
-   """Inserts a new work_orders row (status 'Scheduled') and a 'Created' dispatch_logs row."""
-   try:
-       return handler.create_work_order(
-           claim_number=body.claim_number,
-           expert_id=body.expert_id,
-           scheduled_date=body.scheduled_date,
-           scheduled_time=body.scheduled_time,
-           assigned_by=body.assigned_by,
-           estimated_arrival=body.estimated_arrival,
-           estimated_cost=body.estimated_cost,
-           priority=body.priority,
-           notes_to_expert=body.notes_to_expert,
-           customer_phone=body.customer_phone,
-           customer_email=body.customer_email,
-       )
-   except NotFoundError as e:
-       raise HTTPException(status_code=404, detail=str(e))
-   except ValidationError as e:
-       raise HTTPException(status_code=400, detail=str(e))
-   except Exception as e:
-       log.exception("create_work_order error")
-       raise HTTPException(status_code=500, detail=str(e))
-
-@router.get(
-   "/api/dispatch/work_orders/{work_order_id}",
-   operation_id="get_work_order",
-   summary="Get a work order by work_order_id",
-   tags=["Dispatch"],
-)
-def get_work_order(work_order_id: str):
-   """Returns the work_orders row for the given work_order_id, or null."""
-   return handler.get_work_order(work_order_id)
-
-@router.get(
-   "/api/dispatch/work_orders",
-   operation_id="list_work_orders",
-   summary="List work orders, optionally filtered by claim_id and/or status",
-   tags=["Dispatch"],
-)
-def list_work_orders(claim_id: Optional[str] = None, status: Optional[str] = None):
-   """Returns work_orders rows, optionally filtered."""
-   return handler.list_work_orders(claim_id, status)
-
-@router.post(
-   "/api/dispatch/work_orders/{work_order_id}/status",
-   operation_id="update_work_order_status",
-   summary="Update a work order's status and log the transition",
-   tags=["Dispatch"],
-)
-def update_work_order_status(work_order_id: str, body: UpdateWorkOrderStatusRequest):
-   """
-   Updates work_orders.status (setting started_at/completed_at/canceled_at
-   as appropriate) and inserts a dispatch_logs row recording the previous
-   and new status.
-   """
-   try:
-       return handler.update_work_order_status(work_order_id, body.status, body.action_by, body.details)
-   except NotFoundError as e:
-       raise HTTPException(status_code=404, detail=str(e))
-   except ValidationError as e:
-       raise HTTPException(status_code=400, detail=str(e))
-   except Exception as e:
-       log.exception("update_work_order_status error")
-       raise HTTPException(status_code=500, detail=str(e))
-
-@router.get(
-   "/api/dispatch/work_orders/{work_order_id}/logs",
-   operation_id="get_dispatch_logs",
-   summary="Get the dispatch audit trail for a work order",
-   tags=["Dispatch"],
-)
-def get_dispatch_logs(work_order_id: str):
-   """Returns dispatch_logs rows for the given work_order_id, ordered chronologically."""
-   return handler.get_dispatch_logs(work_order_id)
-
-
-
-
-
-
-
-
-
-
-
-
-
-# # """
-# # handler.py — Dispatch
-# # ────────────────────────
-# # Creates and tracks work orders for vendor/expert dispatch, with a
-# # dispatch_logs audit trail.
-# # """
-
-# # import logging
-# # import os
-# # import random
-# # import sys
-# # from datetime import datetime
-# # from typing import Optional
-
-# # sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "common"))
-
-# # from db import get_db_connection, row_to_dict  # noqa: E402
-
-# # log = logging.getLogger(__name__)
-
-
-# # def _rand_suffix(n: int) -> str:
-# #     return "".join(random.choices("0123456789", k=n))
-
-
-# # def create_work_order(claim_id: str, claim_number: str, expert_id: str, expert_name: str,
-# #                        expert_type: str, scheduled_date: str, scheduled_time: str,
-# #                        customer_address: str, assigned_by: str,
-# #                        estimated_arrival: Optional[str] = None,
-# #                        estimated_cost: Optional[float] = None,
-# #                        priority: str = "Normal",
-# #                        notes_to_expert: Optional[str] = None,
-# #                        customer_phone: Optional[str] = None,
-# #                        customer_email: Optional[str] = None) -> dict:
-# #     work_order_id = f"WO-{_rand_suffix(6)}"
-# #     conn = get_db_connection()
-# #     try:
-# #         cur = conn.cursor()
-# #         cur.execute(
-# #             """
-# #             INSERT INTO work_orders (work_order_id, claim_id, claim_number, expert_id, expert_name,
-# #                                       expert_type, scheduled_date, scheduled_time, estimated_arrival,
-# #                                       estimated_cost, status, priority, notes_to_expert,
-# #                                       customer_address, customer_phone, customer_email, assigned_by)
-# #             VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s, 'Scheduled', %s, %s, %s, %s, %s, %s)
-# #             """,
-# #             (work_order_id, claim_id, claim_number, expert_id, expert_name, expert_type,
-# #              scheduled_date, scheduled_time, estimated_arrival, estimated_cost, priority,
-# #              notes_to_expert, customer_address, customer_phone, customer_email, assigned_by),
-# #         )
-
-# #         log_id = f"LOG-{_rand_suffix(6)}"
-# #         cur.execute(
-# #             """
-# #             INSERT INTO dispatch_logs (log_id, work_order_id, claim_id, action, action_by, details,
-# #                                         previous_status, new_status)
-# #             VALUES (%s,%s,%s, 'Created', %s, %s, NULL, 'Scheduled')
-# #             """,
-# #             (log_id, work_order_id, claim_id, assigned_by,
-# #              f"Work order created for {expert_name} ({expert_type}) on {scheduled_date} {scheduled_time}"),
-# #         )
-# #         conn.commit()
-
-# #         cur.execute("SELECT * FROM work_orders WHERE work_order_id = %s", (work_order_id,))
-# #         return row_to_dict(cur.fetchone())
-# #     finally:
-# #         conn.close()
-
-
-# # def get_work_order(work_order_id: str) -> Optional[dict]:
-# #     conn = get_db_connection()
-# #     try:
-# #         cur = conn.cursor()
-# #         cur.execute("SELECT * FROM work_orders WHERE work_order_id = %s", (work_order_id,))
-# #         return row_to_dict(cur.fetchone())
-# #     finally:
-# #         conn.close()
-
-
-# # def list_work_orders(claim_id: Optional[str] = None, status: Optional[str] = None) -> list:
-# #     conn = get_db_connection()
-# #     try:
-# #         cur = conn.cursor()
-# #         query = "SELECT * FROM work_orders WHERE 1=1"
-# #         params = []
-# #         if claim_id:
-# #             query += " AND claim_id = %s"
-# #             params.append(claim_id)
-# #         if status:
-# #             query += " AND status = %s"
-# #             params.append(status)
-# #         query += " ORDER BY id DESC"
-# #         cur.execute(query, params)
-# #         return row_to_dict(cur.fetchall())
-# #     finally:
-# #         conn.close()
-
-
-# # def update_work_order_status(work_order_id: str, status: str, action_by: str,
-# #                               details: Optional[str] = None) -> dict:
-# #     conn = get_db_connection()
-# #     try:
-# #         cur = conn.cursor()
-# #         cur.execute("SELECT * FROM work_orders WHERE work_order_id = %s", (work_order_id,))
-# #         wo = row_to_dict(cur.fetchone())
-# #         if not wo:
-# #             raise ValueError(f"Work order {work_order_id} not found")
-
-# #         previous_status = wo["status"]
-# #         now = datetime.now().isoformat()
-
-# #         updates = ["status = %s"]
-# #         params = [status]
-# #         if status == "In Progress":
-# #             updates.append("started_at = %s")
-# #             params.append(now)
-# #         elif status == "Completed":
-# #             updates.append("completed_at = %s")
-# #             params.append(now)
-# #         elif status == "Canceled":
-# #             updates.append("canceled_at = %s")
-# #             params.append(now)
-# #             if details:
-# #                 updates.append("cancel_reason = %s")
-# #                 params.append(details)
-
-# #         params.append(work_order_id)
-# #         cur.execute(f"UPDATE work_orders SET {', '.join(updates)} WHERE work_order_id = %s", params)
-
-# #         log_id = f"LOG-{_rand_suffix(6)}"
-# #         cur.execute(
-# #             """
-# #             INSERT INTO dispatch_logs (log_id, work_order_id, claim_id, action, action_by, details,
-# #                                         previous_status, new_status)
-# #             VALUES (%s,%s,%s, 'Status Update', %s,%s,%s,%s)
-# #             """,
-# #             (log_id, work_order_id, wo["claim_id"], action_by, details, previous_status, status),
-# #         )
-# #         conn.commit()
-
-# #         cur.execute("SELECT * FROM work_orders WHERE work_order_id = %s", (work_order_id,))
-# #         return row_to_dict(cur.fetchone())
-# #     finally:
-# #         conn.close()
-
-
-# # def get_dispatch_logs(work_order_id: str) -> list:
-# #     conn = get_db_connection()
-# #     try:
-# #         cur = conn.cursor()
-# #         cur.execute("SELECT * FROM dispatch_logs WHERE work_order_id = %s ORDER BY id ASC", (work_order_id,))
-# #         return row_to_dict(cur.fetchall())
-# #     finally:
-# #         conn.close()
-
-
-
-
-
-
-
-
-
-
-
-
-# """
-# handler.py — Dispatch
-# ────────────────────────
-# Creates and tracks work orders for vendor/expert dispatch, with a
-# dispatch_logs audit trail.
-
-# PostgreSQL is always the source of truth. The LLM/caller only expresses
-# intent (which claim, which expert, when); claim_id, expert_name,
-# expert_type, and customer_address are never taken from the request — they
-# are always fetched fresh from claims/experts and written as-is, overwriting
-# whatever (if anything) the request supplied. See validation.py for the
-# shared checks and the exact column list each query relies on.
-
-# Known, confirmed schema gaps (do not touch, per the actual DB):
-#   - claims has no customer_phone / customer_email columns, so those two
-#     work_orders fields are left exactly as supplied by the caller.
-# """
-
-# import logging
-# import os
-# import sys
-# from datetime import datetime
-# from typing import Optional
-
-# sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "common"))
-
-# from db import get_db_connection, row_to_dict  # noqa: E402
-
-# from dispatch_mcp import validation as v  # noqa: E402
-
-# log = logging.getLogger(__name__)
-
-# def create_work_order(claim_id: str, claim_number: str, expert_id: str, expert_name: str,
-#                        expert_type: str, scheduled_date: str, scheduled_time: str,
-#                        customer_address: str, assigned_by: str,
-#                        estimated_arrival: Optional[str] = None,
-#                        estimated_cost: Optional[float] = None,
-#                        priority: str = "Normal",
-#                        notes_to_expert: Optional[str] = None,
-#                        customer_phone: Optional[str] = None,
-#                        customer_email: Optional[str] = None) -> dict:
-#     """
-#     Creates a work_orders row and a matching 'Created' dispatch_logs row.
-
-#     claim_id, expert_name, expert_type, and customer_address are function
-#     parameters only for public-API compatibility with the existing MCP
-#     tool/model signature — their values are IGNORED. The real values always
-#     come from claims.id, experts.name, experts.expert_type, and
-#     claims.location respectively.
-
-#     customer_phone/customer_email are passed through unchanged: claims has
-#     no columns for either, so there is no database source of truth to
-#     validate or overwrite them against.
-#     """
-#     v.require_non_empty(assigned_by, "assigned_by")
-#     priority = v.validate_priority(priority or "Normal")
-#     v.validate_estimated_cost(estimated_cost)
-#     parsed_scheduled_date = v.parse_scheduled_date(scheduled_date)
-#     scheduled_time = v.validate_scheduled_time(scheduled_time)
-
-#     conn = get_db_connection()
-#     try:
-#         cur = conn.cursor()
-
-#         # 1 & 2 — claim must exist (looked up by claim_number).
-#         claim = v.get_claim_by_number(cur, claim_number)
-
-#         # claim must be in a dispatch-eligible status (not Closed/Rejected/etc).
-#         v.validate_claim_dispatch_eligible(claim)
-
-#         # 3 — claims.id is the only source of truth for work_orders.claim_id.
-#         true_claim_id = claim["id"]
-
-#         # 4 — customer_address always comes from claims.location.
-#         true_customer_address = claim.get("location")
-
-#         # 6 & 7 — expert must exist; expert_name/expert_type always come from experts.
-#         expert = v.get_expert_by_id(cur, expert_id)
-
-#         # expert must be active (experts.active BOOLEAN column).
-#         v.validate_expert_active(expert)
-
-#         true_expert_id = expert["expert_id"]
-#         true_expert_name = expert["name"]
-#         true_expert_type = expert["expert_type"]
-
-#         # 8 — only one active (Scheduled/In Progress) work order per claim.
-#         if v.has_active_work_order(cur, claim["claim_number"]):
-#             raise v.ValidationError(
-#                 f"Claim '{claim['claim_number']}' already has an active work order"
-#             )
-
-#         # 17 — the expert can't already be booked at this date/time.
-#         if v.is_expert_double_booked(cur, true_expert_id, parsed_scheduled_date, scheduled_time):
-#             raise v.ValidationError(
-#                 f"Expert '{true_expert_id}' is already booked on "
-#                 f"{parsed_scheduled_date.isoformat()} at {scheduled_time}"
-#             )
-
-#         # 15 — generate a unique work_order_id.
-#         work_order_id = v.generate_unique_id(cur, "WO", "work_order_id", "work_orders")
-
-#         cur.execute(
-#             """
-#             INSERT INTO work_orders (work_order_id, claim_id, claim_number, expert_id, expert_name,
-#                                       expert_type, scheduled_date, scheduled_time, estimated_arrival,
-#                                       estimated_cost, status, priority, notes_to_expert,
-#                                       customer_address, customer_phone, customer_email, assigned_by)
-#             VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s, 'Scheduled', %s, %s, %s, %s, %s, %s)
-#             """,
-#             (work_order_id, true_claim_id, claim["claim_number"], true_expert_id, true_expert_name,
-#              true_expert_type, parsed_scheduled_date, scheduled_time, estimated_arrival, estimated_cost,
-#              priority, notes_to_expert, true_customer_address, customer_phone, customer_email, assigned_by),
-#         )
-
-#         # 15 — generate a unique log_id.
-#         log_id = v.generate_unique_id(cur, "LOG", "log_id", "dispatch_logs")
-#         cur.execute(
-#             """
-#             INSERT INTO dispatch_logs (log_id, work_order_id, claim_id, action, action_by, details,
-#                                         previous_status, new_status)
-#             VALUES (%s,%s,%s, 'Created', %s, %s, NULL, 'Scheduled')
-#             """,
-#             (log_id, work_order_id, true_claim_id, assigned_by,
-#              f"Work order created for {true_expert_name} ({true_expert_type}) on "
-#              f"{parsed_scheduled_date.isoformat()} {scheduled_time}"),
-#         )
-#         conn.commit()
-
-#         cur.execute("SELECT * FROM work_orders WHERE work_order_id = %s", (work_order_id,))
-#         return row_to_dict(cur.fetchone())
-#     except Exception:
-#         conn.rollback()
-#         raise
-#     finally:
-#         conn.close()
-
-# def get_work_order(work_order_id: str) -> Optional[dict]:
-#     conn = get_db_connection()
-#     try:
-#         cur = conn.cursor()
-#         cur.execute("SELECT * FROM work_orders WHERE work_order_id = %s", (work_order_id,))
-#         return row_to_dict(cur.fetchone())
-#     finally:
-#         conn.close()
-
-# def list_work_orders(claim_id: Optional[str] = None, status: Optional[str] = None) -> list:
-#     conn = get_db_connection()
-#     try:
-#         cur = conn.cursor()
-#         query = "SELECT * FROM work_orders WHERE 1=1"
-#         params = []
-#         if claim_id:
-#             query += " AND claim_id = %s"
-#             params.append(claim_id)
-#         if status:
-#             query += " AND status = %s"
-#             params.append(status)
-#         query += " ORDER BY id DESC"
-#         cur.execute(query, params)
-#         return row_to_dict(cur.fetchall())
-#     finally:
-#         conn.close()
-
-# def update_work_order_status(work_order_id: str, status: str, action_by: str,
-#                               details: Optional[str] = None) -> dict:
-#     v.require_non_empty(action_by, "action_by")
-
-#     conn = get_db_connection()
-#     try:
-#         cur = conn.cursor()
-#         cur.execute("SELECT * FROM work_orders WHERE work_order_id = %s", (work_order_id,))
-#         wo = row_to_dict(cur.fetchone())
-#         if not wo:
-#             raise v.NotFoundError(f"Work order '{work_order_id}' not found")
-
-#         previous_status = wo["status"]
-#         # 9 & 10 — only known statuses, only allowed transitions.
-#         v.validate_transition(previous_status, status)
-
-#         now = datetime.now().isoformat()
-
-#         updates = ["status = %s"]
-#         params = [status]
-#         if status == "In Progress":
-#             updates.append("started_at = %s")
-#             params.append(now)
-#         elif status == "Completed":
-#             updates.append("completed_at = %s")
-#             params.append(now)
-#         elif status == "Canceled":
-#             updates.append("canceled_at = %s")
-#             params.append(now)
-#             if details:
-#                 updates.append("cancel_reason = %s")
-#                 params.append(details)
-
-#         params.append(work_order_id)
-#         cur.execute(f"UPDATE work_orders SET {', '.join(updates)} WHERE work_order_id = %s", params)
-
-#         # 16 — log references the real work order/claim and the real previous status.
-#         log_id = v.generate_unique_id(cur, "LOG", "log_id", "dispatch_logs")
-#         cur.execute(
-#             """
-#             INSERT INTO dispatch_logs (log_id, work_order_id, claim_id, action, action_by, details,
-#                                         previous_status, new_status)
-#             VALUES (%s,%s,%s, 'Status Update', %s,%s,%s,%s)
-#             """,
-#             (log_id, work_order_id, wo["claim_id"], action_by, details, previous_status, status),
-#         )
-#         conn.commit()
-
-#         cur.execute("SELECT * FROM work_orders WHERE work_order_id = %s", (work_order_id,))
-#         return row_to_dict(cur.fetchone())
-#     except Exception:
-#         conn.rollback()
-#         raise
-#     finally:
-#         conn.close()
-
-# def get_dispatch_logs(work_order_id: str) -> list:
-#     conn = get_db_connection()
-#     try:
-#         cur = conn.cursor()
-#         cur.execute("SELECT * FROM dispatch_logs WHERE work_order_id = %s ORDER BY id ASC", (work_order_id,))
-#         return row_to_dict(cur.fetchall())
-#     finally:
-#         conn.close()
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-"""
-handler.py — Dispatch
-────────────────────────
-Creates and tracks work orders for vendor/expert dispatch, with a
-dispatch_logs audit trail.
-PostgreSQL is always the source of truth. The LLM/caller only expresses
-intent (which claim, which expert, when); claim_id, expert_name,
-expert_type, and customer_address are not accepted as request input at
-all — they are always looked up fresh from claims/experts using
-claim_number/expert_id. See validation.py for the shared checks and the
-exact column list each query relies on.
-Known, confirmed schema gaps (do not touch, per the actual DB):
- - claims has no customer_phone / customer_email columns, so those two
-   work_orders fields are left exactly as supplied by the caller.
-"""
-import logging
-import os
-import sys
-from datetime import datetime
-from typing import Optional
-sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "common"))
-from db import get_db_connection, row_to_dict  # noqa: E402
-from dispatch_mcp import validation as v  # noqa: E402
-log = logging.getLogger(__name__)
-
-def create_work_order(claim_number: str, expert_id: str, scheduled_date: str, scheduled_time: str,
-                      assigned_by: str,
-                      estimated_arrival: Optional[str] = None,
-                      estimated_cost: Optional[float] = None,
-                      priority: str = "Normal",
-                      notes_to_expert: Optional[str] = None,
-                      customer_phone: Optional[str] = None,
-                      customer_email: Optional[str] = None) -> dict:
-   """
-   Creates a work_orders row and a matching 'Created' dispatch_logs row.
-   claim_id, expert_name, expert_type, and customer_address are not caller
-   inputs — they always come from claims.id, experts.name,
-   experts.expert_type, and claims.location respectively, looked up here
-   from claim_number/expert_id.
-   customer_phone/customer_email are passed through unchanged: claims has
-   no columns for either, so there is no database source of truth to
-   validate or overwrite them against.
-   """
-   v.require_non_empty(assigned_by, "assigned_by")
-   priority = v.validate_priority(priority or "Normal")
-   v.validate_estimated_cost(estimated_cost)
-   parsed_scheduled_date = v.parse_scheduled_date(scheduled_date)
-   scheduled_time = v.validate_scheduled_time(scheduled_time)
-   conn = get_db_connection()
-   try:
-       cur = conn.cursor()
-       # 1 & 2 — claim must exist (looked up by claim_number).
-       claim = v.get_claim_by_number(cur, claim_number)
-       # claim must be in a dispatch-eligible status (not Closed/Rejected/etc).
-       v.validate_claim_dispatch_eligible(claim)
-       # 3 — claims.id is the only source of truth for work_orders.claim_id.
-       true_claim_id = claim["id"]
-       # 4 — customer_address always comes from claims.location.
-       true_customer_address = claim.get("location")
-       # 6 & 7 — expert must exist; expert_name/expert_type always come from experts.
-       expert = v.get_expert_by_id(cur, expert_id)
-       # expert must be active (experts.active BOOLEAN column).
-       v.validate_expert_active(expert)
-       true_expert_id = expert["expert_id"]
-       true_expert_name = expert["name"]
-       true_expert_type = expert["expert_type"]
-       # 8 — only one active (Scheduled/In Progress) work order per claim.
-       if v.has_active_work_order(cur, claim["claim_number"]):
-           raise v.ValidationError(
-               f"Claim '{claim['claim_number']}' already has an active work order"
-           )
-       # 17 — the expert can't already be booked at this date/time.
-       if v.is_expert_double_booked(cur, true_expert_id, parsed_scheduled_date, scheduled_time):
-           raise v.ValidationError(
-               f"Expert '{true_expert_id}' is already booked on "
-               f"{parsed_scheduled_date.isoformat()} at {scheduled_time}"
-           )
-       # 15 — generate a unique work_order_id.
-       work_order_id = v.generate_unique_id(cur, "WO", "work_order_id", "work_orders")
-       cur.execute(
-           """
-           INSERT INTO work_orders (work_order_id, claim_id, claim_number, expert_id, expert_name,
-                                     expert_type, scheduled_date, scheduled_time, estimated_arrival,
-                                     estimated_cost, status, priority, notes_to_expert,
-                                     customer_address, customer_phone, customer_email, assigned_by)
-           VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s, 'Scheduled', %s, %s, %s, %s, %s, %s)
-           """,
-           (work_order_id, true_claim_id, claim["claim_number"], true_expert_id, true_expert_name,
-            true_expert_type, parsed_scheduled_date, scheduled_time, estimated_arrival, estimated_cost,
-            priority, notes_to_expert, true_customer_address, customer_phone, customer_email, assigned_by),
-       )
-       # 15 — generate a unique log_id.
-       log_id = v.generate_unique_id(cur, "LOG", "log_id", "dispatch_logs")
-       cur.execute(
-           """
-           INSERT INTO dispatch_logs (log_id, work_order_id, claim_id, action, action_by, details,
-                                       previous_status, new_status)
-           VALUES (%s,%s,%s, 'Created', %s, %s, NULL, 'Scheduled')
-           """,
-           (log_id, work_order_id, true_claim_id, assigned_by,
-            f"Work order created for {true_expert_name} ({true_expert_type}) on "
-            f"{parsed_scheduled_date.isoformat()} {scheduled_time}"),
-       )
-       conn.commit()
-       cur.execute("SELECT * FROM work_orders WHERE work_order_id = %s", (work_order_id,))
-       return row_to_dict(cur.fetchone())
-   except Exception:
-       conn.rollback()
-       raise
-   finally:
-       conn.close()
-
-def get_work_order(work_order_id: str) -> Optional[dict]:
-   conn = get_db_connection()
-   try:
-       cur = conn.cursor()
-       cur.execute("SELECT * FROM work_orders WHERE work_order_id = %s", (work_order_id,))
-       return row_to_dict(cur.fetchone())
-   finally:
-       conn.close()
-
-def list_work_orders(claim_id: Optional[str] = None, status: Optional[str] = None) -> list:
-   conn = get_db_connection()
-   try:
-       cur = conn.cursor()
-       query = "SELECT * FROM work_orders WHERE 1=1"
-       params = []
-       if claim_id:
-           query += " AND claim_id = %s"
-           params.append(claim_id)
-       if status:
-           query += " AND status = %s"
-           params.append(status)
-       query += " ORDER BY id DESC"
-       cur.execute(query, params)
-       return row_to_dict(cur.fetchall())
-   finally:
-       conn.close()
-
-def update_work_order_status(work_order_id: str, status: str, action_by: str,
-                             details: Optional[str] = None) -> dict:
-   v.require_non_empty(action_by, "action_by")
-   conn = get_db_connection()
-   try:
-       cur = conn.cursor()
-       cur.execute("SELECT * FROM work_orders WHERE work_order_id = %s", (work_order_id,))
-       wo = row_to_dict(cur.fetchone())
-       if not wo:
-           raise v.NotFoundError(f"Work order '{work_order_id}' not found")
-       previous_status = wo["status"]
-       # 9 & 10 — only known statuses, only allowed transitions.
-       v.validate_transition(previous_status, status)
-       now = datetime.now().isoformat()
-       updates = ["status = %s"]
-       params = [status]
-       if status == "In Progress":
-           updates.append("started_at = %s")
-           params.append(now)
-       elif status == "Completed":
-           updates.append("completed_at = %s")
-           params.append(now)
-       elif status == "Canceled":
-           updates.append("canceled_at = %s")
-           params.append(now)
-           if details:
-               updates.append("cancel_reason = %s")
-               params.append(details)
-       params.append(work_order_id)
-       cur.execute(f"UPDATE work_orders SET {', '.join(updates)} WHERE work_order_id = %s", params)
-       # 16 — log references the real work order/claim and the real previous status.
-       log_id = v.generate_unique_id(cur, "LOG", "log_id", "dispatch_logs")
-       cur.execute(
-           """
-           INSERT INTO dispatch_logs (log_id, work_order_id, claim_id, action, action_by, details,
-                                       previous_status, new_status)
-           VALUES (%s,%s,%s, 'Status Update', %s,%s,%s,%s)
-           """,
-           (log_id, work_order_id, wo["claim_id"], action_by, details, previous_status, status),
-       )
-       conn.commit()
-       cur.execute("SELECT * FROM work_orders WHERE work_order_id = %s", (work_order_id,))
-       return row_to_dict(cur.fetchone())
-   except Exception:
-       conn.rollback()
-       raise
-   finally:
-       conn.close()
-
-def get_dispatch_logs(work_order_id: str) -> list:
-   conn = get_db_connection()
-   try:
-       cur = conn.cursor()
-       cur.execute("SELECT * FROM dispatch_logs WHERE work_order_id = %s ORDER BY id ASC", (work_order_id,))
-       return row_to_dict(cur.fetchall())
-   finally:
-       conn.close()
-
-
-
-models.py
-
-# from typing import Optional
-# from pydantic import BaseModel
-
-
-# class CreateWorkOrderRequest(BaseModel):
-#     claim_id: str
-#     claim_number: str
-#     expert_id: str
-#     expert_name: str
-#     expert_type: str
-#     scheduled_date: str
-#     scheduled_time: str
-#     customer_address: str
-#     assigned_by: str
-#     estimated_arrival: Optional[str] = None
-#     estimated_cost: Optional[float] = None
-#     priority: str = "Normal"
-#     notes_to_expert: Optional[str] = None
-#     customer_phone: Optional[str] = None
-#     customer_email: Optional[str] = None
-
-
-# class UpdateWorkOrderStatusRequest(BaseModel):
-#     status: str
-#     action_by: str
-#     details: Optional[str] = None
-
-
-
-
-
-
-
-
-
-from typing import Optional
-from pydantic import BaseModel
-
-class CreateWorkOrderRequest(BaseModel):
-   claim_number: str
-   expert_id: str
-   scheduled_date: str
-   scheduled_time: str
-   assigned_by: str
-   estimated_arrival: Optional[str] = None
-   estimated_cost: Optional[float] = None
-   priority: str = "Normal"
-   notes_to_expert: Optional[str] = None
-   customer_phone: Optional[str] = None
-   customer_email: Optional[str] = None
-
-class UpdateWorkOrderStatusRequest(BaseModel):
-   status: str
-   action_by: str
-   details: Optional[str] = None
-
-
-
-
-
-"""
-validation.py — Dispatch
-─────────────────────────
-Shared validation helpers for the Dispatch MCP. PostgreSQL is always the
-source of truth for claims, experts, and work-order state; nothing here
-trusts caller/LLM-supplied IDs or master data.
-
-Every query here references only columns confirmed to exist:
-
-  claims:        id, claim_number, policy_number, policyholder_name,
-                  loss_type, location, status, assigned_adjuster,
-                  assigned_vendor, created_at, updated_at
-  experts:       expert_id, name, expert_type, email, phone, active
-                  (active is a BOOLEAN column — experts are enabled/disabled
-                  via this flag, confirmed against the live database; there
-                  is no experts.status column)
-  work_orders:   id, work_order_id, claim_id, claim_number, expert_id,
-                  expert_name, expert_type, scheduled_date, scheduled_time,
-                  estimated_arrival, estimated_cost, status, priority,
-                  notes_to_expert, customer_address, customer_phone,
-                  customer_email, assigned_by, started_at, completed_at,
-                  canceled_at, cancel_reason, created_at, updated_at
-  dispatch_logs: id, log_id, work_order_id, claim_id, action, action_by,
-                  details, previous_status, new_status, created_at
-
-No other columns or tables are referenced.
-
-NotFoundError   -> caller should translate to HTTP 404 (missing claim/
-                   expert/work order).
-ValidationError -> caller should translate to HTTP 400 (bad input, invalid
-                   state transition, duplicate/conflicting booking, etc.).
-"""
-
-import os
-import random
-import sys
-from datetime import date, datetime
-from typing import Optional
-
-sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "common"))
-
-from db import row_to_dict  # noqa: E402
-
-VALID_STATUSES = ("Scheduled", "In Progress", "Completed", "Canceled")
-VALID_PRIORITIES = ("Low", "Normal", "High")
-ACTIVE_STATUSES = ("Scheduled", "In Progress")
-
-# Allowed forward transitions. Canceled and Completed are terminal.
-ALLOWED_TRANSITIONS = {
-    "Scheduled": {"In Progress", "Canceled"},
-    "In Progress": {"Completed", "Canceled"},
-    "Completed": set(),
-    "Canceled": set(),
-}
-
-# scheduled_date is treated strictly as a calendar date. We accept a couple
-# of common input encodings but always compare/store as a real date object
-# — never as a string.
-_DATE_FORMATS = ("%Y-%m-%d", "%m/%d/%Y")
-
-# scheduled_time is parsed (not regex-matched) so "25:00" / "99:88" / "abcd"
-# are all rejected by datetime.strptime rather than a hand-rolled pattern.
-# Both 24-hour ("14:30") and 12-hour with AM/PM ("10:30 AM", "02:45 PM") are
-# accepted, since that's what the LLM naturally produces. Whatever format
-# matches, the value is normalized to "HH:MM:SS" (24-hour) before it's
-# stored or compared, so double-booking checks never miss a match just
-# because one caller sent "2:00 PM" and another sent "14:00".
-_TIME_FORMATS = ("%H:%M", "%H:%M:%S", "%I:%M %p", "%I:%M:%S %p")
-_TIME_STORAGE_FORMAT = "%H:%M:%S"
-
-# Derived from the current repository workflow (AdjusterOrchestrator's
-# claim-lifecycle logic and journey-stage tracking), not a placeholder.
-# Dispatch belongs to the investigation/loss-assessment phase of a claim
-# (claim_journey_master stages "Loss Investigation"/"Loss Assessment"),
-# which only ever runs while claims.status is "Open". Approved, Rejected,
-# Payment Initiated, and Settled all represent claims that have already
-# passed the adjuster's decision point and moved beyond the dispatch stage:
-#   - Approved / Rejected — the adjuster's final decision has been made;
-#     confirm_payment_approval's own docstring describes this point as
-#     having "nothing left to reason about."
-#   - Payment Initiated — set in the same call chain that advances the
-#     claim's journey stage to "Claim Closed."
-#   - Settled — terminal: payment released, policy coverage decremented.
-DISPATCH_INELIGIBLE_CLAIM_STATUSES = ("Approved", "Rejected", "Payment Initiated", "Settled")
-
-# Cached lowercase lookup set, built once at import time, so
-# validate_claim_dispatch_eligible doesn't re-build a set comprehension on
-# every call.
-DISPATCH_INELIGIBLE_CLAIM_STATUS_SET = {s.lower() for s in DISPATCH_INELIGIBLE_CLAIM_STATUSES}
-
-# Bounded retry cap for unique-ID generation (see generate_unique_id).
-_UNIQUE_ID_MAX_ATTEMPTS = 100
-
-class ValidationError(ValueError):
-    """Bad/invalid input -> HTTP 400."""
-
-class NotFoundError(ValueError):
-    """Referenced claim/expert/work order does not exist -> HTTP 404."""
-
-def _rand_suffix(n: int) -> str:
-    return "".join(random.choices("0123456789", k=n))
-
-def generate_unique_id(cur, prefix: str, column: str, table: str, digits: int = 6) -> str:
-    """
-    Generates a `{prefix}-{digits}` style ID and re-generates until no row in
-    `table` has that value in `column`. Trusts only the database's answer,
-    never assumes a randomly generated ID is free. Bounded to
-    _UNIQUE_ID_MAX_ATTEMPTS retries so a pathological run of collisions
-    can't hang the request indefinitely.
-    """
-    for _ in range(_UNIQUE_ID_MAX_ATTEMPTS):
-        candidate = f"{prefix}-{_rand_suffix(digits)}"
-        cur.execute(f"SELECT 1 FROM {table} WHERE {column} = %s", (candidate,))
-        if cur.fetchone() is None:
-            return candidate
-    raise RuntimeError(
-        f"Could not generate a unique {prefix}-prefixed ID for {table}.{column} "
-        f"after {_UNIQUE_ID_MAX_ATTEMPTS} attempts"
-    )
-
-def require_non_empty(value: Optional[str], field: str) -> str:
-    if value is None or not str(value).strip():
-        raise ValidationError(f"{field} must not be empty")
-    return str(value).strip()
-
-def validate_status_value(status: str) -> str:
-    if status not in VALID_STATUSES:
-        raise ValidationError(f"Invalid status '{status}'. Must be one of {list(VALID_STATUSES)}")
-    return status
-
-def validate_priority(priority: str) -> str:
-    if priority not in VALID_PRIORITIES:
-        raise ValidationError(f"Invalid priority '{priority}'. Must be one of {list(VALID_PRIORITIES)}")
-    return priority
-
-def validate_estimated_cost(estimated_cost) -> None:
-    if estimated_cost is not None and estimated_cost < 0:
-        raise ValidationError("estimated_cost cannot be negative")
-
-def parse_scheduled_date(scheduled_date) -> date:
-    """
-    Parses scheduled_date into a real `date` object and rejects anything
-    earlier than today. Today itself is allowed. Comparison is always
-    date-vs-date, never string-vs-string.
-    """
-    if isinstance(scheduled_date, date) and not isinstance(scheduled_date, datetime):
-        parsed = scheduled_date
-    else:
-        raw = require_non_empty(scheduled_date, "scheduled_date")
-        parsed = None
-        for fmt in _DATE_FORMATS:
-            try:
-                parsed = datetime.strptime(raw, fmt).date()
-                break
-            except ValueError:
-                continue
-        if parsed is None:
-            raise ValidationError(
-                f"scheduled_date '{raw}' is not a recognized date (expected YYYY-MM-DD)"
-            )
-    if parsed < date.today():
-        raise ValidationError(f"scheduled_date '{parsed.isoformat()}' cannot be in the past")
-    return parsed
-
-def validate_transition(previous_status: str, new_status: str) -> None:
-    validate_status_value(new_status)
-    if previous_status not in ALLOWED_TRANSITIONS:
-        raise ValidationError(f"Work order has unrecognized current status '{previous_status}'")
-    if new_status not in ALLOWED_TRANSITIONS[previous_status]:
-        raise ValidationError(
-            f"Cannot transition work order from '{previous_status}' to '{new_status}'"
-        )
-
-def get_claim_by_number(cur, claim_number: str) -> dict:
-    """Looks up the claims row that is the source of truth for this claim_number."""
-    claim_number = require_non_empty(claim_number, "claim_number")
-    cur.execute("SELECT * FROM claims WHERE claim_number = %s", (claim_number,))
-    row = row_to_dict(cur.fetchone())
-    if not row:
-        raise NotFoundError(f"Claim with claim_number '{claim_number}' not found")
-    return row
-
-def get_expert_by_id(cur, expert_id: str) -> dict:
-    """Looks up the experts row that is the source of truth for this expert_id."""
-    expert_id = require_non_empty(expert_id, "expert_id")
-    cur.execute("SELECT * FROM experts WHERE expert_id = %s", (expert_id,))
-    row = row_to_dict(cur.fetchone())
-    if not row:
-        raise NotFoundError(f"Expert with expert_id '{expert_id}' not found")
-    return row
-
-def validate_scheduled_time(scheduled_time: str) -> str:
-    """
-    Parses scheduled_time with datetime.strptime (not regex) so malformed
-    values ('abcd', '99:88', '25:00') are rejected by real time parsing.
-    Accepts 24-hour ('14:30', '14:30:00') or 12-hour with AM/PM
-    ('10:30 AM', '02:45 PM'). Always returns the normalized 'HH:MM:SS'
-    (24-hour) form, so storage and the double-booking comparison both work
-    off one consistent representation regardless of how it was entered.
-    """
-    raw = require_non_empty(scheduled_time, "scheduled_time")
-    for fmt in _TIME_FORMATS:
-        try:
-            parsed = datetime.strptime(raw, fmt)
-            return parsed.strftime(_TIME_STORAGE_FORMAT)
-        except ValueError:
-            continue
-    raise ValidationError(
-        f"scheduled_time '{raw}' is not a valid time (expected e.g. '14:30' or '2:30 PM')"
-    )
-
-def validate_claim_dispatch_eligible(claim: dict) -> None:
-    """
-    Rejects dispatch for claims that have already passed the
-    investigation/loss-assessment phase. See the DISPATCH_INELIGIBLE_CLAIM_STATUSES
-    comment above for the repository evidence behind this list.
-    """
-    status = (claim.get("status") or "").strip()
-    if status and status.lower() in DISPATCH_INELIGIBLE_CLAIM_STATUS_SET:
-        raise ValidationError(
-            f"Claim '{claim.get('claim_number')}' is not eligible for dispatch (status: '{status}')"
-        )
-
-def validate_expert_active(expert: dict) -> None:
-    """
-    Rejects dispatch to an expert who is disabled. experts.active is a real
-    BOOLEAN column (confirmed against the live database) — experts are
-    enabled/disabled via this flag, not a status enum. active == True
-    allows dispatch; active == False is rejected. No string comparison is
-    involved.
-    """
-    if expert.get("active") is False:
-        raise ValidationError(
-            f"Expert '{expert.get('expert_id')}' is inactive and cannot be assigned"
-        )
-
-def has_active_work_order(cur, claim_number: str) -> bool:
-    """True if this claim already has a Scheduled/In Progress work order."""
-    cur.execute(
-        "SELECT 1 FROM work_orders WHERE claim_number = %s AND status = ANY(%s) LIMIT 1",
-        (claim_number, list(ACTIVE_STATUSES)),
-    )
-    return cur.fetchone() is not None
-
-# def is_expert_double_booked(cur, expert_id: str, scheduled_date: date, scheduled_time: str) -> bool:
-#     """True if this expert already has an active work order at this date/time."""
-#     cur.execute(
-#         """
-#         SELECT 1 FROM work_orders
-#         WHERE expert_id = %s AND scheduled_date = %s AND scheduled_time = %s
-#           AND status = ANY(%s)
-#         LIMIT 1
-#         """,
-#         (expert_id, scheduled_date, scheduled_time, list(ACTIVE_STATUSES)),
-#     )
-#     return cur.fetchone() is not None
-
-
-
-def is_expert_double_booked(cur, expert_id: str, scheduled_date: date, scheduled_time: str) -> bool:
-   """
-   True if this expert already has an active work order at this date/time.
-   work_orders.scheduled_date is stored as TEXT in the current schema,
-   so compare using the ISO string representation.
-   """
-   cur.execute(
-       """
-       SELECT 1
-       FROM work_orders
-       WHERE expert_id = %s
-         AND scheduled_date = %s
-         AND scheduled_time = %s
-         AND status = ANY(%s)
-       LIMIT 1
-       """,
-       (
-           expert_id,
-           scheduled_date.isoformat(),   # <-- convert DATE to TEXT
-           scheduled_time,
-           list(ACTIVE_STATUSES),
-       ),
-   )
-   return cur.fetchone() is not None
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+app.mount("/api/v1/policy_coverage", policy_coverage_app)
 
 
 
