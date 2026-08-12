@@ -1,63 +1,4394 @@
-
-JarvisClaims@JarvisClaims:~/Ramakrishna$ curl -N -X POST http://localhost:9106/chat \
--H "Content-Type: application/json" \
--d '{
-"message":"Complete work order WO-756807. Action by Vendor Manager. Inspection completed successfully."
-}'
-data: [Tool: update_work_order_status] Starting...
-
-data: [Tool: update_work_order_status] Done
-
-data: Work
-
-data:  order
-
-data:  WO
-
-data: -
-
-data: 756
-
-data: 807
-
-data:  has
-
-data:  been
-
-data:  marked
-
-data:  as
-
-data:  "
-
-data: Completed
-
-data: "
-
-data:  by
-
-data:  the
-
-data:  Vendor
-
-data:  Manager
-
-data: .
-
-data:  The
-
-data:  inspection
-
-data:  was
-
-data:  completed
-
-data:  successfully
-
-data: .
-
-
-
-data: End
-
-JarvisClaims@JarvisClaims:~/Ramakrishna$ 
+{
+  "data": {
+    "attributes": {
+      "accidentType": {
+        "code": "string",
+        "name": "string"
+      },
+      "arson": true,
+      "assignedByUser": {
+        "displayName": "string",
+        "id": "string",
+        "refid": "string",
+        "type": "string",
+        "uri": "string"
+      },
+      "assignedGroup": {
+        "displayName": "string",
+        "id": "string",
+        "refid": "string",
+        "type": "string",
+        "uri": "string"
+      },
+      "assignedQueue": {
+        "displayName": "string",
+        "id": "string",
+        "refid": "string",
+        "type": "string",
+        "uri": "string"
+      },
+      "assignedUser": {
+        "displayName": "string",
+        "id": "string",
+        "refid": "string",
+        "type": "string",
+        "uri": "string"
+      },
+      "assignmentStatus": {
+        "code": "string",
+        "name": "string"
+      },
+      "benefitsStatusDecision": true,
+      "catastrophe": {
+        "displayName": "string",
+        "id": "string",
+        "refid": "string",
+        "type": "string",
+        "uri": "string"
+      },
+      "claimantReportedDate": "2026-08-12T11:56:21.209Z",
+      "closedOutcome": {
+        "code": "string",
+        "name": "string"
+      },
+      "computerSecurity": true,
+      "concurrentEmployment": {
+        "code": "string",
+        "name": "string"
+      },
+      "coverageInQuestion": true,
+      "currentConditions": true,
+      "dateCompensabilityDecisionDue": "2026-08-12T11:56:21.209Z",
+      "dateCompensabilityDecisionMade": "2026-08-12T11:56:21.209Z",
+      "dateFormGivenToEmployee": "2026-08-12T11:56:21.209Z",
+      "dateFormReturnedByEmployee": "2026-08-12T11:56:21.209Z",
+      "dateReportedToAgent": "2026-08-12T11:56:21.209Z",
+      "dateReportedToEmployer": "2026-08-12T11:56:21.209Z",
+      "dateReportedToInsured": "2026-08-12T11:56:21.209Z",
+      "deathDate": "2026-08-12T11:56:21.209Z",
+      "description": "&",
+      "diagnosticConsistent": true,
+      "drugsInvolved": {
+        "code": "string",
+        "name": "string"
+      },
+      "employerQuestionValidity": {
+        "code": "string",
+        "name": "string"
+      },
+      "employerSentMPNNotice": "2026-08-12T11:56:21.210Z",
+      "employerValidityReason": "D",
+      "employmentData": {
+        "numberOfDaysWorked": "string",
+        "numberOfHoursWorked": "string",
+        "payPeriod": {
+          "code": "string",
+          "name": "string"
+        },
+        "wageAmount": {
+          "amount": "string",
+          "currency": "string"
+        }
+      },
+      "employmentInjury": true,
+      "examinationDate": "2026-08-12T11:56:21.210Z",
+      "exposureBegan": "2026-08-12T11:56:21.210Z",
+      "exposureEnded": "2026-08-12T11:56:21.210Z",
+      "fault": "string",
+      "faultRating": {
+        "code": "string",
+        "name": "string"
+      },
+      "filterPropertyRiskUnits": [
+        "string"
+      ],
+      "filterVehicleRiskUnits": [
+        "string"
+      ],
+      "fireDepartmentInformation": "I",
+      "fireDepartmentResponded": true,
+      "fireSource": "t",
+      "firstNoticeSuit": true,
+      "flagged": {
+        "code": "string",
+        "name": "string"
+      },
+      "furtherTreatment": true,
+      "hasWaterBeenTurnedOff": true,
+      "hazardousWaste": true,
+      "hospitalDate": "2026-08-12T11:56:21.211Z",
+      "hospitalDays": 0,
+      "howReported": {
+        "code": "string",
+        "name": "string"
+      },
+      "howWasFireDiscovered": "\\",
+      "hurricaneCategory_Ext": {
+        "code": "string",
+        "name": "string"
+      },
+      "id": "string",
+      "incidentOnly": true,
+      "injuredOnPremises": true,
+      "injuredOnRegularJob": true,
+      "injuredWorkerInMPN": "2026-08-12T11:56:21.211Z",
+      "insured": {
+        "displayName": "string",
+        "id": "string",
+        "policySystemId": "string",
+        "refid": "string",
+        "type": "string",
+        "uri": "string"
+      },
+      "insurerSentMPNNotice": "2026-08-12T11:56:21.211Z",
+      "isAnyoneInjured": true,
+      "isHomeHabitable": true,
+      "isHomeSecure": true,
+      "isRoofProtected": true,
+      "jurisdiction": {
+        "code": "string",
+        "name": "string"
+      },
+      "litigationStatus": {
+        "code": "string",
+        "name": "string"
+      },
+      "lobCode": {
+        "code": "string",
+        "name": "string"
+      },
+      "locationCode": {
+        "displayName": "string",
+        "id": "string",
+        "policySystemId": "string",
+        "refid": "string",
+        "type": "string",
+        "uri": "string"
+      },
+      "locationOfTheft": {
+        "code": "string",
+        "name": "string"
+      },
+      "lossCause": {
+        "code": "string",
+        "name": "string"
+      },
+      "lossDate": "2026-08-12T11:56:21.212Z",
+      "lossLocation": {
+        "addressLine1": "f",
+        "addressLine2": "h",
+        "addressLine3": ",",
+        "area": {
+          "code": "string",
+          "name": "string"
+        },
+        "city": "3",
+        "country": "string",
+        "county": "q",
+        "department": {
+          "code": "string",
+          "name": "string"
+        },
+        "description": "W",
+        "emirate": {
+          "code": "string",
+          "name": "string"
+        },
+        "id": "string",
+        "island": {
+          "code": "string",
+          "name": "string"
+        },
+        "oblast": {
+          "code": "string",
+          "name": "string"
+        },
+        "parish": {
+          "code": "string",
+          "name": "string"
+        },
+        "policyLabel": "string",
+        "policySystemId": "string",
+        "postalCode": "r",
+        "prefecture": {
+          "code": "string",
+          "name": "string"
+        },
+        "province": {
+          "code": "string",
+          "name": "string"
+        },
+        "spatialPoint": {
+          "latitude": "string",
+          "longitude": "string"
+        },
+        "state": {
+          "code": "string",
+          "name": "string"
+        }
+      },
+      "lossLocationCode": ",",
+      "lossType": {
+        "code": "string",
+        "name": "string"
+      },
+      "mainContact": {
+        "displayName": "string",
+        "id": "string",
+        "policySystemId": "string",
+        "refid": "string",
+        "type": "string",
+        "uri": "string"
+      },
+      "mainContactType": {
+        "code": "string",
+        "name": "string"
+      },
+      "manifestationDate": "2026-08-12T11:56:21.214Z",
+      "mmiDate": "2026-08-12T11:56:21.214Z",
+      "modifiedDutyAvailable": true,
+      "mold": true,
+      "otherRecoverableStatus": {
+        "code": "string",
+        "name": "string"
+      },
+      "policeDepartmentInformation": "&",
+      "policyNumber": "k",
+      "primaryTreatingPhysicianInMPN": true,
+      "reopenedReason": {
+        "code": "string",
+        "name": "string"
+      },
+      "reportedByType": {
+        "code": "string",
+        "name": "string"
+      },
+      "reportedDate": "2026-08-12T11:56:21.215Z",
+      "reporter": {
+        "displayName": "string",
+        "id": "string",
+        "policySystemId": "string",
+        "refid": "string",
+        "type": "string",
+        "uri": "string"
+      },
+      "safetyEquipmentProvided": true,
+      "safetyEquipmentUsed": true,
+      "salvageStatus": {
+        "code": "string",
+        "name": "string"
+      },
+      "segment": {
+        "code": "string",
+        "name": "string"
+      },
+      "siuStatus": {
+        "code": "string",
+        "name": "string"
+      },
+      "smokeDamageOnly": true,
+      "state": {
+        "code": "string",
+        "name": "string"
+      },
+      "storageBarCodeNumber": "2",
+      "storageBoxNumber": "e",
+      "storageCategory": {
+        "code": "string",
+        "name": "string"
+      },
+      "storageDate": "2026-08-12T11:56:21.215Z",
+      "storageLocationState": {
+        "code": "string",
+        "name": "string"
+      },
+      "storageType": {
+        "code": "string",
+        "name": "string"
+      },
+      "storageVolumes": "k",
+      "strategy": {
+        "code": "string",
+        "name": "string"
+      },
+      "treatedPatientBefore": true,
+      "treatmentRendered": "string",
+      "validationLevel": {
+        "code": "string",
+        "name": "string"
+      },
+      "waterSource": {
+        "code": "string",
+        "name": "string"
+      },
+      "weather": {
+        "code": "string",
+        "name": "string"
+      },
+      "weatherRelated": true,
+      "witnesses": [
+        {
+          "contact": {
+            "displayName": "string",
+            "id": "string",
+            "policySystemId": "string",
+            "refid": "string",
+            "type": "string",
+            "uri": "string"
+          },
+          "perspective": "Y",
+          "position": {
+            "code": "string",
+            "name": "string"
+          },
+          "statementObtained": {
+            "code": "string",
+            "name": "string"
+          }
+        }
+      ],
+      "workersCompInfo": {
+        "compensable": {
+          "code": "string",
+          "name": "string"
+        },
+        "deathReport": true,
+        "employerLiability": true,
+        "medicalReport": true,
+        "timeLossReport": true
+      }
+    },
+    "checksum": "string",
+    "id": "string",
+    "links": {
+      "additionalProp1": {
+        "href": "string",
+        "methods": [
+          "string"
+        ]
+      },
+      "additionalProp2": {
+        "href": "string",
+        "methods": [
+          "string"
+        ]
+      },
+      "additionalProp3": {
+        "href": "string",
+        "methods": [
+          "string"
+        ]
+      }
+    },
+    "method": "string",
+    "refid": "string",
+    "related": {
+      "additionalProp1": {
+        "count": 0,
+        "data": [
+          {
+            "displayName": "string",
+            "id": "string",
+            "refid": "string",
+            "type": "string",
+            "uri": "string"
+          }
+        ],
+        "total": 0
+      },
+      "additionalProp2": {
+        "count": 0,
+        "data": [
+          {
+            "displayName": "string",
+            "id": "string",
+            "refid": "string",
+            "type": "string",
+            "uri": "string"
+          }
+        ],
+        "total": 0
+      },
+      "additionalProp3": {
+        "count": 0,
+        "data": [
+          {
+            "displayName": "string",
+            "id": "string",
+            "refid": "string",
+            "type": "string",
+            "uri": "string"
+          }
+        ],
+        "total": 0
+      }
+    },
+    "uri": "string"
+  },
+  "included": {
+    "AssessmentContentItem": [
+      {
+        "attributes": {
+          "amountAfterLimit": {
+            "amount": "string",
+            "currency": "string"
+          },
+          "contentCategory": {
+            "code": "string",
+            "name": "string"
+          },
+          "contentSchedule": {
+            "code": "string",
+            "name": "string"
+          },
+          "dateAcquired": "2026-08-12T11:56:21.216Z",
+          "depreciationPercentage": "string",
+          "description": "?",
+          "incidentOrder": 0,
+          "itemComment": "_",
+          "numberOfItems": 0,
+          "purchaseCost": {
+            "amount": "string",
+            "currency": "string"
+          },
+          "replacementValue": {
+            "amount": "string",
+            "currency": "string"
+          }
+        },
+        "checksum": "string",
+        "id": "string",
+        "links": {
+          "additionalProp1": {
+            "href": "string",
+            "methods": [
+              "string"
+            ]
+          },
+          "additionalProp2": {
+            "href": "string",
+            "methods": [
+              "string"
+            ]
+          },
+          "additionalProp3": {
+            "href": "string",
+            "methods": [
+              "string"
+            ]
+          }
+        },
+        "method": "string",
+        "refid": "string",
+        "related": {
+          "additionalProp1": {
+            "count": 0,
+            "data": [
+              {
+                "displayName": "string",
+                "id": "string",
+                "refid": "string",
+                "type": "string",
+                "uri": "string"
+              }
+            ],
+            "total": 0
+          },
+          "additionalProp2": {
+            "count": 0,
+            "data": [
+              {
+                "displayName": "string",
+                "id": "string",
+                "refid": "string",
+                "type": "string",
+                "uri": "string"
+              }
+            ],
+            "total": 0
+          },
+          "additionalProp3": {
+            "count": 0,
+            "data": [
+              {
+                "displayName": "string",
+                "id": "string",
+                "refid": "string",
+                "type": "string",
+                "uri": "string"
+              }
+            ],
+            "total": 0
+          }
+        },
+        "uri": "string"
+      }
+    ],
+    "AssessmentSummary": [
+      {
+        "attributes": {
+          "category": "o",
+          "conclusionCode": "+",
+          "conclusionDescription": "w",
+          "estimate": "string",
+          "exposure": {
+            "displayName": "string",
+            "id": "string",
+            "refid": "string",
+            "type": "string",
+            "uri": "string"
+          },
+          "name": "/",
+          "name_Localizations": {
+            "en_US": "string",
+            "en_US_EDG": "string",
+            "en_US_EDG_PH": "string",
+            "es": "string",
+            "es_MX": "string"
+          },
+          "normalizedScore": "string",
+          "rawAssessmentReferenceId": "a",
+          "recommendedActionCode": "#",
+          "recommendedActionDescription": "7",
+          "recommendedValue": "string",
+          "score": "string",
+          "scoreDate": "2026-08-12T11:56:21.218Z",
+          "scorePercentile": "string",
+          "tapId": "@",
+          "tapSubtypeId": "a"
+        },
+        "checksum": "string",
+        "id": "string",
+        "links": {
+          "additionalProp1": {
+            "href": "string",
+            "methods": [
+              "string"
+            ]
+          },
+          "additionalProp2": {
+            "href": "string",
+            "methods": [
+              "string"
+            ]
+          },
+          "additionalProp3": {
+            "href": "string",
+            "methods": [
+              "string"
+            ]
+          }
+        },
+        "method": "string",
+        "refid": "string",
+        "related": {
+          "additionalProp1": {
+            "count": 0,
+            "data": [
+              {
+                "displayName": "string",
+                "id": "string",
+                "refid": "string",
+                "type": "string",
+                "uri": "string"
+              }
+            ],
+            "total": 0
+          },
+          "additionalProp2": {
+            "count": 0,
+            "data": [
+              {
+                "displayName": "string",
+                "id": "string",
+                "refid": "string",
+                "type": "string",
+                "uri": "string"
+              }
+            ],
+            "total": 0
+          },
+          "additionalProp3": {
+            "count": 0,
+            "data": [
+              {
+                "displayName": "string",
+                "id": "string",
+                "refid": "string",
+                "type": "string",
+                "uri": "string"
+              }
+            ],
+            "total": 0
+          }
+        },
+        "uri": "string"
+      }
+    ],
+    "BaggageIncident": [
+      {
+        "attributes": {
+          "baggageMissingFrom": "2026-08-12T11:56:21.219Z",
+          "baggageRecoveredOn": "2026-08-12T11:56:21.219Z",
+          "baggageType": {
+            "code": "string",
+            "name": "string"
+          },
+          "carrierCompensated": true,
+          "carrierCompensatedAmount": {
+            "amount": "string",
+            "currency": "string"
+          },
+          "delayOnly": true,
+          "description": "#",
+          "lossParty": {
+            "code": "string",
+            "name": "string"
+          },
+          "relatedTripRiskUnit": {
+            "displayName": "string",
+            "id": "string",
+            "policySystemId": "string",
+            "refid": "string",
+            "type": "string",
+            "uri": "string"
+          },
+          "severity": {
+            "code": "string",
+            "name": "string"
+          }
+        },
+        "checksum": "string",
+        "id": "string",
+        "links": {
+          "additionalProp1": {
+            "href": "string",
+            "methods": [
+              "string"
+            ]
+          },
+          "additionalProp2": {
+            "href": "string",
+            "methods": [
+              "string"
+            ]
+          },
+          "additionalProp3": {
+            "href": "string",
+            "methods": [
+              "string"
+            ]
+          }
+        },
+        "method": "string",
+        "refid": "string",
+        "related": {
+          "additionalProp1": {
+            "count": 0,
+            "data": [
+              {
+                "displayName": "string",
+                "id": "string",
+                "refid": "string",
+                "type": "string",
+                "uri": "string"
+              }
+            ],
+            "total": 0
+          },
+          "additionalProp2": {
+            "count": 0,
+            "data": [
+              {
+                "displayName": "string",
+                "id": "string",
+                "refid": "string",
+                "type": "string",
+                "uri": "string"
+              }
+            ],
+            "total": 0
+          },
+          "additionalProp3": {
+            "count": 0,
+            "data": [
+              {
+                "displayName": "string",
+                "id": "string",
+                "refid": "string",
+                "type": "string",
+                "uri": "string"
+              }
+            ],
+            "total": 0
+          }
+        },
+        "uri": "string"
+      }
+    ],
+    "BodilyInjuryPoint": [
+      {
+        "attributes": {
+          "comments": "D",
+          "injuryPoint": {
+            "code": "string",
+            "name": "string"
+          },
+          "injurySeverity": {
+            "code": "string",
+            "name": "string"
+          }
+        },
+        "checksum": "string",
+        "id": "string",
+        "links": {
+          "additionalProp1": {
+            "href": "string",
+            "methods": [
+              "string"
+            ]
+          },
+          "additionalProp2": {
+            "href": "string",
+            "methods": [
+              "string"
+            ]
+          },
+          "additionalProp3": {
+            "href": "string",
+            "methods": [
+              "string"
+            ]
+          }
+        },
+        "method": "string",
+        "refid": "string",
+        "related": {
+          "additionalProp1": {
+            "count": 0,
+            "data": [
+              {
+                "displayName": "string",
+                "id": "string",
+                "refid": "string",
+                "type": "string",
+                "uri": "string"
+              }
+            ],
+            "total": 0
+          },
+          "additionalProp2": {
+            "count": 0,
+            "data": [
+              {
+                "displayName": "string",
+                "id": "string",
+                "refid": "string",
+                "type": "string",
+                "uri": "string"
+              }
+            ],
+            "total": 0
+          },
+          "additionalProp3": {
+            "count": 0,
+            "data": [
+              {
+                "displayName": "string",
+                "id": "string",
+                "refid": "string",
+                "type": "string",
+                "uri": "string"
+              }
+            ],
+            "total": 0
+          }
+        },
+        "uri": "string"
+      }
+    ],
+    "ClaimContact": [
+      {
+        "attributes": {
+          "addressBookUID": "b",
+          "cellPhone": {
+            "countryCode": {
+              "code": "string",
+              "name": "string"
+            },
+            "extension": "string",
+            "number": "string"
+          },
+          "claimUpdatesViaEmailOptIn": {
+            "code": "string",
+            "name": "string"
+          },
+          "claimUpdatesViaTextOptIn": {
+            "code": "string",
+            "name": "string"
+          },
+          "companyName": "5",
+          "companyNameKanji": "W",
+          "contactProhibited": true,
+          "contactSubtype": "string",
+          "dateOfBirth": "2026-08-12",
+          "doctorSpecialty": {
+            "code": "string",
+            "name": "string"
+          },
+          "editableRoles": [
+            {
+              "active": true,
+              "comments": "#",
+              "relatedTo": {
+                "displayName": "string",
+                "id": "string",
+                "type": "string",
+                "uri": "string"
+              },
+              "role": {
+                "code": "string",
+                "name": "string"
+              }
+            }
+          ],
+          "emailAddress1": "r",
+          "emailAddress2": "{",
+          "firstName": "E",
+          "gender": {
+            "code": "string",
+            "name": "string"
+          },
+          "homePhone": {
+            "countryCode": {
+              "code": "string",
+              "name": "string"
+            },
+            "extension": "string",
+            "number": "string"
+          },
+          "lastName": "@",
+          "licenseNumber": "_",
+          "licenseState": {
+            "code": "string",
+            "name": "string"
+          },
+          "maritalStatus": {
+            "code": "string",
+            "name": "string"
+          },
+          "medicalLicense": "=",
+          "primaryAddress": {
+            "CEDEX": "st",
+            "addressBookUID": "T",
+            "addressLine1": "x",
+            "addressLine1Kanji": "r",
+            "addressLine2": "!",
+            "addressLine2Kanji": "N",
+            "addressLine3": "7",
+            "addressType": {
+              "code": "string",
+              "name": "string"
+            },
+            "area": {
+              "code": "string",
+              "name": "string"
+            },
+            "city": "b",
+            "cityKanji": "S",
+            "country": "string",
+            "county": "T",
+            "department": {
+              "code": "string",
+              "name": "string"
+            },
+            "description": "Z",
+            "emirate": {
+              "code": "string",
+              "name": "string"
+            },
+            "island": {
+              "code": "string",
+              "name": "string"
+            },
+            "oblast": {
+              "code": "string",
+              "name": "string"
+            },
+            "parish": {
+              "code": "string",
+              "name": "string"
+            },
+            "postalCode": ".",
+            "prefecture": {
+              "code": "string",
+              "name": "string"
+            },
+            "province": {
+              "code": "string",
+              "name": "string"
+            },
+            "spatialPoint": {
+              "latitude": "string",
+              "longitude": "string"
+            },
+            "state": {
+              "code": "string",
+              "name": "string"
+            },
+            "validUntil": "2026-08-12T11:56:21.224Z"
+          },
+          "primaryLanguage": {
+            "code": "string",
+            "name": "string"
+          },
+          "primaryLocale": {
+            "code": "string",
+            "name": "string"
+          },
+          "primaryPhoneType": {
+            "code": "string",
+            "name": "string"
+          },
+          "pronounAggregate": {
+            "code": "string",
+            "name": "string"
+          },
+          "pronounObjective": "string",
+          "pronounPossessive": "string",
+          "pronounSubjective": "string",
+          "sexAssignedAtBirth": {
+            "code": "string",
+            "name": "string"
+          },
+          "syncAddressBookUID": "string",
+          "taxId": "1",
+          "workPhone": {
+            "countryCode": {
+              "code": "string",
+              "name": "string"
+            },
+            "extension": "string",
+            "number": "string"
+          }
+        },
+        "checksum": "string",
+        "id": "string",
+        "links": {
+          "additionalProp1": {
+            "href": "string",
+            "methods": [
+              "string"
+            ]
+          },
+          "additionalProp2": {
+            "href": "string",
+            "methods": [
+              "string"
+            ]
+          },
+          "additionalProp3": {
+            "href": "string",
+            "methods": [
+              "string"
+            ]
+          }
+        },
+        "method": "string",
+        "refid": "string",
+        "related": {
+          "additionalProp1": {
+            "count": 0,
+            "data": [
+              {
+                "displayName": "string",
+                "id": "string",
+                "refid": "string",
+                "type": "string",
+                "uri": "string"
+              }
+            ],
+            "total": 0
+          },
+          "additionalProp2": {
+            "count": 0,
+            "data": [
+              {
+                "displayName": "string",
+                "id": "string",
+                "refid": "string",
+                "type": "string",
+                "uri": "string"
+              }
+            ],
+            "total": 0
+          },
+          "additionalProp3": {
+            "count": 0,
+            "data": [
+              {
+                "displayName": "string",
+                "id": "string",
+                "refid": "string",
+                "type": "string",
+                "uri": "string"
+              }
+            ],
+            "total": 0
+          }
+        },
+        "uri": "string"
+      }
+    ],
+    "ConcurrentEmployment": [
+      {
+        "attributes": {
+          "companyName": "'",
+          "contactNumber": "K",
+          "endDate": "2026-08-12T11:56:21.224Z",
+          "fullTime": true,
+          "jobTitle": "_",
+          "startDate": "2026-08-12T11:56:21.225Z",
+          "weeklyWage": {
+            "amount": "string",
+            "currency": "string"
+          }
+        },
+        "checksum": "string",
+        "id": "string",
+        "links": {
+          "additionalProp1": {
+            "href": "string",
+            "methods": [
+              "string"
+            ]
+          },
+          "additionalProp2": {
+            "href": "string",
+            "methods": [
+              "string"
+            ]
+          },
+          "additionalProp3": {
+            "href": "string",
+            "methods": [
+              "string"
+            ]
+          }
+        },
+        "method": "string",
+        "refid": "string",
+        "related": {
+          "additionalProp1": {
+            "count": 0,
+            "data": [
+              {
+                "displayName": "string",
+                "id": "string",
+                "refid": "string",
+                "type": "string",
+                "uri": "string"
+              }
+            ],
+            "total": 0
+          },
+          "additionalProp2": {
+            "count": 0,
+            "data": [
+              {
+                "displayName": "string",
+                "id": "string",
+                "refid": "string",
+                "type": "string",
+                "uri": "string"
+              }
+            ],
+            "total": 0
+          },
+          "additionalProp3": {
+            "count": 0,
+            "data": [
+              {
+                "displayName": "string",
+                "id": "string",
+                "refid": "string",
+                "type": "string",
+                "uri": "string"
+              }
+            ],
+            "total": 0
+          }
+        },
+        "uri": "string"
+      }
+    ],
+    "DwellingIncident": [
+      {
+        "attributes": {
+          "automationPath": {
+            "code": "string",
+            "name": "string"
+          },
+          "damagedAreaSize": 1,
+          "description": "n",
+          "dwellingRoomDamages": [
+            {
+              "id": "string",
+              "numberOfRooms": 1,
+              "roomType": {
+                "code": "string",
+                "name": "string"
+              }
+            }
+          ],
+          "fireProtectionAvailable": true,
+          "location": {
+            "address": {
+              "addressLine1": "r",
+              "addressLine2": "8",
+              "addressLine3": "|",
+              "area": {
+                "code": "string",
+                "name": "string"
+              },
+              "city": "b",
+              "country": "string",
+              "county": "o",
+              "department": {
+                "code": "string",
+                "name": "string"
+              },
+              "description": ".",
+              "emirate": {
+                "code": "string",
+                "name": "string"
+              },
+              "id": "string",
+              "island": {
+                "code": "string",
+                "name": "string"
+              },
+              "oblast": {
+                "code": "string",
+                "name": "string"
+              },
+              "parish": {
+                "code": "string",
+                "name": "string"
+              },
+              "policyLabel": "string",
+              "policySystemId": "string",
+              "postalCode": "9",
+              "prefecture": {
+                "code": "string",
+                "name": "string"
+              },
+              "province": {
+                "code": "string",
+                "name": "string"
+              },
+              "spatialPoint": {
+                "latitude": "string",
+                "longitude": "string"
+              },
+              "state": {
+                "code": "string",
+                "name": "string"
+              }
+            },
+            "buildings": [
+              {
+                "buildingNumber": ">",
+                "id": "string",
+                "notes": "("
+              }
+            ],
+            "id": "string",
+            "locationNumber": "s",
+            "notes": "9",
+            "policySystemId": "X",
+            "primaryLocation": true
+          },
+          "lossParty": {
+            "code": "string",
+            "name": "string"
+          },
+          "materialsDamaged": "M",
+          "numberOfPeopleOnPolicy": 0,
+          "occupancyType": {
+            "code": "string",
+            "name": "string"
+          },
+          "propertySize": 1,
+          "severity": {
+            "code": "string",
+            "name": "string"
+          },
+          "yearBuilt": "2026-08-12T11:56:21.228Z",
+          "yearsInHome": 0
+        },
+        "checksum": "string",
+        "id": "string",
+        "links": {
+          "additionalProp1": {
+            "href": "string",
+            "methods": [
+              "string"
+            ]
+          },
+          "additionalProp2": {
+            "href": "string",
+            "methods": [
+              "string"
+            ]
+          },
+          "additionalProp3": {
+            "href": "string",
+            "methods": [
+              "string"
+            ]
+          }
+        },
+        "method": "string",
+        "refid": "string",
+        "related": {
+          "additionalProp1": {
+            "count": 0,
+            "data": [
+              {
+                "displayName": "string",
+                "id": "string",
+                "refid": "string",
+                "type": "string",
+                "uri": "string"
+              }
+            ],
+            "total": 0
+          },
+          "additionalProp2": {
+            "count": 0,
+            "data": [
+              {
+                "displayName": "string",
+                "id": "string",
+                "refid": "string",
+                "type": "string",
+                "uri": "string"
+              }
+            ],
+            "total": 0
+          },
+          "additionalProp3": {
+            "count": 0,
+            "data": [
+              {
+                "displayName": "string",
+                "id": "string",
+                "refid": "string",
+                "type": "string",
+                "uri": "string"
+              }
+            ],
+            "total": 0
+          }
+        },
+        "uri": "string"
+      }
+    ],
+    "Exposure": [
+      {
+        "attributes": {
+          "assignedByUser": {
+            "displayName": "string",
+            "id": "string",
+            "refid": "string",
+            "type": "string",
+            "uri": "string"
+          },
+          "assignedGroup": {
+            "displayName": "string",
+            "id": "string",
+            "refid": "string",
+            "type": "string",
+            "uri": "string"
+          },
+          "assignedQueue": {
+            "displayName": "string",
+            "id": "string",
+            "refid": "string",
+            "type": "string",
+            "uri": "string"
+          },
+          "assignedUser": {
+            "displayName": "string",
+            "id": "string",
+            "refid": "string",
+            "type": "string",
+            "uri": "string"
+          },
+          "assignmentStatus": {
+            "code": "string",
+            "name": "string"
+          },
+          "autopilotStatus": {
+            "code": "string",
+            "name": "string"
+          },
+          "baggageIncident": {
+            "displayName": "string",
+            "id": "string",
+            "refid": "string",
+            "type": "string",
+            "uri": "string"
+          },
+          "claimOrder": 0,
+          "claimant": {
+            "displayName": "string",
+            "id": "string",
+            "policySystemId": "string",
+            "refid": "string",
+            "type": "string",
+            "uri": "string"
+          },
+          "claimantType": {
+            "code": "string",
+            "name": "string"
+          },
+          "closedOutcome": {
+            "code": "string",
+            "name": "string"
+          },
+          "contactPermitted": true,
+          "coverage": {
+            "displayName": "string",
+            "id": "string",
+            "policySystemId": "string",
+            "refid": "string",
+            "type": "string",
+            "uri": "string"
+          },
+          "coverageSubtype": {
+            "code": "string",
+            "name": "string"
+          },
+          "createdVia": {
+            "code": "string",
+            "name": "string"
+          },
+          "deductible": {
+            "amount": {
+              "amount": "string",
+              "currency": "string"
+            },
+            "amountApplied": {
+              "amount": "string",
+              "currency": "string"
+            },
+            "amountRemaining": {
+              "amount": "string",
+              "currency": "string"
+            },
+            "editReason": "j",
+            "overridden": true,
+            "waived": true
+          },
+          "dwellingIncident": {
+            "displayName": "string",
+            "id": "string",
+            "refid": "string",
+            "type": "string",
+            "uri": "string"
+          },
+          "externalStatus": {
+            "code": "string",
+            "name": "string"
+          },
+          "fixedPropertyIncident": {
+            "displayName": "string",
+            "id": "string",
+            "refid": "string",
+            "type": "string",
+            "uri": "string"
+          },
+          "generalIncident": {
+            "displayName": "string",
+            "id": "string",
+            "refid": "string",
+            "type": "string",
+            "uri": "string"
+          },
+          "injuryIncident": {
+            "displayName": "string",
+            "id": "string",
+            "refid": "string",
+            "type": "string",
+            "uri": "string"
+          },
+          "jurisdiction": {
+            "code": "string",
+            "name": "string"
+          },
+          "livingExpensesIncident": {
+            "displayName": "string",
+            "id": "string",
+            "refid": "string",
+            "type": "string",
+            "uri": "string"
+          },
+          "lossCategory": {
+            "code": "string",
+            "name": "string"
+          },
+          "lossParty": {
+            "code": "string",
+            "name": "string"
+          },
+          "otherCoverage": true,
+          "otherStructureIncident": {
+            "displayName": "string",
+            "id": "string",
+            "refid": "string",
+            "type": "string",
+            "uri": "string"
+          },
+          "primaryCoverage": {
+            "code": "string",
+            "name": "string"
+          },
+          "progress": {
+            "code": "string",
+            "name": "string"
+          },
+          "propertyContentsIncident": {
+            "displayName": "string",
+            "id": "string",
+            "refid": "string",
+            "type": "string",
+            "uri": "string"
+          },
+          "propertyIncident_Ext": {
+            "displayName": "string",
+            "id": "string",
+            "refid": "string",
+            "type": "string",
+            "uri": "string"
+          },
+          "reopenedReason": {
+            "code": "string",
+            "name": "string"
+          },
+          "securityLevel": {
+            "code": "string",
+            "name": "string"
+          },
+          "segment": {
+            "code": "string",
+            "name": "string"
+          },
+          "state": {
+            "code": "string",
+            "name": "string"
+          },
+          "strategy": {
+            "code": "string",
+            "name": "string"
+          },
+          "tempLocation_Ext": {
+            "CEDEX": "st",
+            "addressBookUID": "r",
+            "addressLine1": "*",
+            "addressLine1Kanji": "j",
+            "addressLine2": "V",
+            "addressLine2Kanji": "_",
+            "addressLine3": "t",
+            "addressType": {
+              "code": "string",
+              "name": "string"
+            },
+            "area": {
+              "code": "string",
+              "name": "string"
+            },
+            "city": "9",
+            "cityKanji": "2",
+            "country": "string",
+            "county": "s",
+            "department": {
+              "code": "string",
+              "name": "string"
+            },
+            "description": "B",
+            "emirate": {
+              "code": "string",
+              "name": "string"
+            },
+            "island": {
+              "code": "string",
+              "name": "string"
+            },
+            "oblast": {
+              "code": "string",
+              "name": "string"
+            },
+            "parish": {
+              "code": "string",
+              "name": "string"
+            },
+            "postalCode": "E",
+            "prefecture": {
+              "code": "string",
+              "name": "string"
+            },
+            "province": {
+              "code": "string",
+              "name": "string"
+            },
+            "spatialPoint": {
+              "latitude": "string",
+              "longitude": "string"
+            },
+            "state": {
+              "code": "string",
+              "name": "string"
+            },
+            "validUntil": "2026-08-12T11:56:21.231Z"
+          },
+          "tier": {
+            "code": "string",
+            "name": "string"
+          },
+          "tripIncident": {
+            "displayName": "string",
+            "id": "string",
+            "refid": "string",
+            "type": "string",
+            "uri": "string"
+          },
+          "type": {
+            "code": "string",
+            "name": "string"
+          },
+          "validationLevel": {
+            "code": "string",
+            "name": "string"
+          },
+          "vehicleIncident": {
+            "displayName": "string",
+            "id": "string",
+            "refid": "string",
+            "type": "string",
+            "uri": "string"
+          }
+        },
+        "checksum": "string",
+        "id": "string",
+        "links": {
+          "additionalProp1": {
+            "href": "string",
+            "methods": [
+              "string"
+            ]
+          },
+          "additionalProp2": {
+            "href": "string",
+            "methods": [
+              "string"
+            ]
+          },
+          "additionalProp3": {
+            "href": "string",
+            "methods": [
+              "string"
+            ]
+          }
+        },
+        "method": "string",
+        "refid": "string",
+        "related": {
+          "additionalProp1": {
+            "count": 0,
+            "data": [
+              {
+                "displayName": "string",
+                "id": "string",
+                "refid": "string",
+                "type": "string",
+                "uri": "string"
+              }
+            ],
+            "total": 0
+          },
+          "additionalProp2": {
+            "count": 0,
+            "data": [
+              {
+                "displayName": "string",
+                "id": "string",
+                "refid": "string",
+                "type": "string",
+                "uri": "string"
+              }
+            ],
+            "total": 0
+          },
+          "additionalProp3": {
+            "count": 0,
+            "data": [
+              {
+                "displayName": "string",
+                "id": "string",
+                "refid": "string",
+                "type": "string",
+                "uri": "string"
+              }
+            ],
+            "total": 0
+          }
+        },
+        "uri": "string"
+      }
+    ],
+    "FixedPropertyIncident": [
+      {
+        "attributes": {
+          "automationPath": {
+            "code": "string",
+            "name": "string"
+          },
+          "description": "T",
+          "id": "string",
+          "location": {
+            "address": {
+              "addressLine1": "_",
+              "addressLine2": "t",
+              "addressLine3": "!",
+              "area": {
+                "code": "string",
+                "name": "string"
+              },
+              "city": ")",
+              "country": "string",
+              "county": "5",
+              "department": {
+                "code": "string",
+                "name": "string"
+              },
+              "description": "O",
+              "emirate": {
+                "code": "string",
+                "name": "string"
+              },
+              "id": "string",
+              "island": {
+                "code": "string",
+                "name": "string"
+              },
+              "oblast": {
+                "code": "string",
+                "name": "string"
+              },
+              "parish": {
+                "code": "string",
+                "name": "string"
+              },
+              "policyLabel": "string",
+              "policySystemId": "string",
+              "postalCode": "X",
+              "prefecture": {
+                "code": "string",
+                "name": "string"
+              },
+              "province": {
+                "code": "string",
+                "name": "string"
+              },
+              "spatialPoint": {
+                "latitude": "string",
+                "longitude": "string"
+              },
+              "state": {
+                "code": "string",
+                "name": "string"
+              }
+            },
+            "buildings": [
+              {
+                "buildingNumber": "~",
+                "id": "string",
+                "notes": "A"
+              }
+            ],
+            "id": "string",
+            "locationNumber": "W",
+            "notes": "N",
+            "policySystemId": "&",
+            "primaryLocation": true
+          },
+          "lossParty": {
+            "code": "string",
+            "name": "string"
+          },
+          "occupancyType": {
+            "code": "string",
+            "name": "string"
+          },
+          "severity": {
+            "code": "string",
+            "name": "string"
+          }
+        },
+        "checksum": "string",
+        "id": "string",
+        "links": {
+          "additionalProp1": {
+            "href": "string",
+            "methods": [
+              "string"
+            ]
+          },
+          "additionalProp2": {
+            "href": "string",
+            "methods": [
+              "string"
+            ]
+          },
+          "additionalProp3": {
+            "href": "string",
+            "methods": [
+              "string"
+            ]
+          }
+        },
+        "method": "string",
+        "refid": "string",
+        "related": {
+          "additionalProp1": {
+            "count": 0,
+            "data": [
+              {
+                "displayName": "string",
+                "id": "string",
+                "refid": "string",
+                "type": "string",
+                "uri": "string"
+              }
+            ],
+            "total": 0
+          },
+          "additionalProp2": {
+            "count": 0,
+            "data": [
+              {
+                "displayName": "string",
+                "id": "string",
+                "refid": "string",
+                "type": "string",
+                "uri": "string"
+              }
+            ],
+            "total": 0
+          },
+          "additionalProp3": {
+            "count": 0,
+            "data": [
+              {
+                "displayName": "string",
+                "id": "string",
+                "refid": "string",
+                "type": "string",
+                "uri": "string"
+              }
+            ],
+            "total": 0
+          }
+        },
+        "uri": "string"
+      }
+    ],
+    "GeneralIncident": [
+      {
+        "attributes": {
+          "description": "c",
+          "lossParty": {
+            "code": "string",
+            "name": "string"
+          },
+          "severity": {
+            "code": "string",
+            "name": "string"
+          }
+        },
+        "checksum": "string",
+        "id": "string",
+        "links": {
+          "additionalProp1": {
+            "href": "string",
+            "methods": [
+              "string"
+            ]
+          },
+          "additionalProp2": {
+            "href": "string",
+            "methods": [
+              "string"
+            ]
+          },
+          "additionalProp3": {
+            "href": "string",
+            "methods": [
+              "string"
+            ]
+          }
+        },
+        "method": "string",
+        "refid": "string",
+        "related": {
+          "additionalProp1": {
+            "count": 0,
+            "data": [
+              {
+                "displayName": "string",
+                "id": "string",
+                "refid": "string",
+                "type": "string",
+                "uri": "string"
+              }
+            ],
+            "total": 0
+          },
+          "additionalProp2": {
+            "count": 0,
+            "data": [
+              {
+                "displayName": "string",
+                "id": "string",
+                "refid": "string",
+                "type": "string",
+                "uri": "string"
+              }
+            ],
+            "total": 0
+          },
+          "additionalProp3": {
+            "count": 0,
+            "data": [
+              {
+                "displayName": "string",
+                "id": "string",
+                "refid": "string",
+                "type": "string",
+                "uri": "string"
+              }
+            ],
+            "total": 0
+          }
+        },
+        "uri": "string"
+      }
+    ],
+    "InjuryIncident": [
+      {
+        "attributes": {
+          "ambulanceUsed": true,
+          "automationPath": {
+            "code": "string",
+            "name": "string"
+          },
+          "bodyParts": [
+            {
+              "detailedBodyPart": {
+                "code": "string",
+                "name": "string"
+              },
+              "detailedBodyPartDesc": {
+                "code": "string",
+                "name": "string"
+              },
+              "id": "string",
+              "impairmentPercentage": 100,
+              "ordering": 0,
+              "primaryBodyPart": {
+                "code": "string",
+                "name": "string"
+              },
+              "sideOfBody": {
+                "code": "string",
+                "name": "string"
+              }
+            }
+          ],
+          "dateOfDeath": "2026-08-12T11:56:21.235Z",
+          "description": "t",
+          "detailedInjuryType": {
+            "code": "string",
+            "name": "string"
+          },
+          "disabledDueToAccident": {
+            "code": "string",
+            "name": "string"
+          },
+          "generalInjuryType": {
+            "code": "string",
+            "name": "string"
+          },
+          "id": "string",
+          "injuredPerson": {
+            "displayName": "string",
+            "id": "string",
+            "policySystemId": "string",
+            "refid": "string",
+            "type": "string",
+            "uri": "string"
+          },
+          "lossParty": {
+            "code": "string",
+            "name": "string"
+          },
+          "lostWages": true,
+          "mainWorkersCompIncident": true,
+          "primaryDoctor": {
+            "displayName": "string",
+            "id": "string",
+            "refid": "string",
+            "type": "string",
+            "uri": "string"
+          },
+          "severity": {
+            "code": "string",
+            "name": "string"
+          },
+          "treatmentType": {
+            "code": "string",
+            "name": "string"
+          }
+        },
+        "checksum": "string",
+        "id": "string",
+        "links": {
+          "additionalProp1": {
+            "href": "string",
+            "methods": [
+              "string"
+            ]
+          },
+          "additionalProp2": {
+            "href": "string",
+            "methods": [
+              "string"
+            ]
+          },
+          "additionalProp3": {
+            "href": "string",
+            "methods": [
+              "string"
+            ]
+          }
+        },
+        "method": "string",
+        "refid": "string",
+        "related": {
+          "additionalProp1": {
+            "count": 0,
+            "data": [
+              {
+                "displayName": "string",
+                "id": "string",
+                "refid": "string",
+                "type": "string",
+                "uri": "string"
+              }
+            ],
+            "total": 0
+          },
+          "additionalProp2": {
+            "count": 0,
+            "data": [
+              {
+                "displayName": "string",
+                "id": "string",
+                "refid": "string",
+                "type": "string",
+                "uri": "string"
+              }
+            ],
+            "total": 0
+          },
+          "additionalProp3": {
+            "count": 0,
+            "data": [
+              {
+                "displayName": "string",
+                "id": "string",
+                "refid": "string",
+                "type": "string",
+                "uri": "string"
+              }
+            ],
+            "total": 0
+          }
+        },
+        "uri": "string"
+      }
+    ],
+    "LivingExpensesIncident": [
+      {
+        "attributes": {
+          "automationPath": {
+            "code": "string",
+            "name": "string"
+          },
+          "description": ";",
+          "id": "string",
+          "lossParty": {
+            "code": "string",
+            "name": "string"
+          },
+          "startDate": "2026-08-12T11:56:21.236Z"
+        },
+        "checksum": "string",
+        "id": "string",
+        "links": {
+          "additionalProp1": {
+            "href": "string",
+            "methods": [
+              "string"
+            ]
+          },
+          "additionalProp2": {
+            "href": "string",
+            "methods": [
+              "string"
+            ]
+          },
+          "additionalProp3": {
+            "href": "string",
+            "methods": [
+              "string"
+            ]
+          }
+        },
+        "method": "string",
+        "refid": "string",
+        "related": {
+          "additionalProp1": {
+            "count": 0,
+            "data": [
+              {
+                "displayName": "string",
+                "id": "string",
+                "refid": "string",
+                "type": "string",
+                "uri": "string"
+              }
+            ],
+            "total": 0
+          },
+          "additionalProp2": {
+            "count": 0,
+            "data": [
+              {
+                "displayName": "string",
+                "id": "string",
+                "refid": "string",
+                "type": "string",
+                "uri": "string"
+              }
+            ],
+            "total": 0
+          },
+          "additionalProp3": {
+            "count": 0,
+            "data": [
+              {
+                "displayName": "string",
+                "id": "string",
+                "refid": "string",
+                "type": "string",
+                "uri": "string"
+              }
+            ],
+            "total": 0
+          }
+        },
+        "uri": "string"
+      }
+    ],
+    "Matter": [
+      {
+        "attributes": {
+          "adDamnumAmount": {
+            "amount": "string",
+            "currency": "string"
+          },
+          "adDamnumSpecified": true,
+          "arbitrationDate": "2026-08-12T11:56:21.236Z",
+          "arbitrationRoom": "l",
+          "assignedByUser": {
+            "displayName": "string",
+            "id": "string",
+            "refid": "string",
+            "type": "string",
+            "uri": "string"
+          },
+          "assignedGroup": {
+            "displayName": "string",
+            "id": "string",
+            "refid": "string",
+            "type": "string",
+            "uri": "string"
+          },
+          "assignedQueue": {
+            "displayName": "string",
+            "id": "string",
+            "refid": "string",
+            "type": "string",
+            "uri": "string"
+          },
+          "assignedUser": {
+            "displayName": "string",
+            "id": "string",
+            "refid": "string",
+            "type": "string",
+            "uri": "string"
+          },
+          "assignmentStatus": {
+            "code": "string",
+            "name": "string"
+          },
+          "caseNumber": "U",
+          "courtDistrict": {
+            "code": "string",
+            "name": "string"
+          },
+          "courtType": {
+            "code": "string",
+            "name": "string"
+          },
+          "defenseAppointmentDate": "2026-08-12T11:56:21.237Z",
+          "docketNumber": "i",
+          "fileDate": "2026-08-12T11:56:21.237Z",
+          "finalLegalCost": {
+            "amount": "string",
+            "currency": "string"
+          },
+          "finalSettlementCost": {
+            "amount": "string",
+            "currency": "string"
+          },
+          "finalSettlementDate": "2026-08-12T11:56:21.237Z",
+          "hearingDate": "2026-08-12T11:56:21.237Z",
+          "hearingRoom": "`",
+          "id": "string",
+          "legalSpecialty": {
+            "code": "string",
+            "name": "string"
+          },
+          "matterType": {
+            "code": "string",
+            "name": "string"
+          },
+          "mediationDate": "2026-08-12T11:56:21.237Z",
+          "mediationRoom": "8",
+          "methodServed": {
+            "code": "string",
+            "name": "string"
+          },
+          "name": "E",
+          "primaryCause": {
+            "code": "string",
+            "name": "string"
+          },
+          "punitiveAmount": {
+            "amount": "string",
+            "currency": "string"
+          },
+          "punitiveDamages": true,
+          "reopenedReason": {
+            "code": "string",
+            "name": "string"
+          },
+          "resolution": {
+            "code": "string",
+            "name": "string"
+          },
+          "responseDue": "2026-08-12",
+          "responseFiled": "2026-08-12",
+          "room": "j",
+          "sentToDefenseDate": "2026-08-12T11:56:21.238Z",
+          "serviceDate": "2026-08-12",
+          "subrogationRelated": true,
+          "trialDate": "2026-08-12T11:56:21.238Z",
+          "validationLevel": {
+            "code": "string",
+            "name": "string"
+          }
+        },
+        "checksum": "string",
+        "id": "string",
+        "links": {
+          "additionalProp1": {
+            "href": "string",
+            "methods": [
+              "string"
+            ]
+          },
+          "additionalProp2": {
+            "href": "string",
+            "methods": [
+              "string"
+            ]
+          },
+          "additionalProp3": {
+            "href": "string",
+            "methods": [
+              "string"
+            ]
+          }
+        },
+        "method": "string",
+        "refid": "string",
+        "related": {
+          "additionalProp1": {
+            "count": 0,
+            "data": [
+              {
+                "displayName": "string",
+                "id": "string",
+                "refid": "string",
+                "type": "string",
+                "uri": "string"
+              }
+            ],
+            "total": 0
+          },
+          "additionalProp2": {
+            "count": 0,
+            "data": [
+              {
+                "displayName": "string",
+                "id": "string",
+                "refid": "string",
+                "type": "string",
+                "uri": "string"
+              }
+            ],
+            "total": 0
+          },
+          "additionalProp3": {
+            "count": 0,
+            "data": [
+              {
+                "displayName": "string",
+                "id": "string",
+                "refid": "string",
+                "type": "string",
+                "uri": "string"
+              }
+            ],
+            "total": 0
+          }
+        },
+        "uri": "string"
+      }
+    ],
+    "MedicalDiagnosis": [
+      {
+        "attributes": {
+          "comments": ",",
+          "compensable": true,
+          "endDate": "2026-08-12T11:56:21.239Z",
+          "icdCode": {
+            "displayName": "string",
+            "id": "string",
+            "refid": "string",
+            "type": "string",
+            "uri": "string"
+          },
+          "isPrimary": true,
+          "provider": {
+            "displayName": "string",
+            "id": "string",
+            "refid": "string",
+            "type": "string",
+            "uri": "string"
+          },
+          "startDate": "2026-08-12T11:56:21.239Z"
+        },
+        "checksum": "string",
+        "id": "string",
+        "links": {
+          "additionalProp1": {
+            "href": "string",
+            "methods": [
+              "string"
+            ]
+          },
+          "additionalProp2": {
+            "href": "string",
+            "methods": [
+              "string"
+            ]
+          },
+          "additionalProp3": {
+            "href": "string",
+            "methods": [
+              "string"
+            ]
+          }
+        },
+        "method": "string",
+        "refid": "string",
+        "related": {
+          "additionalProp1": {
+            "count": 0,
+            "data": [
+              {
+                "displayName": "string",
+                "id": "string",
+                "refid": "string",
+                "type": "string",
+                "uri": "string"
+              }
+            ],
+            "total": 0
+          },
+          "additionalProp2": {
+            "count": 0,
+            "data": [
+              {
+                "displayName": "string",
+                "id": "string",
+                "refid": "string",
+                "type": "string",
+                "uri": "string"
+              }
+            ],
+            "total": 0
+          },
+          "additionalProp3": {
+            "count": 0,
+            "data": [
+              {
+                "displayName": "string",
+                "id": "string",
+                "refid": "string",
+                "type": "string",
+                "uri": "string"
+              }
+            ],
+            "total": 0
+          }
+        },
+        "uri": "string"
+      }
+    ],
+    "MedicalTreatment": [
+      {
+        "attributes": {
+          "actionDate": "2026-08-12T11:56:21.239Z",
+          "approvedTreatment": {
+            "code": "string",
+            "name": "string"
+          },
+          "contact": {
+            "displayName": "string",
+            "id": "string",
+            "refid": "string",
+            "type": "string",
+            "uri": "string"
+          },
+          "icd1": "%",
+          "icd2": "]",
+          "icd3": "l",
+          "icd4": "?",
+          "treatmentQuantity": 0
+        },
+        "checksum": "string",
+        "id": "string",
+        "links": {
+          "additionalProp1": {
+            "href": "string",
+            "methods": [
+              "string"
+            ]
+          },
+          "additionalProp2": {
+            "href": "string",
+            "methods": [
+              "string"
+            ]
+          },
+          "additionalProp3": {
+            "href": "string",
+            "methods": [
+              "string"
+            ]
+          }
+        },
+        "method": "string",
+        "refid": "string",
+        "related": {
+          "additionalProp1": {
+            "count": 0,
+            "data": [
+              {
+                "displayName": "string",
+                "id": "string",
+                "refid": "string",
+                "type": "string",
+                "uri": "string"
+              }
+            ],
+            "total": 0
+          },
+          "additionalProp2": {
+            "count": 0,
+            "data": [
+              {
+                "displayName": "string",
+                "id": "string",
+                "refid": "string",
+                "type": "string",
+                "uri": "string"
+              }
+            ],
+            "total": 0
+          },
+          "additionalProp3": {
+            "count": 0,
+            "data": [
+              {
+                "displayName": "string",
+                "id": "string",
+                "refid": "string",
+                "type": "string",
+                "uri": "string"
+              }
+            ],
+            "total": 0
+          }
+        },
+        "uri": "string"
+      }
+    ],
+    "Note": [
+      {
+        "attributes": {
+          "author": {
+            "displayName": "string",
+            "id": "string",
+            "refid": "string",
+            "type": "string",
+            "uri": "string"
+          },
+          "body": "R",
+          "confidential": true,
+          "relatedTo": {
+            "displayName": "string",
+            "id": "string",
+            "type": "string",
+            "uri": "string"
+          },
+          "securityType": {
+            "code": "string",
+            "name": "string"
+          },
+          "subject": "m",
+          "topic": {
+            "code": "string",
+            "name": "string"
+          }
+        },
+        "checksum": "string",
+        "id": "string",
+        "links": {
+          "additionalProp1": {
+            "href": "string",
+            "methods": [
+              "string"
+            ]
+          },
+          "additionalProp2": {
+            "href": "string",
+            "methods": [
+              "string"
+            ]
+          },
+          "additionalProp3": {
+            "href": "string",
+            "methods": [
+              "string"
+            ]
+          }
+        },
+        "method": "string",
+        "refid": "string",
+        "related": {
+          "additionalProp1": {
+            "count": 0,
+            "data": [
+              {
+                "displayName": "string",
+                "id": "string",
+                "refid": "string",
+                "type": "string",
+                "uri": "string"
+              }
+            ],
+            "total": 0
+          },
+          "additionalProp2": {
+            "count": 0,
+            "data": [
+              {
+                "displayName": "string",
+                "id": "string",
+                "refid": "string",
+                "type": "string",
+                "uri": "string"
+              }
+            ],
+            "total": 0
+          },
+          "additionalProp3": {
+            "count": 0,
+            "data": [
+              {
+                "displayName": "string",
+                "id": "string",
+                "refid": "string",
+                "type": "string",
+                "uri": "string"
+              }
+            ],
+            "total": 0
+          }
+        },
+        "uri": "string"
+      }
+    ],
+    "OtherStructureIncident": [
+      {
+        "attributes": {
+          "description": "}",
+          "fencesDamaged": true,
+          "lossParty": {
+            "code": "string",
+            "name": "string"
+          },
+          "severity": {
+            "code": "string",
+            "name": "string"
+          }
+        },
+        "checksum": "string",
+        "id": "string",
+        "links": {
+          "additionalProp1": {
+            "href": "string",
+            "methods": [
+              "string"
+            ]
+          },
+          "additionalProp2": {
+            "href": "string",
+            "methods": [
+              "string"
+            ]
+          },
+          "additionalProp3": {
+            "href": "string",
+            "methods": [
+              "string"
+            ]
+          }
+        },
+        "method": "string",
+        "refid": "string",
+        "related": {
+          "additionalProp1": {
+            "count": 0,
+            "data": [
+              {
+                "displayName": "string",
+                "id": "string",
+                "refid": "string",
+                "type": "string",
+                "uri": "string"
+              }
+            ],
+            "total": 0
+          },
+          "additionalProp2": {
+            "count": 0,
+            "data": [
+              {
+                "displayName": "string",
+                "id": "string",
+                "refid": "string",
+                "type": "string",
+                "uri": "string"
+              }
+            ],
+            "total": 0
+          },
+          "additionalProp3": {
+            "count": 0,
+            "data": [
+              {
+                "displayName": "string",
+                "id": "string",
+                "refid": "string",
+                "type": "string",
+                "uri": "string"
+              }
+            ],
+            "total": 0
+          }
+        },
+        "uri": "string"
+      }
+    ],
+    "PropertyContentsIncident": [
+      {
+        "attributes": {
+          "description": ";",
+          "location": {
+            "address": {
+              "addressLine1": "m",
+              "addressLine2": "f",
+              "addressLine3": "l",
+              "area": {
+                "code": "string",
+                "name": "string"
+              },
+              "city": "9",
+              "country": "string",
+              "county": "+",
+              "department": {
+                "code": "string",
+                "name": "string"
+              },
+              "description": "I",
+              "emirate": {
+                "code": "string",
+                "name": "string"
+              },
+              "id": "string",
+              "island": {
+                "code": "string",
+                "name": "string"
+              },
+              "oblast": {
+                "code": "string",
+                "name": "string"
+              },
+              "parish": {
+                "code": "string",
+                "name": "string"
+              },
+              "policyLabel": "string",
+              "policySystemId": "string",
+              "postalCode": "q",
+              "prefecture": {
+                "code": "string",
+                "name": "string"
+              },
+              "province": {
+                "code": "string",
+                "name": "string"
+              },
+              "spatialPoint": {
+                "latitude": "string",
+                "longitude": "string"
+              },
+              "state": {
+                "code": "string",
+                "name": "string"
+              }
+            },
+            "buildings": [
+              {
+                "buildingNumber": "{",
+                "id": "string",
+                "notes": "x"
+              }
+            ],
+            "id": "string",
+            "locationNumber": "$",
+            "notes": "r",
+            "policySystemId": "U",
+            "primaryLocation": true
+          },
+          "lossParty": {
+            "code": "string",
+            "name": "string"
+          },
+          "severity": {
+            "code": "string",
+            "name": "string"
+          }
+        },
+        "checksum": "string",
+        "id": "string",
+        "links": {
+          "additionalProp1": {
+            "href": "string",
+            "methods": [
+              "string"
+            ]
+          },
+          "additionalProp2": {
+            "href": "string",
+            "methods": [
+              "string"
+            ]
+          },
+          "additionalProp3": {
+            "href": "string",
+            "methods": [
+              "string"
+            ]
+          }
+        },
+        "method": "string",
+        "refid": "string",
+        "related": {
+          "additionalProp1": {
+            "count": 0,
+            "data": [
+              {
+                "displayName": "string",
+                "id": "string",
+                "refid": "string",
+                "type": "string",
+                "uri": "string"
+              }
+            ],
+            "total": 0
+          },
+          "additionalProp2": {
+            "count": 0,
+            "data": [
+              {
+                "displayName": "string",
+                "id": "string",
+                "refid": "string",
+                "type": "string",
+                "uri": "string"
+              }
+            ],
+            "total": 0
+          },
+          "additionalProp3": {
+            "count": 0,
+            "data": [
+              {
+                "displayName": "string",
+                "id": "string",
+                "refid": "string",
+                "type": "string",
+                "uri": "string"
+              }
+            ],
+            "total": 0
+          }
+        },
+        "uri": "string"
+      }
+    ],
+    "PropertyContentsScheduledItem": [
+      {
+        "attributes": {
+          "propertyItem": {
+            "displayName": "string",
+            "id": "string",
+            "policySystemId": "string",
+            "refid": "string",
+            "type": "string",
+            "uri": "string"
+          }
+        },
+        "checksum": "string",
+        "id": "string",
+        "links": {
+          "additionalProp1": {
+            "href": "string",
+            "methods": [
+              "string"
+            ]
+          },
+          "additionalProp2": {
+            "href": "string",
+            "methods": [
+              "string"
+            ]
+          },
+          "additionalProp3": {
+            "href": "string",
+            "methods": [
+              "string"
+            ]
+          }
+        },
+        "method": "string",
+        "refid": "string",
+        "related": {
+          "additionalProp1": {
+            "count": 0,
+            "data": [
+              {
+                "displayName": "string",
+                "id": "string",
+                "refid": "string",
+                "type": "string",
+                "uri": "string"
+              }
+            ],
+            "total": 0
+          },
+          "additionalProp2": {
+            "count": 0,
+            "data": [
+              {
+                "displayName": "string",
+                "id": "string",
+                "refid": "string",
+                "type": "string",
+                "uri": "string"
+              }
+            ],
+            "total": 0
+          },
+          "additionalProp3": {
+            "count": 0,
+            "data": [
+              {
+                "displayName": "string",
+                "id": "string",
+                "refid": "string",
+                "type": "string",
+                "uri": "string"
+              }
+            ],
+            "total": 0
+          }
+        },
+        "uri": "string"
+      }
+    ],
+    "PropertyIncidentExt": [
+      {
+        "attributes": {
+          "alreadyRepaired": true,
+          "appraisalFirstAppointment": "2026-08-12T11:56:21.244Z",
+          "descOther": "t",
+          "description": ",",
+          "estDamageType": {
+            "code": "string",
+            "name": "string"
+          },
+          "estRepairCost": {
+            "amount": "string",
+            "currency": "string"
+          },
+          "estRepairTime": "d",
+          "estimatesReceived": {
+            "code": "string",
+            "name": "string"
+          },
+          "extDamagetxt": "N",
+          "inspectionRequired": true,
+          "lossParty": {
+            "code": "string",
+            "name": "string"
+          },
+          "lossofUse": true,
+          "mealsDays": 0,
+          "mealsPeople": 0,
+          "mealsRate": {
+            "amount": "string",
+            "currency": "string"
+          },
+          "propertyDesc": "h",
+          "propertyValue": {
+            "amount": "string",
+            "currency": "string"
+          },
+          "severity": {
+            "code": "string",
+            "name": "string"
+          },
+          "subtype": "string",
+          "valuationRequired": {
+            "code": "string",
+            "name": "string"
+          },
+          "valuationSource": {
+            "code": "string",
+            "name": "string"
+          },
+          "whenToView": "X"
+        },
+        "checksum": "string",
+        "id": "string",
+        "links": {
+          "additionalProp1": {
+            "href": "string",
+            "methods": [
+              "string"
+            ]
+          },
+          "additionalProp2": {
+            "href": "string",
+            "methods": [
+              "string"
+            ]
+          },
+          "additionalProp3": {
+            "href": "string",
+            "methods": [
+              "string"
+            ]
+          }
+        },
+        "method": "string",
+        "refid": "string",
+        "related": {
+          "additionalProp1": {
+            "count": 0,
+            "data": [
+              {
+                "displayName": "string",
+                "id": "string",
+                "refid": "string",
+                "type": "string",
+                "uri": "string"
+              }
+            ],
+            "total": 0
+          },
+          "additionalProp2": {
+            "count": 0,
+            "data": [
+              {
+                "displayName": "string",
+                "id": "string",
+                "refid": "string",
+                "type": "string",
+                "uri": "string"
+              }
+            ],
+            "total": 0
+          },
+          "additionalProp3": {
+            "count": 0,
+            "data": [
+              {
+                "displayName": "string",
+                "id": "string",
+                "refid": "string",
+                "type": "string",
+                "uri": "string"
+              }
+            ],
+            "total": 0
+          }
+        },
+        "uri": "string"
+      }
+    ],
+    "ServiceRequest": [
+      {
+        "attributes": {
+          "assignedGroup": {
+            "displayName": "string",
+            "id": "string",
+            "refid": "string",
+            "type": "string",
+            "uri": "string"
+          },
+          "assignedUser": {
+            "displayName": "string",
+            "id": "string",
+            "refid": "string",
+            "type": "string",
+            "uri": "string"
+          },
+          "claim": {
+            "claimNumber": "`",
+            "displayName": "string",
+            "id": "string",
+            "type": "string",
+            "uri": "string"
+          },
+          "exposure": {
+            "displayName": "string",
+            "id": "string",
+            "refid": "string",
+            "type": "string",
+            "uri": "string"
+          },
+          "externalNextStep": {
+            "code": "string",
+            "name": "string"
+          },
+          "externalStatus": {
+            "code": "string",
+            "name": "string"
+          },
+          "incident": {
+            "displayName": "string",
+            "id": "string",
+            "refid": "string",
+            "type": "string",
+            "uri": "string"
+          },
+          "instruction": {
+            "customer": {
+              "displayName": "string",
+              "id": "string",
+              "policySystemId": "string",
+              "refid": "string",
+              "type": "string",
+              "uri": "string"
+            },
+            "instructionText": "E",
+            "serviceAddress": {
+              "addressLine1": "4",
+              "addressLine2": "J",
+              "addressLine3": "'",
+              "area": {
+                "code": "string",
+                "name": "string"
+              },
+              "city": "*",
+              "country": "string",
+              "county": "K",
+              "department": {
+                "code": "string",
+                "name": "string"
+              },
+              "description": "1",
+              "emirate": {
+                "code": "string",
+                "name": "string"
+              },
+              "id": "string",
+              "island": {
+                "code": "string",
+                "name": "string"
+              },
+              "oblast": {
+                "code": "string",
+                "name": "string"
+              },
+              "parish": {
+                "code": "string",
+                "name": "string"
+              },
+              "policyLabel": "string",
+              "policySystemId": "string",
+              "postalCode": "w",
+              "prefecture": {
+                "code": "string",
+                "name": "string"
+              },
+              "province": {
+                "code": "string",
+                "name": "string"
+              },
+              "spatialPoint": {
+                "latitude": "string",
+                "longitude": "string"
+              },
+              "state": {
+                "code": "string",
+                "name": "string"
+              }
+            },
+            "services": [
+              {
+                "code": "W",
+                "description_Localizations": {
+                  "en_US": "string",
+                  "en_US_EDG": "string",
+                  "en_US_EDG_PH": "string",
+                  "es": "string",
+                  "es_MX": "string"
+                },
+                "name_Localizations": {
+                  "en_US": "string",
+                  "en_US_EDG": "string",
+                  "en_US_EDG_PH": "string",
+                  "es": "string",
+                  "es_MX": "string"
+                },
+                "parent": {
+                  "code": "m",
+                  "displayName": "string"
+                }
+              }
+            ]
+          },
+          "kind": {
+            "code": "string",
+            "name": "string"
+          },
+          "latestQuote": {
+            "approvedBy": {
+              "displayName": "string",
+              "id": "string",
+              "refid": "string",
+              "type": "string",
+              "uri": "string"
+            },
+            "description": "`",
+            "documents": [
+              {
+                "displayName": "string",
+                "id": "string",
+                "refid": "string",
+                "type": "string",
+                "uri": "string"
+              }
+            ],
+            "expectedDaysToPerformService": 0,
+            "lineItems": [
+              {
+                "amount": {
+                  "amount": "string",
+                  "currency": "string"
+                },
+                "category": {
+                  "code": "string",
+                  "name": "string"
+                },
+                "description": "<"
+              }
+            ],
+            "operationContext": {},
+            "paymentDate": "2026-08-12",
+            "paymentDateTime": "2026-08-12T11:56:21.248Z",
+            "referenceNumber": "S",
+            "source": {
+              "code": "string",
+              "name": "string"
+            },
+            "status": {
+              "code": "string",
+              "name": "string"
+            },
+            "subtype": {
+              "code": "string",
+              "name": "string"
+            },
+            "total": {
+              "amount": "string",
+              "currency": "string"
+            }
+          },
+          "nextStep": {
+            "defaultOperation": "string",
+            "name": "string"
+          },
+          "progress": {
+            "code": "string",
+            "name": "string"
+          },
+          "quoteStatus": {
+            "code": "string",
+            "name": "string"
+          },
+          "referenceNumber": "E",
+          "requestedQuoteCompletionDate": "2026-08-12",
+          "requestedQuoteCompletionDateTime": "2026-08-12T11:56:21.249Z",
+          "requestedServiceCompletionDate": "2026-08-12",
+          "requestedServiceCompletionDateTime": "2026-08-12T11:56:21.249Z",
+          "specialist": {
+            "displayName": "string",
+            "id": "string",
+            "refid": "string",
+            "type": "string",
+            "uri": "string"
+          },
+          "specialistCommMethod": {
+            "code": "string",
+            "name": "string"
+          },
+          "tier": {
+            "code": "string",
+            "name": "string"
+          }
+        },
+        "checksum": "string",
+        "id": "string",
+        "links": {
+          "additionalProp1": {
+            "href": "string",
+            "methods": [
+              "string"
+            ]
+          },
+          "additionalProp2": {
+            "href": "string",
+            "methods": [
+              "string"
+            ]
+          },
+          "additionalProp3": {
+            "href": "string",
+            "methods": [
+              "string"
+            ]
+          }
+        },
+        "method": "string",
+        "refid": "string",
+        "related": {
+          "additionalProp1": {
+            "count": 0,
+            "data": [
+              {
+                "displayName": "string",
+                "id": "string",
+                "refid": "string",
+                "type": "string",
+                "uri": "string"
+              }
+            ],
+            "total": 0
+          },
+          "additionalProp2": {
+            "count": 0,
+            "data": [
+              {
+                "displayName": "string",
+                "id": "string",
+                "refid": "string",
+                "type": "string",
+                "uri": "string"
+              }
+            ],
+            "total": 0
+          },
+          "additionalProp3": {
+            "count": 0,
+            "data": [
+              {
+                "displayName": "string",
+                "id": "string",
+                "refid": "string",
+                "type": "string",
+                "uri": "string"
+              }
+            ],
+            "total": 0
+          }
+        },
+        "uri": "string"
+      }
+    ],
+    "ServiceRequestHistory": [
+      {
+        "attributes": {
+          "contact": {
+            "displayName": "string",
+            "id": "string",
+            "refid": "string",
+            "type": "string",
+            "uri": "string"
+          },
+          "description": "t",
+          "expectedQuoteCompletionDateChanged": true,
+          "expectedServiceCompletionDateChanged": true,
+          "instructionChanged": true,
+          "newExpectedQuoteCompletionDate": "2026-08-12T11:56:21.249Z",
+          "newExpectedServiceCompletionDate": "2026-08-12T11:56:21.249Z",
+          "newProgress": {
+            "code": "string",
+            "name": "string"
+          },
+          "newQuoteStatus": {
+            "code": "string",
+            "name": "string"
+          },
+          "operation": {
+            "code": "string",
+            "name": "string"
+          },
+          "progressChanged": true,
+          "quoteStatusChanged": true,
+          "relatedInvoice": {
+            "displayName": "string",
+            "id": "string",
+            "refid": "string",
+            "type": "string",
+            "uri": "string"
+          },
+          "relatedQuote": {
+            "approvedBy": {
+              "displayName": "string",
+              "id": "string",
+              "refid": "string",
+              "type": "string",
+              "uri": "string"
+            },
+            "description": "u",
+            "documents": [
+              {
+                "displayName": "string",
+                "id": "string",
+                "refid": "string",
+                "type": "string",
+                "uri": "string"
+              }
+            ],
+            "expectedDaysToPerformService": 0,
+            "lineItems": [
+              {
+                "amount": {
+                  "amount": "string",
+                  "currency": "string"
+                },
+                "category": {
+                  "code": "string",
+                  "name": "string"
+                },
+                "description": "'"
+              }
+            ],
+            "operationContext": {},
+            "paymentDate": "2026-08-12",
+            "paymentDateTime": "2026-08-12T11:56:21.250Z",
+            "referenceNumber": "x",
+            "source": {
+              "code": "string",
+              "name": "string"
+            },
+            "status": {
+              "code": "string",
+              "name": "string"
+            },
+            "subtype": {
+              "code": "string",
+              "name": "string"
+            },
+            "total": {
+              "amount": "string",
+              "currency": "string"
+            }
+          },
+          "user": {
+            "displayName": "string",
+            "id": "string",
+            "refid": "string",
+            "type": "string",
+            "uri": "string"
+          }
+        },
+        "checksum": "string",
+        "id": "string",
+        "links": {
+          "additionalProp1": {
+            "href": "string",
+            "methods": [
+              "string"
+            ]
+          },
+          "additionalProp2": {
+            "href": "string",
+            "methods": [
+              "string"
+            ]
+          },
+          "additionalProp3": {
+            "href": "string",
+            "methods": [
+              "string"
+            ]
+          }
+        },
+        "method": "string",
+        "refid": "string",
+        "related": {
+          "additionalProp1": {
+            "count": 0,
+            "data": [
+              {
+                "displayName": "string",
+                "id": "string",
+                "refid": "string",
+                "type": "string",
+                "uri": "string"
+              }
+            ],
+            "total": 0
+          },
+          "additionalProp2": {
+            "count": 0,
+            "data": [
+              {
+                "displayName": "string",
+                "id": "string",
+                "refid": "string",
+                "type": "string",
+                "uri": "string"
+              }
+            ],
+            "total": 0
+          },
+          "additionalProp3": {
+            "count": 0,
+            "data": [
+              {
+                "displayName": "string",
+                "id": "string",
+                "refid": "string",
+                "type": "string",
+                "uri": "string"
+              }
+            ],
+            "total": 0
+          }
+        },
+        "uri": "string"
+      }
+    ],
+    "ServiceRequestMessage": [
+      {
+        "attributes": {
+          "body": ":",
+          "contact": {
+            "displayName": "string",
+            "id": "string",
+            "refid": "string",
+            "type": "string",
+            "uri": "string"
+          },
+          "sentFromPortal": true,
+          "title": "\"",
+          "type": {
+            "code": "string",
+            "name": "string"
+          },
+          "user": {
+            "displayName": "string",
+            "id": "string",
+            "refid": "string",
+            "type": "string",
+            "uri": "string"
+          }
+        },
+        "checksum": "string",
+        "id": "string",
+        "links": {
+          "additionalProp1": {
+            "href": "string",
+            "methods": [
+              "string"
+            ]
+          },
+          "additionalProp2": {
+            "href": "string",
+            "methods": [
+              "string"
+            ]
+          },
+          "additionalProp3": {
+            "href": "string",
+            "methods": [
+              "string"
+            ]
+          }
+        },
+        "method": "string",
+        "refid": "string",
+        "related": {
+          "additionalProp1": {
+            "count": 0,
+            "data": [
+              {
+                "displayName": "string",
+                "id": "string",
+                "refid": "string",
+                "type": "string",
+                "uri": "string"
+              }
+            ],
+            "total": 0
+          },
+          "additionalProp2": {
+            "count": 0,
+            "data": [
+              {
+                "displayName": "string",
+                "id": "string",
+                "refid": "string",
+                "type": "string",
+                "uri": "string"
+              }
+            ],
+            "total": 0
+          },
+          "additionalProp3": {
+            "count": 0,
+            "data": [
+              {
+                "displayName": "string",
+                "id": "string",
+                "refid": "string",
+                "type": "string",
+                "uri": "string"
+              }
+            ],
+            "total": 0
+          }
+        },
+        "uri": "string"
+      }
+    ],
+    "Subrogation": [
+      {
+        "attributes": {
+          "assignmentStatus": {
+            "code": "string",
+            "name": "string"
+          },
+          "closeComment": "W",
+          "closeDate": "2026-08-12T11:56:21.252Z",
+          "exposure": {
+            "displayName": "string",
+            "id": "string",
+            "refid": "string",
+            "type": "string",
+            "uri": "string"
+          },
+          "outcome": {
+            "code": "string",
+            "name": "string"
+          },
+          "status": {
+            "code": "string",
+            "name": "string"
+          }
+        },
+        "checksum": "string",
+        "id": "string",
+        "links": {
+          "additionalProp1": {
+            "href": "string",
+            "methods": [
+              "string"
+            ]
+          },
+          "additionalProp2": {
+            "href": "string",
+            "methods": [
+              "string"
+            ]
+          },
+          "additionalProp3": {
+            "href": "string",
+            "methods": [
+              "string"
+            ]
+          }
+        },
+        "method": "string",
+        "refid": "string",
+        "related": {
+          "additionalProp1": {
+            "count": 0,
+            "data": [
+              {
+                "displayName": "string",
+                "id": "string",
+                "refid": "string",
+                "type": "string",
+                "uri": "string"
+              }
+            ],
+            "total": 0
+          },
+          "additionalProp2": {
+            "count": 0,
+            "data": [
+              {
+                "displayName": "string",
+                "id": "string",
+                "refid": "string",
+                "type": "string",
+                "uri": "string"
+              }
+            ],
+            "total": 0
+          },
+          "additionalProp3": {
+            "count": 0,
+            "data": [
+              {
+                "displayName": "string",
+                "id": "string",
+                "refid": "string",
+                "type": "string",
+                "uri": "string"
+              }
+            ],
+            "total": 0
+          }
+        },
+        "uri": "string"
+      }
+    ],
+    "SubrogationSummary": [
+      {
+        "attributes": {
+          "calculateOSRecReserve": true,
+          "prorateDeductible": true,
+          "subroReferralComment": "D"
+        },
+        "checksum": "string",
+        "id": "string",
+        "links": {
+          "additionalProp1": {
+            "href": "string",
+            "methods": [
+              "string"
+            ]
+          },
+          "additionalProp2": {
+            "href": "string",
+            "methods": [
+              "string"
+            ]
+          },
+          "additionalProp3": {
+            "href": "string",
+            "methods": [
+              "string"
+            ]
+          }
+        },
+        "method": "string",
+        "refid": "string",
+        "related": {
+          "additionalProp1": {
+            "count": 0,
+            "data": [
+              {
+                "displayName": "string",
+                "id": "string",
+                "refid": "string",
+                "type": "string",
+                "uri": "string"
+              }
+            ],
+            "total": 0
+          },
+          "additionalProp2": {
+            "count": 0,
+            "data": [
+              {
+                "displayName": "string",
+                "id": "string",
+                "refid": "string",
+                "type": "string",
+                "uri": "string"
+              }
+            ],
+            "total": 0
+          },
+          "additionalProp3": {
+            "count": 0,
+            "data": [
+              {
+                "displayName": "string",
+                "id": "string",
+                "refid": "string",
+                "type": "string",
+                "uri": "string"
+              }
+            ],
+            "total": 0
+          }
+        },
+        "uri": "string"
+      }
+    ],
+    "TripAccommodation": [
+      {
+        "attributes": {
+          "address": {
+            "addressLine1": "-",
+            "addressLine2": "A",
+            "addressLine3": "+",
+            "area": {
+              "code": "string",
+              "name": "string"
+            },
+            "city": "v",
+            "country": "string",
+            "county": "r",
+            "department": {
+              "code": "string",
+              "name": "string"
+            },
+            "description": "H",
+            "emirate": {
+              "code": "string",
+              "name": "string"
+            },
+            "id": "string",
+            "island": {
+              "code": "string",
+              "name": "string"
+            },
+            "oblast": {
+              "code": "string",
+              "name": "string"
+            },
+            "parish": {
+              "code": "string",
+              "name": "string"
+            },
+            "policyLabel": "string",
+            "policySystemId": "string",
+            "postalCode": "S",
+            "prefecture": {
+              "code": "string",
+              "name": "string"
+            },
+            "province": {
+              "code": "string",
+              "name": "string"
+            },
+            "spatialPoint": {
+              "latitude": "string",
+              "longitude": "string"
+            },
+            "state": {
+              "code": "string",
+              "name": "string"
+            }
+          },
+          "agentFees": {
+            "amount": "string",
+            "currency": "string"
+          },
+          "assessment": {
+            "code": "string",
+            "name": "string"
+          },
+          "cancelOnly": true,
+          "cancellationFees": {
+            "amount": "string",
+            "currency": "string"
+          },
+          "checkinDateTime": "2026-08-12T11:56:21.254Z",
+          "checkoutDateTime": "2026-08-12T11:56:21.254Z",
+          "otherFees": {
+            "amount": "string",
+            "currency": "string"
+          },
+          "paidAmount": {
+            "amount": "string",
+            "currency": "string"
+          },
+          "propertyName": "M",
+          "reasonForCancellation": "?",
+          "reasonForDenial": "]"
+        },
+        "checksum": "string",
+        "id": "string",
+        "links": {
+          "additionalProp1": {
+            "href": "string",
+            "methods": [
+              "string"
+            ]
+          },
+          "additionalProp2": {
+            "href": "string",
+            "methods": [
+              "string"
+            ]
+          },
+          "additionalProp3": {
+            "href": "string",
+            "methods": [
+              "string"
+            ]
+          }
+        },
+        "method": "string",
+        "refid": "string",
+        "related": {
+          "additionalProp1": {
+            "count": 0,
+            "data": [
+              {
+                "displayName": "string",
+                "id": "string",
+                "refid": "string",
+                "type": "string",
+                "uri": "string"
+              }
+            ],
+            "total": 0
+          },
+          "additionalProp2": {
+            "count": 0,
+            "data": [
+              {
+                "displayName": "string",
+                "id": "string",
+                "refid": "string",
+                "type": "string",
+                "uri": "string"
+              }
+            ],
+            "total": 0
+          },
+          "additionalProp3": {
+            "count": 0,
+            "data": [
+              {
+                "displayName": "string",
+                "id": "string",
+                "refid": "string",
+                "type": "string",
+                "uri": "string"
+              }
+            ],
+            "total": 0
+          }
+        },
+        "uri": "string"
+      }
+    ],
+    "TripIncident": [
+      {
+        "attributes": {
+          "description": "T",
+          "severity": {
+            "code": "string",
+            "name": "string"
+          },
+          "tripRiskUnit": {
+            "displayName": "string",
+            "id": "string",
+            "policySystemId": "string",
+            "refid": "string",
+            "type": "string",
+            "uri": "string"
+          }
+        },
+        "checksum": "string",
+        "id": "string",
+        "links": {
+          "additionalProp1": {
+            "href": "string",
+            "methods": [
+              "string"
+            ]
+          },
+          "additionalProp2": {
+            "href": "string",
+            "methods": [
+              "string"
+            ]
+          },
+          "additionalProp3": {
+            "href": "string",
+            "methods": [
+              "string"
+            ]
+          }
+        },
+        "method": "string",
+        "refid": "string",
+        "related": {
+          "additionalProp1": {
+            "count": 0,
+            "data": [
+              {
+                "displayName": "string",
+                "id": "string",
+                "refid": "string",
+                "type": "string",
+                "uri": "string"
+              }
+            ],
+            "total": 0
+          },
+          "additionalProp2": {
+            "count": 0,
+            "data": [
+              {
+                "displayName": "string",
+                "id": "string",
+                "refid": "string",
+                "type": "string",
+                "uri": "string"
+              }
+            ],
+            "total": 0
+          },
+          "additionalProp3": {
+            "count": 0,
+            "data": [
+              {
+                "displayName": "string",
+                "id": "string",
+                "refid": "string",
+                "type": "string",
+                "uri": "string"
+              }
+            ],
+            "total": 0
+          }
+        },
+        "uri": "string"
+      }
+    ],
+    "TripSegment": [
+      {
+        "attributes": {
+          "agentFees": {
+            "amount": "string",
+            "currency": "string"
+          },
+          "arrivalDateTime": "2026-08-12T11:56:21.255Z",
+          "assessment": {
+            "code": "string",
+            "name": "string"
+          },
+          "cancelOnly": true,
+          "cancellationFees": {
+            "amount": "string",
+            "currency": "string"
+          },
+          "carrierName": "k",
+          "carrierNumber": "f",
+          "departureDateTime": "2026-08-12T11:56:21.255Z",
+          "otherFees": {
+            "amount": "string",
+            "currency": "string"
+          },
+          "paidAmount": {
+            "amount": "string",
+            "currency": "string"
+          },
+          "portOfDisembarkation": "M",
+          "portOfEmbarkation": "-",
+          "reasonForCancellation": "%",
+          "reasonForDenial": "P",
+          "transportType": {
+            "code": "string",
+            "name": "string"
+          }
+        },
+        "checksum": "string",
+        "id": "string",
+        "links": {
+          "additionalProp1": {
+            "href": "string",
+            "methods": [
+              "string"
+            ]
+          },
+          "additionalProp2": {
+            "href": "string",
+            "methods": [
+              "string"
+            ]
+          },
+          "additionalProp3": {
+            "href": "string",
+            "methods": [
+              "string"
+            ]
+          }
+        },
+        "method": "string",
+        "refid": "string",
+        "related": {
+          "additionalProp1": {
+            "count": 0,
+            "data": [
+              {
+                "displayName": "string",
+                "id": "string",
+                "refid": "string",
+                "type": "string",
+                "uri": "string"
+              }
+            ],
+            "total": 0
+          },
+          "additionalProp2": {
+            "count": 0,
+            "data": [
+              {
+                "displayName": "string",
+                "id": "string",
+                "refid": "string",
+                "type": "string",
+                "uri": "string"
+              }
+            ],
+            "total": 0
+          },
+          "additionalProp3": {
+            "count": 0,
+            "data": [
+              {
+                "displayName": "string",
+                "id": "string",
+                "refid": "string",
+                "type": "string",
+                "uri": "string"
+              }
+            ],
+            "total": 0
+          }
+        },
+        "uri": "string"
+      }
+    ],
+    "UnverifiedPropertyItem": [
+      {
+        "attributes": {
+          "appraisedValue": {
+            "amount": "string",
+            "currency": "string"
+          },
+          "description": "F"
+        },
+        "checksum": "string",
+        "id": "string",
+        "links": {
+          "additionalProp1": {
+            "href": "string",
+            "methods": [
+              "string"
+            ]
+          },
+          "additionalProp2": {
+            "href": "string",
+            "methods": [
+              "string"
+            ]
+          },
+          "additionalProp3": {
+            "href": "string",
+            "methods": [
+              "string"
+            ]
+          }
+        },
+        "method": "string",
+        "refid": "string",
+        "related": {
+          "additionalProp1": {
+            "count": 0,
+            "data": [
+              {
+                "displayName": "string",
+                "id": "string",
+                "refid": "string",
+                "type": "string",
+                "uri": "string"
+              }
+            ],
+            "total": 0
+          },
+          "additionalProp2": {
+            "count": 0,
+            "data": [
+              {
+                "displayName": "string",
+                "id": "string",
+                "refid": "string",
+                "type": "string",
+                "uri": "string"
+              }
+            ],
+            "total": 0
+          },
+          "additionalProp3": {
+            "count": 0,
+            "data": [
+              {
+                "displayName": "string",
+                "id": "string",
+                "refid": "string",
+                "type": "string",
+                "uri": "string"
+              }
+            ],
+            "total": 0
+          }
+        },
+        "uri": "string"
+      }
+    ],
+    "VehicleDamagePoint": [
+      {
+        "attributes": {
+          "comments": "d",
+          "damagePoint": {
+            "code": "string",
+            "name": "string"
+          },
+          "damageSeverity": {
+            "code": "string",
+            "name": "string"
+          }
+        },
+        "checksum": "string",
+        "id": "string",
+        "links": {
+          "additionalProp1": {
+            "href": "string",
+            "methods": [
+              "string"
+            ]
+          },
+          "additionalProp2": {
+            "href": "string",
+            "methods": [
+              "string"
+            ]
+          },
+          "additionalProp3": {
+            "href": "string",
+            "methods": [
+              "string"
+            ]
+          }
+        },
+        "method": "string",
+        "refid": "string",
+        "related": {
+          "additionalProp1": {
+            "count": 0,
+            "data": [
+              {
+                "displayName": "string",
+                "id": "string",
+                "refid": "string",
+                "type": "string",
+                "uri": "string"
+              }
+            ],
+            "total": 0
+          },
+          "additionalProp2": {
+            "count": 0,
+            "data": [
+              {
+                "displayName": "string",
+                "id": "string",
+                "refid": "string",
+                "type": "string",
+                "uri": "string"
+              }
+            ],
+            "total": 0
+          },
+          "additionalProp3": {
+            "count": 0,
+            "data": [
+              {
+                "displayName": "string",
+                "id": "string",
+                "refid": "string",
+                "type": "string",
+                "uri": "string"
+              }
+            ],
+            "total": 0
+          }
+        },
+        "uri": "string"
+      }
+    ],
+    "VehicleIncident": [
+      {
+        "attributes": {
+          "airbagsDeployed": true,
+          "automationPath": {
+            "code": "string",
+            "name": "string"
+          },
+          "childSafetySeatStatus": {
+            "code": "string",
+            "name": "string"
+          },
+          "collision": true,
+          "collisionPoint": {
+            "code": "string",
+            "name": "string"
+          },
+          "damageDescription": "v",
+          "driver": {
+            "displayName": "string",
+            "id": "string",
+            "policySystemId": "string",
+            "refid": "string",
+            "type": "string",
+            "uri": "string"
+          },
+          "equipmentFailure": true,
+          "id": "string",
+          "incidentOwner": {
+            "displayName": "string",
+            "id": "string",
+            "policySystemId": "string",
+            "refid": "string",
+            "type": "string",
+            "uri": "string"
+          },
+          "lossParty": {
+            "code": "string",
+            "name": "string"
+          },
+          "numOccupants": 0,
+          "passengers": [
+            {
+              "displayName": "string",
+              "id": "string",
+              "policySystemId": "string",
+              "refid": "string",
+              "type": "string",
+              "uri": "string"
+            }
+          ],
+          "propertyDamageDescription": "p",
+          "propertyValue": {
+            "amount": "string",
+            "currency": "string"
+          },
+          "safeToDrive": true,
+          "severity": {
+            "code": "string",
+            "name": "string"
+          },
+          "theft": true,
+          "totalLoss": true,
+          "valuationRequired": {
+            "code": "string",
+            "name": "string"
+          },
+          "valuationSource": {
+            "code": "string",
+            "name": "string"
+          },
+          "vehicle": {
+            "color": "v",
+            "id": "string",
+            "licensePlate": "W",
+            "make": "?",
+            "manufacturer": {
+              "code": "string",
+              "name": "string"
+            },
+            "model": "W",
+            "policySystemId": "h",
+            "state": {
+              "code": "string",
+              "name": "string"
+            },
+            "style": {
+              "code": "string",
+              "name": "string"
+            },
+            "vin": "[",
+            "year": 0
+          },
+          "vehicleDirection": {
+            "code": "string",
+            "name": "string"
+          },
+          "vehicleParked": true,
+          "vehicleType": {
+            "code": "string",
+            "name": "string"
+          },
+          "vehicleUseReason": {
+            "code": "string",
+            "name": "string"
+          }
+        },
+        "checksum": "string",
+        "id": "string",
+        "links": {
+          "additionalProp1": {
+            "href": "string",
+            "methods": [
+              "string"
+            ]
+          },
+          "additionalProp2": {
+            "href": "string",
+            "methods": [
+              "string"
+            ]
+          },
+          "additionalProp3": {
+            "href": "string",
+            "methods": [
+              "string"
+            ]
+          }
+        },
+        "method": "string",
+        "refid": "string",
+        "related": {
+          "additionalProp1": {
+            "count": 0,
+            "data": [
+              {
+                "displayName": "string",
+                "id": "string",
+                "refid": "string",
+                "type": "string",
+                "uri": "string"
+              }
+            ],
+            "total": 0
+          },
+          "additionalProp2": {
+            "count": 0,
+            "data": [
+              {
+                "displayName": "string",
+                "id": "string",
+                "refid": "string",
+                "type": "string",
+                "uri": "string"
+              }
+            ],
+            "total": 0
+          },
+          "additionalProp3": {
+            "count": 0,
+            "data": [
+              {
+                "displayName": "string",
+                "id": "string",
+                "refid": "string",
+                "type": "string",
+                "uri": "string"
+              }
+            ],
+            "total": 0
+          }
+        },
+        "uri": "string"
+      }
+    ]
+  }
+}
