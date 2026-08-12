@@ -1,27 +1,11 @@
-
+{
   "status": 400,
   "errorCode": "gw.api.rest.exceptions.BadInputException",
   "userMessage": "The request parameters or body had issues",
   "developerMessage": "The request parameters or body had issues. See the details elements for exact details of the problems.",
   "details": [
     {
-      "message": "Property 'lossType' is defined as read-only and cannot be specified on inputs",
-      "properties": {
-        "parameterName": "body",
-        "parameterLocation": "body",
-        "lineNumber": 7
-      }
-    },
-    {
-      "message": "Property 'state' is defined as read-only and cannot be specified on inputs",
-      "properties": {
-        "parameterName": "body",
-        "parameterLocation": "body",
-        "lineNumber": 27
-      }
-    },
-    {
-      "message": "Property 'segment' is defined as read-only and cannot be specified on inputs",
+      "message": "The value 'owner' was not a valid element of the 'typekey.OccupancyType' typelist; values must be one of [occupied, underConst, vacant]",
       "properties": {
         "parameterName": "body",
         "parameterLocation": "body",
@@ -29,35 +13,43 @@
       }
     },
     {
-      "message": "The value 'kitchen_fire' was not a valid element of the 'typekey.LossCause' typelist",
+      "message": "The value 'high' was not a valid element of the 'typekey.SeverityType' typelist; values must be one of [minor, moderate-gen, moderate-auto, moderate-prop, major-gen, major-auto, major-prop, major-injury, severe-gen, severe-auto, severe-injury, td, pd, medical_only, temporary, perm-total, fatal, contract-medical, wc-ell]",
       "properties": {
         "parameterName": "body",
         "parameterLocation": "body",
-        "lineNumber": 15
+        "lineNumber": 43
       }
     },
     {
-      "message": "The value 'fire' was not a valid element of the 'typekey.LossType' typelist; values must be one of [AUTO, GL, PR, TRAV, WC]",
+      "message": "The value 'fire' was not a valid element of the 'typekey.EstDamageType' typelist; values must be one of [1, 7, 2, 8, 3, 9, 4, 10, 5, 11, 6, 12, Unknown]",
       "properties": {
         "parameterName": "body",
         "parameterLocation": "body",
-        "lineNumber": 7
+        "lineNumber": 105
       }
     },
     {
-      "message": "The value 'property_high_severity' was not a valid element of the 'typekey.ClaimSegment' typelist; values must be one of [auto_glass, auto_high, auto_low, auto_mid, contents_high, contents_low, injury_high, injury_low, injury_mid, liab_high, liab_low, liab_mid, prop_high, prop_low, prop_mid, travel_high, travel_low, travel_mid, unknown, wc_liability, wc_lost_time, wc_med_only]",
+      "message": "The value 'high' was not a valid element of the 'typekey.SeverityType' typelist; values must be one of [minor, moderate-gen, moderate-auto, moderate-prop, major-gen, major-auto, major-prop, major-injury, severe-gen, severe-auto, severe-injury, td, pd, medical_only, temporary, perm-total, fatal, contract-medical, wc-ell]",
       "properties": {
         "parameterName": "body",
         "parameterLocation": "body",
-        "lineNumber": 35
+        "lineNumber": 89
       }
     },
     {
-      "message": "Schema definition 'swagger:ext.claim.v1.claim_combined_ext-1.0#/definitions/ClaimData' does not define any property named 'included'",
+      "message": "Property 'amountApplied' is defined as read-only and cannot be specified on inputs",
       "properties": {
         "parameterName": "body",
         "parameterLocation": "body",
-        "lineNumber": 47
+        "lineNumber": 141
+      }
+    },
+    {
+      "message": "Property 'amountRemaining' is defined as read-only and cannot be specified on inputs",
+      "properties": {
+        "parameterName": "body",
+        "parameterLocation": "body",
+        "lineNumber": 149
       }
     }
   ]
@@ -68,5 +60,179 @@
 
 
 
+request body is below
+{
 
+  "data": {
+
+    "attributes": {
+
+      "lossCause": {
+
+        "code": "fire",
+
+        "name": "Fire"
+
+      },
+
+      "lossDate": "2026-08-01T14:30:00.000Z",
+
+      "description": "Fire damage in kitchen area - walls, cabinets, and appliances affected"
+
+    },
+
+    "id": "cc:3001"
+
+  },
+
+  "included": {
+
+    "DwellingIncident": [
+
+      {
+
+        "attributes": {
+
+          "description": "Fire damage confined to kitchen, walls and cabinetry affected",
+
+          "occupancyType": {
+
+            "code": "owner",
+
+            "name": "Owner Occupied"
+
+          },
+
+          "severity": {
+
+            "code": "high",
+
+            "name": "High"
+
+          },
+
+          "materialsDamaged": "Cabinets, backsplash, flooring, countertops",
+
+          "dwellingRoomDamages": [
+
+            {
+
+              "id": "room1",
+
+              "numberOfRooms": 1,
+
+              "roomType": {
+
+                "code": "kitchen",
+
+                "name": "Kitchen"
+
+              }
+
+            }
+
+          ]
+
+        },
+
+        "id": "dwelling-inc-1"
+
+      }
+
+    ],
+
+    "PropertyIncidentExt": [
+
+      {
+
+        "attributes": {
+
+          "propertyDesc": "Kitchen fire damage - cabinets, backsplash, appliances",
+
+          "severity": {
+
+            "code": "high",
+
+            "name": "High"
+
+          },
+
+          "estRepairCost": {
+
+            "amount": "24115",
+
+            "currency": "USD"
+
+          },
+
+          "estDamageType": {
+
+            "code": "fire",
+
+            "name": "Fire"
+
+          },
+
+          "alreadyRepaired": false,
+
+          "inspectionRequired": true
+
+        },
+
+        "id": "prop-ext-1"
+
+      }
+
+    ],
+
+    "Exposure": [
+
+      {
+
+        "attributes": {
+
+          "deductible": {
+
+            "amount": {
+
+              "amount": "2526",
+
+              "currency": "USD"
+
+            },
+
+            "amountApplied": {
+
+              "amount": "2526",
+
+              "currency": "USD"
+
+            },
+
+            "amountRemaining": {
+
+              "amount": "0",
+
+              "currency": "USD"
+
+            },
+
+            "waived": false,
+
+            "overridden": false
+
+          }
+
+        },
+
+        "id": "exposure-1"
+
+      }
+
+    ]
+
+  }
+
+}
+ 
 
