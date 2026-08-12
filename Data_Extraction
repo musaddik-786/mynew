@@ -1,3 +1,74 @@
+response
+{
+  "status": 400,
+  "errorCode": "gw.api.rest.exceptions.BadInputException",
+  "userMessage": "The request parameters or body had issues",
+  "developerMessage": "The request parameters or body had issues. See the details elements for exact details of the problems.",
+  "details": [
+    {
+      "message": "Property 'lossType' is defined as read-only and cannot be specified on inputs",
+      "properties": {
+        "parameterName": "body",
+        "parameterLocation": "body",
+        "lineNumber": 7
+      }
+    },
+    {
+      "message": "Property 'state' is defined as read-only and cannot be specified on inputs",
+      "properties": {
+        "parameterName": "body",
+        "parameterLocation": "body",
+        "lineNumber": 27
+      }
+    },
+    {
+      "message": "Property 'segment' is defined as read-only and cannot be specified on inputs",
+      "properties": {
+        "parameterName": "body",
+        "parameterLocation": "body",
+        "lineNumber": 35
+      }
+    },
+    {
+      "message": "The value 'kitchen_fire' was not a valid element of the 'typekey.LossCause' typelist",
+      "properties": {
+        "parameterName": "body",
+        "parameterLocation": "body",
+        "lineNumber": 15
+      }
+    },
+    {
+      "message": "The value 'fire' was not a valid element of the 'typekey.LossType' typelist; values must be one of [AUTO, GL, PR, TRAV, WC]",
+      "properties": {
+        "parameterName": "body",
+        "parameterLocation": "body",
+        "lineNumber": 7
+      }
+    },
+    {
+      "message": "The value 'property_high_severity' was not a valid element of the 'typekey.ClaimSegment' typelist; values must be one of [auto_glass, auto_high, auto_low, auto_mid, contents_high, contents_low, injury_high, injury_low, injury_mid, liab_high, liab_low, liab_mid, prop_high, prop_low, prop_mid, travel_high, travel_low, travel_mid, unknown, wc_liability, wc_lost_time, wc_med_only]",
+      "properties": {
+        "parameterName": "body",
+        "parameterLocation": "body",
+        "lineNumber": 35
+      }
+    },
+    {
+      "message": "Schema definition 'swagger:ext.claim.v1.claim_combined_ext-1.0#/definitions/ClaimData' does not define any property named 'included'",
+      "properties": {
+        "parameterName": "body",
+        "parameterLocation": "body",
+        "lineNumber": 47
+      }
+    }
+  ]
+
+
+
+
+
+request body
+
 {
   "data": {
     "attributes": {
