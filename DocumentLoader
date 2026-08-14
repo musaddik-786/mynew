@@ -1,184 +1,914 @@
-Based on all the screenshots you’ve shared (table list + actual data), here is the complete comparison.
+import logging
+from dotenv import load_dotenv
+import os
+from openai import AzureOpenAI  # Correct import for Azure OpenAI
+from common.phoenix_prompt import build_prompt
 
-Note: This comparison is based on the tables and visible columns in your screenshots. If there are additional hidden columns, the column status may change.
+logger = logging.getLogger(__name__)
 
-Tables Comparison
+# Load environment variables
+load_dotenv()
 
-Table Expected by SIU Closure Agent	Present in DB	Status
-siu_case_master	✅ Yes	Present
-siu_behavioral_analysis	✅ Yes	Present
-siu_progress_tracker	✅ Yes	Present
-siu_evidence_correlation_results	❌ No	Missing
-siu_network_analysis_results	❌ No	Missing
+AZURE_OPENAI_ENDPOINT = os.getenv("AZURE_OPENAI_ENDPOINT")
+AZURE_OPENAI_API_VERSION = os.getenv("AZURE_OPENAI_API_VERSION")
+AZURE_OPENAI_API_KEY = os.getenv("AZURE_OPENAI_API_KEY")
+AZURE_OPENAI_CHAT_DEPLOYMENT = os.getenv("AZURE_OPENAI_CHAT_DEPLOYMENT")
 
-⸻
+if not (AZURE_OPENAI_ENDPOINT and AZURE_OPENAI_API_VERSION and AZURE_OPENAI_API_KEY and AZURE_OPENAI_CHAT_DEPLOYMENT):
+    raise RuntimeError("Azure OpenAI env vars missing. Please set AZURE_OPENAI_ENDPOINT, AZURE_OPENAI_API_VERSION, AZURE_OPENAI_API_KEY and AZURE_OPENAI_CHAT_DEPLOYMENT")
 
-siu_case_master
+# Create Azure OpenAI client
+client = AzureOpenAI(
+    api_key=AZURE_OPENAI_API_KEY,
+    api_version=AZURE_OPENAI_API_VERSION,
+    azure_endpoint=AZURE_OPENAI_ENDPOINT,
+)
 
-Code expects
+# ---------------------------------------------------------------------------
+# LOB -> Phoenix prompt version mapping.
+#
+# >>> INSERT THE FIVE ACTUAL PHOENIX PROMPT VERSION IDs HERE. <<<
+#
+# Each LOB gets its own Phoenix prompt containing only the layout types
+# relevant to that LOB, so the LLM never has to consider unrelated
+# categories from other lines of business.
+# ---------------------------------------------------------------------------
+PHOENIX_PROMPTS = {
+    "Commercial Property": "REPLACE_WITH_COMMERCIAL_PROPERTY_PROMPT_VERSION",
+    "General Liability": "REPLACE_WITH_GENERAL_LIABILITY_PROMPT_VERSION",
+    "Credit and Political Risk": "REPLACE_WITH_CREDIT_POLITICAL_RISK_PROMPT_VERSION",
+    "Home Owners": "REPLACE_WITH_HOME_OWNERS_PROMPT_VERSION",
+    "Life": "REPLACE_WITH_LIFE_PROMPT_VERSION",
+}
 
-siu_case_id
-claim_id
-final_decision
-investigation_outcome
-report_submitted_at
-report_url
+SUPPORTED_LOBS = list(PHOENIX_PROMPTS.keys())
 
-Present (from your screenshot)
+# The original code used max_tokens=4, which truncates longer canonical
+# layout names (e.g. "Property_Detailed_Report", "MLPUKSUBMISSION").
+# Raised to safely fit the longest allowed enum value while still keeping
+# the model constrained to a single short output.
+CLASSIFICATION_MAX_TOKENS = 32
 
-id
-siu_case_id
-claim_id
-status
-assigned_investigator
-created_date
+# Kept for the legacy (non-LOB) calling path only - this was the single
+# hardcoded Phoenix prompt version used before LOB-specific prompts existed.
+LEGACY_PROMPT_VERSION = "UHJvbXB0VmVyc2lvbjo4NQ=="
 
-Present
 
-* ✅ id
-* ✅ siu_case_id
-* ✅ claim_id
+class UnsupportedLOBError(ValueError):
+    """Raised when a LOB value has no configured Phoenix prompt mapping."""
+    pass
 
-Missing / Not Visible
 
-* ❌ final_decision
-* ❌ investigation_outcome
-* ❌ report_submitted_at
-* ❌ report_url
+def _call_llm(prompt: str) -> str:
+    response = client.chat.completions.create(
+        model=AZURE_OPENAI_CHAT_DEPLOYMENT,
+        messages=[{"role": "user", "content": prompt}],
+        max_tokens=CLASSIFICATION_MAX_TOKENS,
+        temperature=0.0
+    )
 
-⸻
+    try:
+        layout_type = response.choices[0].message.content.strip()
+    except Exception as e:
+        logger.warning("Failed to access message content via attribute, falling back: %s", e)
+        layout_type = getattr(response.choices[0].message, "content", "").strip()
 
-siu_behavioral_analysis
+    return layout_type
 
-Code expects
 
-siu_case_id
-analyzed_at
+def classify_document(text: str, lob: str) -> str:
+    """
+    NEW: LOB-aware classification entry point.
 
-along with the behavioral analysis record.
+    Selects the Phoenix prompt for the given LOB (so the LLM only sees
+    layout types relevant to that LOB), sends the document text to
+    Azure OpenAI, and returns the raw layout_type string.
 
-Present
+    Used by the new lob + text_blob_url flow (handler.classify_lob_text_layout).
+    """
+    if lob not in PHOENIX_PROMPTS:
+        raise UnsupportedLOBError(
+            f"Unsupported LOB '{lob}'. Supported values are: {SUPPORTED_LOBS}"
+        )
 
-id
-siu_case_id
-anomaly_score
-anomaly_flags
-tone_shift_detected
-timing_anomaly_detected
-behavior_summary
-recommendation
-analyzed_at
+    prompt_version = PHOENIX_PROMPTS[lob]
 
-Present
+    logger.info(
+        "🔎 classify_document called: lob=%s, %d chars of text",
+        lob, len(text or "")
+    )
 
-* ✅ siu_case_id
-* ✅ analyzed_at
+    # Bug fix: the original code did `text_new = {text[:2000]}`, which
+    # creates a Python SET instead of a string. Fixed to a plain slice.
+    text_new = text[:2000]
 
-This table is compatible with the handler.
+    prompt = build_prompt(
+        prompt_version,
+        text_new=text_new,
+    )
 
-⸻
+    logger.info("🤖 Calling LLM for document classification (lob=%s)", lob)
+    layout_type = _call_llm(prompt)
 
-siu_progress_tracker
+    logger.info("🏷️ Document classified as: %s (lob=%s)", layout_type, lob)
+    return layout_type
 
-Code expects
 
-siu_case_id
-checklist_status
-readiness_pct
-incomplete_steps
-closure_verdict
-closure_notes
-checked_at
+def classify_document_legacy(document_content: dict) -> str:
+    """
+    BACKWARD-COMPATIBLE: preserves the OLD calling convention
+    (classify_document(document_content)) for the legacy PDF/DOCX/TXT
+    blob-URL flow, which has no LOB. Uses the single prompt version that
+    was previously hardcoded in this module.
 
-Present
+    Only used by handler.classify_blob_pdf_layout (the old path).
+    """
+    text = document_content.get("text", "")
+    logger.info("🔎 classify_document_legacy called: %d chars of text", len(text))
 
-id
-siu_case_id
-claim_id
-stage
-progress_percent
-estimated_duration
-days_elapsed
+    # Same bug fix applied here.
+    text_new = text[:2000]
 
-Present
+    prompt = build_prompt(
+        LEGACY_PROMPT_VERSION,
+        text_new=text_new,
+    )
 
-* ✅ siu_case_id
-* ✅ claim_id
+    logger.info("🤖 Calling LLM for document classification (legacy path)")
+    layout_type = _call_llm(prompt)
 
-Missing / Not Visible
+    logger.info("🏷️ Document classified as: %s (legacy path)", layout_type)
+    return layout_type
 
-* ❌ checklist_status
-* ❌ readiness_pct
-* ❌ incomplete_steps
-* ❌ closure_verdict
-* ❌ closure_notes
-* ❌ checked_at
 
-⸻
 
-Tables Missing Completely
 
-These tables are referenced in the code but do not exist in your database.
+import os
+import json
+import logging
+from typing import Dict, Any
 
-siu_evidence_correlation_results
-siu_network_analysis_results
+from .service import _require_env
 
-⸻
+logger = logging.getLogger(__name__)
 
-Final Summary
+from .storage_utils import (
+    download_blob_bytes,
+    upload_text_to_blob,
+    read_text_blob,
+)
 
-✅ Present Tables
+from .document_loader import load_document_from_bytes
 
-* siu_case_master
-* siu_behavioral_analysis
-* siu_progress_tracker
+from .classifier import (
+    classify_document,
+    classify_document_legacy,
+    UnsupportedLOBError,
+    SUPPORTED_LOBS,
+)
+from .prompt_library_matcher import fetch_document_types_from_db, match_layout_type
 
-⸻
 
-❌ Missing Tables
+# ---------------------------------------------------------------------------
+# EXISTING (legacy) FLOW - unchanged behaviour.
+# blob_url (pdf/docx/txt) -> download -> Form Recognizer / TXT loader ->
+# classify -> upload extracted text -> fuzzy match -> response.
+#
+# Only change: calls classify_document_legacy() instead of classify_document(),
+# because classify_document() now requires a `lob` argument. This preserves
+# the exact original prompt/behaviour for this path.
+# ---------------------------------------------------------------------------
+async def classify_blob_pdf_layout(blob_url: str) -> Dict[str, Any]:
 
-* siu_evidence_correlation_results
-* siu_network_analysis_results
+    logger.info(
+        " classify_blob_pdf_layout invoked: blob_url=%s",
+        blob_url
+    )
 
-⸻
+    try:
+        blob_bytes = await download_blob_bytes(blob_url)
 
-⚠️ Missing / Not Visible Columns
+        logger.info(
+            "Blob downloaded: %d bytes | url=%s",
+            len(blob_bytes),
+            blob_url
+        )
 
-siu_case_master
+    except Exception as e:
 
-* final_decision
-* investigation_outcome
-* report_submitted_at
-* report_url
+        logger.error(
+            " Failed to fetch blob: %s | url=%s",
+            e,
+            blob_url
+        )
 
-siu_progress_tracker
+        return {
+            "status": False,
+            "error": f"Failed to fetch blob: {e}"
+        }
 
-* checklist_status
-* readiness_pct
-* incomplete_steps
-* closure_verdict
-* closure_notes
-* checked_at
+    try:
 
-⸻
+        document_content = await load_document_from_bytes(
+            blob_url,
+            blob_bytes
+        )
 
-Overall Compatibility
+        char_count = len(document_content.get("text", ""))
 
-Component	Status
-Read siu_case_master	✅ Partially Compatible
-Read siu_behavioral_analysis	✅ Compatible
-Read siu_evidence_correlation_results	❌ Missing Table
-Read siu_network_analysis_results	❌ Missing Table
-Write siu_progress_tracker	❌ Column Mismatch
+        logger.info(
+            " Document parsed: %d chars extracted | url=%s",
+            char_count,
+            blob_url
+        )
 
-Conclusion
+    except Exception as e:
 
-Based on the information you’ve shared, the SIU Closure Agent is not fully compatible with your current database schema. Specifically:
+        logger.error(
+            " Document parsing failed: %s | url=%s",
+            e,
+            blob_url
+        )
 
-* 2 required tables are missing:
-    * siu_evidence_correlation_results
-    * siu_network_analysis_results
-* The siu_progress_tracker table exists, but the handler expects different columns than those visible in your database.
-* The siu_case_master table exists, but the handler expects fields (final_decision, report_submitted_at, etc.) that are not visible in your screenshots.
+        return {
+            "status": False,
+            "error": f"Document parsing failed: {e}"
+        }
 
-So before using this agent in production, these schema differences would need to be resolved, or the handler would need to be updated to match the current database design.
+    extracted_text = document_content.get("text", "")
+
+    try:
+
+        text_blob_url = await upload_text_to_blob(
+            blob_url,
+            extracted_text
+        )
+
+        logger.info(
+            "Extracted text uploaded: %s",
+            text_blob_url
+        )
+
+    except Exception as e:
+
+        logger.error(
+            " Failed to upload extracted text: %s | url=%s",
+            e,
+            blob_url
+        )
+
+        return {
+            "status": False,
+            "error": f"Failed to upload extracted text: {e}"
+        }
+
+    try:
+
+        layout_type = classify_document_legacy(document_content)
+
+        logger.info(
+            " Classification complete: layout_type=%s | url=%s",
+            layout_type,
+            blob_url
+        )
+
+    except Exception as e:
+
+        logger.error(
+            " Classification failed: %s | url=%s",
+            e,
+            blob_url
+        )
+
+        return {
+            "status": False,
+            "error": f"Classification failed: {e}"
+        }
+
+    db_types = fetch_document_types_from_db()
+    matched_document_type = match_layout_type(layout_type, db_types)
+
+    return {
+        "status": True,
+        "layout_type": layout_type,
+        "matched_document_type": matched_document_type,
+        "URL": blob_url,
+        "text_blob_url": text_blob_url
+    }
+
+
+# ---------------------------------------------------------------------------
+# NEW FLOW - receives LOB + text_blob_url from the upstream LOB Detection
+# MCP. Reads the raw text directly from Blob Storage in memory (no local
+# TXT file, no Form Recognizer reprocessing), classifies using the
+# LOB-specific Phoenix prompt, then runs the EXISTING, unchanged fuzzy
+# matcher (fetch_document_types_from_db + match_layout_type).
+# ---------------------------------------------------------------------------
+async def classify_lob_text_layout(lob: str, text_blob_url: str) -> Dict[str, Any]:
+
+    logger.info(
+        " classify_lob_text_layout invoked: lob=%s, text_blob_url=%s",
+        lob,
+        text_blob_url
+    )
+
+    # 1. Missing LOB
+    if not lob:
+        return {"status": False, "error": "Missing 'lob' in request."}
+
+    # 2. Unsupported LOB
+    if lob not in SUPPORTED_LOBS:
+        return {
+            "status": False,
+            "error": f"Unsupported LOB '{lob}'. Supported values are: {SUPPORTED_LOBS}"
+        }
+
+    # 3. Missing text_blob_url
+    if not text_blob_url:
+        return {"status": False, "error": "Missing 'text_blob_url' in request."}
+
+    # 4. Blob cannot be read
+    try:
+        text = await read_text_blob(text_blob_url)
+
+        logger.info(
+            "Text blob read: %d chars | lob=%s | url=%s",
+            len(text or ""),
+            lob,
+            text_blob_url
+        )
+
+    except Exception as e:
+        logger.error(
+            " Failed to read text blob: %s | lob=%s | url=%s",
+            e,
+            lob,
+            text_blob_url
+        )
+        return {"status": False, "error": f"Failed to read text blob: {e}"}
+
+    # 5. Empty text
+    if not text or not text.strip():
+        logger.error(" Text blob is empty | lob=%s | url=%s", lob, text_blob_url)
+        return {"status": False, "error": "Text blob is empty."}
+
+    # 6. Phoenix prompt mapping missing / 7. Azure OpenAI failure / 8. Classification failure
+    try:
+        layout_type = classify_document(text=text, lob=lob)
+
+        logger.info(
+            " Classification complete: layout_type=%s | lob=%s | url=%s",
+            layout_type,
+            lob,
+            text_blob_url
+        )
+
+    except UnsupportedLOBError as e:
+        logger.error(" Phoenix prompt mapping missing: %s", e)
+        return {"status": False, "error": str(e)}
+
+    except Exception as e:
+        logger.error(
+            " Classification failed: %s | lob=%s | url=%s",
+            e,
+            lob,
+            text_blob_url
+        )
+        return {"status": False, "error": f"Classification failed: {e}"}
+
+    # 9. DB fuzzy matching failure
+    try:
+        db_types = fetch_document_types_from_db()
+        matched_document_type = match_layout_type(layout_type, db_types)
+    except Exception as e:
+        logger.error(" DB fuzzy matching failed: %s", e)
+        return {"status": False, "error": f"DB fuzzy matching failed: {e}"}
+
+    return {
+        "status": True,
+        "lob": lob,
+        "layout_type": layout_type,
+        "matched_document_type": matched_document_type,
+        "URL": text_blob_url,
+        "text_blob_url": text_blob_url
+    }
+
+
+
+
+# Working code
+# storage_utils.py
+import os
+import logging
+import aiofiles
+from azure.storage.blob.aio import BlobServiceClient
+from azure.core.exceptions import ResourceNotFoundError, ResourceExistsError
+from .service import AZURE_STORAGE_CONNECTION_STRING, _parse_blob_url
+from urllib.parse import urlparse
+
+logger = logging.getLogger(__name__)
+
+TEXT_CONTAINER = "layout-detection-text-of-document"
+
+
+async def download_blob_bytes(blob_url: str):
+   container, blob_path = _parse_blob_url(blob_url)
+   async with BlobServiceClient.from_connection_string(
+       AZURE_STORAGE_CONNECTION_STRING
+   ) as service:
+       container_client = service.get_container_client(container)
+       blob_client = container_client.get_blob_client(blob_path)
+       try:
+           await blob_client.get_blob_properties()
+       except ResourceNotFoundError:
+           raise FileNotFoundError("Blob not found")
+       stream = await blob_client.download_blob()
+       data = await stream.readall()
+   return data
+
+
+async def upload_text_to_blob(blob_url: str, text: str):
+   parsed = urlparse(blob_url)
+   path = parsed.path.lstrip("/")
+   container, blob_path = path.split("/", 1)
+   filename = os.path.basename(blob_path)
+   base_name = os.path.splitext(filename)[0]
+   new_blob_name = f"{base_name}.txt"
+   async with BlobServiceClient.from_connection_string(
+       AZURE_STORAGE_CONNECTION_STRING
+   ) as blob_service:
+       # create container if not exists
+       container_client = blob_service.get_container_client(TEXT_CONTAINER)
+       try:
+           await container_client.create_container()
+       except ResourceExistsError:
+           pass
+       blob_client = container_client.get_blob_client(new_blob_name)
+       await blob_client.upload_blob(text, overwrite=True)
+   return f"{parsed.scheme}://{parsed.netloc}/{TEXT_CONTAINER}/{new_blob_name}"
+
+
+async def read_text_blob(text_blob_url: str) -> str:
+   """
+   NEW: Read a text blob DIRECTLY from Azure Blob Storage into memory,
+   for the new lob + text_blob_url flow. The upstream LOB Detection MCP
+   already stores raw extracted text in Blob Storage, so this deliberately
+   does NOT write anything to local disk - it just downloads the blob
+   bytes and decodes them.
+
+   Reuses the same AZURE_STORAGE_CONNECTION_STRING / _parse_blob_url
+   helpers as the rest of this module rather than duplicating storage
+   connection logic.
+   """
+   container, blob_path = _parse_blob_url(text_blob_url)
+   async with BlobServiceClient.from_connection_string(
+       AZURE_STORAGE_CONNECTION_STRING
+   ) as service:
+       container_client = service.get_container_client(container)
+       blob_client = container_client.get_blob_client(blob_path)
+       try:
+           await blob_client.get_blob_properties()
+       except ResourceNotFoundError:
+           raise FileNotFoundError(
+               f"Text blob not found: container={container} blob={blob_path}"
+           )
+       stream = await blob_client.download_blob()
+       data = await stream.readall()
+
+   try:
+       return data.decode("utf-8")
+   except UnicodeDecodeError:
+       return data.decode("latin-1")
+
+
+
+
+from typing import Literal
+
+from fastapi import APIRouter
+from fastapi.responses import JSONResponse
+from pydantic import BaseModel, Field
+
+from .handler import classify_blob_pdf_layout, classify_lob_text_layout
+
+router = APIRouter()
+
+
+# ---------------------------------------------------------------------------
+# EXISTING (legacy) request model / endpoint - UNCHANGED.
+# ---------------------------------------------------------------------------
+class LayoutDetectRequest(BaseModel):
+    """
+    Payload:
+    {
+      "attachment_url": "https://<account>.blob.core.windows.net/<container>/<path>/file.pdf"
+    }
+    """
+    attachment_url: str = Field(..., description="Full Azure Blob URL of the PDF attachments returned by the 'email_attachment_mcp' having either 'ACORD' or 'Quote' keyword in the file name.")
+
+
+@router.post("/layout_detection_mcp", operation_id="layout_detection_mcp",
+             summary="Download PDF from blob, analyze layout using Form Recognizer, and classify layout")
+async def detect_layout(request: LayoutDetectRequest):
+    """
+    Detects the layout type of an insurance-related document so the
+    agent can route it through the correct downstream extraction path.
+
+    The tool automatically handles both PDF and TXT inputs based on
+    the file extension of the provided blob URL, so the agent does
+    not need to differentiate between them.
+
+    Args:
+        attachment_url (str):
+            The Azure Blob URL of the document to classify. Must be
+            either:
+            - A blob URL returned by email_attachment_mcp
+                (CASE A), or
+            - The 'body_bloburl' returned by email_reader_mcp
+                (CASE B).
+
+    Returns:
+        JSONResponse:
+            - status         : bool indicating success
+            - layout_type    : the detected layout classification
+            - URL            : the original input blob URL
+            - text_blob_url  : the blob URL of the extracted text,
+                                to be passed to downstream MCPs
+    """
+    try:
+        result = await classify_blob_pdf_layout(request.attachment_url)
+        return JSONResponse(content={"jsonrpc": "2.0", "id": 1, "result": result}, status_code=200)
+    except Exception as e:
+        return JSONResponse(content={"jsonrpc": "2.0", "id": 1,
+                                     "result": {"status": False, "error": str(e)}}, status_code=200)
+
+
+# ---------------------------------------------------------------------------
+# NEW request model / endpoint for the LOB Detection MCP -> Layout
+# Detection MCP flow.
+# ---------------------------------------------------------------------------
+SUPPORTED_LOB_VALUES = (
+    "Commercial Property",
+    "General Liability",
+    "Credit and Political Risk",
+    "Home Owners",
+    "Life",
+)
+
+
+class LobTextLayoutDetectRequest(BaseModel):
+    """
+    Payload:
+    {
+      "lob": "Commercial Property",
+      "text_blob_url": "https://<account>.blob.core.windows.net/<container>/<document>.txt"
+    }
+    """
+    lob: Literal[
+        "Commercial Property",
+        "General Liability",
+        "Credit and Political Risk",
+        "Home Owners",
+        "Life",
+    ] = Field(
+        ...,
+        description=(
+            "Line of business detected upstream by the LOB Detection MCP. "
+            "Must be exactly one of: 'Commercial Property', 'General Liability', "
+            "'Credit and Political Risk', 'Home Owners', 'Life'. Determines which "
+            "LOB-specific Phoenix prompt is used for classification."
+        ),
+    )
+    text_blob_url: str = Field(
+        ...,
+        description=(
+            "Full Azure Blob URL of the raw extracted document text, as stored "
+            "by the upstream LOB Detection MCP. Read directly into memory - no "
+            "local file is written and no Form Recognizer reprocessing occurs."
+        ),
+    )
+
+
+@router.post(
+    "/layout_detection_mcp_v2",
+    operation_id="layout_detection_mcp_v2",
+    summary="Classify a document's layout from LOB + a pre-extracted text blob (LOB Detection MCP flow)",
+)
+async def detect_layout_from_lob_text(request: LobTextLayoutDetectRequest):
+    """
+    Detects the layout type of an insurance-related document using the
+    LOB already detected upstream and the raw text already extracted and
+    stored in Blob Storage by the LOB Detection MCP.
+
+    Unlike /layout_detection_mcp, this endpoint does NOT download a
+    PDF/DOCX/TXT file or run Form Recognizer - it reads the provided
+    text_blob_url directly, selects the Phoenix prompt for the given
+    LOB, classifies with Azure OpenAI, and then runs the same existing
+    fuzzy-matching step against the document-type taxonomy.
+
+    Args:
+        lob (str): One of the five supported LOB values.
+        text_blob_url (str): Azure Blob URL of the raw extracted text.
+
+    Returns:
+        JSONResponse:
+            - status               : bool indicating success
+            - lob                  : the LOB used for classification
+            - layout_type          : the raw layout type returned by the LLM
+            - matched_document_type: the fuzzy-matched canonical document type
+            - URL                  : the input text_blob_url (kept for
+                                      compatibility with the legacy response shape)
+            - text_blob_url        : the input text_blob_url, passed through
+                                      unchanged for downstream MCPs
+    """
+    try:
+        result = await classify_lob_text_layout(request.lob, request.text_blob_url)
+        return JSONResponse(content={"jsonrpc": "2.0", "id": 1, "result": result}, status_code=200)
+    except Exception as e:
+        return JSONResponse(content={"jsonrpc": "2.0", "id": 1,
+                                     "result": {"status": False, "error": str(e)}}, status_code=200)
+
+
+
+
+
+# service.py
+# Working code
+
+import os
+from urllib.parse import urlparse, unquote
+from dotenv import load_dotenv
+
+load_dotenv()
+
+AZURE_STORAGE_CONNECTION_STRING = os.environ.get("AZURE_STORAGE_CONNECTION_STRING", "")
+
+def _require_env() -> None:
+    """Ensure required environment variables exist."""
+    if not AZURE_STORAGE_CONNECTION_STRING:
+        raise RuntimeError("Missing AZURE_STORAGE_CONNECTION_STRING in environment/.env")
+
+def _parse_blob_url(url: str) -> tuple[str, str]:
+    """
+    Parse an Azure Blob URL and return (container_name, blob_path).
+    Example URL:
+      https://account.blob.core.windows.net/output-results/folder/name.pdf
+    Returns:
+      ("output-results", "folder/name.pdf")
+    """
+    parsed = urlparse(url)
+    if not parsed.scheme.startswith("http"):
+        raise ValueError("url must be a valid http(s) Azure Blob URL.")
+
+    path = parsed.path.lstrip("/")
+    if "/" not in path:
+        raise ValueError("url must include both container and blob path.")
+    parts = path.split("/", 1)
+    container = parts[0]
+    blob_path = parts[1]
+    return unquote(container), unquote(blob_path)
+
+
+
+
+
+import io
+import logging
+from dotenv import load_dotenv
+import os
+
+from azure.ai.formrecognizer import DocumentAnalysisClient
+from azure.core.credentials import AzureKeyCredential
+
+import mammoth
+from weasyprint import HTML
+
+logger = logging.getLogger(__name__)
+
+load_dotenv()
+
+endpoint = os.getenv("LD_AZURE_FORMRECOG_ENDPOINT")
+key = os.getenv("LD_AZURE_FORMRECOG_KEY")
+
+client = DocumentAnalysisClient(
+    endpoint=endpoint,
+    credential=AzureKeyCredential(key)
+)
+
+
+def convert_docx_bytes_to_pdf_bytes(docx_bytes: bytes):
+    docx_stream = io.BytesIO(docx_bytes)
+
+    html = mammoth.convert_to_html(docx_stream).value
+
+    pdf_bytes = HTML(string=html).write_pdf()
+
+    return pdf_bytes
+
+
+async def load_pdf_document(blob_url: str, file_bytes: bytes):
+    """
+    Existing PDF/DOCX processing logic using Form Recognizer.
+    """
+
+    extension = blob_url.split(".")[-1].lower()
+
+    logger.info(
+        " Analysing document: extension=%s size=%d bytes",
+        extension,
+        len(file_bytes)
+    )
+
+    if extension == "docx":
+        logger.info(" Converting DOCX → PDF")
+        file_bytes = convert_docx_bytes_to_pdf_bytes(file_bytes)
+
+    logger.info(" Sending to Azure Form Recognizer (prebuilt-read)")
+
+    poller = client.begin_analyze_document(
+        "prebuilt-read",
+        document=file_bytes
+    )
+
+    result = poller.result()
+
+    lines = [
+        line.content
+        for page in result.pages
+        for line in page.lines
+    ]
+
+    logger.info(
+        "Form Recognizer complete: %d pages, %d lines extracted",
+        len(result.pages),
+        len(lines)
+    )
+
+    return {
+        "text": "\n".join(lines)
+    }
+
+
+async def load_text_document(file_bytes: bytes):
+    """
+    Load plain text file directly without Form Recognizer.
+    """
+
+    logger.info(" Processing TXT file")
+
+    try:
+        extracted_text = file_bytes.decode("utf-8")
+    except UnicodeDecodeError:
+        extracted_text = file_bytes.decode("latin-1")
+
+    logger.info(
+        " TXT file processed successfully: %d chars extracted",
+        len(extracted_text)
+    )
+
+    return {
+        "text": extracted_text
+    }
+
+
+async def load_document_from_bytes(blob_url: str, file_bytes: bytes):
+    """
+    Main dispatcher function.
+    Decides which loader to use.
+    """
+
+    extension = blob_url.split(".")[-1].lower()
+
+    if extension in ["pdf", "docx"]:
+        return await load_pdf_document(blob_url, file_bytes)
+
+    elif extension == "txt":
+        return await load_text_document(file_bytes)
+
+    else:
+        raise ValueError(
+            f"Unsupported file type: {extension}. "
+            f"Supported types are pdf, docx, txt"
+        )
+
+
+
+
+
+
+
+import re
+import logging
+import os
+import psycopg2
+from difflib import SequenceMatcher
+
+logger = logging.getLogger(__name__)
+
+MATCH_THRESHOLD = 0.5
+MIN_CHUNK_LEN = 2
+
+
+def fetch_document_types_from_db() -> list:
+    try:
+        conn = psycopg2.connect(
+            host=os.getenv("PGHOST_PROMPT"),
+            port=int(os.getenv("PGPORT_PROMPT", "5432")),
+            database=os.getenv("PGDATABASE_PROMPT"),
+            user=os.getenv("PGUSER_PROMPT"),
+            password=os.getenv("PGPASSWORD_PROMPT"),
+        )
+        with conn.cursor() as cur:
+            cur.execute("SELECT DISTINCT document_type FROM ref_prompt_library WHERE document_type IS NOT NULL")
+            rows = cur.fetchall()
+        conn.close()
+        return [row[0] for row in rows]
+    except Exception as e:
+        logger.warning("Could not fetch document types from DB: %s", e)
+        return []
+
+
+def _normalize(value: str) -> str:
+    """Strip separators and uppercase for clean comparison."""
+    return re.sub(r"[_\-\s]+", "", value.upper())
+
+
+def _coverage_score(raw: str, db_type: str, reverse: bool = False) -> float:
+    """
+    Greedy scan of raw (left-to-right or right-to-left) finding non-overlapping
+    substrings of length >= MIN_CHUNK_LEN that exist anywhere in db_type.
+    Score = total matched chars / len(raw).
+    """
+    if not raw or not db_type:
+        return 0.0
+
+    chars = list(raw) if not reverse else list(reversed(raw))
+    joined = "".join(chars)
+
+    matched = 0
+    i = 0
+    while i < len(joined):
+        found = False
+        for length in range(len(joined) - i, MIN_CHUNK_LEN - 1, -1):
+            chunk = joined[i:i + length]
+            if chunk in db_type:
+                matched += length
+                i += length
+                found = True
+                break
+        if not found:
+            i += 1
+
+    return matched / len(raw)
+
+
+def _score(raw: str, db_type: str) -> float:
+    """
+    Combine three scoring strategies and return the highest:
+      1. SequenceMatcher  — handles in-order partial/truncated matches
+      2. Coverage LTR     — handles out-of-order abbreviations, left to right
+      3. Coverage RTL     — same scan but right to left
+    """
+    if not raw or not db_type:
+        return 0.0
+
+    seq   = SequenceMatcher(None, raw, db_type).ratio()
+    c_ltr = _coverage_score(raw, db_type, reverse=False)
+    c_rtl = _coverage_score(raw, db_type, reverse=True)
+
+    return max(seq, c_ltr, c_rtl)
+
+
+def match_layout_type(raw_layout: str, db_types: list) -> str:
+    if not db_types:
+        return raw_layout
+
+    raw_norm = _normalize(raw_layout)
+
+    best_match = None
+    best_score = 0.0
+
+    for dt in db_types:
+        dt_norm = _normalize(dt)
+        score = _score(raw_norm, dt_norm)
+        logger.debug("Score '%s' vs '%s' = %.2f", raw_layout, dt, score)
+        if score > best_score:
+            best_score = score
+            best_match = dt
+
+    if best_match and best_score >= MATCH_THRESHOLD:
+        logger.info(
+            "Layout '%s' matched to '%s' (score=%.2f)",
+            raw_layout, best_match, best_score
+        )
+        return best_match
+
+    logger.warning(
+        "No confident match for layout '%s' (best score=%.2f), using raw value",
+        raw_layout, best_score
+    )
+    return raw_layout
+
+
+
+
