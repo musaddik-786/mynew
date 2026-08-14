@@ -1,94 +1,411 @@
-from phoenix.client import Client
-import os
-from functools import lru_cache
+below is my router
+
+from typing import Literal
+
+from fastapi import APIRouter
+from fastapi.responses import JSONResponse
+from pydantic import BaseModel, Field
+
+from handler import classify_blob_pdf_layout, classify_lob_text_layout
+
+router = APIRouter()
 
 
-PHOENIX_API_KEY = os.getenv("PHOENIX_API_KEY")
+# ---------------------------------------------------------------------------
+# EXISTING (legacy) request model / endpoint - UNCHANGED.
+# ---------------------------------------------------------------------------
+class LayoutDetectRequest(BaseModel):
+    """
+    Payload:
+    {
+      "attachment_url": "https://<account>.blob.core.windows.net/<container>/<path>/file.pdf"
+    }
+    """
+    attachment_url: str = Field(..., description="Full Azure Blob URL of the PDF attachments returned by the 'email_attachment_mcp' having either 'ACORD' or 'Quote' keyword in the file name.")
 
-PHOENIX_ENDPOINT = os.getenv("PHOENIX_ENDPOINT")
+
+@router.post("/layout_detection_mcp", operation_id="layout_detection_mcp",
+             summary="Download PDF from blob, analyze layout using Form Recognizer, and classify layout")
+async def detect_layout(request: LayoutDetectRequest):
+    """
+    Detects the layout type of an insurance-related document so the
+    agent can route it through the correct downstream extraction path.
+
+    The tool automatically handles both PDF and TXT inputs based on
+    the file extension of the provided blob URL, so the agent does
+    not need to differentiate between them.
+
+    Args:
+        attachment_url (str):
+            The Azure Blob URL of the document to classify. Must be
+            either:
+            - A blob URL returned by email_attachment_mcp
+                (CASE A), or
+            - The 'body_bloburl' returned by email_reader_mcp
+                (CASE B).
+
+    Returns:
+        JSONResponse:
+            - status         : bool indicating success
+            - layout_type    : the detected layout classification
+            - URL            : the original input blob URL
+            - text_blob_url  : the blob URL of the extracted text,
+                                to be passed to downstream MCPs
+    """
+    try:
+        result = await classify_blob_pdf_layout(request.attachment_url)
+        return JSONResponse(content={"jsonrpc": "2.0", "id": 1, "result": result}, status_code=200)
+    except Exception as e:
+        return JSONResponse(content={"jsonrpc": "2.0", "id": 1,
+                                     "result": {"status": False, "error": str(e)}}, status_code=200)
 
 
-phoenix_client = Client(
-
-    base_url=PHOENIX_ENDPOINT,
-
-    api_key=PHOENIX_API_KEY
-
+# ---------------------------------------------------------------------------
+# NEW request model / endpoint for the LOB Detection MCP -> Layout
+# Detection MCP flow.
+# ---------------------------------------------------------------------------
+SUPPORTED_LOB_VALUES = (
+    "Commercial Property",
+    "General Liability",
+    "Credit and Political Risk",
+    "Home Owners",
+    "Life",
 )
 
 
-@lru_cache
-def get_prompt_template(prompt_version_id:str):
-
-    prompt_stored = phoenix_client.prompts.get(
-
-        prompt_version_id=prompt_version_id
-
-    )
-
-    prompt_messages = prompt_stored._template["messages"]
-
-    system_prompt = next(
-
-        (
-
-            item["content"][0]["text"]
-
-            for item in prompt_messages
-
-            if item.get("role") == "system"
-
+class LobTextLayoutDetectRequest(BaseModel):
+    """
+    Payload:
+    {
+      "lob": "Commercial Property",
+      "text_blob_url": "https://<account>.blob.core.windows.net/<container>/<document>.txt"
+    }
+    """
+    lob: Literal[
+        "Commercial Property",
+        "General Liability",
+        "Credit and Political Risk",
+        "Home Owners",
+        "Life",
+    ] = Field(
+        ...,
+        description=(
+            "Line of business detected upstream by the LOB Detection MCP. "
+            "Must be exactly one of: 'Commercial Property', 'General Liability', "
+            "'Credit and Political Risk', 'Home Owners', 'Life'. Determines which "
+            "LOB-specific Phoenix prompt is used for classification."
         ),
-
-        None
-
+    )
+    text_blob_url: str = Field(
+        ...,
+        description=(
+            "Full Azure Blob URL of the raw extracted document text, as stored "
+            "by the upstream LOB Detection MCP. Read directly into memory - no "
+            "local file is written and no Form Recognizer reprocessing occurs."
+        ),
     )
 
-    if not system_prompt:
 
-        raise ValueError(
-            "Phoenix prompt missing"
+@router.post(
+    "/layout_detection_mcp_v2",
+    operation_id="layout_detection_mcp_v2",
+    summary="Classify a document's layout from LOB + a pre-extracted text blob (LOB Detection MCP flow)",
+)
+async def detect_layout_from_lob_text(request: LobTextLayoutDetectRequest):
+    """
+    Detects the layout type of an insurance-related document using the
+    LOB already detected upstream and the raw text already extracted and
+    stored in Blob Storage by the LOB Detection MCP.
+
+    Unlike /layout_detection_mcp, this endpoint does NOT download a
+    PDF/DOCX/TXT file or run Form Recognizer - it reads the provided
+    text_blob_url directly, selects the Phoenix prompt for the given
+    LOB, classifies with Azure OpenAI, and then runs the same existing
+    fuzzy-matching step against the document-type taxonomy.
+
+    Args:
+        lob (str): One of the five supported LOB values.
+        text_blob_url (str): Azure Blob URL of the raw extracted text.
+
+    Returns:
+        JSONResponse:
+            - status               : bool indicating success
+            - lob                  : the LOB used for classification
+            - layout_type          : the raw layout type returned by the LLM
+            - matched_document_type: the fuzzy-matched canonical document type
+            - URL                  : the input text_blob_url (kept for
+                                      compatibility with the legacy response shape)
+            - text_blob_url        : the input text_blob_url, passed through
+                                      unchanged for downstream MCPs
+    """
+    try:
+        result = await classify_lob_text_layout(request.lob, request.text_blob_url)
+        return JSONResponse(content={"jsonrpc": "2.0", "id": 1, "result": result}, status_code=200)
+    except Exception as e:
+        return JSONResponse(content={"jsonrpc": "2.0", "id": 1,
+                                     "result": {"status": False, "error": str(e)}}, status_code=200)
+
+
+
+
+
+
+
+
+
+
+
+this is my handelr.py
+
+import os
+import json
+import logging
+from typing import Dict, Any
+
+from service import _require_env
+
+logger = logging.getLogger(__name__)
+
+from storage_utils import (
+    download_blob_bytes,
+    upload_text_to_blob,
+    read_text_blob,
+)
+
+from document_loader import load_document_from_bytes
+
+from classifier import (
+    classify_document,
+    classify_document_legacy,
+    UnsupportedLOBError,
+    SUPPORTED_LOBS,
+)
+from prompt_library_matcher import fetch_document_types_from_db, match_layout_type
+
+
+# ---------------------------------------------------------------------------
+# EXISTING (legacy) FLOW - unchanged behaviour.
+# blob_url (pdf/docx/txt) -> download -> Form Recognizer / TXT loader ->
+# classify -> upload extracted text -> fuzzy match -> response.
+#
+# Only change: calls classify_document_legacy() instead of classify_document(),
+# because classify_document() now requires a `lob` argument. This preserves
+# the exact original prompt/behaviour for this path.
+# ---------------------------------------------------------------------------
+async def classify_blob_pdf_layout(blob_url: str) -> Dict[str, Any]:
+
+    logger.info(
+        " classify_blob_pdf_layout invoked: blob_url=%s",
+        blob_url
+    )
+
+    try:
+        blob_bytes = await download_blob_bytes(blob_url)
+
+        logger.info(
+            "Blob downloaded: %d bytes | url=%s",
+            len(blob_bytes),
+            blob_url
         )
 
-    return system_prompt
+    except Exception as e:
+
+        logger.error(
+            " Failed to fetch blob: %s | url=%s",
+            e,
+            blob_url
+        )
+
+        return {
+            "status": False,
+            "error": f"Failed to fetch blob: {e}"
+        }
+
+    try:
+
+        document_content = await load_document_from_bytes(
+            blob_url,
+            blob_bytes
+        )
+
+        char_count = len(document_content.get("text", ""))
+
+        logger.info(
+            " Document parsed: %d chars extracted | url=%s",
+            char_count,
+            blob_url
+        )
+
+    except Exception as e:
+
+        logger.error(
+            " Document parsing failed: %s | url=%s",
+            e,
+            blob_url
+        )
+
+        return {
+            "status": False,
+            "error": f"Document parsing failed: {e}"
+        }
+
+    extracted_text = document_content.get("text", "")
+
+    try:
+
+        text_blob_url = await upload_text_to_blob(
+            blob_url,
+            extracted_text
+        )
+
+        logger.info(
+            "Extracted text uploaded: %s",
+            text_blob_url
+        )
+
+    except Exception as e:
+
+        logger.error(
+            " Failed to upload extracted text: %s | url=%s",
+            e,
+            blob_url
+        )
+
+        return {
+            "status": False,
+            "error": f"Failed to upload extracted text: {e}"
+        }
+
+    try:
+
+        layout_type = classify_document_legacy(document_content)
+
+        logger.info(
+            " Classification complete: layout_type=%s | url=%s",
+            layout_type,
+            blob_url
+        )
+
+    except Exception as e:
+
+        logger.error(
+            " Classification failed: %s | url=%s",
+            e,
+            blob_url
+        )
+
+        return {
+            "status": False,
+            "error": f"Classification failed: {e}"
+        }
+
+    db_types = fetch_document_types_from_db()
+    matched_document_type = match_layout_type(layout_type, db_types)
+
+    return {
+        "status": True,
+        "layout_type": layout_type,
+        "matched_document_type": matched_document_type,
+        "URL": blob_url,
+        "text_blob_url": text_blob_url
+    }
 
 
+# ---------------------------------------------------------------------------
+# NEW FLOW - receives LOB + text_blob_url from the upstream LOB Detection
+# MCP. Reads the raw text directly from Blob Storage in memory (no local
+# TXT file, no Form Recognizer reprocessing), classifies using the
+# LOB-specific Phoenix prompt, then runs the EXISTING, unchanged fuzzy
+# matcher (fetch_document_types_from_db + match_layout_type).
+# ---------------------------------------------------------------------------
+async def classify_lob_text_layout(lob: str, text_blob_url: str) -> Dict[str, Any]:
 
-def build_prompt(
-
-    prompt_version_id:str,
-
-    **kwargs
-
-)->str:
-
-    template = get_prompt_template(
-
-        prompt_version_id
-
+    logger.info(
+        " classify_lob_text_layout invoked: lob=%s, text_blob_url=%s",
+        lob,
+        text_blob_url
     )
 
-    return template.format(
+    # 1. Missing LOB
+    if not lob:
+        return {"status": False, "error": "Missing 'lob' in request."}
 
-        **kwargs
+    # 2. Unsupported LOB
+    if lob not in SUPPORTED_LOBS:
+        return {
+            "status": False,
+            "error": f"Unsupported LOB '{lob}'. Supported values are: {SUPPORTED_LOBS}"
+        }
 
-    )
+    # 3. Missing text_blob_url
+    if not text_blob_url:
+        return {"status": False, "error": "Missing 'text_blob_url' in request."}
+
+    # 4. Blob cannot be read
+    try:
+        text = await read_text_blob(text_blob_url)
+
+        logger.info(
+            "Text blob read: %d chars | lob=%s | url=%s",
+            len(text or ""),
+            lob,
+            text_blob_url
+        )
+
+    except Exception as e:
+        logger.error(
+            " Failed to read text blob: %s | lob=%s | url=%s",
+            e,
+            lob,
+            text_blob_url
+        )
+        return {"status": False, "error": f"Failed to read text blob: {e}"}
+
+    # 5. Empty text
+    if not text or not text.strip():
+        logger.error(" Text blob is empty | lob=%s | url=%s", lob, text_blob_url)
+        return {"status": False, "error": "Text blob is empty."}
+
+    # 6. Phoenix prompt mapping missing / 7. Azure OpenAI failure / 8. Classification failure
+    try:
+        layout_type = classify_document(text=text, lob=lob)
+
+        logger.info(
+            " Classification complete: layout_type=%s | lob=%s | url=%s",
+            layout_type,
+            lob,
+            text_blob_url
+        )
+
+    except UnsupportedLOBError as e:
+        logger.error(" Phoenix prompt mapping missing: %s", e)
+        return {"status": False, "error": str(e)}
+
+    except Exception as e:
+        logger.error(
+            " Classification failed: %s | lob=%s | url=%s",
+            e,
+            lob,
+            text_blob_url
+        )
+        return {"status": False, "error": f"Classification failed: {e}"}
+
+    # 9. DB fuzzy matching failure
+    try:
+        db_types = fetch_document_types_from_db()
+        matched_document_type = match_layout_type(layout_type, db_types)
+    except Exception as e:
+        logger.error(" DB fuzzy matching failed: %s", e)
+        return {"status": False, "error": f"DB fuzzy matching failed: {e}"}
+
+    return {
+        "status": True,
+        "lob": lob,
+        "layout_type": layout_type,
+        "matched_document_type": matched_document_type,
+        "URL": text_blob_url,
+        "text_blob_url": text_blob_url
+    }
 
 
-
-
-def get_prompt_template(prompt_version_id:str):
-   prompt_stored = phoenix_client.prompts.get(
-       prompt_version_id=prompt_version_id
-   )
-   prompt_messages = prompt_stored._template["messages"]
-   system_prompt = next(
-       (
-           item["content"][0]["text"]
-           for item in prompt_messages
-           if item.get("role") == "system"
-       ),
-       None
-   )
-   return system_prompt
 
