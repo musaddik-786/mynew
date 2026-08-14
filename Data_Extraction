@@ -1,5 +1,290 @@
-i want to give a prompt to claude to explain the below ask 
- 
-so earlier solution had different lobs for insurance like commercial , home ets I have provided it in excel under column Line of Business and their corresponding document types like either the document is submission , loss run etc 
- 
-now i want for these line of businesses :- Commercial and Homeowners, Life insurance, motor all different types of documents that are present in insurnace industry property detailed report , submission document , inspection report every type of documents i want that are present in the insurance industry for the mentioned line of business I am providing few type of Documents in the same excel corresponding to lob there might be n number of documents for these lobs(Commercial and Homeowners, Life insurance, motor) only
+Yes. Since you’re using GPT-4.1 for document classification, I would change the prompt style somewhat.
+
+Your current prompt is very detailed, but more detail is not necessarily better for this particular task. You have a constrained classification problem with a small number of LOB-specific labels, so I recommend a structured classification prompt with explicit decision rules + positive/negative examples, rather than one huge descriptive prompt.
+
+What I recommend for GPT-4.1
+
+Use this structure:
+
+ROLE
+↓
+TASK
+↓
+ALLOWED CLASSES
+↓
+CLASS DEFINITIONS
+↓
+PRIORITY / DECISION RULES
+↓
+CONFUSION RULES
+↓
+DOCUMENT TEXT
+↓
+STRICT OUTPUT FORMAT
+
+The most important part is the confusion rules.
+
+For example, in Commercial Property:
+
+If the document is primarily a table/schedule of property values
+→ SOV_Commercial_Property
+If it is primarily historical claims information
+→ Loss_Run_Commercial_Property
+If it is a formal package/application requesting Commercial Property insurance
+→ Submission_Document_Commercial_Property
+Otherwise, if it primarily describes the property/risk/condition
+→ Property_Detailed_Report_Commercial_Property
+
+This is better than giving GPT-4.1 four enormous definitions and asking it to figure out the distinction itself.
+
+⸻
+
+I would also use few-shot examples
+
+GPT-4.1 can benefit significantly from representative examples, especially where your Excel contains layouts that are semantically similar.
+
+For example:
+
+EXAMPLES
+Example 1:
+Document:
+"Schedule of Values
+Location 1...
+Building Value...
+Business Personal Property...
+Business Interruption..."
+Output:
+SOV_Commercial_Property
+Example 2:
+Document:
+"Loss runs for policy years 2021-2025...
+Claim Number...
+Date of Loss...
+Paid...
+Outstanding..."
+Output:
+Loss_Run_Commercial_Property
+Example 3:
+Document:
+"Please find attached our underwriting submission for ABC Manufacturing...
+Requested limit...
+Deductible...
+Effective date...
+Property locations..."
+Output:
+Submission_Document_Commercial_Property
+
+You don’t need 20 examples.
+
+I’d start with 2–4 very representative examples per LOB, especially for the confusing classes.
+
+⸻
+
+One very important change
+
+I would not tell GPT-4.1 about the old Excel/source layout names unless we need them for classification.
+
+For example, don’t put:
+
+SUBMISSION
+SUBMISSION_UK_MLP_TRV
+MLPUKSUBMISSION
+
+inside the classification options.
+
+Instead:
+
+Submission_Document_General_Liability
+
+and perhaps inside the definition:
+
+The following legacy/source layout names are consolidated into this category:
+- SUBMISSION
+- SUBMISSION_UK_MLP_TRV
+- MLPUKSUBMISSION
+Never return these legacy names.
+
+This gives the model a clean classification space.
+
+⸻
+
+I would also remove unnecessary wording
+
+Your current prompt has several sections like:
+
+These documents are NOT…
+
+Those are useful only where there is genuine ambiguity.
+
+For example, this is valuable:
+
+Asset_Description_Credit_and_Political_Risk
+vs
+Trade_Risk_Submission_Credit_and_Political_Risk
+
+because those two really can overlap.
+
+But having a long “These documents are NOT…” section for every single class makes the prompt unnecessarily large.
+
+For GPT-4.1, I’d use:
+
+Definition
+
+What the document IS.
+
+Distinguishing signals
+
+What makes it different from similar classes.
+
+Priority rule
+
+What to do when signals conflict.
+
+That’s enough in most cases.
+
+⸻
+
+I would make the output even stricter
+
+Instead of:
+
+IMPORTANT OUTPUT RULES:
+- You MUST reply with EXACTLY ONE value.
+...
+
+I’d use:
+
+OUTPUT REQUIREMENT
+Return exactly one label from the allowed list.
+Do not return:
+- explanations
+- reasoning
+- confidence
+- punctuation
+- JSON
+- markdown
+- additional text
+Return ONLY the label.
+
+And in the API, you can additionally enforce the result after the model responds.
+
+For example:
+
+layout_type = response.choices[0].message.content.strip()
+
+then validate:
+
+if layout_type not in ALLOWED_LAYOUT_TYPES:
+    ...
+
+⸻
+
+Temperature
+
+For this use case:
+
+temperature=0
+
+is exactly what I would use.
+
+You’re not asking GPT-4.1 to be creative. You’re asking it to make a deterministic classification.
+
+⸻
+
+Max tokens
+
+You currently changed:
+
+max_tokens=32
+
+That’s fine.
+
+Your labels are relatively short, so you don’t need hundreds of tokens.
+
+In fact, because your output must be one label, 32 is more than enough.
+
+⸻
+
+My preferred GPT-4.1 prompt template
+
+I’d ultimately make every Phoenix prompt look approximately like this:
+
+You are an expert insurance document classifier.
+TASK
+Classify the provided document into exactly ONE of the allowed document
+types for the specified Line of Business.
+IMPORTANT:
+You may ONLY select from the document types listed below.
+Do not select a document type from another LOB.
+LOB:
+Commercial Property
+ALLOWED DOCUMENT TYPES
+1. Property_Detailed_Report_Commercial_Property
+2. SOV_Commercial_Property
+3. Loss_Run_Commercial_Property
+4. Submission_Document_Commercial_Property
+CLASSIFICATION RULES
+Property_Detailed_Report_Commercial_Property
+- Use when the document primarily describes or analyzes a commercial property,
+  its condition, construction, occupancy, exposure, or underwriting risk.
+SOV_Commercial_Property
+- Use when the document primarily provides a structured schedule of insured
+  property values, locations, buildings, contents, business interruption,
+  replacement values, etc.
+Loss_Run_Commercial_Property
+- Use when the document primarily presents historical claims/loss experience,
+  including claim numbers, dates of loss, paid amounts, reserves, or incurred
+  amounts.
+Submission_Document_Commercial_Property
+- Use when the document is a formal Commercial Property underwriting
+  submission/application presenting a risk to an insurer for quotation,
+  underwriting, or binding.
+DECISION PRIORITY
+If the document is primarily:
+1. Historical claims → Loss_Run_Commercial_Property
+2. Property-value schedule → SOV_Commercial_Property
+3. Formal insurance submission → Submission_Document_Commercial_Property
+4. Property/risk description or analysis → Property_Detailed_Report_Commercial_Property
+When multiple characteristics appear, classify according to the DOMINANT
+purpose of the document.
+OUTPUT
+Return exactly ONE of:
+Property_Detailed_Report_Commercial_Property
+SOV_Commercial_Property
+Loss_Run_Commercial_Property
+Submission_Document_Commercial_Property
+Return ONLY the label.
+DOCUMENT:
+{text_new}
+
+Why I like this approach
+
+Your architecture becomes very clean:
+
+LOB Detection MCP
+
+→ Commercial Property
+
+Layout Detection MCP
+
+→ selects Commercial Property Phoenix prompt
+
+→ GPT-4.1 sees only 4 possible classes
+
+→ returns:
+
+SOV_Commercial_Property
+
+→ then your existing fuzzy matching happens
+
+Although, with the new canonical naming convention, I would actually consider whether you still need fuzzy matching at all for the new LOB flow. If GPT-4.1 is constrained to your exact canonical enum, the result should already be your canonical layout name.
+
+We can keep the existing fuzzy matching for compatibility, but conceptually the new flow should be:
+
+LOB → LOB-specific prompt → exact canonical layout → existing downstream processing
+
+rather than:
+
+LOB → prompt → arbitrary layout → fuzzy matching → canonical layout
+
+That would make the new flow much more deterministic.
