@@ -4,6 +4,10 @@ that detects the lob as well as it will store the raw text of those documents in
 so Based on LOBs we have to classify the document layout type no need to go through all document layout types from the prompt for classifying so LOB will be the filter that we have to apply and there will be some documents layout types under those LOB's
 so if for eg the lob detected is Commercial Propoerty then only it should check the prompt for that particular lobs so as we have the version id of phonix where our current full prompt is stored so this time i think we can have different prompt versions for different lobs
 so consider these lobs 
+commercial property, General Liability, and Credit and Polictical Risk these 3 are the LOBS under mainLOB that is Commercial LOB that is ok you should focus on those three lobs
+and the other once are Home Owners and Life so total of 5 LOBS
+so will have 5 different version of prompts.
+So make code changes in all the files required and give the complete code for the files so that i can copy paste or else lets give this task to claude you can generate a prompt for it explaining all of this I will provide it the below complete code you dont provide it its fine
 
 
 
