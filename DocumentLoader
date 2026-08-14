@@ -1,36 +1,94 @@
-	
-Response body
-Download
-{
-  "jsonrpc": "2.0",
-  "id": 1,
-  "result": {
-    "status": false,
-    "error": "Classification failed: timed out"
-  }
-}
+from phoenix.client import Client
+import os
+from functools import lru_cache
 
 
-{
-  "lob": "Commercial Property",
-  "text_blob_url": "https://agenticai1.blob.core.windows.net/layout-detection-text-of-document/19FDC0D08112E4DF_attachment_AzulBiscayne_LossRun.txt"
-}
+PHOENIX_API_KEY = os.getenv("PHOENIX_API_KEY")
 
-(venv) Jarvis@JarvisPhase2:~/Musaddique/Layout_enhancement$ python3 main.py 
-INFO:     Started server process [56623]
-INFO:     Waiting for application startup.
-INFO:     Application startup complete.
-INFO:     Uvicorn running on http://0.0.0.0:8667 (Press CTRL+C to quit)
-INFO:     127.0.0.1:55390 - "GET /docs HTTP/1.1" 200 OK
-INFO:     127.0.0.1:55390 - "GET /openapi.json HTTP/1.1" 200 OK
- Classification failed: timed out | lob=Commercial Property | url=https://agenticai1.blob.core.windows.net/layout-detection-text-of-document/19FDC0D08112E4DF_attachment_AzulBiscayne_LossRun.txt
-INFO:     127.0.0.1:55392 - "POST /api/v1/layout/layout_detection_mcp_v2 HTTP/1.1" 200 OK
+PHOENIX_ENDPOINT = os.getenv("PHOENIX_ENDPOINT")
 
 
+phoenix_client = Client(
+
+    base_url=PHOENIX_ENDPOINT,
+
+    api_key=PHOENIX_API_KEY
+
+)
+
+
+@lru_cache
+def get_prompt_template(prompt_version_id:str):
+
+    prompt_stored = phoenix_client.prompts.get(
+
+        prompt_version_id=prompt_version_id
+
+    )
+
+    prompt_messages = prompt_stored._template["messages"]
+
+    system_prompt = next(
+
+        (
+
+            item["content"][0]["text"]
+
+            for item in prompt_messages
+
+            if item.get("role") == "system"
+
+        ),
+
+        None
+
+    )
+
+    if not system_prompt:
+
+        raise ValueError(
+            "Phoenix prompt missing"
+        )
+
+    return system_prompt
+
+
+
+def build_prompt(
+
+    prompt_version_id:str,
+
+    **kwargs
+
+)->str:
+
+    template = get_prompt_template(
+
+        prompt_version_id
+
+    )
+
+    return template.format(
+
+        **kwargs
+
+    )
 
 
 
 
-
-
+def get_prompt_template(prompt_version_id:str):
+   prompt_stored = phoenix_client.prompts.get(
+       prompt_version_id=prompt_version_id
+   )
+   prompt_messages = prompt_stored._template["messages"]
+   system_prompt = next(
+       (
+           item["content"][0]["text"]
+           for item in prompt_messages
+           if item.get("role") == "system"
+       ),
+       None
+   )
+   return system_prompt
 
