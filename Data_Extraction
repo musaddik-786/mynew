@@ -1,290 +1,544 @@
-Yes. Since you’re using GPT-4.1 for document classification, I would change the prompt style somewhat.
+Yes. Now we should split the current Phoenix prompt into 5 separate LOB-specific prompts, while keeping the detailed definitions from your current prompt wherever they belong.
 
-Your current prompt is very detailed, but more detail is not necessarily better for this particular task. You have a constrained classification problem with a small number of LOB-specific labels, so I recommend a structured classification prompt with explicit decision rules + positive/negative examples, rather than one huge descriptive prompt.
+The important change is:
 
-What I recommend for GPT-4.1
+The LLM should never see layouts belonging to another LOB.
 
-Use this structure:
+And the output names should follow our new convention:
 
-ROLE
-↓
-TASK
-↓
-ALLOWED CLASSES
-↓
-CLASS DEFINITIONS
-↓
-PRIORITY / DECISION RULES
-↓
-CONFUSION RULES
-↓
-DOCUMENT TEXT
-↓
-STRICT OUTPUT FORMAT
-
-The most important part is the confusion rules.
-
-For example, in Commercial Property:
-
-If the document is primarily a table/schedule of property values
-→ SOV_Commercial_Property
-If it is primarily historical claims information
-→ Loss_Run_Commercial_Property
-If it is a formal package/application requesting Commercial Property insurance
-→ Submission_Document_Commercial_Property
-Otherwise, if it primarily describes the property/risk/condition
-→ Property_Detailed_Report_Commercial_Property
-
-This is better than giving GPT-4.1 four enormous definitions and asking it to figure out the distinction itself.
-
-⸻
-
-I would also use few-shot examples
-
-GPT-4.1 can benefit significantly from representative examples, especially where your Excel contains layouts that are semantically similar.
+<CanonicalLayoutType>_<LOB>
 
 For example:
-
-EXAMPLES
-Example 1:
-Document:
-"Schedule of Values
-Location 1...
-Building Value...
-Business Personal Property...
-Business Interruption..."
-Output:
-SOV_Commercial_Property
-Example 2:
-Document:
-"Loss runs for policy years 2021-2025...
-Claim Number...
-Date of Loss...
-Paid...
-Outstanding..."
-Output:
-Loss_Run_Commercial_Property
-Example 3:
-Document:
-"Please find attached our underwriting submission for ABC Manufacturing...
-Requested limit...
-Deductible...
-Effective date...
-Property locations..."
-Output:
-Submission_Document_Commercial_Property
-
-You don’t need 20 examples.
-
-I’d start with 2–4 very representative examples per LOB, especially for the confusing classes.
-
-⸻
-
-One very important change
-
-I would not tell GPT-4.1 about the old Excel/source layout names unless we need them for classification.
-
-For example, don’t put:
-
-SUBMISSION
-SUBMISSION_UK_MLP_TRV
-MLPUKSUBMISSION
-
-inside the classification options.
-
-Instead:
 
 Submission_Document_General_Liability
 
-and perhaps inside the definition:
+not:
 
-The following legacy/source layout names are consolidated into this category:
-- SUBMISSION
-- SUBMISSION_UK_MLP_TRV
-- MLPUKSUBMISSION
-Never return these legacy names.
+Submission, SUBMISSION_UK_MLP_TRV, MLPUKSUBMISSION, etc.
 
-This gives the model a clean classification space.
+Also, as agreed, newsub is excluded for now.
 
 ⸻
 
-I would also remove unnecessary wording
+1. Commercial Property Prompt
 
-Your current prompt has several sections like:
+Allowed layout types
 
-These documents are NOT…
+Property_Detailed_Report_Commercial_Property
+SOV_Commercial_Property
+Loss_Run_Commercial_Property
+Submission_Document_Commercial_Property
 
-Those are useful only where there is genuine ambiguity.
+Phoenix prompt
 
-For example, this is valuable:
-
-Asset_Description_Credit_and_Political_Risk
-vs
-Trade_Risk_Submission_Credit_and_Political_Risk
-
-because those two really can overlap.
-
-But having a long “These documents are NOT…” section for every single class makes the prompt unnecessarily large.
-
-For GPT-4.1, I’d use:
-
-Definition
-
-What the document IS.
-
-Distinguishing signals
-
-What makes it different from similar classes.
-
-Priority rule
-
-What to do when signals conflict.
-
-That’s enough in most cases.
-
-⸻
-
-I would make the output even stricter
-
-Instead of:
-
-IMPORTANT OUTPUT RULES:
-- You MUST reply with EXACTLY ONE value.
-...
-
-I’d use:
-
-OUTPUT REQUIREMENT
-Return exactly one label from the allowed list.
-Do not return:
-- explanations
-- reasoning
-- confidence
-- punctuation
-- JSON
-- markdown
-- additional text
-Return ONLY the label.
-
-And in the API, you can additionally enforce the result after the model responds.
-
-For example:
-
-layout_type = response.choices[0].message.content.strip()
-
-then validate:
-
-if layout_type not in ALLOWED_LAYOUT_TYPES:
-    ...
-
-⸻
-
-Temperature
-
-For this use case:
-
-temperature=0
-
-is exactly what I would use.
-
-You’re not asking GPT-4.1 to be creative. You’re asking it to make a deterministic classification.
-
-⸻
-
-Max tokens
-
-You currently changed:
-
-max_tokens=32
-
-That’s fine.
-
-Your labels are relatively short, so you don’t need hundreds of tokens.
-
-In fact, because your output must be one label, 32 is more than enough.
-
-⸻
-
-My preferred GPT-4.1 prompt template
-
-I’d ultimately make every Phoenix prompt look approximately like this:
-
-You are an expert insurance document classifier.
-TASK
-Classify the provided document into exactly ONE of the allowed document
-types for the specified Line of Business.
-IMPORTANT:
-You may ONLY select from the document types listed below.
-Do not select a document type from another LOB.
-LOB:
-Commercial Property
-ALLOWED DOCUMENT TYPES
+You are an expert in Commercial Property insurance documentation and intelligent document processing.
+Your task is to classify the given insurance-related document into EXACTLY ONE of the following Commercial Property document categories:
 1. Property_Detailed_Report_Commercial_Property
 2. SOV_Commercial_Property
 3. Loss_Run_Commercial_Property
 4. Submission_Document_Commercial_Property
-CLASSIFICATION RULES
+Property_Detailed_Report_Commercial_Property:
+A detailed insurance-related document describing the physical characteristics, condition,
+construction, occupancy, exposure, risk characteristics, or other underwriting information
+about a commercial property.
+These documents may include:
+- Property characteristics
+- Construction details
+- Occupancy information
+- Building systems
+- Roof information
+- Electrical systems
+- Plumbing
+- HVAC
+- Fire protection
+- Security
+- COPE information
+- Property condition
+- Exposure information
+- Risk improvement recommendations
+- Property values or replacement-cost information when the primary purpose is property
+  description or underwriting analysis
+- Underwriting summaries
+- Property detail reports
+- Engineering/property reports
+- Supporting property documentation
+This category should be used when the document primarily describes or analyzes a
+commercial property rather than functioning as a Statement of Values, Loss Run,
+or formal Commercial Property submission.
+It is NOT:
+- SOV_Commercial_Property when the document is primarily a structured schedule of
+  property values.
+- Loss_Run_Commercial_Property when the document primarily contains historical claims.
+- Submission_Document_Commercial_Property when the document is a formal underwriting
+  submission package requesting insurance terms.
+SOV_Commercial_Property:
+A Schedule of Values / Statement of Values document used for Commercial Property
+insurance underwriting.
+These documents usually:
+- Are titled "Schedule of Values" or "Statement of Values"
+- List insured locations
+- Include location numbers
+- Include building values
+- Include business personal property / contents values
+- Include business interruption / extra expense values
+- Include total insured values
+- Include construction type
+- Include occupancy
+- Include square footage
+- Include replacement cost values
+- May include insurance-to-value information
+- May include appraisal information
+The dominant purpose is to provide a structured schedule of insured property values.
+A document should be classified as SOV_Commercial_Property when the primary structure
+is a property-value schedule rather than a narrative property report.
+Loss_Run_Commercial_Property:
+A historical claims or loss experience report for Commercial Property insurance.
+These documents usually:
+- Contain claim numbers
+- Dates of loss
+- Dates reported
+- Causes of loss
+- Paid amounts
+- Outstanding reserves
+- Total incurred amounts
+- Policy years
+- Policy numbers
+- Claim status
+- Loss descriptions
+- Historical claims analytics
+If the dominant purpose of the document is historical claims experience,
+classify it as Loss_Run_Commercial_Property.
+Submission_Document_Commercial_Property:
+A structured Commercial Property underwriting submission prepared to present a
+commercial property risk to an insurer for quotation, underwriting, or binding.
+These documents may include:
+- Insured information
+- Broker information
+- Requested coverage
+- Limits
+- Deductibles
+- Effective dates
+- Property descriptions
+- Exposure information
+- Underwriting information
+- Coverage requirements
+- Risk characteristics
+- SOV references
+- Loss Run references
+- Inspection information
+- Property details
+The key distinction is that this document functions as the formal Commercial Property
+underwriting submission rather than merely being a property report or supporting attachment.
+IMPORTANT CLASSIFICATION RULE:
+Classify based on the DOMINANT purpose of the document.
+- Structured property values → SOV_Commercial_Property
+- Historical claims → Loss_Run_Commercial_Property
+- Formal Commercial Property underwriting submission → Submission_Document_Commercial_Property
+- Property description / condition / underwriting analysis → Property_Detailed_Report_Commercial_Property
+IMPORTANT OUTPUT RULES:
+Return EXACTLY ONE value.
+Allowed outputs:
 Property_Detailed_Report_Commercial_Property
-- Use when the document primarily describes or analyzes a commercial property,
-  its condition, construction, occupancy, exposure, or underwriting risk.
-SOV_Commercial_Property
-- Use when the document primarily provides a structured schedule of insured
-  property values, locations, buildings, contents, business interruption,
-  replacement values, etc.
-Loss_Run_Commercial_Property
-- Use when the document primarily presents historical claims/loss experience,
-  including claim numbers, dates of loss, paid amounts, reserves, or incurred
-  amounts.
-Submission_Document_Commercial_Property
-- Use when the document is a formal Commercial Property underwriting
-  submission/application presenting a risk to an insurer for quotation,
-  underwriting, or binding.
-DECISION PRIORITY
-If the document is primarily:
-1. Historical claims → Loss_Run_Commercial_Property
-2. Property-value schedule → SOV_Commercial_Property
-3. Formal insurance submission → Submission_Document_Commercial_Property
-4. Property/risk description or analysis → Property_Detailed_Report_Commercial_Property
-When multiple characteristics appear, classify according to the DOMINANT
-purpose of the document.
-OUTPUT
-Return exactly ONE of:
-Property_Detailed_Report_Commercial_Property
 SOV_Commercial_Property
 Loss_Run_Commercial_Property
 Submission_Document_Commercial_Property
-Return ONLY the label.
-DOCUMENT:
+Return ONLY the exact enum value.
+Do not add explanations, punctuation, or additional text.
+Document Content:
 {text_new}
 
-Why I like this approach
+⸻
 
-Your architecture becomes very clean:
+2. General Liability Prompt
 
-LOB Detection MCP
+Here we are deliberately consolidating the Management Liability variants.
 
-→ Commercial Property
+So:
 
-Layout Detection MCP
+Submission
+SUBMISSION_UK_MLP_TRV
+MLPUKSUBMISSION
 
-→ selects Commercial Property Phoenix prompt
+→ Submission_Document_General_Liability
 
-→ GPT-4.1 sees only 4 possible classes
+Similarly the other duplicate concepts are consolidated.
 
-→ returns:
+Allowed layout types
+
+Submission_Document_General_Liability
+Financial_General_Liability
+Loss_Run_General_Liability
+Policy_Schedule_General_Liability
+Broker_Email_General_Liability
+Medical_Proposal_General_Liability
+
+Phoenix prompt
+
+You are an expert in General Liability and Management Liability insurance documentation
+and intelligent document processing.
+Your task is to classify the given insurance-related document into EXACTLY ONE of the
+following General Liability document categories:
+1. Submission_Document_General_Liability
+2. Financial_General_Liability
+3. Loss_Run_General_Liability
+4. Policy_Schedule_General_Liability
+5. Broker_Email_General_Liability
+6. Medical_Proposal_General_Liability
+Submission_Document_General_Liability:
+A structured insurance application, proposal, or underwriting submission associated
+with General Liability / Management Liability insurance.
+This category consolidates multiple source layout names that represent the same
+document concept, including US and UK Management Liability application variants.
+Examples of source names that should map to this canonical category include:
+- Submission
+- SUBMISSION_UK_MLP_TRV
+- MLPUKSUBMISSION
+These source names must NOT be returned individually.
+The canonical output MUST be:
+Submission_Document_General_Liability
+These documents may:
+- Request new or renewal insurance coverage
+- Contain applicant information
+- Contain company information
+- Describe business operations
+- Include requested coverage limits
+- Include current insurance information
+- Include claims history questions
+- Include D&O, EPL, Crime, Fiduciary Liability or related Management Liability
+  coverage questions
+- Include underwriting questionnaires
+- Include declarations and signatures
+- Include carrier-specific application questions
+- Include UK Management Liability proposal questions
+The important distinction is that the document is an application, proposal,
+or underwriting submission rather than a policy schedule, financial report,
+or loss run.
+Financial_General_Liability:
+A formal financial reporting document submitted as supporting information for
+insurance underwriting.
+These documents may contain:
+- Balance sheets
+- Income statements
+- Statements of operations
+- Cash flow statements
+- Retained earnings
+- Notes to financial statements
+- CPA review reports
+- Audit reports
+- Financial statements
+- Multiple fiscal years
+- Assets
+- Liabilities
+- Revenue
+- Expenses
+- Net income
+The document is primarily a formal financial report rather than an insurance
+application.
+Return:
+Financial_General_Liability
+Loss_Run_General_Liability:
+A historical claims or loss experience document associated with General Liability
+or Management Liability.
+These documents may contain:
+- Claim numbers
+- Date of loss
+- Date reported
+- Claim status
+- Paid amounts
+- Reserves
+- Incurred amounts
+- Policy years
+- Coverage lines
+- Historical claims
+If the dominant purpose is historical claims experience, return:
+Loss_Run_General_Liability
+Policy_Schedule_General_Liability:
+A formal policy schedule issued after insurance has been bound.
+These documents usually contain:
+- Insured name
+- Policy number
+- Policy period
+- Premium
+- Coverage sections
+- Limits
+- Excesses / deductibles
+- Sublimits
+- Endorsements
+- Coverage modules
+- Insurer information
+This is the insurer-issued bound policy document, NOT an application.
+Return:
+Policy_Schedule_General_Liability
+Broker_Email_General_Liability:
+An insurance broker email communicating with an underwriter, insurer, or market
+participant regarding an insurance placement.
+IMPORTANT PRIORITY RULE:
+If the document:
+1. Begins with a personal salutation such as Dear, Hi, or Hello,
+2. Is written in a conversational or semi-formal broker-to-underwriter style,
+3. Contains a broker sign-off / signature block,
+then classify it as:
+Broker_Email_General_Liability
+This classification takes priority over the subject matter contained in the email.
+The email may discuss:
+- General Liability
+- Property
+- D&O
+- EPL
+- Political Risk
+- Trade Credit
+- Professional Liability
+- Other insurance classes
+The email format and broker communication purpose are the deciding factors.
+Medical_Proposal_General_Liability:
+A Medical Malpractice / Medical Professional Liability proposal or application
+for a hospital, clinic, healthcare provider, or medical facility.
+These documents may contain:
+- Medical services
+- Hospital information
+- Healthcare specialties
+- Bed counts
+- Patient volumes
+- Medical staff
+- Clinical procedures
+- Risk management
+- Claims history
+- Requested malpractice limits
+- Professional liability information
+- Medical malpractice declarations
+Return:
+Medical_Proposal_General_Liability
+IMPORTANT CONSOLIDATION RULE:
+Do NOT return these source-specific names:
+Submission
+SUBMISSION_UK_MLP_TRV
+MLPUKSUBMISSION
+They are all represented by:
+Submission_Document_General_Liability
+IMPORTANT OUTPUT RULES:
+Return EXACTLY ONE value.
+Allowed outputs:
+Submission_Document_General_Liability
+Financial_General_Liability
+Loss_Run_General_Liability
+Policy_Schedule_General_Liability
+Broker_Email_General_Liability
+Medical_Proposal_General_Liability
+Return ONLY the exact enum value.
+Document Content:
+{text_new}
+
+⸻
+
+3. Credit and Political Risk Prompt
+
+Allowed layout types
+
+MRC_Slip_Credit_and_Political_Risk
+Corporate_Profile_Credit_and_Political_Risk
+Asset_Description_Credit_and_Political_Risk
+Contract_Docs_Credit_and_Political_Risk
+Trade_Risk_Submission_Credit_and_Political_Risk
+Commercial_Property_Submission_Credit_and_Political_Risk
+Structured_Credit_IM_Credit_and_Political_Risk
+
+And importantly:
+
+newsub is NOT included.
+
+The existing definitions for MRC_Slip, CORPORATE_PROFILE, Asset_Description,
+CONTRACT_DOCS, and Trade_Risk_Submission can be retained almost exactly from
+your current prompt, with only the canonical output names changed.
+
+For example:
+
+MRC_Slip
+
+becomes:
+
+MRC_Slip_Credit_and_Political_Risk
+
+and:
+
+Asset_Description
+
+becomes:
+
+Asset_Description_Credit_and_Political_Risk
+
+The important part is that Trade_Risk_Submission and Asset_Description remain
+separate, because your current prompt has a very strong and useful distinction
+between project/asset risk and transaction-level trade risk.
+
+Output section
+
+IMPORTANT OUTPUT RULES:
+Return EXACTLY ONE value.
+Allowed outputs:
+MRC_Slip_Credit_and_Political_Risk
+Corporate_Profile_Credit_and_Political_Risk
+Asset_Description_Credit_and_Political_Risk
+Contract_Docs_Credit_and_Political_Risk
+Trade_Risk_Submission_Credit_and_Political_Risk
+Commercial_Property_Submission_Credit_and_Political_Risk
+Structured_Credit_IM_Credit_and_Political_Risk
+Do NOT return:
+newsub
+Trade_Risk_Submission
+Asset_Description
+MRC_Slip
+CORPORATE_PROFILE
+CONTRACT_DOCS
+Return ONLY the exact enum value.
+Document Content:
+{text_new}
+
+⸻
+
+4. Home Owners Prompt
+
+Allowed layout types
+
+Inspection_Report_Home_Owners
+Valuation_Report_Home_Owners
+Submission_Report_Home_Owners
+
+Phoenix prompt
+
+You are an expert in Home Owners insurance documentation and intelligent document processing.
+Your task is to classify the given document into EXACTLY ONE of the following
+Home Owners document categories:
+1. Inspection_Report_Home_Owners
+2. Valuation_Report_Home_Owners
+3. Submission_Report_Home_Owners
+Inspection_Report_Home_Owners:
+A report created following an inspection of a residential property.
+These documents may contain:
+- Property condition
+- Construction
+- Roof
+- Exterior
+- Interior
+- Electrical
+- Plumbing
+- HVAC
+- Foundation
+- Safety systems
+- Inspection findings
+- Observed deficiencies
+- Risk improvement recommendations
+The primary purpose is documenting observed property conditions.
+Valuation_Report_Home_Owners:
+A professional valuation report used to establish the insurance value of a residential
+property or associated assets.
+These documents may contain:
+- Replacement cost
+- Reinstatement cost
+- Rebuild cost
+- Indemnity value
+- Building specifications
+- Construction information
+- Property characteristics
+- Valuation calculations
+- Depreciation
+- Inflation allowances
+- Professional valuation methodology
+The primary purpose is determining the appropriate insurance value.
+Submission_Report_Home_Owners:
+A structured residential property underwriting report used to evaluate a Home Owners
+insurance risk.
+These documents may contain:
+- Homeowner information
+- Residential property characteristics
+- Year built
+- Construction type
+- Roof material
+- Cladding
+- Foundation
+- Storeys
+- Floor area
+- Renovations
+- Occupancy
+- Property usage
+- Rebuild sum insured
+- Insurance considerations
+- Earthquake exposure
+- Flood exposure
+- Coastal exposure
+- Land slip exposure
+- Security
+- Maintenance
+- Claims information
+- Other residential underwriting information
+If the dominant purpose is presenting residential property information for
+Home Owners underwriting, classify as:
+Submission_Report_Home_Owners
+IMPORTANT OUTPUT RULES:
+Return EXACTLY ONE value.
+Allowed outputs:
+Inspection_Report_Home_Owners
+Valuation_Report_Home_Owners
+Submission_Report_Home_Owners
+Return ONLY the exact enum value.
+Document Content:
+{text_new}
+
+⸻
+
+5. Life Prompt
+
+This one is the only one I would not finalize yet.
+
+The current Phoenix prompt you gave me does not contain a Life-specific document definition, and I don’t want to invent Life layouts just to fill the fifth prompt.
+
+So for now:
+
+Life
+
+should have a Phoenix prompt only after we take the Life rows from the Excel and identify the canonical document concepts.
+
+The structure will be:
+
+You are an expert in Life insurance documentation and intelligent document processing.
+Classify the document into EXACTLY ONE of:
+<Life canonical layout 1>_Life
+<Life canonical layout 2>_Life
+<Life canonical layout 3>_Life
+...
+Document Content:
+{text_new}
+Return ONLY the exact enum value.
+
+⸻
+
+The important architectural change
+
+Your PHOENIX_PROMPTS will then conceptually become:
+
+PHOENIX_PROMPTS = {
+    "Commercial Property": "COMMERCIAL_PROPERTY_PROMPT_VERSION",
+    "General Liability": "GENERAL_LIABILITY_PROMPT_VERSION",
+    "Credit and Political Risk": "CREDIT_POLITICAL_RISK_PROMPT_VERSION",
+    "Home Owners": "HOME_OWNERS_PROMPT_VERSION",
+    "Life": "LIFE_PROMPT_VERSION",
+}
+
+And each Phoenix prompt has only its own layouts.
+
+So, for example, if:
+
+lob = "General Liability"
+
+the model will never see:
 
 SOV_Commercial_Property
+MRC_Slip_Credit_and_Political_Risk
+Submission_Report_Home_Owners
 
-→ then your existing fuzzy matching happens
+That is exactly what we want.
 
-Although, with the new canonical naming convention, I would actually consider whether you still need fuzzy matching at all for the new LOB flow. If GPT-4.1 is constrained to your exact canonical enum, the result should already be your canonical layout name.
+One thing I would change from the previous list
 
-We can keep the existing fuzzy matching for compatibility, but conceptually the new flow should be:
+I would not blindly keep Commercial_Property_Submission_Credit_and_Political_Risk or Structured_Credit_IM_Credit_and_Political_Risk until we verify the exact Excel rows behind those names. Those were derived from the earlier Excel analysis, but the file content currently available to me does not expose those rows directly. I don’t want to silently invent or incorrectly map them.
 
-LOB → LOB-specific prompt → exact canonical layout → existing downstream processing
-
-rather than:
-
-LOB → prompt → arbitrary layout → fuzzy matching → canonical layout
-
-That would make the new flow much more deterministic.
+The safest next step is to take the actual Excel rows for all 5 LOBs, consolidate duplicates, and then I’ll give you the final five complete Phoenix prompts ready to paste into common.phoenix_prompt—with no unsupported layout names.
