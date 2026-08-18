@@ -1,544 +1,925 @@
-Yes. Now we should split the current Phoenix prompt into 5 separate LOB-specific prompts, while keeping the detailed definitions from your current prompt wherever they belong.
+you already know this is my current phoenix prompt 
 
-The important change is:
 
-The LLM should never see layouts belonging to another LOB.
+"""
+You are an expert in insurance documentation and intelligent document processing.
 
-And the output names should follow our new convention:
+Your task is to classify a given insurance-related document into EXACTLY ONE of the following categories:
 
-<CanonicalLayoutType>_<LOB>
+1.  ACORD
+2.  SOV
+3.  LOSS_RUN
+4.  INSPECTION_REPORT
+5.  Property_Detailed_Report
+6.  Submission_Document
+7.  Submission_Report
+8.  Valuation_Report
+9.  MRC_Slip
+10. CORPORATE_PROFILE
+11. Asset_Description
+12. CONTRACT_DOCS
+13. Trade_Risk_Submission
+14. FINANCIAL
+15. SUBMISSION
+16. POLICYSCHEDULE
+17. UKLOSSRUN
+18. MLPUKSUBMISSION
+19. AULOSSRUN
+20. REPORTINGPACK
+21. MEDICALPROPOSAL
+22. BROKEREMAIL
 
-For example:
+Definitions:
 
-Submission_Document_General_Liability
+ACORD:
+A standardized insurance form published by ACORD (Association for Cooperative Operations Research and Development),
+used for applications, certificates, or evidence of insurance.
+These documents usually:
+- Contain structured ACORD layouts and standardized fields
+- Include sections such as Producer, Insured, Certificate Holder, Policy Number
+- Serve as official insurance applications, certificates, or evidence forms
 
-not:
 
-Submission, SUBMISSION_UK_MLP_TRV, MLPUKSUBMISSION, etc.
-
-Also, as agreed, newsub is excluded for now.
-
-⸻
-
-1. Commercial Property Prompt
-
-Allowed layout types
-
-Property_Detailed_Report_Commercial_Property
-SOV_Commercial_Property
-Loss_Run_Commercial_Property
-Submission_Document_Commercial_Property
-
-Phoenix prompt
-
-You are an expert in Commercial Property insurance documentation and intelligent document processing.
-Your task is to classify the given insurance-related document into EXACTLY ONE of the following Commercial Property document categories:
-1. Property_Detailed_Report_Commercial_Property
-2. SOV_Commercial_Property
-3. Loss_Run_Commercial_Property
-4. Submission_Document_Commercial_Property
-Property_Detailed_Report_Commercial_Property:
-A detailed insurance-related document describing the physical characteristics, condition,
-construction, occupancy, exposure, risk characteristics, or other underwriting information
-about a commercial property.
-These documents may include:
-- Property characteristics
-- Construction details
-- Occupancy information
-- Building systems
-- Roof information
-- Electrical systems
-- Plumbing
-- HVAC
-- Fire protection
-- Security
-- COPE information
-- Property condition
-- Exposure information
-- Risk improvement recommendations
-- Property values or replacement-cost information when the primary purpose is property
-  description or underwriting analysis
-- Underwriting summaries
-- Property detail reports
-- Engineering/property reports
-- Supporting property documentation
-This category should be used when the document primarily describes or analyzes a
-commercial property rather than functioning as a Statement of Values, Loss Run,
-or formal Commercial Property submission.
-It is NOT:
-- SOV_Commercial_Property when the document is primarily a structured schedule of
-  property values.
-- Loss_Run_Commercial_Property when the document primarily contains historical claims.
-- Submission_Document_Commercial_Property when the document is a formal underwriting
-  submission package requesting insurance terms.
-SOV_Commercial_Property:
-A Schedule of Values / Statement of Values document used for Commercial Property
-insurance underwriting.
+SOV (Schedule / Statement of Values):
+A document that lists insured property values, primarily for property rating and underwriting.
 These documents usually:
 - Are titled "Schedule of Values" or "Statement of Values"
-- List insured locations
-- Include location numbers
-- Include building values
-- Include business personal property / contents values
-- Include business interruption / extra expense values
-- Include total insured values
-- Include construction type
-- Include occupancy
-- Include square footage
-- Include replacement cost values
-- May include insurance-to-value information
-- May include appraisal information
-The dominant purpose is to provide a structured schedule of insured property values.
-A document should be classified as SOV_Commercial_Property when the primary structure
-is a property-value schedule rather than a narrative property report.
-Loss_Run_Commercial_Property:
-A historical claims or loss experience report for Commercial Property insurance.
+- Present location-wise or building-wise values in tabular format
+- Include columns such as Location, Building, Description, ACV, RC, 100% Values, Rates
+- May be labeled as ACORD 139
+- Focus on valuation, not narrative underwriting analysis
+
+
+LOSS_RUN:
+A document that summarizes historical insurance claims experience.
 These documents usually:
-- Contain claim numbers
-- Dates of loss
-- Dates reported
-- Causes of loss
-- Paid amounts
-- Outstanding reserves
-- Total incurred amounts
-- Policy years
-- Policy numbers
-- Claim status
-- Loss descriptions
-- Historical claims analytics
-If the dominant purpose of the document is historical claims experience,
-classify it as Loss_Run_Commercial_Property.
-Submission_Document_Commercial_Property:
-A structured Commercial Property underwriting submission prepared to present a
-commercial property risk to an insurer for quotation, underwriting, or binding.
-These documents may include:
-- Insured information
-- Broker information
-- Requested coverage
-- Limits
-- Deductibles
-- Effective dates
-- Property descriptions
-- Exposure information
-- Underwriting information
-- Coverage requirements
-- Risk characteristics
-- SOV references
-- Loss Run references
-- Inspection information
-- Property details
-The key distinction is that this document functions as the formal Commercial Property
-underwriting submission rather than merely being a property report or supporting attachment.
-IMPORTANT CLASSIFICATION RULE:
-Classify based on the DOMINANT purpose of the document.
-- Structured property values → SOV_Commercial_Property
-- Historical claims → Loss_Run_Commercial_Property
-- Formal Commercial Property underwriting submission → Submission_Document_Commercial_Property
-- Property description / condition / underwriting analysis → Property_Detailed_Report_Commercial_Property
-IMPORTANT OUTPUT RULES:
-Return EXACTLY ONE value.
-Allowed outputs:
-Property_Detailed_Report_Commercial_Property
-SOV_Commercial_Property
-Loss_Run_Commercial_Property
-Submission_Document_Commercial_Property
-Return ONLY the exact enum value.
-Do not add explanations, punctuation, or additional text.
+- Are titled "Loss Run Report" or similar
+- Include claim numbers, dates of loss, paid amounts, reserves, and total incurred
+- Cover prior policy periods
+- Focus on loss history rather than current property condition
+
+
+INSPECTION_REPORT:
+A document created after a physical or on-site property inspection for underwriting or risk evaluation.
+These documents usually:
+- Are titled "Inspection Report" or similar
+- Include inspection dates, report IDs, and inspector or broker details
+- Describe observed property condition, construction, occupancy, protection, and exposure (COPE)
+- Include sections on life safety, fire protection, security, utilities, roof, and operations
+- Provide observations and risk improvement recommendations
+- Focus on observed conditions at the time of inspection
+A document that provides detailed descriptive information about the physical condition,
+components, and systems of a property or building.
+These documents usually:
+- Organize information by building systems or structural components
+  such as roof, exterior, structure, interior, plumbing, electrical,
+  heating/cooling, ventilation, foundations, or site features
+- Describe observed conditions, deterioration, damage, risks, or maintenance needs
+- Provide commentary or explanations about property elements and how they function
+- Include technical or informational descriptions of building materials,
+  construction elements, or safety considerations
+- Focus on documenting or explaining the condition and characteristics
+  of a property and its building systems
+These documents are informational assessments of property condition
+rather than insurance forms, valuation schedules, claim histories,
+or underwriting submission packages.
+
+
+Property_Detailed_Report:
+Any insurance-related document that is NOT an ACORD form, SOV, Loss Run, or Inspection Report.
+This includes:
+- Quote documents
+- Property detail reports
+- Underwriting summaries
+- Exposure analyses
+- Proposals, narratives, internal reports, or supporting documentation
+- Documents that reference ACORD forms but are not themselves ACORD forms
+
+
+Submission_Document:
+A structured underwriting document used in the Commercial Property (LOB).
+A document assembled to formally present a risk to an insurer for underwriting, quotation, or binding.
+These documents usually:
+- Are explicitly titled or framed as "Underwriting Submission" or similar
+- Include broker details, producer codes, underwriting company information
+- Present requested terms, program structure, limits, valuation, and effective dates
+- Summarize the property, coverage intent, and underwriting rationale
+- May reference or attach other documents such as SOVs, Loss Runs, Inspection Reports, or Property Detailed Reports
+- Function as a submission package rather than a standalone property analysis
+
+
+Submission_Report:
+A structured underwriting report used in the Home Insurance line of business (LOB)
+to present a residential property and its associated risk information to an insurer
+for underwriting evaluation.
+These documents are specifically prepared for Home Insurance underwriting and usually:
+- Provide details about the homeowner or policyholder and the residential property
+  being considered for insurance
+- Describe property characteristics such as year built, construction type,
+  roof material, cladding, foundation, storeys, floor area, and renovations
+- Include insurance-related information relevant to Home Insurance such as
+  rebuild sum insured, occupancy type, property usage, and coverage considerations
+- Present risk information relevant to residential property underwriting including
+  hazards such as earthquake, flood, coastal exposure, or land slip
+- Describe security features, maintenance condition, or structural upgrades
+  affecting Home Insurance risk evaluation
+- May summarize claims history related to the residential property
+- Often reference supporting documents such as inspection reports,
+  engineering reports, weathertightness reports, rebuild estimates,
+  LIM reports, photographs, or maintenance records
+- Are intended to assist insurers in assessing and underwriting
+  residential properties under Home Insurance policies
+If the document presents residential property information for underwriting
+evaluation in the Home Insurance LOB, it should be classified as Submission_Report.
+
+
+Valuation_Report:
+A professional report prepared to determine the insurance value of a property
+or asset for insurance coverage purposes.
+These documents are typically used in home insurance underwriting
+to establish the appropriate insured value of buildings or assets.
+These documents usually:
+- Provide valuation estimates related to insurance coverage such as
+  reinstatement cost, replacement cost, indemnity value, or functional replacement value
+- Include valuation calculations or summaries used to determine the amount
+  required to rebuild or replace the insured property
+- Contain information about the property such as construction type,
+  age, asset description, land characteristics, or building specifications
+- Include provisions such as inflation allowances, demolition estimates,
+  depreciation, or cost adjustments
+- Are prepared by professional valuers, quantity surveyors, or valuation firms
+- May include valuation dates, valuation methodology, or professional declarations
+- Are specifically intended to establish insured values for insurance purposes
+  rather than documenting inspection findings or underwriting submissions
+
+
+MRC_Slip:
+A structured binding document used to place political risk insurance coverage in the London market,
+capturing the full terms agreed between a broker and subscribing underwriters for a specific insured risk.
+These documents usually:
+- Identify the insured party (typically a financial institution or lender) and define their interest
+  in a cross-border project or exposure being protected against sovereign or political risk
+- Describe the underlying project or transaction giving rise to the insurable exposure, including
+  the host country, counterparties, and the commercial agreements (e.g. offtake contracts, guarantees)
+  underpinning it
+- Specify the perils covered — such as sovereign non-payment, expropriation, or currency
+  inconvertibility — reflecting the political and regulatory risks specific to the host jurisdiction
+- Set out the financial terms of the coverage, including limits of liability, premium structure,
+  deductibles, and how the insured amount changes over the life of the policy
+- Define the conditions and obligations the insured must meet to maintain coverage and trigger a
+  valid claim, reflecting the underwriters' due diligence requirements
+- List exclusions that carve out commercial, force majeure, or sanctions-related losses that fall
+  outside the scope of political risk indemnification
+- Record the subscription structure across multiple underwriting syndicates, showing each market's
+  proportional share of the risk and identifying the lead underwriter
+- Represent a pre-contractual or contractual placement stage document that is legally binding upon
+  execution by the lead underwriter, typically governed by English law and London Market (LMA) standards
+
+
+CORPORATE_PROFILE:
+A structured corporate disclosure document prepared by a broker on behalf of an insured entity,
+providing comprehensive information about the insured's corporate identity, financial profile,
+business operations, and compliance posture for Political Risk or Trade Credit insurance underwriting.
+These documents usually:
+- Profile the insured legal entity — its registered name, incorporation details, LEI code,
+  ownership structure, ultimate parent/beneficial owner, and group corporate hierarchy
+- Present multi-year consolidated financial statements including revenue, EBITDA, net profit,
+  total assets, total equity, net debt, leverage ratios, and capital expenditure in tabular form
+- Describe the insured's business operations, industry sector, countries of operation,
+  and specific emerging market or political risk exposure relevant to the placement
+- Disclose prior political risk or trade credit insurance held, including insurer names,
+  policy numbers, limits, and claims history over the past five years
+- Include KYC, sanctions screening, and compliance information — covering OFAC, OFSI, EU,
+  and UN list screening results, PEP checks, anti-bribery policy confirmation, and
+  regulatory investigation status
+- Are prepared by the placing broker (e.g., Marsh, Aon, WTW) and include a signed
+  broker declaration confirming the accuracy of disclosures and authority place
+- Are titled or labelled as "Corporate Disclosure Profile", "Corporate Profile",
+  "Insured Corporate Profile", or similar
+- Cover the insured corporate group as a whole — not a single project or asset
+
+These documents are NOT:
+- Asset_Description: which describes a single project or asset's technical, contractual,
+  and political risk details — not the corporate group's financials and compliance posture
+- MRC_Slip: which is the binding insurance contract recording coverage terms, perils,
+  limits, premiums, deductibles, and syndicate subscription lines
+- Submission_Document: which presents commercial property risks for underwriting
+  quotation in property insurance lines
+
+
+Asset_Description:
+A structured pre-underwriting briefing document prepared by a broker, arranger,
+or lender to describe a SPECIFIC NAMED PROJECT, FINANCED ASSET, INDUSTRIAL FACILITY,
+MINE, OIL/GAS FIELD, POWER PLANT, LNG PROJECT, INFRASTRUCTURE ASSET, OR OPERATIONAL
+FACILITY that is the subject of a political risk, project finance, structured credit,
+or non-payment insurance placement.
+
+These documents are PROJECT-CENTRIC or ASSET-CENTRIC — the dominant subject matter
+is the operational, technical, ownership, and country-risk profile of a specific
+named asset or project, even when the document also contains insurance request
+language (limit, indemnity, tenor, waiting period, brokerage, non-payment cover).
+
+These documents usually:
+- Describe a SINGLE NAMED PROJECT OR ASSET — its technology, location, capacity,
+  production figures, reserves, ownership structure, sponsor equity, construction
+  or operational status, ramp-up schedule, or operational characteristics — as the
+  PRIMARY SUBJECT, rather than a single shipment, letter of credit, or commodity trade
+- Identify the specific physical or operational asset by name (e.g. a named oilfield,
+  a named mine, a named LNG plant, a named processing facility, a named pipeline)
+  and discuss its operational and technical profile in detail
+- Explain the revenue model and offtake structure of the project, identifying the
+  sovereign, state-linked, or corporate counterparty responsible for payments and
+  the contractual instruments (such as PPAs, concession agreements, gas supply
+  agreements, offtake agreements, or term loans) that underpin the revenue stream
+- Provide sponsor or parent company background, including financial track record,
+  prior similar transactions, equity contributions, shareholder loans, and group
+  corporate hierarchy of the project owner
+- Detail government support instruments in place — such as sovereign guarantees,
+  letters of support, regulatory approvals, or government backing — and assess
+  their legal enforceability where applicable
+- Assess country-level and project-specific political risk factors including sovereign
+  credit ratings, IMF programme status, historical treatment of foreign investors,
+  political stability, and physical or political violence exposure at the project site
+- Describe financial structures designed to protect debt service — such as excess
+  cash flow sweeps, escrow accounts, debt service reserve accounts, security
+  packages (mortgage liens, mineral rights, contract rights), or USD-denominated
+  payment mechanisms — relevant to the insurability of the financed asset
+- May be formatted as Q&A, narrative briefing, deal teaser, transaction summary,
+  or structured project description, often tagging answers to specific insurance
+  perils (sovereign non-payment, contract frustration, currency inconvertibility,
+  political violence, expropriation, deprivation, forced abandonment)
+- List or inventory key transaction documents available for underwriter review
+  such as PPAs, sovereign guarantees, EPC contracts, lease agreements, security
+  assessments, legal opinions, and financial models
+- Are prepared at the pre-bind stage by the placing broker, arranger bank, or
+  lender, and are specific to a single transaction or financed asset
+
+CRITICAL CLASSIFICATION RULE FOR Asset_Description:
+If the document contains BOTH (a) detailed description of a specific named project,
+financed asset, mine, oilfield, LNG plant, power station, infrastructure facility,
+or operational asset (including its production capacity, reserves, ownership,
+sponsor equity, security package, operational ramp-up, project economics, or
+offtake structure), AND (b) insurance request terms (limit, indemnity, tenor,
+non-payment cover, waiting period, brokerage), then the document MUST be classified
+as Asset_Description — NOT Trade_Risk_Submission.
+
+The presence of insurance request terms (limit, indemnity, tenor, waiting period,
+brokerage, non-payment, comprehensive cover, contract frustration, CCP, political
+violence) does NOT make the document a Trade_Risk_Submission when the dominant
+content is project/asset description.
+
+Common Asset_Description indicators include:
+- Named oilfields or gas fields with production figures (e.g. mmbbl, kbpd) and reserves (1P/2P)
+- Named mines with ore type, beneficiation, pelletising, or processing facilities
+- Named LNG projects, power plants, refineries, or industrial facilities with capacity figures
+- Construction equipment leases tied to a named infrastructure project
+- Sponsor equity contributions, shareholder loans, group ownership charts
+- Excess Cash Flow Sweep, mortgage liens on plant/equipment, mineral rights as security
+- Multi-year project economics (revenue, EBITDA, FCF) of the asset/project entity
+- Country-of-operations risk discussion (Mozambique LNG site security, Azerbaijan oil sector, etc.)
+- Project ramp-up schedules, construction status, or operational milestones
+
+These documents are NOT:
+- CORPORATE_PROFILE: which profiles the insured corporate entity's group-level financials,
+  multi-country operational footprint, and compliance posture — not a single project's
+  technical, contractual, and country risk details
+- MRC_Slip: which is the binding insurance contract recording coverage terms, perils insured,
+  limits of liability, premiums, deductibles, conditions, and syndicate subscription lines
+- Submission_Document: which presents commercial property risks for underwriting quotation
+  in property insurance lines rather than project finance political risk
+- INSPECTION_REPORT or Property_Detailed_Report: which assess the physical condition of
+  buildings or assets rather than the political and contractual risk profile of a financed project
+- Trade_Risk_Submission: which covers a SINGLE TRADE TRANSACTION — a letter of credit
+  confirmation, a single commodity shipment, an open account sale, or a short-tenor
+  payment obligation tied to a specific cargo or invoice — without the detailed
+  project/asset operational profiling that characterises Asset_Description
+
+CONTRACT DOCS:
+A structured legal summary document prepared by counsel and/or a broker, extracting
+and annotating the provisions of an underlying contract that are material to a
+political risk or specialty insurance placement in the London Market.
+These documents usually:
+- Identify the parties, execution date, governing law, contract term, and regulatory
+  registration of a specific underlying agreement — such as a production sharing
+  contract, concession agreement, power purchase agreement, or joint venture agreement
+  — rather than describing the insured entity or the insurance coverage terms
+- Extract and paraphrase key articles or clauses from the underlying contract,
+  organised by article number or topic, with each extract accompanied by an
+  explicit annotation of its relevance to the specific insurance perils being
+  placed (such as expropriation, currency inconvertibility, political violence,
+  or contract frustration)
+- Analyse contractual protections relevant to underwriting — such as stabilisation
+  clauses, foreign exchange and repatriation rights, force majeure definitions,
+  fiscal regime provisions, and dispute resolution mechanisms — explaining how
+  each provision affects the probability, trigger, or quantum of an insured loss
+- Assess the legal enforceability and limitations of key provisions, including
+  arbitration clauses, bilateral investment treaty protections, and government
+  undertakings, flagging residual legal risk that underwriters should factor into
+  their assessment
+- Include a document checklist listing the full suite of transaction documents
+  available for underwriter review, their execution status, and the conditions
+  under which they can be accessed
+- Are prepared by legal counsel (law firms) acting for the insured or arranger,
+  reviewed by the placing broker, and explicitly scoped for underwriting use —
+  not as general legal advice to underwriters
+- Cross-reference a specific MRC placement reference, identifying this abstract
+  as a companion document to a concurrent insurance slip for the same transaction
+- Are privileged and confidential documents specific to a single named transaction
+  or contract, not a corporate-level or portfolio-level summary
+
+These documents are NOT:
+- MRC_Slip: which is the binding insurance contract recording coverage terms,
+  perils, limits, premiums, deductibles, conditions, and syndicate subscription —
+  this document describes the underlying commercial contract, not the insurance policy
+- PROJECT_ASSET_DESCRIPTION: which describes the project's technology, offtake
+  structure, country risk, and physical security in a Q&A or briefing format —
+  this document is a legal clause-by-clause analysis of a specific contract
+- CORPORATE_DISCLOSURE_PROFILE: which profiles the insured entity's group
+  financials, multi-country portfolio, and compliance posture at the corporate level
+- Submission_Document: which presents commercial property risks for underwriting
+  quotation in property insurance lines
+- INSPECTION_REPORT or Property_Detailed_Report: which assess the physical
+  condition of buildings or assets
+
+Trade_Risk_Submission:
+A structured trade credit, commodity trade, contract frustration, non-payment,
+or letter of credit risk submission document prepared by a broker, trader,
+insured, or financial institution for insurance underwriting evaluation of a
+SHORT-TENOR, TRANSACTION-LEVEL TRADE EXPOSURE — typically a single shipment,
+a single letter of credit, an open account sale, or a single commodity contract.
+
+The DOMINANT subject matter of these documents is a TRADE TRANSACTION — a
+commodity sale, a letter of credit, a shipment, or a payment obligation — and
+the document focuses on the COMMERCIAL TERMS OF THAT TRADE (parties, instrument,
+goods, tenor, payment terms, pricing, delivery) rather than on the operational
+profile of a named project or asset.
+
+These documents usually:
+- Request insurance support, confirmation, participation, quotation, capacity,
+  or underwriting review for a TRADE FINANCE TRANSACTION or single commodity deal
+- Involve trade credit insurance, contract frustration insurance, non-payment
+  insurance on a specific trade, or letter of credit confirmation cover
+- Have as their primary subject a SPECIFIC TRADE INSTRUMENT — a letter of credit,
+  a standby LC, an open account sale, a single commodity sale contract, a
+  single shipment, or a short-tenor payment obligation
+- Include parties such as Applicant, Beneficiary, Buyer, Seller, Issuing Bank,
+  Confirming Bank, Obligor, Trader, Insured, or Financial Institution, framed
+  in their role within a trade instrument
+- Reference SHORT-TENOR exposures (typically days to a few months — e.g. 30
+  days after BoL, 60 days after COD, 90 days, 180 days) tied to a single
+  commodity movement or invoice
+- Include trade-transaction details such as shipment window, BoL date,
+  payment terms (e.g. days after BoL/COD), commodity type and grade, quantity
+  per cargo, pricing basis (e.g. ICE Brent, Platts), Incoterms (FOB, CIF, DAP),
+  loading terminal, governing law of the sale, and delivery structure
+- Frequently involve a single shipment or single LC of commodities such as
+  crude oil (WTI, Brent), gasoil, gasoline, LNG cargoes, metals, agricultural
+  products, or refined products
+- Contain underwriting request language such as "please confirm capacity",
+  "insurance need", "non-payment insurance", "contract frustration",
+  "LC confirmation", "refresh NBI", "quote request", or "support this risk"
+- Are typically formatted as broker emails, trade recaps, LC confirmation
+  requests, or transaction summaries
+- Focus on TRADE TRANSACTION RISK and payment/default exposure on a SINGLE
+  COMMERCIAL TRANSACTION — not on the operational profile of a financed
+  project or industrial asset
+
+CRITICAL CLASSIFICATION RULE FOR Trade_Risk_Submission:
+A document should be classified as Trade_Risk_Submission ONLY when its
+DOMINANT content is the description of a TRADE TRANSACTION (a letter of
+credit, a single commodity sale, a single shipment, or a short-tenor
+payment obligation) and there is NO detailed description of an underlying
+named project, financed asset, mine, oilfield, LNG plant, power plant,
+or operational facility.
+
+If the document contains detailed project or asset profiling (production
+capacity, reserves, ownership/sponsor equity, security package over plant
+or mineral rights, multi-year project economics, construction/ramp-up
+schedule, country-of-operations risk discussion of the asset), it is
+Asset_Description, NOT Trade_Risk_Submission — regardless of whether
+insurance limit, indemnity, tenor, brokerage, or non-payment cover terms
+are also present.
+
+Typical Trade_Risk_Submission indicators (absent significant project profiling):
+- Letter of Credit confirmation request with Issuing Bank, Applicant, Beneficiary,
+  goods, amount, tenor, and indemnity — and nothing more
+- Single-cargo non-payment / contract frustration cover with shipment window,
+  BoL terms, pricing formula, Incoterms, and the commodity contract itself
+- Short tenor (typically under 6 months) tied to a single shipment or invoice
+- The "obligor" is named only as a buyer/counterparty in the trade, without
+  any operational profile of that obligor's business or financed assets
+
+These documents are NOT:
+- Asset_Description: when the document primarily focuses on a single financed
+  project, industrial asset, mining operation, energy project, infrastructure
+  asset, or operational facility, including detailed discussion of:
+    - project operations and production capacity
+    - ownership structure and sponsor equity contribution
+    - collateral/security package over plant, equipment, or mineral rights
+    - repayment mechanics (cash flow sweep, amortising loans)
+    - project economics and operational ramp-up
+    - asset-backed financing structure
+    - country-of-operations political and regulatory environment
+  EVEN IF the document also includes non-payment cover, indemnity percentage,
+  tenor, policy limits, financing terms, lender participation, or structured
+  credit language. In such cases, the project/asset description is the
+  dominant content and the correct label is Asset_Description.
+- MRC_Slip: which is a binding London Market placement slip showing syndicate
+  subscription structure and formal coverage wording
+- CONTRACT_DOCS: which primarily analyse legal clauses of an underlying agreement
+- CORPORATE_PROFILE: which profiles a corporate group's financial and compliance information
+- Submission_Document: which relates to commercial property insurance underwriting
+
+
+DECISION HEURISTIC — Asset_Description vs Trade_Risk_Submission:
+
+Step 1: Identify the DOMINANT subject of the document.
+- Is it a SPECIFIC NAMED PROJECT / FINANCED ASSET / OPERATIONAL FACILITY
+  (oilfield, mine, LNG plant, power plant, infrastructure project, industrial
+  facility) being described in operational, technical, ownership, or country-risk
+  detail? → Asset_Description
+- Is it a SPECIFIC TRADE TRANSACTION (letter of credit, single commodity
+  shipment, open account sale, single cargo non-payment cover) being described
+  in trade-instrument detail (parties, goods, tenor, shipment, payment terms)?
+  → Trade_Risk_Submission
+
+Step 2: When BOTH project content and trade/insurance terms appear in the same
+document, apply the dominance rule:
+- If the document spends most of its length describing a named project/asset
+  (production figures, reserves, sponsor background, security package, country
+  risk, project ownership, ramp-up, equipment lease for a named project site)
+  → Asset_Description
+- If the document spends most of its length describing a trade instrument
+  (LC structure, shipment window, BoL, commodity grade, pricing formula,
+  Incoterms, payment terms after BoL/COD) with only minimal mention of the
+  underlying obligor's operations → Trade_Risk_Submission
+
+Step 3: Tenor and structure as supporting signals:
+- Multi-year tenors (3+ years) tied to project debt, amortising loans, term
+  loans, project finance, or reserve-based lending → favour Asset_Description
+- Short tenors (days to a few months) tied to a single shipment, single LC,
+  or single invoice → favour Trade_Risk_Submission
+
+Step 4: Security and repayment as supporting signals:
+- Security over plant, equipment, mineral rights, project accounts, contract
+  rights; repayment via Excess Cash Flow Sweep, project cash flows, offtake
+  proceeds over multi-year period → favour Asset_Description
+- Payment against shipping documents, LOI, BoL presentation, or a single
+  invoice payment → favour Trade_Risk_Submission
+
+
+FINANCIAL:
+A formal financial reporting document prepared by or on behalf of a company,
+containing audited, reviewed, or compiled financial statements prepared in
+accordance with US GAAP or equivalent accounting standards, submitted as a
+supporting document for insurance underwriting purposes.
+These documents usually:
+- Are prepared by a Certified Public Accountant (CPA) firm or internal finance team
+  and include an Independent Accountant's Review Report, Audit Opinion, or
+  Compilation Report signed by the CPA or accounting firm
+- Contain a structured set of financial statements including one or more of:
+  Balance Sheets, Statements of Operations (Income Statements), Statements of
+  Retained Earnings, Statements of Cash Flows, and Notes to Financial Statements
+- Present financial data for two or more fiscal years side by side in columnar format
+  covering assets, liabilities, shareholders' equity, revenues, expenses, and net income
+- Include supplementary schedules such as Schedules of Cost of Goods Sold or
+  Schedules of Selling, General, and Administrative Expenses
+- Describe the company's accounting policies, revenue recognition methods,
+  inventory valuation, depreciation methods, lease accounting, and other
+  significant accounting practices in the Notes to Financial Statements
+- Disclose related party transactions, concentrations of risk, commitments,
+  employee benefit plans, line of credit terms, and subsequent events
+- Are submitted to an insurer or underwriter as a required financial attachment
+  supporting a Management Liability, Directors & Officers, or similar insurance application
+- Are identifiable by the CPA firm's letterhead, the company name prominently
+  displayed, and section headers such as "Balance Sheet", "Statements of Operations",
+  "Notes to Financial Statements", or "Independent Accountant's Review Report"
+
+These documents are NOT:
+- SUBMISSION: which is the insurance application form itself —
+  Financial Statements are an attachment submitted alongside the application,
+  not the application itself
+- CORPORATE_PROFILE: which is a broker-prepared profile of corporate identity,
+  compliance posture, and political risk exposure — not a CPA-reviewed financial report
+- Property_Detailed_Report or Submission_Document: which relate to commercial
+  property underwriting rather than Management Liability or financial disclosure
+
+
+SUBMISSION:
+A structured insurance renewal or new business application form submitted by an
+insured entity or its broker to an insurance carrier, formally requesting coverage
+under one or more Management Liability lines including Directors & Officers (D&O),
+Employment Practices Liability (EPL), Fiduciary Liability, Crime, and related coverages.
+These documents usually:
+- Are titled "Private Company Renewal Application", "Management Liability Application",
+  "Directors & Officers Application", or similar carrier-specific application form titles
+- Are published by a named insurance carrier (such as The Hartford, Chubb, AIG, Travelers,
+  or similar) and carry the carrier's form number and copyright notice
+- Include a General Information section capturing the applicant company name, address,
+  nature of business, SIC or NAIC code, year of incorporation, and website
+- Contain a Coverage Selection table listing coverage lines being requested (D&O, EPL,
+  Fiduciary, Crime, Kidnap & Ransom, Cyber) with requested limits, current limits,
+  current retentions, and current carrier and premium information
+- Include coverage-specific questionnaire sections for each requested line, such as:
+  Directors Officers & Entity Liability section with ownership change and securities
+  offering questions; Employment Practices Liability section with employee counts,
+  involuntary terminations, layoffs, and HR practice questions; Fiduciary Liability
+  section with plan type, participants, assets, and benefit reduction questions;
+  Crime section with internal controls, wire transfer authorization, and
+  pre-employment screening questions; Cyber section with data handling and
+  security practice questions
+- Include a Prior Knowledge disclosure question asking whether any insured person
+  has knowledge of any matter that may give rise to a claim
+- Contain Applicant Information including financial summary data (current assets,
+  total assets, revenues, net income, retained earnings) for the most recent
+  and prior fiscal year ends
+- Include state-specific Fraud Warning Statements for multiple jurisdictions
+- Require signature by an authorized officer (CEO, CFO, Owner, Controller,
+  President, or Board Chairman) with printed name, title, and date
+- May include an Appendix with additional narrative disclosures on business
+  nature, downsizing details, or internal control explanations
+- May include a Certificate of Completion or e-signature audit trail from a
+  digital signing platform confirming the authorized signatory and signing timestamp
+
+These documents are NOT:
+- FINANCIAL: which is the CPA-prepared financial report attached as
+  a supporting document to the application — the application form itself is
+  SUBMISSION, not the financial statements
+- Submission_Document: which relates to Commercial Property insurance underwriting
+  submissions, not Management Liability application forms
+- LOSS_RUN: which summarizes historical claims experience rather than formally
+  requesting new or renewed insurance coverage
+
+
+POLICYSCHEDULE:
+A formal insurance policy schedule document issued by an insurer to the insured,
+confirming the terms, coverage modules, limits, excesses, endorsements, and premium
+of a bound insurance policy.
+These documents usually:
+- Are titled "Policy Schedule", "Management Liability Package Policy Schedule",
+  or similar, and are issued by a named insurer (such as Travelers, Chubb, AIG,
+  or similar) on the insurer's official letterhead
+- Identify the insured entity by name and registered address, and state the
+  policy number, the period of insurance (inception and expiry dates), and
+  the total premium including any applicable insurance premium tax (IPT)
+- List the coverage modules or products bound under the policy (e.g. Directors
+  and Officers, Corporate Legal Liability, Employment Practices Liability, Crime
+  Insurance, Pension Trustees Liability) with each module's specific limit of
+  indemnity and excess
+- Detail sublimits applicable to specific additional benefits or extensions
+  within each coverage module (e.g. Bail Bond Costs, Emergency Costs Access,
+  Attendance Compensation, Social Engineering Fraud, Funds Transfer Loss)
+- List all endorsements attaching to and forming part of the policy, identified
+  by endorsement reference number and title (e.g. Prior Acts Exclusion, Private
+  Equity Backer Endorsement, Territorial Limits Extension)
+- May include the full text of endorsement wordings as appended sections,
+  modifying or extending the standard policy terms
+- Include the full policy wording for each coverage module as appended sections,
+  containing insuring clauses, additional benefits, exclusions, excess provisions,
+  claims conditions, general conditions, definitions, and important information
+- Provide claims notification contact details, complaints procedure information,
+  and data protection / personal information usage notices
+- Are distinct from a proposal form, application, loss run, or underwriting
+  submission — they represent the confirmed, bound insurance contract issued
+  to the policyholder after underwriting acceptance
+
+These documents are NOT:
+- SUBMISSION or MLPUKSUBMISSION: which are proposal or application forms
+  submitted to request coverage — the policy schedule is the insurer's response
+  confirming bound coverage, not the application
+- UKLOSSRUN or LOSS_RUN: which summarise historical claims experience
+- FINANCIAL: which are CPA-prepared financial statements
+- REPORTINGPACK: which are internal management or financial reporting documents
+
+
+UKLOSSRUN:
+A structured claims experience or loss run report generated by a UK-based insurer
+or its systems, summarising historical claims activity across policy years for a
+named insured under a Management Liability or similar insurance programme.
+These documents usually:
+- Are titled "Commercial Premium & Claims Summary Reporting", "Claims Experience",
+  "Claims History Report", or similar, and identify the insured by name and policy number
+- Are generated or extracted from an insurer's claims management system and carry
+  the insurer's branding (e.g. Travelers) and a report creation date and creator name
+- Organise claims data by policy year, with each year broken out by coverage line
+  (e.g. Commercial Crime, D&O Private, Employment Practices Liability) and showing
+  individual claim entries or "No Claims" notation where no claims exist
+- Include for each claim: a claim number, claim status (e.g. F for finalised/closed),
+  date reported, date of loss, gross paid amount, recovery amount, net paid amount,
+  gross outstanding reserve, net outstanding reserve to the insurer, recovery estimate,
+  and net incurred amount — all expressed in the policy currency (e.g. GBP)
+- Present subtotals or totals per coverage line and per policy year, and may present
+  a grand total across all years at the end of the report
+- Are used by brokers, insureds, and underwriters as evidence of prior claims
+  experience when renewing or placing Management Liability or similar insurance
+- Are distinct from Australian or other jurisdiction loss run formats (see AULOSSRUN)
+  by their UK insurer branding, GBP currency, Travelers or similar UK insurer
+  system formatting, and coverage lines typical of UK Management Liability programmes
+
+These documents are NOT:
+- LOSS_RUN: which is the general category for claims history documents —
+  UKLOSSRUN is the specific classification for UK insurer-formatted claims
+  experience reports of this type
+- POLICYSCHEDULE: which is the bound policy document confirming coverage terms
+- SUBMISSION or MLPUKSUBMISSION: which are application or proposal forms
+- AULOSSRUN: which is an Australian-format claims history report
+
+
+MLPUKSUBMISSION:
+A structured proposal or application form used in the United Kingdom for Management
+Liability Package (MLP) insurance, submitted by an insured entity or its broker to
+a UK insurer (such as Travelers Insurance Company Limited) to apply for one or more
+Management Liability coverage lines.
+These documents usually:
+- Are titled "Management Liability Package Proposal Form", "Proposal Form (all products)",
+  or similar, and are published by a named UK insurer carrying the insurer's branding
+  and form reference number (e.g. TRV3039 12/19)
+- Include a General Information section capturing the company registration number,
+  company legal name, registered office address, and the coverage lines being applied
+  for (Directors & Officers, Corporate Liability, Employment Practices Liability,
+  Commercial Crime, Pension Trustees Liability) with requested limits and excesses
+- Contain an Insured Details section covering the main business activity, annual
+  turnover, year of incorporation, and company structure (e.g. UK Registered
+  Private Limited Company)
+- Include coverage-specific sections for each selected line, such as Employment
+  Practices Liability (number of employees, number of locations, HR procedures
+  confirmation), Commercial Crime (employee and location counts, stock value
+  confirmation, dual control and audit confirmations), and Pension Trustees
+  Liability (total plan assets, defined benefit plan details, actuarial compliance)
+- Contain an "Applicable to all covers" section with prior claims disclosure
+  questions, awareness of circumstances questions, subsidiary location disclosures,
+  and planned transaction disclosures (mergers, acquisitions, public offerings)
+- Require a signed Declaration by a Principal, Partner, Member, Director or
+  functional equivalent, confirming the accuracy and completeness of the information
+  provided and agreeing to notify the insurer of material changes
+- Include a "Using Personal Information" or data protection notice explaining
+  how the insurer will collect and process personal data in connection with the
+  application
+- Are used specifically for UK Management Liability Package placements and are
+  distinct from US-format SUBMISSION forms, which are typically carrier-specific
+  renewal application forms for US Management Liability lines
+
+These documents are NOT:
+- SUBMISSION: which is a US-format Management Liability application form
+  published by US carriers (The Hartford, Chubb, AIG, Travelers US) —
+  MLPUKSUBMISSION is the UK equivalent proposal form for the same class of business
+- POLICYSCHEDULE: which is the bound policy document issued after acceptance —
+  the proposal form is submitted before binding, not after
+- UKLOSSRUN: which summarises historical claims experience
+- FINANCIAL: which are CPA or auditor-prepared financial statements
+
+
+AULOSSRUN:
+A structured claims history report generated by an Australian insurer, underwriter,
+or their authorised representative, summarising historical claims activity for a
+named insured under a commercial insurance policy placed in the Australian market.
+These documents usually:
+- Are titled "Claims History Report" or similar, and prominently display a
+  "Date of Issue" confirming when the report was generated
+- Identify the insured by name (Insured Name field), the insurer (e.g. CGU Insurance
+  Limited), the policy number, the policy class (e.g. Commercial Insurance), and
+  the policy period (inception and expiry dates)
+- Include a disclaimer that details are current as at the date of issue only and
+  that gross outstanding amounts are indicative and subject to change
+- Organise claims into Open Claims and Closed Claims sections, with each claim
+  showing a claim number, date of loss, description of the loss event, total
+  claim paid amount, outstanding amount, and recovered amount
+- Present a "Nil" notation under Open Claims or Closed Claims where no claims
+  exist in that category
+- Are issued by or on behalf of Australian insurers or their authorised
+  representatives (e.g. 360 Commercial Pty Ltd as authorised representative
+  of 360 Underwriting Solutions Pty Ltd), and carry the issuing entity's
+  ABN, AFSL number, address, and contact details
+- Express monetary amounts in Australian dollars (AUD, $) or the applicable
+  local currency
+- Are used by brokers, insureds, and underwriters as evidence of prior claims
+  experience when renewing or placing commercial insurance in the Australian market
+- Are distinct from UK loss run formats (see UKLOSSRUN) by their Australian
+  insurer branding, AUD currency, ABN/AFSL regulatory references, and
+  Open/Closed claims structure typical of Australian commercial insurance reports
+
+These documents are NOT:
+- LOSS_RUN: which is the general category for claims history documents —
+  AULOSSRUN is the specific classification for Australian-format claims
+  history reports of this type
+- UKLOSSRUN: which is a UK insurer-formatted claims experience report
+- POLICYSCHEDULE: which is the bound policy document confirming coverage terms
+- SUBMISSION or MLPUKSUBMISSION: which are application or proposal forms
+
+
+REPORTINGPACK:
+An internal management or executive reporting pack prepared by or for a company's
+senior leadership team, presenting detailed financial and operational performance
+data across multiple business dimensions for a defined reporting period.
+These documents usually:
+- Are titled "Executive Reporting Pack", "Management Reporting Pack",
+  "Board Reporting Pack", or similar, and identify the company name, the
+  reporting period (e.g. fiscal period, weeks, months), and the issue date
+- Contain an Executive Summary or Headlines section presenting high-level
+  sales, profit before tax (PBT), and key performance indicators (KPIs)
+  for the current period and year-to-date, compared against last year (LY)
+  and/or budget, with variance amounts and percentages
+- Include a Consolidated Profit & Loss statement, Balance Sheet, and Cash
+  Flow statement presenting financial results in tabular format across
+  actual, flash, last year, and variance columns
+- Present detailed performance breakdowns by territory (e.g. UK, North
+  America, Europe, Rest of World), by channel (e.g. standalone stores,
+  concessions, ecommerce, wholesale, clearance), and by individual partner
+  or digital platform
+- Include site-by-site or store-by-store sales and contribution tables
+  listing individual store codes, store names, net sales, last year variance,
+  gross profit percentage, payroll costs, occupancy costs, distribution costs,
+  and EBITDA contribution
+- Cover gross margin analysis, channel cost and profitability analysis,
+  head office cost breakdowns, stock position commentary, cashflow and net
+  borrowings summary, and capital expenditure reporting
+- Are produced on a regular cadence (weekly, monthly, quarterly) for internal
+  management use and are not insurance application forms, policy documents,
+  claims reports, or underwriting submissions
+- May be accompanied by appendices containing detailed channel and territory
+  metrics, partner-level performance tables, and digital channel analytics
+
+These documents are NOT:
+- FINANCIAL: which are CPA or auditor-prepared formal financial statements
+  submitted for insurance underwriting purposes — REPORTINGPACK documents
+  are internal management reports, not audited financial statements
+- POLICYSCHEDULE: which is a bound insurance policy document
+- SUBMISSION, MLPUKSUBMISSION, or any underwriting application form
+- UKLOSSRUN or AULOSSRUN: which are claims history reports
+
+
+MEDICALPROPOSAL:
+A structured proposal or application form used to apply for Medical Malpractice
+or Medical Professional Liability insurance on behalf of a hospital, clinic,
+or other healthcare facility, submitted to a specialist medical malpractice
+underwriter or insurer.
+These documents usually:
+- Are titled "Medical Malpractice Proposal Form", "Medical Malpractice Hospitals
+  Proposal Form", or similar, and are published by a named specialist underwriter
+  or managing agent (e.g. Camargue Underwriting Managers) carrying the underwriter's
+  branding, FSP licence number, and Lloyd's coverholder PIN where applicable
+- Include a General Information section capturing the proposer's legal name,
+  trading name, physical and practice addresses, company registration number,
+  VAT number, date of establishment, contact details, and company legal constitution
+- Contain a Professional Services section covering changes to clinical services,
+  name changes, amalgamations or acquisitions, service locations, financial
+  information (gross revenue from fees and other sources across prior, current,
+  and estimated financial years), planned business changes, and product or
+  device sales activities
+- Include a detailed tick-box Services section listing all applicable medical
+  and surgical specialties and departments provided at the facility (e.g.
+  anaesthesiology, obstetrics, surgery, ICU, pharmacy, emergency services,
+  bariatric surgery, assisted conception, transplant surgery, telemedicine)
+  with follow-up sub-questions for each ticked specialty requiring additional
+  detail (e.g. number of procedures, supervision arrangements, consent protocols,
+  accreditation status)
+- Contain an Exposure Information section with tables capturing licensed and
+  occupied bed counts by bed type (acute, obstetric, paediatric, ICU, NICU,
+  psychiatric, etc.) across current and prior years, and patient visit or
+  procedure volumes by type (emergency department visits, inpatient surgeries,
+  outpatient surgeries, births, etc.)
+- Include a Staff Complement section listing full-time equivalent (FTE) counts
+  of registered medical practitioners by specialty (with employed, self-employed,
+  and locum/bank staff breakdowns) and other medical staff categories (registered
+  nurses, nurse practitioners, pharmacists, paramedics, etc.), along with
+  credentialing, supervision, and professional liability insurance confirmation questions
+- Contain a Risk Management and Quality Assurance section with yes/no questions
+  covering documented risk management programmes, clinical protocols, audit systems,
+  complaints procedures, adverse event reporting, health and safety policies,
+  medical records management, equipment maintenance, sterilisation procedures,
+  and clinical quality assurance
+- Include an Indemnity Information section detailing current insurance arrangements
+  (insurer, inception date, period of cover, limits, excesses, premium) and the
+  requested limit of indemnity and excess for the new placement
+- Contain a Claims History and Punitive Measures Declaration section asking
+  whether the proposer is aware of any claims, circumstances, complaints,
+  investigations, disciplinary actions, licence conditions, criminal offences,
+  or prior insurer declinatures
+- Require a signed Declaration by an authorised signatory (e.g. Hospital Manager)
+  confirming the accuracy of the information and including broker details
+- Are used specifically for medical malpractice or medical professional liability
+  insurance placements for hospitals and healthcare facilities, and are distinct
+  from general liability proposal forms, Management Liability application forms,
+  or commercial property submissions
+
+These documents are NOT:
+- SUBMISSION or MLPUKSUBMISSION: which are Management Liability application
+  forms for D&O, EPL, Crime, and related corporate liability coverages —
+  MEDICALPROPOSAL is specifically for medical malpractice / professional
+  liability insurance for healthcare facilities
+- POLICYSCHEDULE: which is the bound policy document issued after acceptance
+- UKLOSSRUN or AULOSSRUN: which are claims history reports
+- FINANCIAL: which are CPA or auditor-prepared formal financial statements
+
+
+BROKEREMAIL:
+⚠️ CRITICAL PRIORITY RULE — BROKEREMAIL:
+If the document satisfies ALL THREE of the following conditions, you MUST classify 
+it as BROKEREMAIL regardless of how detailed, structured, or technical the content is:
+  1. Begins with a personal salutation (e.g. "Dear", "Hi", "Hello", "To Whom")
+  2. Is written in a conversational or semi-formal broker-to-underwriter tone throughout
+  3. Closes with a sign-off block containing the sender's name, title, firm name, 
+     and contact details (email/phone)
+
+An email communication sent by an insurance broker, placing broker, or reinsurance
+broker to an underwriter, insurer, or market participant, presenting a new or renewal
+insurance or reinsurance risk for consideration, requesting terms, capacity, or
+support, or providing placement-related information and updates in connection with
+an insurance transaction.
+These documents usually:
+- Are formatted as email messages, identifiable by salutation (e.g. "Hi", "Dear"),
+  a conversational or semi-formal tone, sender sign-off with the broker's name,
+  title, firm, contact details, and regulatory footer disclosures (e.g. FCA
+  authorisation, registered company details, privacy notices)
+- Are authored by a named broker or placing professional at a recognised insurance
+  or reinsurance broking firm (e.g. Marsh, WTW, Lockton, Bowring Marsh, McGill
+  Partners, Aon, or similar) acting on behalf of an insured or cedant
+- Present a specific risk, account, or placement opportunity to the recipient
+  underwriter or market, using language such as "we are looking for your support",
+  "would this be of interest", "we are doing a remarket", "please see enclosed a
+  new submission", "we are seeking capacity", or "can you provide terms"
+- Describe the insured's business operations, industry sector, geographic footprint,
+  revenue, and other relevant underwriting information in narrative or bullet-point
+  format embedded within the email body
+- May include key underwriting data such as limits requested, program structure
+  (primary, excess, tower layers), premium indications or targets, deductibles,
+  sublimits, coverage lines sought (e.g. General Liability, Excess Liability,
+  Property, Auto, Umbrella, Political Risk, D&O), commission, and wording references
+- May summarise loss history or claims experience (e.g. total paid, total incurred,
+  largest single loss) in the email body as part of the risk presentation
+- May reference or list attached documents (e.g. submission pack, loss runs,
+  exposure workbooks, coverage requests, slip, financials, renewal slides) without
+  those attachments being part of the classified document itself
+- May relate to any class of insurance business including but not limited to:
+  Casualty/Liability (General Liability, Excess Liability, Umbrella, Auto),
+  Property (facultative reinsurance, all-risks, CAT), Political Risk, Trade Credit,
+  Directors & Officers, Professional Indemnity, or specialty lines
+- May cover new business placements, renewals, remarketing exercises, requests
+  for additional capacity, lineslip support, or facultative reinsurance placements
+- May include internal forwarding notes, log entries, or brief covering messages
+  from one broker to another within the same firm (e.g. "just for logging for now
+  whilst we await more information") that form part of the email chain related to
+  a placement
+
+These documents are NOT:
+- Submission_Document: which is a structured, standalone underwriting submission
+  package for Commercial Property risks — BROKEREMAIL is the informal email
+  communication that may accompany or reference such a submission, not the
+  submission itself
+- MRC_Slip: which is the formal binding placement slip recording agreed coverage
+  terms and syndicate subscription — BROKEREMAIL may reference or precede a slip
+  but is not itself the binding contract
+- Asset_Description or CORPORATE_PROFILE: which are structured pre-underwriting
+  briefing documents prepared in report or Q&A format — BROKEREMAIL is an email
+  communication that may transmit or summarise such documents
+- Trade_Risk_Submission: which is a structured document focused on a specific
+  trade transaction instrument — BROKEREMAIL may present trade risks but is
+  classified by its email format and broker-to-underwriter communication purpose
+- LOSS_RUN, UKLOSSRUN, or AULOSSRUN: which are structured claims history reports
+  — loss data summarised inline within a broker email does not make the email
+  itself a loss run document
+- POLICYSCHEDULE: which is a bound policy document issued by an insurer
+- MLPUKSUBMISSION or SUBMISSION: which are formal proposal or application forms
+
+
 Document Content:
 {text_new}
 
-⸻
-
-2. General Liability Prompt
-
-Here we are deliberately consolidating the Management Liability variants.
-
-So:
-
-Submission
-SUBMISSION_UK_MLP_TRV
-MLPUKSUBMISSION
-
-→ Submission_Document_General_Liability
-
-Similarly the other duplicate concepts are consolidated.
-
-Allowed layout types
-
-Submission_Document_General_Liability
-Financial_General_Liability
-Loss_Run_General_Liability
-Policy_Schedule_General_Liability
-Broker_Email_General_Liability
-Medical_Proposal_General_Liability
-
-Phoenix prompt
-
-You are an expert in General Liability and Management Liability insurance documentation
-and intelligent document processing.
-Your task is to classify the given insurance-related document into EXACTLY ONE of the
-following General Liability document categories:
-1. Submission_Document_General_Liability
-2. Financial_General_Liability
-3. Loss_Run_General_Liability
-4. Policy_Schedule_General_Liability
-5. Broker_Email_General_Liability
-6. Medical_Proposal_General_Liability
-Submission_Document_General_Liability:
-A structured insurance application, proposal, or underwriting submission associated
-with General Liability / Management Liability insurance.
-This category consolidates multiple source layout names that represent the same
-document concept, including US and UK Management Liability application variants.
-Examples of source names that should map to this canonical category include:
-- Submission
-- SUBMISSION_UK_MLP_TRV
-- MLPUKSUBMISSION
-These source names must NOT be returned individually.
-The canonical output MUST be:
-Submission_Document_General_Liability
-These documents may:
-- Request new or renewal insurance coverage
-- Contain applicant information
-- Contain company information
-- Describe business operations
-- Include requested coverage limits
-- Include current insurance information
-- Include claims history questions
-- Include D&O, EPL, Crime, Fiduciary Liability or related Management Liability
-  coverage questions
-- Include underwriting questionnaires
-- Include declarations and signatures
-- Include carrier-specific application questions
-- Include UK Management Liability proposal questions
-The important distinction is that the document is an application, proposal,
-or underwriting submission rather than a policy schedule, financial report,
-or loss run.
-Financial_General_Liability:
-A formal financial reporting document submitted as supporting information for
-insurance underwriting.
-These documents may contain:
-- Balance sheets
-- Income statements
-- Statements of operations
-- Cash flow statements
-- Retained earnings
-- Notes to financial statements
-- CPA review reports
-- Audit reports
-- Financial statements
-- Multiple fiscal years
-- Assets
-- Liabilities
-- Revenue
-- Expenses
-- Net income
-The document is primarily a formal financial report rather than an insurance
-application.
-Return:
-Financial_General_Liability
-Loss_Run_General_Liability:
-A historical claims or loss experience document associated with General Liability
-or Management Liability.
-These documents may contain:
-- Claim numbers
-- Date of loss
-- Date reported
-- Claim status
-- Paid amounts
-- Reserves
-- Incurred amounts
-- Policy years
-- Coverage lines
-- Historical claims
-If the dominant purpose is historical claims experience, return:
-Loss_Run_General_Liability
-Policy_Schedule_General_Liability:
-A formal policy schedule issued after insurance has been bound.
-These documents usually contain:
-- Insured name
-- Policy number
-- Policy period
-- Premium
-- Coverage sections
-- Limits
-- Excesses / deductibles
-- Sublimits
-- Endorsements
-- Coverage modules
-- Insurer information
-This is the insurer-issued bound policy document, NOT an application.
-Return:
-Policy_Schedule_General_Liability
-Broker_Email_General_Liability:
-An insurance broker email communicating with an underwriter, insurer, or market
-participant regarding an insurance placement.
-IMPORTANT PRIORITY RULE:
-If the document:
-1. Begins with a personal salutation such as Dear, Hi, or Hello,
-2. Is written in a conversational or semi-formal broker-to-underwriter style,
-3. Contains a broker sign-off / signature block,
-then classify it as:
-Broker_Email_General_Liability
-This classification takes priority over the subject matter contained in the email.
-The email may discuss:
-- General Liability
-- Property
-- D&O
-- EPL
-- Political Risk
-- Trade Credit
-- Professional Liability
-- Other insurance classes
-The email format and broker communication purpose are the deciding factors.
-Medical_Proposal_General_Liability:
-A Medical Malpractice / Medical Professional Liability proposal or application
-for a hospital, clinic, healthcare provider, or medical facility.
-These documents may contain:
-- Medical services
-- Hospital information
-- Healthcare specialties
-- Bed counts
-- Patient volumes
-- Medical staff
-- Clinical procedures
-- Risk management
-- Claims history
-- Requested malpractice limits
-- Professional liability information
-- Medical malpractice declarations
-Return:
-Medical_Proposal_General_Liability
-IMPORTANT CONSOLIDATION RULE:
-Do NOT return these source-specific names:
-Submission
-SUBMISSION_UK_MLP_TRV
-MLPUKSUBMISSION
-They are all represented by:
-Submission_Document_General_Liability
 IMPORTANT OUTPUT RULES:
-Return EXACTLY ONE value.
-Allowed outputs:
-Submission_Document_General_Liability
-Financial_General_Liability
-Loss_Run_General_Liability
-Policy_Schedule_General_Liability
-Broker_Email_General_Liability
-Medical_Proposal_General_Liability
-Return ONLY the exact enum value.
-Document Content:
-{text_new}
+- You MUST reply with EXACTLY ONE value.
+- The value MUST MATCH one of the following ENUMS EXACTLY (character-for-character).
+- Do NOT shorten, modify, or partially return any label.
+- If the document matches "Trade_Risk_Submission", you MUST return:
+  "Trade_Risk_Submission" ONLY, so you should not miss the word "Submission"
+- Do NOT shorten, modify, or partially return any label, for eg if the document matches AULOSSRUN you MUST return: "AULOSSRUN" ONLY.
 
-⸻
-
-3. Credit and Political Risk Prompt
-
-Allowed layout types
-
-MRC_Slip_Credit_and_Political_Risk
-Corporate_Profile_Credit_and_Political_Risk
-Asset_Description_Credit_and_Political_Risk
-Contract_Docs_Credit_and_Political_Risk
-Trade_Risk_Submission_Credit_and_Political_Risk
-Commercial_Property_Submission_Credit_and_Political_Risk
-Structured_Credit_IM_Credit_and_Political_Risk
-
-And importantly:
-
-newsub is NOT included.
-
-The existing definitions for MRC_Slip, CORPORATE_PROFILE, Asset_Description,
-CONTRACT_DOCS, and Trade_Risk_Submission can be retained almost exactly from
-your current prompt, with only the canonical output names changed.
-
-For example:
-
-MRC_Slip
-
-becomes:
-
-MRC_Slip_Credit_and_Political_Risk
-
-and:
-
-Asset_Description
-
-becomes:
-
-Asset_Description_Credit_and_Political_Risk
-
-The important part is that Trade_Risk_Submission and Asset_Description remain
-separate, because your current prompt has a very strong and useful distinction
-between project/asset risk and transaction-level trade risk.
-
-Output section
-
-IMPORTANT OUTPUT RULES:
-Return EXACTLY ONE value.
-Allowed outputs:
-MRC_Slip_Credit_and_Political_Risk
-Corporate_Profile_Credit_and_Political_Risk
-Asset_Description_Credit_and_Political_Risk
-Contract_Docs_Credit_and_Political_Risk
-Trade_Risk_Submission_Credit_and_Political_Risk
-Commercial_Property_Submission_Credit_and_Political_Risk
-Structured_Credit_IM_Credit_and_Political_Risk
-Do NOT return:
-newsub
-Trade_Risk_Submission
-Asset_Description
+Allowed outputs (EXACT ENUMS):
+ACORD
+SOV
+LOSS_RUN
+INSPECTION_REPORT
+Property_Detailed_Report
+Submission_Document
+Submission_Report
+Valuation_Report
 MRC_Slip
 CORPORATE_PROFILE
+Asset_Description
 CONTRACT_DOCS
-Return ONLY the exact enum value.
-Document Content:
-{text_new}
+Trade_Risk_Submission
+FINANCIAL
+SUBMISSION
+POLICYSCHEDULE
+UKLOSSRUN
+MLPUKSUBMISSION
+AULOSSRUN
+REPORTINGPACK
+MEDICALPROPOSAL
+BROKEREMAIL
 
-⸻
+Return ONLY the enum value. Do not add text, punctuation, or explanation.
+"""
 
-4. Home Owners Prompt
+Now we should split the current Phoenix prompt into 5 separate LOB-specific prompts, while keeping the detailed definitions from your current prompt wherever they belong.
 
-Allowed layout types
-
-Inspection_Report_Home_Owners
-Valuation_Report_Home_Owners
-Submission_Report_Home_Owners
-
-Phoenix prompt
-
-You are an expert in Home Owners insurance documentation and intelligent document processing.
-Your task is to classify the given document into EXACTLY ONE of the following
-Home Owners document categories:
-1. Inspection_Report_Home_Owners
-2. Valuation_Report_Home_Owners
-3. Submission_Report_Home_Owners
-Inspection_Report_Home_Owners:
-A report created following an inspection of a residential property.
-These documents may contain:
-- Property condition
-- Construction
-- Roof
-- Exterior
-- Interior
-- Electrical
-- Plumbing
-- HVAC
-- Foundation
-- Safety systems
-- Inspection findings
-- Observed deficiencies
-- Risk improvement recommendations
-The primary purpose is documenting observed property conditions.
-Valuation_Report_Home_Owners:
-A professional valuation report used to establish the insurance value of a residential
-property or associated assets.
-These documents may contain:
-- Replacement cost
-- Reinstatement cost
-- Rebuild cost
-- Indemnity value
-- Building specifications
-- Construction information
-- Property characteristics
-- Valuation calculations
-- Depreciation
-- Inflation allowances
-- Professional valuation methodology
-The primary purpose is determining the appropriate insurance value.
-Submission_Report_Home_Owners:
-A structured residential property underwriting report used to evaluate a Home Owners
-insurance risk.
-These documents may contain:
-- Homeowner information
-- Residential property characteristics
-- Year built
-- Construction type
-- Roof material
-- Cladding
-- Foundation
-- Storeys
-- Floor area
-- Renovations
-- Occupancy
-- Property usage
-- Rebuild sum insured
-- Insurance considerations
-- Earthquake exposure
-- Flood exposure
-- Coastal exposure
-- Land slip exposure
-- Security
-- Maintenance
-- Claims information
-- Other residential underwriting information
-If the dominant purpose is presenting residential property information for
-Home Owners underwriting, classify as:
-Submission_Report_Home_Owners
-IMPORTANT OUTPUT RULES:
-Return EXACTLY ONE value.
-Allowed outputs:
-Inspection_Report_Home_Owners
-Valuation_Report_Home_Owners
-Submission_Report_Home_Owners
-Return ONLY the exact enum value.
-Document Content:
-{text_new}
-
-⸻
-
-5. Life Prompt
-
-This one is the only one I would not finalize yet.
-
-The current Phoenix prompt you gave me does not contain a Life-specific document definition, and I don’t want to invent Life layouts just to fill the fifth prompt.
-
-So for now:
-
-Life
-
-should have a Phoenix prompt only after we take the Life rows from the Excel and identify the canonical document concepts.
-
-The structure will be:
-
-You are an expert in Life insurance documentation and intelligent document processing.
-Classify the document into EXACTLY ONE of:
-<Life canonical layout 1>_Life
-<Life canonical layout 2>_Life
-<Life canonical layout 3>_Life
-...
-Document Content:
-{text_new}
-Return ONLY the exact enum value.
-
-⸻
-
-The important architectural change
-
-Your PHOENIX_PROMPTS will then conceptually become:
-
-PHOENIX_PROMPTS = {
-    "Commercial Property": "COMMERCIAL_PROPERTY_PROMPT_VERSION",
-    "General Liability": "GENERAL_LIABILITY_PROMPT_VERSION",
-    "Credit and Political Risk": "CREDIT_POLITICAL_RISK_PROMPT_VERSION",
-    "Home Owners": "HOME_OWNERS_PROMPT_VERSION",
-    "Life": "LIFE_PROMPT_VERSION",
-}
-
-And each Phoenix prompt has only its own layouts.
-
-So, for example, if:
-
-lob = "General Liability"
-
-the model will never see:
-
-SOV_Commercial_Property
-MRC_Slip_Credit_and_Political_Risk
-Submission_Report_Home_Owners
-
-That is exactly what we want.
-
-One thing I would change from the previous list
-
-I would not blindly keep Commercial_Property_Submission_Credit_and_Political_Risk or Structured_Credit_IM_Credit_and_Political_Risk until we verify the exact Excel rows behind those names. Those were derived from the earlier Excel analysis, but the file content currently available to me does not expose those rows directly. I don’t want to silently invent or incorrectly map them.
-
-The safest next step is to take the actual Excel rows for all 5 LOBs, consolidate duplicates, and then I’ll give you the final five complete Phoenix prompts ready to paste into common.phoenix_prompt—with no unsupported layout names.
+I am also attaching an excel for your reference 
