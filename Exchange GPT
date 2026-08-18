@@ -1,134 +1,251 @@
-def match_layout_type(raw_layout: str, db_types: list) -> str:
-    """
-    Match the LLM-generated layout type against the canonical
-    document_type values stored in the database.
+import re
+import logging
+import os
+import psycopg2
+from difflib import SequenceMatcher
 
-    Matching priority:
+logger = logging.getLogger(__name__)
 
-    1. Exact normalized match
-    2. Canonical DB value contained inside the LLM layout
-    3. Existing fuzzy matching
-    4. If nothing is confident enough, return raw LLM value
+MATCH_THRESHOLD = 0.5
+MIN_CHUNK_LEN = 2
+
+
+def fetch_document_types_from_db() -> list:
+    try:
+        conn = psycopg2.connect(
+            host=os.getenv("PGHOST_PROMPT"),
+            port=int(os.getenv("PGPORT_PROMPT", "5432")),
+            database=os.getenv("PGDATABASE_PROMPT"),
+            user=os.getenv("PGUSER_PROMPT"),
+            password=os.getenv("PGPASSWORD_PROMPT"),
+        )
+
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                SELECT DISTINCT document_type
+                FROM ref_prompt_library
+                WHERE document_type IS NOT NULL
+                """
+            )
+            rows = cur.fetchall()
+
+        conn.close()
+
+        return [row[0] for row in rows]
+
+    except Exception as e:
+        logger.warning(
+            "Could not fetch document types from DB: %s",
+            e
+        )
+        return []
+
+
+def _normalize(value: str) -> str:
     """
+    Remove separators and uppercase for comparison.
+
+    Example:
+        SOV_Commercial_Property
+        ->
+        SOVCOMMERCIALPROPERTY
+    """
+
+    return re.sub(
+        r"[_\-\s]+",
+        "",
+        value.upper()
+    )
+
+
+def _score(raw: str, db_type: str) -> float:
+    """
+    Original fuzzy similarity score.
+    """
+
+    if not raw or not db_type:
+        return 0.0
+
+    return SequenceMatcher(
+        None,
+        raw,
+        db_type
+    ).ratio()
+
+
+def _canonical_prefix_match(
+    raw_layout: str,
+    db_type: str
+) -> bool:
+    """
+    Checks whether the DB document type is the canonical
+    prefix of the LLM-generated layout type.
+
+    Examples:
+
+        SOV_Commercial_Property
+        SOV
+        -> True
+
+        Submission_Document_Commercial_Property
+        Submission_Document
+        -> True
+
+        Loss_Run_Commercial_Property
+        Loss_Run
+        -> True
+
+        MRC_Slip_Credit_and_Political_Risk
+        MRC_Slip
+        -> True
+
+        SOV_Commercial_Property
+        Commercial
+        -> False
+    """
+
+    if not raw_layout or not db_type:
+        return False
+
+    raw_norm = _normalize(raw_layout)
+    db_norm = _normalize(db_type)
+
+    # The DB canonical document type must be at
+    # the START of the LLM layout type.
+    return raw_norm.startswith(db_norm)
+
+
+def match_layout_type(
+    raw_layout: str,
+    db_types: list
+) -> str:
 
     if not raw_layout:
         return raw_layout
 
     if not db_types:
         logger.warning(
-            "No document types available from DB. "
-            "Returning raw layout: '%s'",
+            "No DB document types available. "
+            "Using raw layout: %s",
             raw_layout
         )
         return raw_layout
 
+    logger.info(
+        "Matching LLM layout '%s' against DB document types",
+        raw_layout
+    )
+
+    # =========================================================
+    # STEP 1
+    # Exact match
+    # =========================================================
+
     raw_norm = _normalize(raw_layout)
 
-    # ---------------------------------------------------------
-    # 1. EXACT MATCH
-    # ---------------------------------------------------------
-    for dt in db_types:
+    for db_type in db_types:
 
-        if not dt:
-            continue
-
-        dt_norm = _normalize(dt)
-
-        if raw_norm == dt_norm:
+        if raw_norm == _normalize(db_type):
 
             logger.info(
-                "Exact layout match: '%s' -> '%s'",
+                "EXACT MATCH: '%s' -> '%s'",
                 raw_layout,
-                dt
+                db_type
             )
 
-            return dt
+            return db_type
 
-    # ---------------------------------------------------------
-    # 2. CANONICAL DB VALUE IS CONTAINED IN LLM OUTPUT
+    # =========================================================
+    # STEP 2
+    # Canonical PREFIX match
+    #
+    # This is the important fix.
     #
     # Example:
     #
-    # LLM:
-    # MRC_Slip_Credit_and_Political_Risk
+    # SOV_Commercial_Property
     #
     # DB:
-    # MRC_Slip
+    # SOV
+    # Commercial
     #
-    # Result:
-    # MRC_Slip
-    # ---------------------------------------------------------
-    containment_matches = []
+    # SOV wins because it is the canonical prefix.
+    # =========================================================
 
-    for dt in db_types:
+    prefix_matches = []
 
-        if not dt:
-            continue
+    for db_type in db_types:
 
-        dt_norm = _normalize(dt)
+        if _canonical_prefix_match(
+            raw_layout,
+            db_type
+        ):
 
-        if dt_norm in raw_norm:
+            prefix_matches.append(db_type)
 
-            containment_matches.append(
-                (len(dt_norm), dt)
-            )
+    if prefix_matches:
 
-    if containment_matches:
-
-        # If multiple DB values are contained,
-        # prefer the longest / most specific one.
-        containment_matches.sort(
-            key=lambda x: x[0],
-            reverse=True
+        # If multiple DB values happen to be prefixes,
+        # choose the LONGEST one.
+        #
+        # Example:
+        # Submission
+        # Submission_Document
+        #
+        # Submission_Document should win.
+        #
+        best_prefix_match = max(
+            prefix_matches,
+            key=lambda x: len(_normalize(x))
         )
-
-        best_match = containment_matches[0][1]
 
         logger.info(
-            "Canonical containment match: '%s' -> '%s'",
+            "CANONICAL PREFIX MATCH: '%s' -> '%s'",
             raw_layout,
-            best_match
+            best_prefix_match
         )
 
-        return best_match
+        return best_prefix_match
 
-    # ---------------------------------------------------------
-    # 3. EXISTING FUZZY MATCHING
-    # ---------------------------------------------------------
+    # =========================================================
+    # STEP 3
+    # Fuzzy matching fallback
+    #
+    # Used only when no canonical prefix exists.
+    # =========================================================
+
     best_match = None
     best_score = 0.0
 
-    for dt in db_types:
-
-        if not dt:
-            continue
-
-        dt_norm = _normalize(dt)
+    for db_type in db_types:
 
         score = _score(
             raw_norm,
-            dt_norm
+            _normalize(db_type)
         )
 
         logger.debug(
-            "Score '%s' vs '%s' = %.2f",
+            "Fuzzy score '%s' vs '%s' = %.2f",
             raw_layout,
-            dt,
+            db_type,
             score
         )
 
         if score > best_score:
 
             best_score = score
-            best_match = dt
+            best_match = db_type
 
-    # ---------------------------------------------------------
-    # 4. CONFIDENT FUZZY MATCH
-    # ---------------------------------------------------------
+    # =========================================================
+    # STEP 4
+    # Accept fuzzy match only above threshold
+    # =========================================================
+
     if best_match and best_score >= MATCH_THRESHOLD:
 
         logger.info(
-            "Fuzzy layout match: '%s' -> '%s' (score=%.2f)",
+            "FUZZY MATCH: '%s' -> '%s' (score=%.2f)",
             raw_layout,
             best_match,
             best_score
@@ -136,12 +253,15 @@ def match_layout_type(raw_layout: str, db_types: list) -> str:
 
         return best_match
 
-    # ---------------------------------------------------------
-    # 5. NO MATCH
-    # ---------------------------------------------------------
+    # =========================================================
+    # STEP 5
+    # No confident match
+    # =========================================================
+
     logger.warning(
         "No confident match for layout '%s' "
-        "(best='%s', score=%.2f), using raw value",
+        "(best='%s', score=%.2f). "
+        "Using raw value.",
         raw_layout,
         best_match,
         best_score
