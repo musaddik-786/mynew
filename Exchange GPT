@@ -1,411 +1,150 @@
-handler.py
-
-import os
-import json
-import logging
-from typing import Dict, Any
-
-from service import _require_env
-
-logger = logging.getLogger(__name__)
-
-from storage_utils import (
-    download_blob_bytes,
-    upload_text_to_blob,
-    read_text_blob,
-    upload_layout_document_output,
-)
-
-from document_loader import load_document_from_bytes
-
-from classifier import (
-    classify_document,
-    classify_document_legacy,
-    UnsupportedLOBError,
-    SUPPORTED_LOBS,
-)
-from prompt_library_matcher import fetch_document_types_from_db, match_layout_type
-
-
-# ---------------------------------------------------------------------------
-# EXISTING (legacy) FLOW - unchanged behaviour.
-# blob_url (pdf/docx/txt) -> download -> Form Recognizer / TXT loader ->
-# classify -> upload extracted text -> fuzzy match -> response.
-#
-# Only change: calls classify_document_legacy() instead of classify_document(),
-# because classify_document() now requires a `lob` argument. This preserves
-# the exact original prompt/behaviour for this path.
-# ---------------------------------------------------------------------------
-async def classify_blob_pdf_layout(blob_url: str) -> Dict[str, Any]:
-
-    logger.info(
-        " classify_blob_pdf_layout invoked: blob_url=%s",
-        blob_url
-    )
-
-    try:
-        blob_bytes = await download_blob_bytes(blob_url)
-
-        logger.info(
-            "Blob downloaded: %d bytes | url=%s",
-            len(blob_bytes),
-            blob_url
-        )
-
-    except Exception as e:
-
-        logger.error(
-            " Failed to fetch blob: %s | url=%s",
-            e,
-            blob_url
-        )
-
-        return {
-            "status": False,
-            "error": f"Failed to fetch blob: {e}"
-        }
-
-    try:
-
-        document_content = await load_document_from_bytes(
-            blob_url,
-            blob_bytes
-        )
-
-        char_count = len(document_content.get("text", ""))
-
-        logger.info(
-            " Document parsed: %d chars extracted | url=%s",
-            char_count,
-            blob_url
-        )
-
-    except Exception as e:
-
-        logger.error(
-            " Document parsing failed: %s | url=%s",
-            e,
-            blob_url
-        )
-
-        return {
-            "status": False,
-            "error": f"Document parsing failed: {e}"
-        }
-
-    extracted_text = document_content.get("text", "")
-
-    try:
-
-        text_blob_url = await upload_text_to_blob(
-            blob_url,
-            extracted_text
-        )
-
-        logger.info(
-            "Extracted text uploaded: %s",
-            text_blob_url
-        )
-
-    except Exception as e:
-
-        logger.error(
-            " Failed to upload extracted text: %s | url=%s",
-            e,
-            blob_url
-        )
-
-        return {
-            "status": False,
-            "error": f"Failed to upload extracted text: {e}"
-        }
-
-    try:
-
-        layout_type = classify_document_legacy(document_content)
-
-        logger.info(
-            " Classification complete: layout_type=%s | url=%s",
-            layout_type,
-            blob_url
-        )
-
-    except Exception as e:
-
-        logger.error(
-            " Classification failed: %s | url=%s",
-            e,
-            blob_url
-        )
-
-        return {
-            "status": False,
-            "error": f"Classification failed: {e}"
-        }
-
-    db_types = fetch_document_types_from_db()
-    matched_document_type = match_layout_type(layout_type, db_types)
-
-    return {
-        "status": True,
-        "layout_type": layout_type,
-        "matched_document_type": matched_document_type,
-        "URL": blob_url,
-        "text_blob_url": text_blob_url
-    }
-
-
-# ---------------------------------------------------------------------------
-# NEW FLOW - receives LOB + text_blob_url from the upstream LOB Detection
-# MCP. Reads the raw text directly from Blob Storage in memory (no local
-# TXT file, no Form Recognizer reprocessing), classifies using the
-# LOB-specific Phoenix prompt, then runs the EXISTING, unchanged fuzzy
-# matcher (fetch_document_types_from_db + match_layout_type).
-# ---------------------------------------------------------------------------
-async def classify_lob_text_layout(lob: str, text_blob_url: str) -> Dict[str, Any]:
-
-    logger.info(
-        " classify_lob_text_layout invoked: lob=%s, text_blob_url=%s",
-        lob,
-        text_blob_url
-    )
-
-    # 1. Missing LOB
-    if not lob:
-        return {"status": False, "error": "Missing 'lob' in request."}
-
-    # 2. Unsupported LOB
-    if lob not in SUPPORTED_LOBS:
-        return {
-            "status": False,
-            "error": f"Unsupported LOB '{lob}'. Supported values are: {SUPPORTED_LOBS}"
-        }
-
-    # 3. Missing text_blob_url
-    if not text_blob_url:
-        return {"status": False, "error": "Missing 'text_blob_url' in request."}
-
-    # 4. Blob cannot be read
-    try:
-        text = await read_text_blob(text_blob_url)
-
-        logger.info(
-            "Text blob read: %d chars | lob=%s | url=%s",
-            len(text or ""),
-            lob,
-            text_blob_url
-        )
-
-    except Exception as e:
-        logger.error(
-            " Failed to read text blob: %s | lob=%s | url=%s",
-            e,
-            lob,
-            text_blob_url
-        )
-        return {"status": False, "error": f"Failed to read text blob: {e}"}
-
-    # 5. Empty text
-    if not text or not text.strip():
-        logger.error(" Text blob is empty | lob=%s | url=%s", lob, text_blob_url)
-        return {"status": False, "error": "Text blob is empty."}
-
-    # 6. Phoenix prompt mapping missing / 7. Azure OpenAI failure / 8. Classification failure
-    try:
-        layout_type = classify_document(text=text, lob=lob)
-
-        logger.info(
-            " Classification complete: layout_type=%s | lob=%s | url=%s",
-            layout_type,
-            lob,
-            text_blob_url
-        )
-
-    except UnsupportedLOBError as e:
-        logger.error(" Phoenix prompt mapping missing: %s", e)
-        return {"status": False, "error": str(e)}
-
-    except Exception as e:
-        logger.error(
-            " Classification failed: %s | lob=%s | url=%s",
-            e,
-            lob,
-            text_blob_url
-        )
-        return {"status": False, "error": f"Classification failed: {e}"}
-
-    # 9. DB fuzzy matching failure
-    try:
-        db_types = fetch_document_types_from_db()
-        matched_document_type = match_layout_type(layout_type, db_types)
-    except Exception as e:
-        logger.error(" DB fuzzy matching failed: %s", e)
-        return {"status": False, "error": f"DB fuzzy matching failed: {e}"}
-
-
-# 10. Upload final layout classification to Blob Storage
- 
-    # return {
-    #     "status": True,
-    #     "lob": lob,
-    #     "layout_type": layout_type,
-    #     "matched_document_type": matched_document_type,
-    #     "URL": text_blob_url,
-    #     "text_blob_url": text_blob_url,
-    #     # "output_blob_url": output_blob_url
-    # }
-
-    result= {
-        "status": True,
-        "lob": lob,
-        "layout_type": layout_type,
-        "matched_document_type": matched_document_type,
-        "URL": text_blob_url,
-        "text_blob_url": text_blob_url,
-        # "output_blob_url": output_blob_url
-    }
-    try:
-            output_blob_url = await upload_layout_document_output(
-            text_blob_url,
-            result
-            )
-            result["output_blob_url"] = output_blob_url
-            logger.info(
-            "Final layout classification uploaded: %s",
-            output_blob_url
-            )
-    except Exception as e:
-        logger.error(
-            "Failed to upload layout classification output: %s",
-            e
-        )
-        return {
-            "status": False,
-            "error": f"Failed to upload layout classification output: {e}"
-        }
-       
-        
-    return result
-
-
-
-
-
-
-
-
-prompt_library_matcher
-
-
-
-import re
-import logging
-import os
-import psycopg2
-from difflib import SequenceMatcher
-
-logger = logging.getLogger(__name__)
-
-MATCH_THRESHOLD = 0.5
-MIN_CHUNK_LEN = 2
-
-
-def fetch_document_types_from_db() -> list:
-    try:
-        conn = psycopg2.connect(
-            host=os.getenv("PGHOST_PROMPT"),
-            port=int(os.getenv("PGPORT_PROMPT", "5432")),
-            database=os.getenv("PGDATABASE_PROMPT"),
-            user=os.getenv("PGUSER_PROMPT"),
-            password=os.getenv("PGPASSWORD_PROMPT"),
-        )
-        with conn.cursor() as cur:
-            cur.execute("SELECT DISTINCT document_type FROM ref_prompt_library WHERE document_type IS NOT NULL")
-            rows = cur.fetchall()
-        conn.close()
-        return [row[0] for row in rows]
-    except Exception as e:
-        logger.warning("Could not fetch document types from DB: %s", e)
-        return []
-
-
-def _normalize(value: str) -> str:
-    """Strip separators and uppercase for clean comparison."""
-    return re.sub(r"[_\-\s]+", "", value.upper())
-
-
-def _coverage_score(raw: str, db_type: str, reverse: bool = False) -> float:
-    """
-    Greedy scan of raw (left-to-right or right-to-left) finding non-overlapping
-    substrings of length >= MIN_CHUNK_LEN that exist anywhere in db_type.
-    Score = total matched chars / len(raw).
-    """
-    if not raw or not db_type:
-        return 0.0
-
-    chars = list(raw) if not reverse else list(reversed(raw))
-    joined = "".join(chars)
-
-    matched = 0
-    i = 0
-    while i < len(joined):
-        found = False
-        for length in range(len(joined) - i, MIN_CHUNK_LEN - 1, -1):
-            chunk = joined[i:i + length]
-            if chunk in db_type:
-                matched += length
-                i += length
-                found = True
-                break
-        if not found:
-            i += 1
-
-    return matched / len(raw)
-
-
-def _score(raw: str, db_type: str) -> float:
-    """
-    Combine three scoring strategies and return the highest:
-      1. SequenceMatcher  — handles in-order partial/truncated matches
-      2. Coverage LTR     — handles out-of-order abbreviations, left to right
-      3. Coverage RTL     — same scan but right to left
-    """
-    if not raw or not db_type:
-        return 0.0
-
-    seq   = SequenceMatcher(None, raw, db_type).ratio()
-    c_ltr = _coverage_score(raw, db_type, reverse=False)
-    c_rtl = _coverage_score(raw, db_type, reverse=True)
-
-    return max(seq, c_ltr, c_rtl)
-
-
 def match_layout_type(raw_layout: str, db_types: list) -> str:
+    """
+    Match the LLM-generated layout type against the canonical
+    document_type values stored in the database.
+
+    Matching priority:
+
+    1. Exact normalized match
+    2. Canonical DB value contained inside the LLM layout
+    3. Existing fuzzy matching
+    4. If nothing is confident enough, return raw LLM value
+    """
+
+    if not raw_layout:
+        return raw_layout
+
     if not db_types:
+        logger.warning(
+            "No document types available from DB. "
+            "Returning raw layout: '%s'",
+            raw_layout
+        )
         return raw_layout
 
     raw_norm = _normalize(raw_layout)
 
+    # ---------------------------------------------------------
+    # 1. EXACT MATCH
+    # ---------------------------------------------------------
+    for dt in db_types:
+
+        if not dt:
+            continue
+
+        dt_norm = _normalize(dt)
+
+        if raw_norm == dt_norm:
+
+            logger.info(
+                "Exact layout match: '%s' -> '%s'",
+                raw_layout,
+                dt
+            )
+
+            return dt
+
+    # ---------------------------------------------------------
+    # 2. CANONICAL DB VALUE IS CONTAINED IN LLM OUTPUT
+    #
+    # Example:
+    #
+    # LLM:
+    # MRC_Slip_Credit_and_Political_Risk
+    #
+    # DB:
+    # MRC_Slip
+    #
+    # Result:
+    # MRC_Slip
+    # ---------------------------------------------------------
+    containment_matches = []
+
+    for dt in db_types:
+
+        if not dt:
+            continue
+
+        dt_norm = _normalize(dt)
+
+        if dt_norm in raw_norm:
+
+            containment_matches.append(
+                (len(dt_norm), dt)
+            )
+
+    if containment_matches:
+
+        # If multiple DB values are contained,
+        # prefer the longest / most specific one.
+        containment_matches.sort(
+            key=lambda x: x[0],
+            reverse=True
+        )
+
+        best_match = containment_matches[0][1]
+
+        logger.info(
+            "Canonical containment match: '%s' -> '%s'",
+            raw_layout,
+            best_match
+        )
+
+        return best_match
+
+    # ---------------------------------------------------------
+    # 3. EXISTING FUZZY MATCHING
+    # ---------------------------------------------------------
     best_match = None
     best_score = 0.0
 
     for dt in db_types:
+
+        if not dt:
+            continue
+
         dt_norm = _normalize(dt)
-        score = _score(raw_norm, dt_norm)
-        logger.debug("Score '%s' vs '%s' = %.2f", raw_layout, dt, score)
+
+        score = _score(
+            raw_norm,
+            dt_norm
+        )
+
+        logger.debug(
+            "Score '%s' vs '%s' = %.2f",
+            raw_layout,
+            dt,
+            score
+        )
+
         if score > best_score:
+
             best_score = score
             best_match = dt
 
+    # ---------------------------------------------------------
+    # 4. CONFIDENT FUZZY MATCH
+    # ---------------------------------------------------------
     if best_match and best_score >= MATCH_THRESHOLD:
+
         logger.info(
-            "Layout '%s' matched to '%s' (score=%.2f)",
-            raw_layout, best_match, best_score
+            "Fuzzy layout match: '%s' -> '%s' (score=%.2f)",
+            raw_layout,
+            best_match,
+            best_score
         )
+
         return best_match
 
+    # ---------------------------------------------------------
+    # 5. NO MATCH
+    # ---------------------------------------------------------
     logger.warning(
-        "No confident match for layout '%s' (best score=%.2f), using raw value",
-        raw_layout, best_score
+        "No confident match for layout '%s' "
+        "(best='%s', score=%.2f), using raw value",
+        raw_layout,
+        best_match,
+        best_score
     )
+
     return raw_layout
