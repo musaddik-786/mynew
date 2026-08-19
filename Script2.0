@@ -1,17 +1,1248 @@
-Imagine an agentic Under Writer Assist built and integrated with Guidewire. 
- 
-Where every submission could be reviewed in minutes, every document understood instantly, every risk evaluated intelligently, and every quote delivered faster with confidence — all seamlessly connected to the Guidewire ecosystem. 
+guidewireclient.py
 
-Now let’s look at the agentic underwriting process integrated with Guidewire. 
+# ── Low-level helpers ─────────────────────────────────────────────────────────
 
-The journey begins when a broker sends a submission email with attachments to the insurer’s mailbox. The AI-powered Email Intent Agent identifies the intent, performs a duplicate check, and if no duplicate is found, downloads the attachments. 
+def _pc_post(uri: str, body: dict) -> dict:
+    url = PC_BASE_URL + uri
+    log.info("GW PC POST %s", url)
+    resp = requests.post(url, json=body, headers=HEADERS, timeout=REQUEST_TIMEOUT)
+    _raise_for_status(resp, "PC POST", uri)
+    return resp.json()
 
-Data is extracted and structured into JSON format. This flows through Eligibility and Risk Assessment AI Agents, where the risk is evaluated, classified, and scored. A Risk Summarization AI Agent, capability generates insights and enables chat-based Q&A for the underwriter. 
 
-now here is where Guidewire’s rating engine for pricing comes in and it generates the quote, a quote document is created. The quote document, along with a pre-filled email body, is saved in the insurer’s draft folder for review. 
+def _pc_get(uri: str, params: Optional[dict] = None) -> dict:
+    url = PC_BASE_URL + uri
+    log.info("GW PC GET %s", url)
+    resp = requests.get(url, headers=HEADERS, params=params, timeout=REQUEST_TIMEOUT)
+    _raise_for_status(resp, "PC GET", uri)
+    return resp.json()
 
-The underwriter now mails the quote to the broker. Once the broker confirms acceptance via email, Guidewire’s Policy Administration system generates the policy document and it is send to the Broker for approval. After approval, and successful payment, the policy is activated. 
-Now lets begin the Demo, Welcome to Agent-verse Underwriting Assist, an intelligent layer built to enhance and amplify the Guidewire ecosystem with Agentic capabilities.(this can be before slide as well) 
 
-here, the connection between these lines looks broken 
-Now lets begin the Demo, Welcome to Agent-
+def _cc_post(uri: str, body: dict) -> dict:
+    url = CC_BASE_URL + uri
+    log.info("GW CC POST %s", url)
+    resp = requests.post(url, json=body, headers=HEADERS, timeout=REQUEST_TIMEOUT)
+    _raise_for_status(resp, "CC POST", uri)
+    return resp.json()
+
+
+def _raise_for_status(resp: requests.Response, method: str, uri: str):
+    if not resp.ok:
+        log.error(
+            "Guidewire %s %s → HTTP %s: %s",
+            method, uri, resp.status_code, resp.text[:500],
+        )
+        resp.raise_for_status()
+
+
+# ── PolicyCenter — Policy Search ──────────────────────────────────────────────
+
+def search_policy(policy_number: str) -> dict:
+    """
+    Search for a policy in Guidewire PolicyCenter by policy number.
+    Uses: POST /policy/v1/search/policies
+    """
+    body = {
+        "data": {
+            "attributes": {
+                "policyNumber": policy_number
+            }
+        }
+    }
+    return _pc_post("/policy/v1/search/policies", body)
+
+
+def get_policy_coverages(policy_id: str) -> dict:
+    """
+    Retrieve detailed coverage information for a policy from Guidewire.
+    Uses: GET /policy/v1/policies/{policyId}
+    """
+    result = _pc_get(f"/policy/v1/policies/{policy_id}")
+    if isinstance(result, dict):
+        data = result.get("data", {})
+        if isinstance(data, list):
+            log.info("[GW RAW] /policies/%s → data is LIST(%d); first item keys: %s", policy_id, len(data), sorted(data[0].keys()) if data and isinstance(data[0], dict) else "empty")
+            inner_attrs = (data[0].get("attributes", {}) if data and isinstance(data[0], dict) else {})
+        elif isinstance(data, dict):
+            log.info("[GW RAW] /policies/%s → data is DICT; keys: %s", policy_id, sorted(data.keys()))
+            inner_attrs = data.get("attributes", {})
+        else:
+            inner_attrs = {}
+        log.info("[GW RAW] attributes keys: %s", sorted(inner_attrs.keys()) if isinstance(inner_attrs, dict) else type(inner_attrs).__name__)
+        log.info("[GW RAW] totalPremium=%s", inner_attrs.get("totalPremium") if isinstance(inner_attrs, dict) else "N/A")
+    return result
+
+
+# ── ClaimCenter — Loss / FNOL Reporting ──────────────────────────────────────
+
+def report_loss_to_guidewire(
+    policy_number: str,
+    claim_number: str,
+    loss_type: str,
+    loss_date: str,
+    loss_description: str,
+    policyholder_name: str,
+    loss_location: Optional[str] = None,
+    estimated_amount: Optional[float] = None,
+) -> dict:
+    """
+    Reports a new loss (FNOL) to Guidewire ClaimCenter.
+    Uses: POST /claim/v1/fnols
+    """
+    loss_cause_map = {
+        "water damage": "WaterDamage",
+        "fire":         "Fire",
+        "fire damage":  "Fire",
+        "wind/hail":    "WindHail",
+        "hail":         "WindHail",
+        "wind":         "WindHail",
+        "tree damage":  "WindHail",
+        "theft":        "Theft",
+        "structural":   "Other",
+        "motor":        "Collision",
+        "auto":         "Collision",
+        "collision":    "Collision",
+    }
+    loss_cause = loss_cause_map.get(loss_type.lower().strip(), "Other")
+
+    body = {
+        "data": {
+            "attributes": {
+                "policyNumber": policy_number,
+                "lossDate": loss_date,
+                "lossCause": loss_cause,
+                "description": loss_description,
+                "claimNumber": claim_number,
+                "insured": {"displayName": policyholder_name},
+            }
+        }
+    }
+    if loss_location:
+        body["data"]["attributes"]["lossLocation"] = {"displayName": loss_location}
+    if estimated_amount is not None:
+        body["data"]["attributes"]["estimatedTotalClaim"] = {
+            "amount": estimated_amount,
+            "currency": "USD",
+        }
+
+    return _cc_post("/claim/v1/fnols", body)
+
+
+# ── ClaimCenter — Claim Creation (draft + submit) ─────────────────────────────
+
+def create_claim(payload: dict) -> dict:
+    """
+    Drafts a new claim in Guidewire ClaimCenter.
+    Uses: POST /claim/v1/claims
+    The returned claimNumber is a placeholder — the real, final claim number
+    is only issued once the draft is submitted via submit_claim().
+    """
+    return _cc_post("/claim/v1/claims", payload)
+
+
+def submit_claim(claim_id: str) -> dict:
+    """
+    Submits a drafted claim (by its ClaimCenter id, e.g. "cc:S32Rb9Ql9BvGC0y1TWeAF"),
+    moving it out of draft status and assigning it.
+    Uses: POST /claim/v1/claims/{claimId}/submit
+    """
+    body = {"data": {"attributes": {"initialAssignment": {"autoAssign": True}}}}
+    return _cc_post(f"/claim/v1/claims/{claim_id}/submit", body)
+
+
+# ── Response parsers ──────────────────────────────────────────────────────────
+
+def parse_policy_from_search(gw_response: dict) -> Optional[dict]:
+    """
+    Extract a flat normalised policy dict from a Guidewire search response.
+    Returns None if no policies were found.
+    """
+    try:
+        data_list = gw_response.get("data", [])
+        if not data_list:
+            log.warning("No policy data returned from Guidewire")
+            return None
+
+        policy = data_list[0]
+        attrs = policy.get("attributes", {})
+
+        parsed = {
+            "gw_policy_id":    attrs.get("policyId", ""),
+            "policy_number":   attrs.get("policyNumber", ""),
+            "status":          attrs.get("status", "Unknown"),
+            "effective_date":  attrs.get("effectiveDate", ""),
+            "expiration_date": attrs.get("expirationDate", ""),
+            "coverage_types":  attrs.get("coverageTypes", []),
+            "policyholder_name":    attrs.get("insuredName", ""),
+            "policyholder_address": attrs.get("policyAddress", ""),
+            "account_number":  attrs.get("accountNumber", ""),
+            "product_name":    (attrs.get("product") or {}).get("displayName", ""),
+            "raw":             gw_response,
+        }
+
+        log.info("Parsed policy: %s", {k: v for k, v in parsed.items() if k != "raw"})
+        return parsed
+
+    except Exception as exc:
+        log.exception("Failed to parse Guidewire policy response")
+        raise ValueError(f"Unable to parse Guidewire response: {str(exc)}")
+
+
+
+
+
+"""
+handler.py — Policy Coverage Verification
+──────────────────────────────────────────
+Functions:
+  gw_search_policy          Search Guidewire for a policy by number
+  gw_get_policy_coverages   Fetch full coverage detail from Guidewire
+  save_policy_details       Persist Guidewire policy data to local DB
+  get_policy_details        Read policy from local DB
+  verify_coverage           LLM-based coverage verdict for a claim
+  record_claim_payment      Record an approved payment and reduce remaining coverage
+"""
+
+import json
+import logging
+import os
+import random
+import sys
+from datetime import datetime
+from zoneinfo import ZoneInfo
+
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "common"))
+
+from db import get_db_connection, row_to_dict  # noqa: E402
+from dotenv import load_dotenv, find_dotenv
+from openai import AzureOpenAI
+from policy_coverage_mcp import guidewire_client
+
+load_dotenv(find_dotenv())
+
+log = logging.getLogger(__name__)
+
+AZURE_OPENAI_ENDPOINT = os.environ.get("AZURE_OPENAI_ENDPOINT", "")
+AZURE_OPENAI_API_KEY = os.environ.get("AZURE_OPENAI_API_KEY", "")
+AZURE_OPENAI_API_VERSION = os.environ.get("AZURE_OPENAI_API_VERSION", "2025-01-01-preview")
+AZURE_OPENAI_CHAT_DEPLOYMENT = os.environ.get("AZURE_OPENAI_CHAT_DEPLOYMENT", "gpt-4.1-claims")
+
+# These policy numbers are verified against the local policy_details table
+# instead of Guidewire PolicyCenter. All other policy numbers keep using the
+# normal Guidewire lookup below.
+LOCAL_ONLY_POLICY_NUMBERS = {"73-300676", "73-400676", "73-123676"}
+
+
+def _get_openai_client() -> AzureOpenAI:
+    return AzureOpenAI(
+        api_key=AZURE_OPENAI_API_KEY,
+        api_version=AZURE_OPENAI_API_VERSION,
+        azure_endpoint=AZURE_OPENAI_ENDPOINT,
+    )
+
+
+def _policy_from_local_row(row: dict) -> dict:
+    """Maps a policy_details row into the same shape gw_search_policy normally returns."""
+    coverage_type = row.get("coverage_type")
+    return {
+        "gw_policy_id": row.get("gw_policy_id") or "",
+        "policy_number": row.get("policy_number") or "",
+        "status": row.get("status") or "Unknown",
+        "effective_date": row.get("effective_date"),
+        "expiration_date": row.get("expiration_date"),
+        "coverage_types": [coverage_type] if coverage_type else [],
+        "policyholder_name": row.get("policyholder_name") or "",
+        "policyholder_address": row.get("policy_address") or "",
+        "account_number": row.get("account_number") or "",
+        "product_name": coverage_type or "",
+        "raw": None,
+    }
+
+
+# ── Guidewire: Policy Search ──────────────────────────────────────────────────
+
+def gw_search_policy(policy_number: str) -> dict:
+    """
+    Search for the given policy number. For LOCAL_ONLY_POLICY_NUMBERS, checks
+    the local policy_details table instead of Guidewire. For every other
+    policy number, searches Guidewire PolicyCenter as usual.
+    Returns found=True with normalised policy dict, or found=False with error.
+    """
+    trimmed = (policy_number or "").strip()
+    if trimmed in LOCAL_ONLY_POLICY_NUMBERS:
+        row = get_policy_details(trimmed)
+        if not row:
+            return {
+                "found": False,
+                "policy": None,
+                "error": f"Policy '{trimmed}' not found in local policy_details table.",
+                "raw_gw_response": {},
+            }
+        return {
+            "found": True,
+            "policy": _policy_from_local_row(row),
+            "error": None,
+            "raw_gw_response": None,
+        }
+
+    try:
+        raw = guidewire_client.search_policy(policy_number)
+        parsed = guidewire_client.parse_policy_from_search(raw)
+
+        if not parsed:
+            return {
+                "found": False,
+                "policy": None,
+                "error": f"No policy found in Guidewire for policy number '{policy_number}'.",
+                "raw_gw_response": raw,
+            }
+
+        return {
+            "found": True,
+            "policy": parsed,
+            "error": None,
+            "raw_gw_response": raw,
+        }
+
+    except Exception as exc:
+        status_code = getattr(getattr(exc, "response", None), "status_code", None)
+        if status_code == 404:
+            return {
+                "found": False,
+                "policy": None,
+                "error": f"Policy '{policy_number}' not found in Guidewire (HTTP 404).",
+                "raw_gw_response": {},
+            }
+        log.exception("Guidewire policy search failed for %s", policy_number)
+        return {
+            "found": False,
+            "policy": None,
+            "error": f"Guidewire API error: {str(exc)}",
+            "raw_gw_response": {},
+        }
+
+
+# ── Guidewire: Policy Coverages ───────────────────────────────────────────────
+
+def gw_get_policy_coverages(policy_number: str) -> dict:
+    """
+    Fetch full coverage details for a policy from Guidewire.
+    Searches by policy number first, then fetches the detail record.
+    """
+    search_result = gw_search_policy(policy_number)
+    if not search_result["found"]:
+        return search_result
+
+    gw_policy_id = search_result["policy"]["gw_policy_id"]
+    try:
+        detail = guidewire_client.get_policy_coverages(gw_policy_id)
+        return {
+            "found": True,
+            "policy_id": gw_policy_id,
+            "coverage_detail": detail,
+            "error": None,
+        }
+    except Exception as exc:
+        log.exception("gw_get_policy_coverages failed for %s", gw_policy_id)
+        return {
+            "found": False,
+            "policy_id": gw_policy_id,
+            "coverage_detail": None,
+            "error": str(exc),
+        }
+
+
+# ── Local DB: Save & Read policy_details ─────────────────────────────────────
+
+def save_policy_details(policy_number: str) -> dict:
+    """
+    Fetch policy from Guidewire (search + coverage detail) and persist to the
+    local policy_details table.  Deductible, coverage limit, and exclusions are
+    extracted from the Guidewire coverage response where available.
+
+    For LOCAL_ONLY_POLICY_NUMBERS the record already lives in policy_details
+    (that's what gw_search_policy just verified against), so this is a no-op —
+    there's nothing to fetch from Guidewire and nothing to overwrite.
+    """
+    trimmed = (policy_number or "").strip()
+    if trimmed in LOCAL_ONLY_POLICY_NUMBERS:
+        row = get_policy_details(trimmed)
+        if not row:
+            return {"found": False, "policy": None, "error": f"Policy '{trimmed}' not found in local policy_details table.", "raw_gw_response": {}}
+        return {"saved": True, **row}
+
+    search_result = gw_search_policy(policy_number)
+    if not search_result["found"]:
+        return search_result
+
+    policy = search_result["policy"]
+    gw_policy_id = policy.get("gw_policy_id")
+    effective_date = policy.get("effective_date")
+    expiration_date = policy.get("expiration_date")
+    policyholder_name = policy.get("policyholder_name")
+    account_number = policy.get("account_number")
+    policy_address = policy.get("policyholder_address") or (
+        policy.get("raw", {})
+        .get("data", [{}])[0]
+        .get("attributes", {})
+        .get("policyAddress")
+    )
+
+    coverage_result = gw_get_policy_coverages(policy_number)
+    attrs = {}
+    if coverage_result.get("found"):
+        raw_detail = coverage_result.get("coverage_detail", {})
+        log.info("[GW DEBUG] raw_detail top-level keys: %s", list(raw_detail.keys()) if isinstance(raw_detail, dict) else type(raw_detail).__name__)
+        data_node = raw_detail.get("data", {}) if isinstance(raw_detail, dict) else {}
+        log.info("[GW DEBUG] data_node type=%s", type(data_node).__name__)
+        # Guidewire detail endpoint may return data as a dict (single record) or as a list
+        if isinstance(data_node, list):
+            log.info("[GW DEBUG] data is a LIST with %d items — taking first element", len(data_node))
+            data_node = data_node[0] if data_node else {}
+        attrs = data_node.get("attributes", {}) if isinstance(data_node, dict) else {}
+        log.info("[GW DEBUG] attrs keys: %s", sorted(attrs.keys()))
+        log.info("[GW DEBUG] totalPremium=%s  lines_type=%s", attrs.get("totalPremium"), type(attrs.get("lines")).__name__)
+    else:
+        log.warning("[GW DEBUG] gw_get_policy_coverages not found for %s: %s", policy_number, coverage_result.get("error"))
+
+    state = attrs.get("baseState", {}).get("name") if isinstance(attrs.get("baseState"), dict) else None
+    term_type = attrs.get("termType", {}).get("name") if isinstance(attrs.get("termType"), dict) else None
+    premium_amount = (attrs.get("totalPremium") or {}).get("amount") if isinstance(attrs.get("totalPremium"), dict) else None
+    currency = (attrs.get("preferredCoverageCurrency") or {}).get("code") if isinstance(attrs.get("preferredCoverageCurrency"), dict) else None
+
+    addr = attrs.get("policyAddress") or {}
+    city = addr.get("city") if isinstance(addr, dict) else None
+    country = addr.get("country") if isinstance(addr, dict) else None
+    postal_code = addr.get("postalCode") if isinstance(addr, dict) else None
+
+    product_name = (attrs.get("product") or {}).get("displayName", "") if isinstance(attrs.get("product"), dict) else ""
+    coverage_type = "Homeowners" if "Homeowners" in product_name else (product_name or policy.get("product_name", ""))
+    status = "Active" if coverage_result.get("found") else (policy.get("status") or "Unknown")
+
+    # Extract deductible, coverage limit, and exclusions from Guidewire coverage lines
+    # deductible = None
+    # coverage_limit = None
+    # exclusions_list = []
+
+    # lines_data = (attrs.get("lines") or {}).get("data", []) if isinstance(attrs.get("lines"), dict) else []
+    # for line in lines_data:
+    #     line_attrs = line.get("attributes", {}) if isinstance(line, dict) else {}
+    #     coverages_data = (line_attrs.get("coverages") or {}).get("data", []) if isinstance(line_attrs.get("coverages"), dict) else []
+    #     for cov in coverages_data:
+    #         cov_attrs = cov.get("attributes", {}) if isinstance(cov, dict) else {}
+    #         # Deductible — take the first non-null value found
+    #         if deductible is None:
+    #             ded = cov_attrs.get("deductible") or {}
+    #             if isinstance(ded, dict) and ded.get("amount") is not None:
+    #                 try:
+    #                     deductible = float(ded["amount"])
+    #                 except (TypeError, ValueError):
+    #                     pass
+    #         # Coverage limit
+    #         if coverage_limit is None:
+    #             lim = cov_attrs.get("coverageAmount") or cov_attrs.get("limit") or {}
+    #             if isinstance(lim, dict) and lim.get("amount") is not None:
+    #                 try:
+    #                     # coverage_limit = float(lim["amount"])
+    #                     coverage_limit = 500000
+    #                 except (TypeError, ValueError):
+    #                     pass
+    #         # Exclusions
+    #         for excl in (cov_attrs.get("exclusions") or []):
+    #             name = (excl.get("attributes") or {}).get("name") if isinstance(excl, dict) else None
+    #             if name:
+    #                 exclusions_list.append(name)
+
+    # exclusions = ",".join(exclusions_list) if exclusions_list else None
+
+
+
+
+
+
+
+# Extract deductible, coverage limit, and exclusions from Guidewire coverage lines
+    # deductible = None
+    # coverage_limit = None
+    # exclusions_list = []
+    # lines_data = (attrs.get("lines") or {}).get("data", []) if isinstance(attrs.get("lines"), dict) else []
+    # for line in lines_data:
+    #     line_attrs = line.get("attributes", {}) if isinstance(line, dict) else {}
+    #     coverages_data = (
+    #         (line_attrs.get("coverages") or {}).get("data", [])
+    #         if isinstance(line_attrs.get("coverages"), dict)
+    #         else []
+    #     )
+    #     for cov in coverages_data:
+    #         cov_attrs = cov.get("attributes", {}) if isinstance(cov, dict) else {}
+    #         # Deductible
+    #         if deductible is None:
+    #             ded = cov_attrs.get("deductible") or {}
+    #             if isinstance(ded, dict) and ded.get("amount") is not None:
+    #                 try:
+    #                     deductible = float(ded["amount"])
+    #                 except (TypeError, ValueError):
+    #                     pass
+    #         # Coverage Limit
+    #         if coverage_limit is None:
+    #             lim = cov_attrs.get("coverageAmount") or cov_attrs.get("limit") or {}
+    #             if isinstance(lim, dict) and lim.get("amount") is not None:
+    #                 try:
+    #                     coverage_limit = float(lim["amount"])
+    #                 except (TypeError, ValueError):
+    #                     pass
+    #         # Exclusions
+    #         for excl in (cov_attrs.get("exclusions") or []):
+    #             name = (
+    #                 (excl.get("attributes") or {}).get("name")
+    #                 if isinstance(excl, dict)
+    #                 else None
+    #             )
+    #             if name:
+    #                 exclusions_list.append(name)
+    # # Fallback ONLY if Guidewire did not provide a coverage limit
+    # if coverage_limit is None:
+    #     log.warning(
+    #         "Guidewire did not return a coverage limit for policy %s. Using default PoC value 500000.",
+    #         policy_number,
+    #     )
+    #     coverage_limit = 500000.0
+    # exclusions = ",".join(exclusions_list) if exclusions_list else None
+
+
+
+
+
+
+
+
+    # Extract deductible, coverage limit, and exclusions from Guidewire coverage lines
+    deductible = None
+    coverage_limit = None
+    exclusions_list = []
+
+    lines_data = (
+        (attrs.get("lines") or {}).get("data", [])
+        if isinstance(attrs.get("lines"), dict)
+        else []
+    )
+
+    for line in lines_data:
+        line_attrs = line.get("attributes", {}) if isinstance(line, dict) else {}
+
+        coverages_data = (
+            (line_attrs.get("coverages") or {}).get("data", [])
+            if isinstance(line_attrs.get("coverages"), dict)
+            else []
+        )
+
+        for cov in coverages_data:
+            cov_attrs = cov.get("attributes", {}) if isinstance(cov, dict) else {}
+
+            # Deductible from Guidewire
+            if deductible is None:
+                ded = cov_attrs.get("deductible") or {}
+                if isinstance(ded, dict) and ded.get("amount") is not None:
+                    try:
+                        deductible = float(ded["amount"])
+                    except (TypeError, ValueError):
+                        pass
+
+            # Coverage Limit from Guidewire
+            if coverage_limit is None:
+                lim = cov_attrs.get("coverageAmount") or cov_attrs.get("limit") or {}
+                if isinstance(lim, dict) and lim.get("amount") is not None:
+                    try:
+                        coverage_limit = float(lim["amount"])
+                    except (TypeError, ValueError):
+                        pass
+
+            # Exclusions
+            for excl in (cov_attrs.get("exclusions") or []):
+                name = (
+                    (excl.get("attributes") or {}).get("name")
+                    if isinstance(excl, dict)
+                    else None
+                )
+                if name:
+                    exclusions_list.append(name)
+
+    # ------------------------------------------------------------------
+    # PoC fallback logic when Guidewire does not provide values
+    # ------------------------------------------------------------------
+    coverage = (coverage_type or "").lower()
+
+    if premium_amount is not None:
+        premium_amount = float(premium_amount)
+
+        # Coverage Limit
+        # Industry benchmark: homeowners premium ≈ 0.7% of dwelling coverage → limit = premium / 0.007
+        # Vehicle premium ≈ 3% of vehicle value → limit = premium / 0.03
+        if coverage_limit is None:
+            if "vehicle" in coverage:
+                coverage_limit = round(premium_amount / 0.03, 2)
+            elif "homeowners" in coverage or "personal" in coverage:
+                coverage_limit = round(premium_amount / 0.007, 2)
+            log.info(
+                "Coverage limit not returned by Guidewire. Calculated value: %s",
+                coverage_limit,
+            )
+
+        # Deductible
+        # Homeowners: typically $1,000–$2,500; approximate as 1% of coverage limit
+        # Vehicle: typically $500–$1,000; approximate as 1% of coverage limit
+        if deductible is None:
+            if coverage_limit is not None:
+                deductible = round(coverage_limit * 0.01, 2)
+            elif "vehicle" in coverage:
+                deductible = round(premium_amount * 0.35, 2)
+            elif "homeowners" in coverage or "personal" in coverage:
+                deductible = round(premium_amount * 0.65, 2)
+            log.info(
+                "Deductible not returned by Guidewire. Calculated value: %s",
+                deductible,
+            )
+
+    exclusions = ",".join(exclusions_list) if exclusions_list else None
+
+
+
+    conn = get_db_connection()
+    try:
+        cur = conn.cursor()
+        cur.execute(
+            """
+            INSERT INTO policy_details (
+                policy_number, gw_policy_id, status, coverage_type,
+                deductible, coverage_limit, remaining_coverage_limit, exclusions,
+                effective_date, expiration_date, premium_amount,
+                policyholder_name, account_number, policy_address,
+                state, term_type, currency, city, country, postal_code
+            ) VALUES (
+                %s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s
+            )
+            ON CONFLICT (policy_number) DO UPDATE SET
+                gw_policy_id = EXCLUDED.gw_policy_id,
+                status = EXCLUDED.status,
+                coverage_type = EXCLUDED.coverage_type,
+                deductible = EXCLUDED.deductible,
+                coverage_limit = EXCLUDED.coverage_limit,
+                remaining_coverage_limit = COALESCE(
+                    policy_details.remaining_coverage_limit, EXCLUDED.coverage_limit
+                ),
+                exclusions = EXCLUDED.exclusions,
+                effective_date = EXCLUDED.effective_date,
+                expiration_date = EXCLUDED.expiration_date,
+                premium_amount = EXCLUDED.premium_amount,
+                policyholder_name = EXCLUDED.policyholder_name,
+                account_number = EXCLUDED.account_number,
+                policy_address = EXCLUDED.policy_address,
+                state = EXCLUDED.state,
+                term_type = EXCLUDED.term_type,
+                currency = EXCLUDED.currency,
+                city = EXCLUDED.city,
+                country = EXCLUDED.country,
+                postal_code = EXCLUDED.postal_code
+            """,
+            (
+                policy_number, gw_policy_id, status, coverage_type,
+                deductible, coverage_limit, coverage_limit, exclusions,
+                effective_date, expiration_date, premium_amount,
+                policyholder_name, account_number, policy_address,
+                state, term_type, currency, city, country, postal_code,
+            ),
+        )
+        conn.commit()
+    except Exception:
+        conn.rollback()
+        raise
+    finally:
+        conn.close()
+
+    return {
+        "saved": True,
+        "policy_number": policy_number,
+        "gw_policy_id": gw_policy_id,
+        "status": status,
+        "coverage_type": coverage_type,
+        "deductible": deductible,
+        "coverage_limit": coverage_limit,
+        "exclusions": exclusions,
+        "premium_amount": premium_amount,
+        "currency": currency,
+    }
+
+
+def get_policy_details(policy_number: str) -> dict:
+    """Read a policy record from the local policy_details table."""
+    conn = get_db_connection()
+    try:
+        cur = conn.cursor()
+        cur.execute("SELECT * FROM policy_details WHERE policy_number = %s", (policy_number,))
+        return row_to_dict(cur.fetchone())
+    finally:
+        conn.close()
+
+
+# ── Coverage Verification ─────────────────────────────────────────────────────
+
+def get_coverage_verification_result(claim_id: str) -> dict:
+    """
+    Read an existing coverage verification result for the claim.
+    Returns the record if found, or {"found": False} if none exists yet.
+    """
+    conn = get_db_connection()
+    try:
+        cur = conn.cursor()
+        cur.execute(
+            "SELECT * FROM coverage_verification_results WHERE claim_number = %s",
+            (claim_id,),
+        )
+        row = row_to_dict(cur.fetchone())
+        if row:
+            return {"found": True, **row}
+        return {"found": False, "claim_number": claim_id}
+    finally:
+        conn.close()
+
+
+def verify_coverage(claim_id: str) -> dict:
+    """
+    Look up the claim and its linked policy from the local DB, send to the LLM
+    to determine the coverage verdict, and persist the result to
+    coverage_verification_results.
+    """
+    conn = get_db_connection()
+    try:
+        cur = conn.cursor()
+        cur.execute("SELECT * FROM claims WHERE claim_number = %s", (claim_id,))
+        claim = row_to_dict(cur.fetchone())
+        if not claim:
+            return {"error": f"Claim {claim_id} not found"}
+
+        policy_number = claim.get("policy_number")
+        if not policy_number:
+            return {"error": "No policy_number on claim", "claim": claim}
+
+        cur.execute("SELECT * FROM policy_details WHERE policy_number = %s", (policy_number,))
+        policy = row_to_dict(cur.fetchone())
+        if not policy:
+            return {"error": f"Policy {policy_number} not found in local DB — run save_policy_details first", "claim": claim}
+    finally:
+        conn.close()
+
+    loss_type = claim.get("loss_type", "")
+    cause_of_loss = claim.get("detected_cause") or claim.get("cause_of_loss", "")
+    coverage_type = policy.get("coverage_type", "")
+    coverage_limit = float(policy.get("remaining_coverage_limit") or policy.get("coverage_limit") or 0)
+    deductible = float(policy.get("deductible") or 0)
+    exclusions_raw = policy.get("exclusions") or ""
+    exclusions = (
+        json.loads(exclusions_raw)
+        if isinstance(exclusions_raw, str) and exclusions_raw.startswith("[")
+        else [x.strip() for x in exclusions_raw.split(",") if x.strip()]
+    )
+    loss_amount = float(
+        claim.get("loss_amount") or claim.get("estimated_loss_amount") or claim.get("estimated_cost") or 0
+    )
+
+    try:
+        client = _get_openai_client()
+        prompt = (
+            "You are a policy coverage analyst. Determine whether the claim is covered.\n"
+            "IMPORTANT: If Estimated Loss Amount is 0 or not provided, the damage has not yet been assessed. "
+            "Do NOT return 'Needs Investigation' solely because the loss amount is zero. "
+            "Instead, evaluate whether the loss type and cause of loss are covered under the policy type "
+            "and whether any exclusions apply. "
+            "If covered with no exclusion triggered, return coverage_verdict='Covered - Pending Assessment' "
+            "with net_payable=0 and coverage_notes explaining that the net payable will be calculated "
+            "once the damage assessment is complete.\n"
+            "Respond with JSON only: "
+            '{"coverage_verdict": "Covered|Covered - Pending Assessment|Partially Covered|Not Covered|Needs Investigation", '
+            '"exclusion_triggered": true/false, '
+            '"exclusion_details": "...", '
+            '"net_payable": <number>, '
+            '"coverage_notes": "..."}.\n\n'
+            f"Policy Coverage Type: {coverage_type}\n"
+            f"Remaining Coverage Limit: {coverage_limit}\n"
+            f"Deductible: {deductible}\n"
+            f"Policy Exclusions: {exclusions}\n"
+            f"Claim Loss Type: {loss_type}\n"
+            f"Cause of Loss: {cause_of_loss}\n"
+            f"Estimated Loss Amount: {loss_amount}"
+        )
+        response = client.chat.completions.create(
+            model=AZURE_OPENAI_CHAT_DEPLOYMENT,
+            messages=[{"role": "user", "content": prompt}],
+            temperature=0.0,
+            response_format={"type": "json_object"},
+        )
+        llm_result = json.loads(response.choices[0].message.content)
+    except Exception as e:
+        log.warning("LLM coverage check failed: %s", e)
+        net_payable = max(0.0, loss_amount - deductible)
+        if coverage_limit:
+            net_payable = min(net_payable, coverage_limit)
+        llm_result = {
+            "coverage_verdict": "Needs Investigation",
+            "exclusion_triggered": False,
+            "exclusion_details": "",
+            "net_payable": net_payable,
+            "coverage_notes": "Automated LLM check failed; manual review needed",
+        }
+
+    conn2 = get_db_connection()
+    try:
+        cur2 = conn2.cursor()
+        cur2.execute(
+            """
+            INSERT INTO coverage_verification_results
+              (claim_number, policy_number, coverage_verdict, exclusion_triggered,
+               exclusion_details, net_payable, coverage_notes, verified_at)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+            ON CONFLICT (claim_number) DO UPDATE SET
+              coverage_verdict = EXCLUDED.coverage_verdict,
+              exclusion_triggered = EXCLUDED.exclusion_triggered,
+              exclusion_details = EXCLUDED.exclusion_details,
+              net_payable = EXCLUDED.net_payable,
+              coverage_notes = EXCLUDED.coverage_notes,
+              verified_at = EXCLUDED.verified_at
+            """,
+            (
+                claim_id, str(policy_number),
+                llm_result.get("coverage_verdict"),
+                llm_result.get("exclusion_triggered", False),
+                llm_result.get("exclusion_details"),
+                llm_result.get("net_payable"),
+                llm_result.get("coverage_notes"),
+                datetime.now(ZoneInfo("UTC")).isoformat(),
+            ),
+        )
+        conn2.commit()
+    except Exception as e:
+        conn2.rollback()
+        log.warning("Could not write coverage_verification_results: %s", e)
+    finally:
+        conn2.close()
+
+    return {
+        "claim_number": claim_id,
+        "policy_number": str(policy_number),
+        "coverage_type": coverage_type,
+        "remaining_coverage_limit": coverage_limit,
+        "deductible": deductible,
+        "loss_amount": loss_amount,
+        "exclusions": exclusions,
+        **llm_result,
+    }
+
+
+# ── Payment Tracking ──────────────────────────────────────────────────────────
+
+def record_claim_payment(
+    claim_id: str,
+    amount_paid: float,
+    approved_by: str = None,
+    notes: str = None,
+) -> dict:
+    """
+    Record an approved claim payment and reduce the policy's remaining_coverage_limit
+    in the local policy_details table.
+
+    This tracks how much of the coverage has been consumed so future verify_coverage
+    calls use the correct remaining limit, not the original full limit.
+    """
+    conn = get_db_connection()
+    try:
+        cur = conn.cursor()
+        cur.execute("SELECT * FROM claims WHERE claim_number = %s", (claim_id,))
+        claim = row_to_dict(cur.fetchone())
+    finally:
+        conn.close()
+
+    if not claim:
+        return {"error": f"Claim {claim_id} not found"}
+
+    policy_number = claim.get("policy_number")
+    if not policy_number:
+        return {"error": "No policy_number on claim"}
+
+    conn2 = get_db_connection()
+    try:
+        cur2 = conn2.cursor()
+        cur2.execute(
+            "SELECT coverage_limit, remaining_coverage_limit FROM policy_details WHERE policy_number = %s",
+            (policy_number,),
+        )
+        policy = row_to_dict(cur2.fetchone())
+    finally:
+        conn2.close()
+
+    if not policy:
+        return {"error": f"Policy {policy_number} not found in local DB — run save_policy_details first"}
+
+    coverage_before = float(
+        policy.get("remaining_coverage_limit") or policy.get("coverage_limit") or 0
+    )
+    coverage_after = max(0.0, coverage_before - amount_paid)
+
+    payment_id = f"PAY-{datetime.now().strftime('%Y%m%d%H%M%S')}-{random.randint(1000, 9999)}"
+    payment_date = datetime.now(ZoneInfo("UTC")).isoformat()
+
+    conn3 = get_db_connection()
+    try:
+        cur3 = conn3.cursor()
+        cur3.execute(
+            """
+            INSERT INTO claim_payments (
+                payment_id, claim_number, policy_number, amount_paid, payment_date,
+                approved_by, payment_status, coverage_before, coverage_after, notes
+            ) VALUES (%s,%s,%s,%s,%s,%s,'Released',%s,%s,%s)
+            """,
+            (
+                payment_id, claim_id, policy_number, amount_paid, payment_date,
+                approved_by, coverage_before, coverage_after, notes,
+            ),
+        )
+        cur3.execute(
+            "UPDATE policy_details SET remaining_coverage_limit = %s WHERE policy_number = %s",
+            (coverage_after, policy_number),
+        )
+        cur3.execute(
+            "UPDATE claims SET status = 'Settled' WHERE claim_number = %s",
+            (claim_id,),
+        )
+        conn3.commit()
+    except Exception:
+        conn3.rollback()
+        raise
+    finally:
+        conn3.close()
+
+    return {
+        "payment_id": payment_id,
+        "claim_number": claim_id,
+        "policy_number": policy_number,
+        "amount_paid": amount_paid,
+        "coverage_before": coverage_before,
+        "coverage_after": coverage_after,
+        "payment_status": "Released",
+        "payment_date": payment_date,
+    }
+
+
+def get_claim_details(claim_id: str) -> dict:
+
+    """
+
+    Fetch claim details from the local claims table.
+
+    Used by the Policy Coverage Agent to obtain the linked policy number.
+
+    """
+
+    conn = get_db_connection()
+
+    try:
+
+        cur = conn.cursor()
+
+        cur.execute(
+
+            "SELECT * FROM claims WHERE claim_number = %s",
+
+            (claim_id,),
+
+        )
+
+        claim = row_to_dict(cur.fetchone())
+
+        if not claim:
+
+            return {
+
+                "found": False,
+
+                "claim_id": claim_id,
+
+                "error": f"Claim '{claim_id}' not found"
+
+            }
+
+        return {
+
+            "found": True,
+
+            "claim": claim
+
+        }
+
+    finally:
+
+        conn.close()
+
+
+
+
+
+
+
+
+
+models.py
+
+
+from pydantic import BaseModel, Field
+from typing import Optional
+
+
+class GetClaimDetailsRequest(BaseModel):
+   claim_number: str = Field(
+       ...,
+       description="Claim number, e.g. CLM-2024-1003"
+   )
+   
+class GwSearchPolicyRequest(BaseModel):
+    policy_number: str = Field(..., description="Policy number to look up in Guidewire, e.g. '9802322834'")
+
+
+class GwReportLossRequest(BaseModel):
+    policy_number: str = Field(..., description="Policy number the loss is reported against")
+    claim_number: str = Field(..., description="Local claim number, e.g. CLM-2026-1234")
+    loss_type: str = Field(..., description="Type of loss, e.g. 'Water Damage', 'Fire'")
+    loss_date: str = Field(..., description="Date of loss in YYYY-MM-DD format")
+    loss_description: str = Field(..., description="Free-text description of what happened")
+    loss_location: Optional[str] = Field(None, description="Address or area where loss occurred")
+    policyholder_name: str = Field(..., description="Name of the insured policyholder")
+    estimated_amount: Optional[float] = Field(None, description="Policyholder's estimated loss amount")
+
+
+class SavePolicyDetailsRequest(BaseModel):
+    policy_number: str = Field(..., description="Policy number to fetch from Guidewire and save locally")
+
+
+class RecordClaimPaymentRequest(BaseModel):
+    claim_number: str = Field(..., description="Claim number (e.g. CLM-2026-1001) for which payment is released")
+    amount_paid: float = Field(..., description="Amount paid out for this claim")
+    approved_by: Optional[str] = Field(None, description="Name or ID of the adjuster who approved the payment")
+    notes: Optional[str] = Field(None, description="Optional notes about the payment")
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+(venv) JarvisClaims@JarvisClaims:~/Musaddique/Jarvis_claims_agents_v3_copy_new/PolicyholderAgents/MCP$ python3 main.py 
+/home/JarvisClaims/Musaddique/Jarvis_claims_agents_v3_copy_new/PolicyholderAgents/MCP/main.py:282: DeprecationWarning: 
+        on_event is deprecated, use lifespan event handlers instead.
+
+        Read more about it in the
+        [FastAPI docs for Lifespan Events](https://fastapi.tiangolo.com/advanced/events/).
+        
+  @app.on_event("startup")
+INFO:     Started server process [60528]
+INFO:     Waiting for application startup.
+INFO:     Application startup complete.
+INFO:     Uvicorn running on http://0.0.0.0:7720 (Press CTRL+C to quit)
+INFO:     127.0.0.1:45882 - "OPTIONS /api/v1/policy_coverage/gw_search_policy HTTP/1.1" 200 OK
+INFO:     127.0.0.1:45882 - "POST /api/v1/policy_coverage/gw_search_policy HTTP/1.1" 200 OK
+INFO:     127.0.0.1:45882 - "OPTIONS /api/v1/policy_coverage/save_policy_details HTTP/1.1" 200 OK
+INFO:     127.0.0.1:45882 - "POST /api/v1/policy_coverage/save_policy_details HTTP/1.1" 200 OK
+INFO:     127.0.0.1:42544 - "POST /api/v1/voice_text_intake/mcp HTTP/1.1" 200 OK
+INFO:     127.0.0.1:42546 - "POST /api/v1/document_submission/mcp HTTP/1.1" 200 OK
+INFO:     127.0.0.1:42554 - "POST /api/v1/duplicate_check/mcp HTTP/1.1" 200 OK
+INFO:     127.0.0.1:42562 - "POST /api/v1/claim_readiness/mcp HTTP/1.1" 200 OK
+INFO:     127.0.0.1:42576 - "POST /api/v1/policy_coverage/mcp HTTP/1.1" 200 OK
+INFO:     127.0.0.1:42586 - "POST /api/v1/segmentation/mcp HTTP/1.1" 200 OK
+INFO:     127.0.0.1:42602 - "POST /api/v1/claim_status/mcp HTTP/1.1" 200 OK
+INFO:     127.0.0.1:42618 - "POST /api/v1/communication/mcp HTTP/1.1" 200 OK
+INFO:     127.0.0.1:42624 - "POST /api/v1/feedback/mcp HTTP/1.1" 200 OK
+INFO:     127.0.0.1:42544 - "POST /api/v1/voice_text_intake/mcp HTTP/1.1" 202 Accepted
+INFO:     127.0.0.1:42546 - "POST /api/v1/document_submission/mcp HTTP/1.1" 202 Accepted
+INFO:     127.0.0.1:42554 - "POST /api/v1/duplicate_check/mcp HTTP/1.1" 202 Accepted
+INFO:     127.0.0.1:42562 - "POST /api/v1/claim_readiness/mcp HTTP/1.1" 202 Accepted
+INFO:     127.0.0.1:42576 - "POST /api/v1/policy_coverage/mcp HTTP/1.1" 202 Accepted
+INFO:     127.0.0.1:42586 - "POST /api/v1/segmentation/mcp HTTP/1.1" 202 Accepted
+INFO:     127.0.0.1:42602 - "POST /api/v1/claim_status/mcp HTTP/1.1" 202 Accepted
+INFO:     127.0.0.1:42618 - "POST /api/v1/communication/mcp HTTP/1.1" 202 Accepted
+INFO:     127.0.0.1:42624 - "POST /api/v1/feedback/mcp HTTP/1.1" 202 Accepted
+INFO:     127.0.0.1:42658 - "POST /api/v1/voice_text_intake/mcp HTTP/1.1" 200 OK
+INFO:     127.0.0.1:42686 - "POST /api/v1/document_submission/mcp HTTP/1.1" 200 OK
+INFO:     127.0.0.1:42658 - "DELETE /api/v1/voice_text_intake/mcp HTTP/1.1" 200 OK
+INFO:     127.0.0.1:42716 - "POST /api/v1/duplicate_check/mcp HTTP/1.1" 200 OK
+INFO:     127.0.0.1:42756 - "POST /api/v1/claim_readiness/mcp HTTP/1.1" 200 OK
+INFO:     127.0.0.1:42686 - "DELETE /api/v1/document_submission/mcp HTTP/1.1" 200 OK
+INFO:     127.0.0.1:42758 - "POST /api/v1/policy_coverage/mcp HTTP/1.1" 200 OK
+INFO:     127.0.0.1:42766 - "POST /api/v1/segmentation/mcp HTTP/1.1" 200 OK
+INFO:     127.0.0.1:42782 - "POST /api/v1/claim_status/mcp HTTP/1.1" 200 OK
+INFO:     127.0.0.1:42786 - "POST /api/v1/communication/mcp HTTP/1.1" 200 OK
+INFO:     127.0.0.1:42716 - "DELETE /api/v1/duplicate_check/mcp HTTP/1.1" 200 OK
+INFO:     127.0.0.1:42794 - "POST /api/v1/feedback/mcp HTTP/1.1" 200 OK
+INFO:     127.0.0.1:42654 - "GET /api/v1/duplicate_check/mcp HTTP/1.1" 200 OK
+INFO:     127.0.0.1:42756 - "DELETE /api/v1/claim_readiness/mcp HTTP/1.1" 200 OK
+INFO:     127.0.0.1:42670 - "GET /api/v1/claim_readiness/mcp HTTP/1.1" 200 OK
+INFO:     127.0.0.1:42758 - "DELETE /api/v1/policy_coverage/mcp HTTP/1.1" 200 OK
+INFO:     127.0.0.1:42766 - "DELETE /api/v1/segmentation/mcp HTTP/1.1" 200 OK
+INFO:     127.0.0.1:42782 - "DELETE /api/v1/claim_status/mcp HTTP/1.1" 200 OK
+INFO:     127.0.0.1:42688 - "GET /api/v1/policy_coverage/mcp HTTP/1.1" 200 OK
+INFO:     127.0.0.1:42786 - "DELETE /api/v1/communication/mcp HTTP/1.1" 200 OK
+INFO:     127.0.0.1:42794 - "DELETE /api/v1/feedback/mcp HTTP/1.1" 200 OK
+INFO:     127.0.0.1:42700 - "GET /api/v1/segmentation/mcp HTTP/1.1" 200 OK
+INFO:     127.0.0.1:42732 - "GET /api/v1/communication/mcp HTTP/1.1" 200 OK
+INFO:     127.0.0.1:42746 - "GET /api/v1/feedback/mcp HTTP/1.1" 200 OK
+INFO:     127.0.0.1:50588 - "POST /api/v1/voice_text_intake/mcp HTTP/1.1" 200 OK
+INFO:     127.0.0.1:50590 - "POST /api/v1/document_submission/mcp HTTP/1.1" 200 OK
+INFO:     127.0.0.1:50594 - "POST /api/v1/policy_coverage/mcp HTTP/1.1" 200 OK
+INFO:     127.0.0.1:50600 - "POST /api/v1/claim_readiness/mcp HTTP/1.1" 200 OK
+INFO:     127.0.0.1:50616 - "POST /api/v1/duplicate_check/mcp HTTP/1.1" 200 OK
+INFO:     127.0.0.1:50628 - "POST /api/v1/claim_status/mcp HTTP/1.1" 200 OK
+INFO:     127.0.0.1:50634 - "POST /api/v1/segmentation/mcp HTTP/1.1" 200 OK
+INFO:     127.0.0.1:50642 - "POST /api/v1/communication/mcp HTTP/1.1" 200 OK
+INFO:     127.0.0.1:50658 - "POST /api/v1/feedback/mcp HTTP/1.1" 200 OK
+INFO:     127.0.0.1:50588 - "POST /api/v1/voice_text_intake/mcp HTTP/1.1" 202 Accepted
+INFO:     127.0.0.1:50590 - "POST /api/v1/document_submission/mcp HTTP/1.1" 202 Accepted
+INFO:     127.0.0.1:50594 - "POST /api/v1/policy_coverage/mcp HTTP/1.1" 202 Accepted
+INFO:     127.0.0.1:50600 - "POST /api/v1/claim_readiness/mcp HTTP/1.1" 202 Accepted
+INFO:     127.0.0.1:50616 - "POST /api/v1/duplicate_check/mcp HTTP/1.1" 202 Accepted
+INFO:     127.0.0.1:50628 - "POST /api/v1/claim_status/mcp HTTP/1.1" 202 Accepted
+INFO:     127.0.0.1:50634 - "POST /api/v1/segmentation/mcp HTTP/1.1" 202 Accepted
+INFO:     127.0.0.1:50642 - "POST /api/v1/communication/mcp HTTP/1.1" 202 Accepted
+INFO:     127.0.0.1:50658 - "POST /api/v1/feedback/mcp HTTP/1.1" 202 Accepted
+INFO:     127.0.0.1:50740 - "POST /api/v1/voice_text_intake/mcp HTTP/1.1" 200 OK
+INFO:     127.0.0.1:50744 - "POST /api/v1/document_submission/mcp HTTP/1.1" 200 OK
+INFO:     127.0.0.1:50752 - "POST /api/v1/policy_coverage/mcp HTTP/1.1" 200 OK
+INFO:     127.0.0.1:50756 - "POST /api/v1/claim_readiness/mcp HTTP/1.1" 200 OK
+INFO:     127.0.0.1:50758 - "POST /api/v1/duplicate_check/mcp HTTP/1.1" 200 OK
+INFO:     127.0.0.1:50762 - "POST /api/v1/claim_status/mcp HTTP/1.1" 200 OK
+INFO:     127.0.0.1:50772 - "POST /api/v1/segmentation/mcp HTTP/1.1" 200 OK
+INFO:     127.0.0.1:50788 - "POST /api/v1/communication/mcp HTTP/1.1" 200 OK
+INFO:     127.0.0.1:50802 - "POST /api/v1/feedback/mcp HTTP/1.1" 200 OK
+INFO:     127.0.0.1:50740 - "DELETE /api/v1/voice_text_intake/mcp HTTP/1.1" 200 OK
+INFO:     127.0.0.1:50660 - "GET /api/v1/voice_text_intake/mcp HTTP/1.1" 200 OK
+INFO:     127.0.0.1:50744 - "DELETE /api/v1/document_submission/mcp HTTP/1.1" 200 OK
+INFO:     127.0.0.1:50752 - "DELETE /api/v1/policy_coverage/mcp HTTP/1.1" 200 OK
+INFO:     127.0.0.1:50670 - "GET /api/v1/document_submission/mcp HTTP/1.1" 200 OK
+INFO:     127.0.0.1:50678 - "GET /api/v1/policy_coverage/mcp HTTP/1.1" 200 OK
+INFO:     127.0.0.1:50756 - "DELETE /api/v1/claim_readiness/mcp HTTP/1.1" 200 OK
+INFO:     127.0.0.1:50758 - "DELETE /api/v1/duplicate_check/mcp HTTP/1.1" 200 OK
+INFO:     127.0.0.1:50762 - "DELETE /api/v1/claim_status/mcp HTTP/1.1" 200 OK
+INFO:     127.0.0.1:50772 - "DELETE /api/v1/segmentation/mcp HTTP/1.1" 200 OK
+INFO:     127.0.0.1:50788 - "DELETE /api/v1/communication/mcp HTTP/1.1" 200 OK
+INFO:     127.0.0.1:50802 - "DELETE /api/v1/feedback/mcp HTTP/1.1" 200 OK
+INFO:     127.0.0.1:50688 - "GET /api/v1/claim_readiness/mcp HTTP/1.1" 200 OK
+INFO:     127.0.0.1:50694 - "GET /api/v1/duplicate_check/mcp HTTP/1.1" 200 OK
+INFO:     127.0.0.1:50704 - "GET /api/v1/claim_status/mcp HTTP/1.1" 200 OK
+INFO:     127.0.0.1:50708 - "GET /api/v1/segmentation/mcp HTTP/1.1" 200 OK
+INFO:     127.0.0.1:50722 - "GET /api/v1/communication/mcp HTTP/1.1" 200 OK
+INFO:     127.0.0.1:50732 - "GET /api/v1/feedback/mcp HTTP/1.1" 200 OK
+INFO:     127.0.0.1:50806 - "POST /api/v1/voice_text_intake/mcp HTTP/1.1" 200 OK
+INFO:     127.0.0.1:50812 - "POST /api/v1/voice_text_intake/mcp HTTP/1.1" 200 OK
+INFO:     127.0.0.1:50806 - "POST /api/v1/voice_text_intake/mcp HTTP/1.1" 202 Accepted
+INFO:     127.0.0.1:50812 - "POST /api/v1/voice_text_intake/mcp HTTP/1.1" 202 Accepted
+INFO:     127.0.0.1:50866 - "POST /api/v1/voice_text_intake/mcp HTTP/1.1" 200 OK
+INFO:     127.0.0.1:50866 - "POST /api/v1/voice_text_intake/mcp HTTP/1.1" 200 OK
+INFO:     127.0.0.1:50866 - "DELETE /api/v1/voice_text_intake/mcp HTTP/1.1" 200 OK
+INFO:     127.0.0.1:50844 - "GET /api/v1/voice_text_intake/mcp HTTP/1.1" 200 OK
+INFO:     127.0.0.1:50858 - "POST /api/v1/voice_text_intake/mcp HTTP/1.1" 200 OK
+INFO:     127.0.0.1:50858 - "POST /api/v1/voice_text_intake/mcp HTTP/1.1" 200 OK
+INFO:     127.0.0.1:50858 - "DELETE /api/v1/voice_text_intake/mcp HTTP/1.1" 200 OK
+INFO:     127.0.0.1:50828 - "GET /api/v1/voice_text_intake/mcp HTTP/1.1" 200 OK
+INFO:     127.0.0.1:41972 - "POST /api/v1/voice_text_intake/mcp HTTP/1.1" 200 OK
+INFO:     127.0.0.1:41972 - "POST /api/v1/voice_text_intake/mcp HTTP/1.1" 202 Accepted
+Error calling update_fnol_submission
+Traceback (most recent call last):
+  File "/home/JarvisClaims/Ramakrishna/Jarvis_claims_agents_v3/PolicyholderAgents/venv/lib/python3.11/site-packages/fastapi_mcp/server.py", line 559, in _execute_api_tool
+    raise Exception(
+Exception: Error calling update_fnol_submission. Status code: 404. Response: {"detail":"FNOL 1 not found"}
+INFO:     127.0.0.1:41984 - "POST /api/v1/voice_text_intake/mcp HTTP/1.1" 200 OK
+INFO:     127.0.0.1:41984 - "DELETE /api/v1/voice_text_intake/mcp HTTP/1.1" 200 OK
+INFO:     127.0.0.1:41974 - "GET /api/v1/voice_text_intake/mcp HTTP/1.1" 200 OK
+INFO:     127.0.0.1:41998 - "POST /api/v1/voice_text_intake/mcp HTTP/1.1" 200 OK
+INFO:     127.0.0.1:41998 - "POST /api/v1/voice_text_intake/mcp HTTP/1.1" 202 Accepted
+INFO:     127.0.0.1:42018 - "POST /api/v1/voice_text_intake/mcp HTTP/1.1" 200 OK
+INFO:     127.0.0.1:42018 - "POST /api/v1/voice_text_intake/mcp HTTP/1.1" 200 OK
+INFO:     127.0.0.1:42018 - "DELETE /api/v1/voice_text_intake/mcp HTTP/1.1" 200 OK
+INFO:     127.0.0.1:42012 - "GET /api/v1/voice_text_intake/mcp HTTP/1.1" 200 OK
+INFO:     127.0.0.1:38216 - "POST /api/v1/voice_text_intake/mcp HTTP/1.1" 200 OK
+INFO:     127.0.0.1:38228 - "POST /api/v1/voice_text_intake/mcp HTTP/1.1" 200 OK
+INFO:     127.0.0.1:38216 - "POST /api/v1/voice_text_intake/mcp HTTP/1.1" 202 Accepted
+INFO:     127.0.0.1:38228 - "POST /api/v1/voice_text_intake/mcp HTTP/1.1" 202 Accepted
+INFO:     127.0.0.1:38250 - "POST /api/v1/voice_text_intake/mcp HTTP/1.1" 200 OK
+INFO:     127.0.0.1:38250 - "POST /api/v1/voice_text_intake/mcp HTTP/1.1" 200 OK
+INFO:     127.0.0.1:38250 - "DELETE /api/v1/voice_text_intake/mcp HTTP/1.1" 200 OK
+INFO:     127.0.0.1:38242 - "GET /api/v1/voice_text_intake/mcp HTTP/1.1" 200 OK
+INFO:     127.0.0.1:38246 - "POST /api/v1/voice_text_intake/mcp HTTP/1.1" 200 OK
+INFO:     127.0.0.1:38246 - "POST /api/v1/voice_text_intake/mcp HTTP/1.1" 200 OK
+INFO:     127.0.0.1:38246 - "DELETE /api/v1/voice_text_intake/mcp HTTP/1.1" 200 OK
+INFO:     127.0.0.1:38234 - "GET /api/v1/voice_text_intake/mcp HTTP/1.1" 200 OK
+INFO:     127.0.0.1:38258 - "POST /api/v1/voice_text_intake/mcp HTTP/1.1" 200 OK
+INFO:     127.0.0.1:38258 - "POST /api/v1/voice_text_intake/mcp HTTP/1.1" 202 Accepted
+INFO:     127.0.0.1:38272 - "POST /api/v1/voice_text_intake/mcp HTTP/1.1" 200 OK
+INFO:     127.0.0.1:38272 - "POST /api/v1/voice_text_intake/mcp HTTP/1.1" 200 OK
+INFO:     127.0.0.1:38272 - "DELETE /api/v1/voice_text_intake/mcp HTTP/1.1" 200 OK
+INFO:     127.0.0.1:38262 - "GET /api/v1/voice_text_intake/mcp HTTP/1.1" 200 OK
+INFO:     127.0.0.1:60120 - "POST /api/v1/voice_text_intake/mcp HTTP/1.1" 200 OK
+INFO:     127.0.0.1:60126 - "POST /api/v1/voice_text_intake/mcp HTTP/1.1" 200 OK
+INFO:     127.0.0.1:60120 - "POST /api/v1/voice_text_intake/mcp HTTP/1.1" 202 Accepted
+INFO:     127.0.0.1:60126 - "POST /api/v1/voice_text_intake/mcp HTTP/1.1" 202 Accepted
+INFO:     127.0.0.1:60176 - "POST /api/v1/voice_text_intake/mcp HTTP/1.1" 200 OK
+INFO:     127.0.0.1:60176 - "POST /api/v1/voice_text_intake/mcp HTTP/1.1" 200 OK
+INFO:     127.0.0.1:60176 - "DELETE /api/v1/voice_text_intake/mcp HTTP/1.1" 200 OK
+INFO:     127.0.0.1:60154 - "GET /api/v1/voice_text_intake/mcp HTTP/1.1" 200 OK
+INFO:     127.0.0.1:60168 - "POST /api/v1/voice_text_intake/mcp HTTP/1.1" 200 OK
+INFO:     127.0.0.1:60168 - "POST /api/v1/voice_text_intake/mcp HTTP/1.1" 200 OK
+INFO:     127.0.0.1:60168 - "DELETE /api/v1/voice_text_intake/mcp HTTP/1.1" 200 OK
+INFO:     127.0.0.1:60142 - "GET /api/v1/voice_text_intake/mcp HTTP/1.1" 200 OK
+INFO:     127.0.0.1:60188 - "POST /api/v1/duplicate_check/mcp HTTP/1.1" 200 OK
+INFO:     127.0.0.1:60188 - "POST /api/v1/duplicate_check/mcp HTTP/1.1" 202 Accepted
+INFO:     127.0.0.1:60216 - "POST /api/v1/duplicate_check/mcp HTTP/1.1" 200 OK
+INFO:     127.0.0.1:60216 - "POST /api/v1/duplicate_check/mcp HTTP/1.1" 200 OK
+INFO:     127.0.0.1:60216 - "DELETE /api/v1/duplicate_check/mcp HTTP/1.1" 200 OK
+INFO:     127.0.0.1:60200 - "GET /api/v1/duplicate_check/mcp HTTP/1.1" 200 OK
+INFO:     127.0.0.1:60220 - "POST /api/v1/voice_text_intake/mcp HTTP/1.1" 200 OK
+INFO:     127.0.0.1:60220 - "POST /api/v1/voice_text_intake/mcp HTTP/1.1" 202 Accepted
+INFO:     127.0.0.1:60238 - "POST /api/v1/voice_text_intake/mcp HTTP/1.1" 200 OK
+INFO:     127.0.0.1:60238 - "POST /api/v1/voice_text_intake/mcp HTTP/1.1" 200 OK
+INFO:     127.0.0.1:60238 - "DELETE /api/v1/voice_text_intake/mcp HTTP/1.1" 200 OK
+INFO:     127.0.0.1:60228 - "GET /api/v1/voice_text_intake/mcp HTTP/1.1" 200 OK
+No claim found for claim_number=7404014792
+INFO:     127.0.0.1:51442 - "POST /api/v1/document_submission/api/documents/upload HTTP/1.1" 200 OK
+INFO:     127.0.0.1:51456 - "OPTIONS /api/v1/voice_text_intake/api/fnol/update_submission/223 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:51456 - "PATCH /api/v1/voice_text_intake/api/fnol/update_submission/223 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:51456 - "PATCH /api/v1/voice_text_intake/api/fnol/update_submission/223 HTTP/1.1" 200 OK
+Guidewire CC POST /claim/v1/claims → HTTP 400: {"status":400,"errorCode":"gw.api.rest.exceptions.BadInputException","userMessage":"No policy was found with policy number 7404014792 for loss date 2026-08-19T09:00:00.000Z"}
+submit_fnol error
+Traceback (most recent call last):
+  File "/home/JarvisClaims/Musaddique/Jarvis_claims_agents_v3_copy_new/PolicyholderAgents/MCP/voice_text_intake_router.py", line 139, in submit_fnol
+    return fnol_handler.submit_fnol(fnol_id)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/JarvisClaims/Musaddique/Jarvis_claims_agents_v3_copy_new/PolicyholderAgents/MCP/voice_text_intake_mcp/fnol_handler.py", line 1214, in submit_fnol
+    claim_number = _create_claim_in_guidewire(fnol, pd_row)
+                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/JarvisClaims/Musaddique/Jarvis_claims_agents_v3_copy_new/PolicyholderAgents/MCP/voice_text_intake_mcp/fnol_handler.py", line 1172, in _create_claim_in_guidewire
+    draft = guidewire_client.create_claim(payload)
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/JarvisClaims/Musaddique/Jarvis_claims_agents_v3_copy_new/PolicyholderAgents/MCP/policy_coverage_mcp/guidewire_client.py", line 177, in create_claim
+    return _cc_post("/claim/v1/claims", payload)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/JarvisClaims/Musaddique/Jarvis_claims_agents_v3_copy_new/PolicyholderAgents/MCP/policy_coverage_mcp/guidewire_client.py", line 62, in _cc_post
+    _raise_for_status(resp, "CC POST", uri)
+  File "/home/JarvisClaims/Musaddique/Jarvis_claims_agents_v3_copy_new/PolicyholderAgents/MCP/policy_coverage_mcp/guidewire_client.py", line 72, in _raise_for_status
+    resp.raise_for_status()
+  File "/home/JarvisClaims/Ramakrishna/Jarvis_claims_agents_v3/PolicyholderAgents/venv/lib/python3.11/site-packages/requests/models.py", line 1167, in raise_for_status
+    raise HTTPError(http_error_msg, response=self)
+requests.exceptions.HTTPError: 400 Client Error:  for url: https://cc-sandbox-gwcpdev.hexaware.zeta1-andromeda.guidewire.net/rest/claim/v1/claims
+INFO:     127.0.0.1:51456 - "POST /api/v1/voice_text_intake/api/fnol/submit/223 HTTP/1.1" 500 Internal Server Error
+
+
+
