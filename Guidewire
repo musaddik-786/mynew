@@ -1,347 +1,486 @@
-from langgraph.graph import StateGraph, START, END
-from langgraph.prebuilt import ToolNode
-from typing_extensions import Annotated
-from langgraph.graph.message import add_messages
-from langchain_core.messages import AIMessage, ToolMessage
+Yes. And your two questions are exactly the right questions. The previous explanation jumped over the most important part: what ToolNode is replacing and whether its internal behavior is generic.
 
-# -----------------------
-# STATE
-# -----------------------
-class State(dict):
-   messages: Annotated[list, add_messages]
+Let’s rebuild it from your exact code.
 
-# -----------------------
-# TOOL (normal Python function)
-# -----------------------
-def get_weather(city: str):
-   """Returns the current weather for a given city"""
-   return f"The weather in {city} is sunny"
+⸻
 
-# -----------------------
-# AGENT (FAKE AI)
-# -----------------------
-def agent(state):
-   if len(state["messages"]) == 0:
-       return {
-           "messages": [
-               AIMessage(
-                   content="",
-                   tool_calls=[{
-                       "name": "get_weather",
-                       "args": {"city": "Delhi"},
-                       "id": "call_1"
-                   }]
-               )
-           ]
-       }
-   else:
-       return {"messages": ["Agent: Got tool result, End"]}
+1. What if ToolNode did NOT exist?
 
-# -----------------------
-# ROUTER
-# -----------------------
-def router(state):
-   last = state["messages"][-1]
-   if isinstance(last, AIMessage) and last.tool_calls:
-       return "tools"
-   return "end"
+You currently have:
 
-# -----------------------
-# GRAPH
-# -----------------------
+graph.add_node(
+    "tools",
+    ToolNode(tools=[get_weather])
+)
+
+If we remove ToolNode, we need to provide our own Python function as the "tools" node.
+
+So this:
+
+graph.add_node("tools", ToolNode(tools=[get_weather]))
+
+would become:
+
+graph.add_node("tools", call_tools)
+
+And we would write call_tools() ourselves.
+
+⸻
+
+Your manual version
+
+First, we need to import ToolMessage:
+
+from langchain_core.messages import ToolMessage
+
+Then:
+
+def call_tools(state):
+    # 1. Get the latest message
+    last_message = state["messages"][-1]
+    # 2. Get the tool call requested by the AI
+    tool_call = last_message.tool_calls[0]
+    # 3. Get the requested tool name
+    tool_name = tool_call["name"]
+    # 4. Get the arguments
+    tool_args = tool_call["args"]
+    # 5. Execute the appropriate tool
+    if tool_name == "get_weather":
+        result = get_weather(**tool_args)
+    # 6. Convert the tool result into a ToolMessage
+    return {
+        "messages": [
+            ToolMessage(
+                content=result,
+                tool_call_id=tool_call["id"],
+                name=tool_name
+            )
+        ]
+    }
+
+Then your graph becomes:
+
 graph = StateGraph(State)
 graph.add_node("agent", agent)
-graph.add_node("tools", ToolNode(tools=[get_weather]))
+# Instead of ToolNode
+graph.add_node("tools", call_tools)
 graph.add_edge(START, "agent")
 graph.add_conditional_edges(
-   "agent",
-   router,
-   {
-       "tools": "tools",
-       "end": END
-   }
+    "agent",
+    router,
+    {
+        "tools": "tools",
+        "end": END
+    }
 )
 graph.add_edge("tools", "agent")
 graph = graph.compile()
 
-print("\n--- stream() ---")
-for step in graph.stream({"messages": []}):
-   print(step)
+That’s it.
 
-print("\n--- invoke() ---")
+So your original:
 
-# final_result = graph.invoke({"messages": []})
+ToolNode(tools=[get_weather])
 
-print(graph.invoke({"messages": []}))
+is essentially replacing our custom:
 
+call_tools(state)
 
+⸻
 
+2. But let’s understand our manual function VERY carefully
 
+Suppose the agent produced:
 
-nelow is the explanation of the saem
+AIMessage(
+    content="",
+    tool_calls=[
+        {
+            "name": "get_weather",
+            "args": {"city": "Delhi"},
+            "id": "call_1"
+        }
+    ]
+)
 
-# 🟢 STEP 0 — YOU CALL THE GRAPH
-# graph.stream({"messages": []})
-# State GIVEN BY YOU:
-# state = {
-#    "messages": []
-# }
-# Nothing else exists.
-# ⸻
-# 🟢 STEP 1 — LangGraph sees START
-# Because of:
-# graph.add_edge(START, "agent")
-# LangGraph decides:
-# ➡ Next node to run = agent
-# State is still:
-# state = {
-#    "messages": []
-# }
+The state is:
 
-# ⸻
-# 🟢 STEP 2 — agent(state) RUNS (FIRST TIME)
-# Agent code:
-# if len(state["messages"]) == 0:
-# Check:
-# len([]) == 0  → TRUE
-# So agent RETURNS:
-# {
-#    "messages": [
-#        AIMessage(
-#            content="",
-#            tool_calls=[{
-#                "name": "get_weather",
-#                "args": {"city": "Delhi"},
-#                "id": "call_1"
-#            }]
-#        )
-#    ]
-# }
-# ⚠️ IMPORTANT
-# Agent does NOT change state.
-# It only RETURNS this dictionary.
-# ⸻
-# 🟢 STEP 3 — LangGraph MERGES STATE (add_messages)
-# Because state is defined as:
-# messages: Annotated[list, add_messages]
-# LangGraph does:
-# state["messages"].extend(returned_messages)
-# ✅ STATE AFTER MERGE:
-# state = {
-#    "messages": [
-#        AIMessage(
-#            content="",
-#            tool_calls=[
-#                {
-#                    "name": "get_weather",
-#                    "args": {"city": "Delhi"},
-#                    "id": "call_1"
-#                }
-#            ]
-#        )
-#    ]
-# }
-# 📌 State stores ONE thing only: messages list
-# 📌 That list has ONE element: an AIMessage object
-# 📌 That AIMessage has BOTH content and tool_calls
-# ⸻
-# 🟢 STEP 4 — Agent FINISHED → Router RUNS
-# Because you wrote:
-# add_conditional_edges("agent", router, ...)
-# LangGraph now calls:
-# router(state)
-# State going into router is exactly:
-# {
-#  "messages": [AIMessage(content="", tool_calls=[...])]
-# }
+messages
+│
+└── AIMessage
+      │
+      └── tool_calls
+            │
+            └── get_weather
+                 city = Delhi
 
-# ⸻
-# 🟢 STEP 5 — Router LINE-BY-LINE
-# Line 1:
-# last = state["messages"][-1]
-# • state["messages"] is a list
-# • list contains ONE element
-# • [-1] means last element
-# So:
-# last =
-# AIMessage(
-#    content="",
-#    tool_calls=[{
-#        "name": "get_weather",
-#        "args": {"city": "Delhi"},
-#        "id": "call_1"
-#    }]
-# )
-# Nothing extracted.
-# Nothing modified.
-# ⸻
-# Line 2:
-# isinstance(last, AIMessage)
-# Result:
-# True
+Now:
 
-# ⸻
-# Line 3:
-# last.tool_calls
-# Value:
-# [
-#  {
-#    "name": "get_weather",
-#    "args": {"city": "Delhi"},
-#    "id": "call_1"
-#  }
-# ]
-# Non-empty list → truthy
-# ⸻
-# Line 4:
-# if True and True:
-#    return "tools"
-# Router RETURNS:
-# "tools"
-# ⚠️ Router does NOT touch state.
-# ⸻
-# 🟢 STEP 6 — LangGraph DECIDES NEXT NODE
-# Router returned "tools".
-# Mapping says:
-# "tools" → tools node
-# So LangGraph schedules:
-# ➡ Run tools node next
-# State is STILL:
-# state = {
-#    "messages": [
-#        AIMessage(content="", tool_calls=[...])
-#    ]
-# }
+last_message = state["messages"][-1]
 
-# ⸻
-# 🟢 STEP 7 — ToolNode RUNS
-# ToolNode receives state:
-# {
-#  "messages": [
-#    AIMessage(content="", tool_calls=[...])
-#  ]
-# }
+gives us:
 
-# ⸻
-# ToolNode internal Step A:
-# last_message = state["messages"][-1]
-# Result:
-# last_message =
-# AIMessage(
-#    content="",
-#    tool_calls=[{
-#        "name": "get_weather",
-#        "args": {"city": "Delhi"},
-#        "id": "call_1"
-#    }]
-# )
-# Same object as router saw.
-# ⸻
-# ToolNode internal Step B:
-# last_message.tool_calls
-# Gives:
-# {
-#  "name": "get_weather",
-#  "args": {"city": "Delhi"}
-# }
+AIMessage(...)
 
-# ⸻
-# ToolNode internal Step C:
-# get_weather(city="Delhi")
-# Function runs and RETURNS:
-# "The weather in Delhi is sunny"
+Then:
 
-# ⸻
-# 🟢 STEP 8 — ToolNode RETURNS
-# ToolNode returns:
-# {
-#    "messages": [
-#        ToolMessage(
-#            name="get_weather",
-#            content="The weather in Delhi is sunny"
-#        )
-#    ]
-# }
+tool_call = last_message.tool_calls[0]
 
-# ⸻
-# 🟢 STEP 9 — LangGraph MERGES AGAIN
-# LangGraph appends message.
-# STATE NOW:
-# state = {
-#    "messages": [
-#        AIMessage(
-#            content="",
-#            tool_calls=[
-#                {
-#                    "name": "get_weather",
-#                    "args": {"city": "Delhi"},
-#                    "id": "call_1"
-#                }
-#            ]
-#        ),
-#        ToolMessage(
-#            name="get_weather",
-#            content="The weather in Delhi is sunny"
-#        )
-#    ]
-# }
+gives us:
 
-# ⸻
-# 🟢 STEP 10 — tools → agent
-# Because:
-# graph.add_edge("tools", "agent")
-# LangGraph runs agent again.
-# ⸻
-# 🟢 STEP 11 — agent(state) RUNS (SECOND TIME)
-# Agent checks:
-# len(state["messages"]) == 0
-# Now:
-# len([...]) != 0
-# So agent RETURNS:
-# {"messages": ["Agent: Got tool result, End"]}
+{
+    "name": "get_weather",
+    "args": {"city": "Delhi"},
+    "id": "call_1"
+}
 
-# ⸻
-# 🟢 STEP 12 — LangGraph MERGES AGAIN
-# String becomes HumanMessage.
-# STATE NOW:
-# state = {
-#    "messages": [
-#        AIMessage(...),
-#        ToolMessage(...),
-#        HumanMessage(content="Agent: Got tool result, End")
-#    ]
-# }
+Then:
 
-# ⸻
-# 🟢 STEP 13 — Router RUNS AGAIN
-# Router does:
-# last = state["messages"][-1]
-# That is:
-# HumanMessage("Agent: Got tool result, End")
-# Check:
-# isinstance(last, AIMessage) → False
-# So router RETURNS:
-# "end"
+tool_name = tool_call["name"]
 
-# ⸻
-# 🟢 STEP 14 — END
-# LangGraph stops.
-# ⸻
-# ✅ FINAL STATE
-# {
-#  "messages": [
-#    AIMessage(...),
-#    ToolMessage(...),
-#    HumanMessage("Agent: Got tool result, End")
-#  ]
-# }
+gives:
 
+"get_weather"
 
-# When a node returns a string inside "messages", LangGraph converts it into a HumanMessage —
-# because you used add_messagesWhen a node returns a string inside "messages", LangGraph converts it into a HumanMessage — because you used add_messages
+Then:
 
+tool_args = tool_call["args"]
 
+gives:
 
+{
+    "city": "Delhi"
+}
 
+Then we need to actually execute the Python function:
 
-now first thing that i am not able to understand here is what we would have done if there was no ttolnODE here in this code what was the manual code second thing is I am unable to understand what toolnode internally does and does it do the same thing in every other code where we use tool node? are those internal steps the same everywhere?
+get_weather(**tool_args)
+
+which is equivalent to:
+
+get_weather(city="Delhi")
+
+and gives:
+
+"The weather in Delhi is sunny"
+
+Finally, we create:
+
+ToolMessage(
+    content="The weather in Delhi is sunny",
+    tool_call_id="call_1",
+    name="get_weather"
+)
+
+That is what goes back into the graph state.
+
+⸻
+
+3. So what does ToolNode actually do?
+
+Now compare.
+
+Without ToolNode:
+
+We manually do:
+
+AIMessage
+   ↓
+extract tool_calls
+   ↓
+identify tool
+   ↓
+extract arguments
+   ↓
+execute Python function
+   ↓
+create ToolMessage
+   ↓
+return state update
+
+With ToolNode:
+
+ToolNode(
+    tools=[get_weather]
+)
+
+does that tool-execution plumbing for us.
+
+Conceptually:
+
+AIMessage
+   ↓
+ToolNode
+   ├── inspect tool_calls
+   ├── find matching tool
+   ├── pass arguments
+   ├── execute tool
+   └── create ToolMessage
+   ↓
+state update
+
+That’s the abstraction.
+
+⸻
+
+4. Now your second question is VERY important
+
+You asked:
+
+“Does it do the same thing in every other code where we use ToolNode?”
+
+Yes — the fundamental job is the same.
+
+Whenever you have:
+
+ToolNode([...])
+
+its fundamental responsibility is:
+
+Take tool calls from the graph’s message state, execute the corresponding tools, and return the tool results as messages.
+
+For example:
+
+One tool
+
+ToolNode([get_weather])
+AIMessage
+   ↓
+get_weather
+   ↓
+ToolMessage
+
+Two tools
+
+ToolNode([
+    get_weather,
+    calculator
+])
+AIMessage
+   ├── get_weather
+   │      ↓
+   │   ToolMessage
+   │
+   └── calculator
+          ↓
+      ToolMessage
+
+Ten tools
+
+ToolNode([
+    search_policy,
+    get_weather,
+    calculator,
+    get_claim,
+    update_claim,
+    ...
+])
+
+Same fundamental mechanism:
+
+AIMessage
+   ↓
+Which tools were requested?
+   ↓
+Find those tools
+   ↓
+Execute them
+   ↓
+Return ToolMessage(s)
+
+⸻
+
+5. But there is an important nuance
+
+The overall responsibility stays the same, but the internal work can vary depending on the situation.
+
+For example, if the AI message has:
+
+One tool call
+
+AIMessage
+ └── calculator
+
+ToolNode executes one tool.
+
+If it has:
+
+Multiple tool calls
+
+AIMessage
+ ├── calculator
+ └── get_weather
+
+ToolNode has to deal with multiple calls and produce corresponding tool results.
+
+So don’t memorize:
+
+“ToolNode always does exactly these 6 lines internally.”
+
+Instead remember its contract:
+
+ToolNode takes tool calls from the current state, executes the requested tools, and returns the resulting tool messages.
+
+That’s the important abstraction.
+
+⸻
+
+6. There’s another thing I want to correct from the explanation you pasted
+
+You said:
+
+“When a node returns a string inside messages, LangGraph converts it into a HumanMessage.”
+
+That can happen through the message-reducer coercion, but don’t build your understanding around that behavior.
+
+In our agent, we should explicitly return:
+
+ToolMessage(...)
+
+for tool results and:
+
+AIMessage(...)
+
+for AI responses.
+
+Don’t deliberately return:
+
+{"messages": ["Agent: Got tool result, End"]}
+
+and rely on LangGraph to turn it into a particular message type.
+
+For clean agent code, use the correct message class explicitly.
+
+⸻
+
+7. And here’s something else about YOUR example
+
+Your get_weather function is:
+
+def get_weather(city: str):
+    """Returns the current weather for a given city"""
+    return f"The weather in {city} is sunny"
+
+Technically, that’s just a normal Python function.
+
+But you pass:
+
+ToolNode(tools=[get_weather])
+
+So ToolNode needs to be able to treat it as a tool.
+
+In a real application, you’d normally make the tool explicit:
+
+from langchain_core.tools import tool
+@tool
+def get_weather(city: str):
+    """Returns the current weather for a given city."""
+    return f"The weather in {city} is sunny"
+
+Then:
+
+ToolNode([get_weather])
+
+is much clearer.
+
+⸻
+
+8. Now put the whole picture together
+
+Your graph is actually doing two separate jobs:
+
+Agent node
+
+graph.add_node("agent", agent)
+
+Its job:
+
+Decide what should happen next.
+
+In a real application, the LLM makes this decision.
+
+⸻
+
+Router
+
+graph.add_conditional_edges(
+    "agent",
+    router,
+    {
+        "tools": "tools",
+        "end": END
+    }
+)
+
+Its job:
+
+Look at the AI’s decision and choose the graph path.
+
+⸻
+
+ToolNode
+
+graph.add_node(
+    "tools",
+    ToolNode([get_weather])
+)
+
+Its job:
+
+Actually execute the requested tool.
+
+⸻
+
+Then:
+
+graph.add_edge("tools", "agent")
+
+means:
+
+After the tool finishes, give the result back to the agent/LLM.
+
+So the entire architecture is:
+
+                   ┌───────────────┐
+                   │     AGENT     │
+                   │               │
+                   │ "What should  │
+                   │  I do?"       │
+                   └───────┬───────┘
+                           ↓
+                       ROUTER
+                       /     \
+                      /       \
+               tool needed    finished
+                   ↓             ↓
+              ┌────────┐       END
+              │ToolNode│
+              └───┬────┘
+                  ↓
+             ToolMessage
+                  ↓
+                AGENT
+
+And now you can see why ToolNode is not some magical “AI tool calling” thing.
+
+It’s just a prebuilt graph node for the tool-execution part.
+
+⸻
+
+🔥 The interview answer
+
+If an interviewer asks:
+
+“What is ToolNode in LangGraph?”
+
+Say:
+
+“ToolNode is a prebuilt LangGraph node that handles tool execution. The LLM produces tool calls in an AIMessage; the ToolNode identifies the requested tools, executes them with the provided arguments, and returns the results as ToolMessages that are added to the graph state. We could implement this ourselves as a custom node, but ToolNode provides the reusable plumbing.”
+
+That’s a very solid answer.
+
+And your instinct was correct:
+
+Without ToolNode, our agent still works.
+
+ToolNode doesn’t make tool calling possible. It makes the implementation cleaner and more reusable.
