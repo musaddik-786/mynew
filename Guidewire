@@ -153,3 +153,438 @@ result = graph.invoke({
 # ============================================================
 
 print(result["messages"][-1].content)
+
+
+
+You’re absolutely right, man. I drifted back into explanation mode. That’s not how we were learning before.
+
+From now on, code is the center of the lesson, and explanation comes around the code.
+
+Let’s fix it right now. We won’t move to persistence yet.
+
+🔥 Let’s actually build the LangGraph agent
+
+We’ll build one complete working example and understand it line by line.
+
+1. Install
+
+pip install -U langgraph langchain-openai
+
+⸻
+
+2. Imports
+
+from typing import Annotated
+from typing_extensions import TypedDict
+from langchain_core.messages import HumanMessage, ToolMessage
+from langchain_core.tools import tool
+from langchain_openai import ChatOpenAI
+from langgraph.graph import StateGraph, START, END
+from langgraph.graph.message import add_messages
+
+⸻
+
+3. Create a tool
+
+@tool
+def calculator(expression: str) -> str:
+    """Calculate a mathematical expression."""
+    return str(eval(expression))
+
+This is our actual Python function.
+
+For example:
+
+calculator.invoke({
+    "expression": "25 * 4"
+})
+
+returns:
+
+100
+
+So far, nothing involving an agent.
+
+⸻
+
+4. Create the LLM
+
+llm = ChatOpenAI(
+    model="your-model-name",
+    temperature=0
+)
+
+Then:
+
+llm_with_tools = llm.bind_tools([calculator])
+
+This means:
+
+“LLM, you are allowed to request the calculator tool.”
+
+Again, the LLM doesn’t execute it.
+
+⸻
+
+5. Create our LangGraph state
+
+class State(TypedDict):
+    messages: Annotated[list, add_messages]
+
+This is our shared state.
+
+Initially:
+
+{
+    "messages": [
+        HumanMessage(content="What is 25 * 4?")
+    ]
+}
+
+⸻
+
+6. Create the LLM node
+
+def call_llm(state: State):
+    response = llm_with_tools.invoke(
+        state["messages"]
+    )
+    return {
+        "messages": [response]
+    }
+
+This is extremely important.
+
+The node:
+
+state
+ ↓
+get messages
+ ↓
+LLM
+ ↓
+return AIMessage
+
+If the LLM decides it needs the calculator, the returned AIMessage will contain a tool call.
+
+⸻
+
+7. Create our manual tool node
+
+This is what we were doing before ToolNode.
+
+def call_tool(state: State):
+    last_message = state["messages"][-1]
+    tool_call = last_message.tool_calls[0]
+    result = calculator.invoke(
+        tool_call["args"]
+    )
+    return {
+        "messages": [
+            ToolMessage(
+                content=result,
+                tool_call_id=tool_call["id"]
+            )
+        ]
+    }
+
+Now let’s slow down.
+
+This:
+
+last_message = state["messages"][-1]
+
+gets the latest message.
+
+It should be:
+
+AIMessage
+
+Then:
+
+tool_call = last_message.tool_calls[0]
+
+gets the tool request.
+
+Something like:
+
+{
+    "name": "calculator",
+    "args": {
+        "expression": "25 * 4"
+    },
+    "id": "call_123"
+}
+
+Then:
+
+result = calculator.invoke(
+    tool_call["args"]
+)
+
+actually executes:
+
+calculator(
+    expression="25 * 4"
+)
+
+and gets:
+
+100
+
+Finally:
+
+ToolMessage(
+    content=result,
+    tool_call_id=tool_call["id"]
+)
+
+creates the message that tells the LLM:
+
+“The tool you requested returned 100.”
+
+⸻
+
+8. Our router
+
+def should_continue(state: State):
+    last_message = state["messages"][-1]
+    if last_message.tool_calls:
+        return "tool"
+    return "end"
+
+This is only deciding where to go.
+
+It doesn’t execute anything.
+
+⸻
+
+9. Build the graph
+
+builder = StateGraph(State)
+builder.add_node("llm", call_llm)
+builder.add_node("tool", call_tool)
+builder.add_edge(START, "llm")
+builder.add_conditional_edges(
+    "llm",
+    should_continue,
+    {
+        "tool": "tool",
+        "end": END
+    }
+)
+builder.add_edge("tool", "llm")
+graph = builder.compile()
+
+Now we have:
+
+             ┌─────────┐
+             │   LLM   │
+             └────┬────┘
+                  ↓
+             tool_calls?
+              ↙       ↘
+            YES        NO
+             ↓          ↓
+        ┌─────────┐    END
+        │  TOOL   │
+        └────┬────┘
+             ↓
+            LLM
+
+⸻
+
+10. Run it
+
+result = graph.invoke({
+    "messages": [
+        HumanMessage(
+            content="What is 25 * 4?"
+        )
+    ]
+})
+
+Then:
+
+print(result["messages"][-1].content)
+
+You should ultimately get something like:
+
+100
+
+or:
+
+25 × 4 is 100.
+
+⸻
+
+🔥 NOW let’s see what actually happened
+
+This is the part I should have been showing you all along.
+
+Initial state
+
+{
+    "messages": [
+        HumanMessage("What is 25 * 4?")
+    ]
+}
+
+LLM node executes
+
+call_llm(state)
+
+LLM returns something conceptually like:
+
+AIMessage(
+    content="",
+    tool_calls=[
+        {
+            "name": "calculator",
+            "args": {
+                "expression": "25 * 4"
+            },
+            "id": "call_123"
+        }
+    ]
+)
+
+State now contains:
+
+HumanMessage
+      ↓
+AIMessage
+   tool_call
+      ↓
+calculator("25 * 4")
+
+Router executes
+
+should_continue(state)
+
+It sees:
+
+last_message.tool_calls
+
+which is not empty.
+
+Therefore:
+
+"tool"
+
+Tool node executes
+
+call_tool(state)
+
+Calculator returns:
+
+100
+
+We create:
+
+ToolMessage(
+    content="100",
+    tool_call_id="call_123"
+)
+
+Now state contains:
+
+HumanMessage
+      ↓
+AIMessage
+  tool_call
+      ↓
+ToolMessage
+    "100"
+
+Graph goes back to LLM
+
+Because:
+
+builder.add_edge("tool", "llm")
+
+The LLM now receives all of that message history.
+
+It sees:
+
+Human:
+What is 25 * 4?
+AI:
+I want calculator("25 * 4")
+Tool:
+100
+
+So now it can produce:
+
+AIMessage(
+    content="25 × 4 is 100."
+)
+
+No tool call this time.
+
+Therefore:
+
+should_continue(...)
+
+returns:
+
+"end"
+
+and the graph stops.
+
+⸻
+
+NOW ToolNode
+
+Only after understanding all that manually, we can replace:
+
+builder.add_node("tool", call_tool)
+
+with:
+
+from langgraph.prebuilt import ToolNode
+builder.add_node(
+    "tool",
+    ToolNode([calculator])
+)
+
+And replace our router with:
+
+from langgraph.prebuilt import tools_condition
+
+Then:
+
+builder.add_conditional_edges(
+    "llm",
+    tools_condition
+)
+
+That’s it.
+
+So we didn’t need ToolNode.
+
+We learned the manual mechanism first and then learned the abstraction.
+
+⸻
+
+This is how we’ll continue from now on
+
+Every LangGraph topic will follow:
+
+CONCEPT
+   ↓
+WRITE CODE
+   ↓
+RUN / TRACE CODE
+   ↓
+MODIFY CODE
+   ↓
+UNDERSTAND WHAT LANGGRAPH IS DOING
+   ↓
+INTERVIEW QUESTION
+
+And we are not moving to the next topic until the current code makes sense to you.
+
+You were right to call this out. We need to build, not just listen to me explain. 🔥
+
+
