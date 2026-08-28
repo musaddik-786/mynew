@@ -1,45 +1,124 @@
-Insurance claims today continue to face challenges throughout the claims life cycle, including lengthy first notice of loss processes, manual data collection, inconsistent claim information, delayed investigations, and limited customer visibility into claim progress. 
+AI-Powered Claims Orchestration – Demo Introduction
 
-Hexaware's Agentic AI claims solution transforms this experience by introducing intelligent AI agents across the entire claims journey, enabling faster claim reporting, AI-assisted data capture, intelligent validation, real-time claim tracking, and seamless collaboration between the policyholder, adjuster, and SIU investigator. 
+Let’s begin with an overview of the AI-Powered Claims Orchestration solution.
 
-In this demonstration, we will focus on the policyholder interactive claim journey. 
+Before getting into the technical architecture and implementation details, let’s first understand the business problem being addressed and the overall claims journey.
 
-The journey begins with the policyholder entering the policy number and clicking the lookup button. The system verifies the policy in real time against Guidewire. 
+The Business Problem
 
-Once the policy is verified, the policyholder simply describes the incident using either voice or text. The customer reports. 
+One of the key challenges in the claims business today is incomplete and inefficient claim intake.
 
-A fire incident occurred today at around 4 P.M. while I was at home. The fire started in the kitchen and caused damage to the flooring and cabinets. 
+A typical claims journey involves multiple personas, with each persona playing a different role in the overall claims process.
 
-Before submitting the claim, the policyholder also enters the estimated damage amount and clicks Chat with AI. Behind the scenes, multiple AI agents begin working simultaneously. The voice-to-text intake agent processes the narration, while the duplicate claim check agent verifies whether a similar claim has already been reported. 
+The solution brings together four primary personas:
 
-During intake validation, the AI identifies any mandatory information that is still missing and asks contextual follow-up questions. 
+1. Policyholder
+2. Claims Adjuster
+3. SIU / Fraud Investigator
+4. Vendor
 
-For example, it may ask, how would you describe your emotional state during or after the incident? After the policyholder answers all the required questions, the voice-to-text intake agent captures the complete information and generates a structured summary is generated for review, ensuring all mandatory claim details have been collected before submission. The policyholder can then upload supporting evidence by adding photographs and documents related to the damage. 
+From the policyholder’s perspective, the journey begins with the First Notice of Loss, or FNOL.
 
-As we scroll down, we can see the policy information in your Policy Information section, including details such as the policy number, insured name, property address, and policy period. 
+FNOL information can sometimes be incomplete or inconsistent, resulting in additional follow-ups, delays in claim creation, and ultimately a longer claims-processing cycle.
 
-Below that, the AI displays all the information it has extracted from the policyholder's description, including fields such as the type of loss, cause of loss, and other claim attributes. Each field clearly indicates whether the value was extracted directly from the customer description or inferred by AI. 
+The next challenge is evidence processing.
 
-This being a human review process policyholder can edit any AI generated information The application also supports a human review process, allowing the policyholder to edit or correct any AI-generated information before submission. An overall AI Agent Confidence score is also presented, providing transparency into the extraction process. 
+Policyholders may submit multiple documents, images, and other supporting evidence along with their claim. Manually reviewing and processing this information can be time-consuming and challenging, particularly when multiple documents and damage images are involved.
 
-Once the policyholder clicks Review and Confirm fields, any modifications made by the customer are updated in the structured claim data. the data is updated 
+This raises an important question:
 
-Finally, the policyholder clicks Confirm and Submit, after which the claim is successfully created and a unique claim number is generated. Throughout this process, the duplicate claim check agent continues validating that no duplicate claim exists for the reported incident. 
+How can AI be used to orchestrate the entire claims journey and make the process faster, more intelligent, and more consistent?
 
-Now, navigating to Guidewire Claim Center and searching that particular claim under search section. 
+Our Approach
 
-Claim-related information gets visible, such as policy number, insured name, adjuster. Clicking on that particular claim number navigates to the summary page, where additional data is visible, such as parties involved and planned activities. The Status section provides some data related to the status of that claim. 
+This is where the AI-Powered Claims Orchestration platform comes in.
 
-General policy information data is seen under the Policy section, which has data related to the insured, policy coverages, and more. 
+At the center of the solution is an Orchestrator, which acts as the brain of the overall claims process.
 
-After submission, the policyholder can navigate to the My Claims section, where a consolidated summary of all submitted claims is available, including a brief description and the reported cause of loss. Under the Follow My Claims section, the policyholder can search for a specific claim and view the complete claim journey. This includes the claim readiness score, claim progress tracker, coverage status, and the current stage of claim processing. 
+The Orchestrator understands the current state of the claim and coordinates the different specialized AI agents based on what needs to happen next.
 
-The policyholder can also view the latest stage updates, such as claim intake validation, giving complete visibility into where the claim currently stands. If needed, the policyholder can submit feedback, which is processed by the feedback agent, or raise concerns and communicate directly through the communication agent for additional assistance. 
+For example, once the initial claim information and evidence are available, the appropriate agents can perform activities such as intake processing, coverage verification, damage assessment, fraud analysis, settlement recommendation, repair-versus-replacement analysis, and vendor-related activities.
 
-The portal also provides the latest claim updates, estimated processing timeline, and a document sharing section where additional supporting documents can be uploaded whenever required. For convenience, the policyholder can download a claims summary or send an e-mail to request further assistance or escalate concerns. Any communication initiated by the policyholder is automatically recorded within the Latest Updates section, ensuring complete traceability. 
+Once an agent completes its activity, the outcome is returned to the Orchestrator, which determines the next appropriate step in the claims journey.
 
-Under the Document Hub, the policyholder can access and view all previously uploaded documents and evidence associated with the claim. From this point onward, the claim continues through the Intelligent Adjuster and SIU workflows, where AI-assisted assessment, fraud detection, and decision support accelerate claim handling while maintaining appropriate human oversight. 
+This enables the solution to move beyond a simple linear workflow towards an intelligent, agent-driven claims process.
 
-With Hexaware's Agentic AI claims solution, policyholders experience a faster, more intelligent, and transparent claims journey, from policy verification and AI-assisted claim intake to real-time claim tracking and continuous engagement throughout the claims lifecycle. 
+End-to-End Journey
 
- 
+Let’s quickly look at the overall journey before moving into the actual implementation.
+
+The journey begins with the policyholder submitting the claim along with the relevant information and supporting evidence.
+
+The system processes this information and invokes the appropriate AI agents based on the requirements of the claim.
+
+For example, when damage assessment is required, the Damage Assessment Agent analyzes the available evidence.
+
+When potential fraud indicators are identified, the claim can be routed towards the SIU process for further investigation.
+
+Similarly, when the assessment indicates that a repair-versus-replacement decision is required, the workflow can move towards the vendor journey, where vendor-related activities can be initiated.
+
+The key point is that these activities do not operate independently.
+
+They are coordinated through the central Orchestrator, which maintains the overall context of the claim and determines what should happen next.
+
+Human-in-the-Loop
+
+Another important aspect of the architecture is the use of Human-in-the-Loop capabilities.
+
+The solution is not designed as a fully autonomous black-box system. Human involvement is incorporated at important decision points where human judgment or approval is required.
+
+For example, fraud escalation may require human review.
+
+Similarly, damage assessment or final settlement recommendations may require an adjuster to review and approve the recommendation.
+
+The solution also supports optional human intervention during triaging and other stages of the workflow, based on the business requirement.
+
+The objective is therefore not to remove humans from the claims process.
+
+Instead, the objective is to augment claims professionals, automate repetitive activities, and allow adjusters to focus on decisions that require human judgment.
+
+Technical Architecture
+
+Now, coming to the technical architecture.
+
+The solution is built using Python and LangGraph, with the individual agents exposed through an MCP-based architecture.
+
+The overall solution has been deployed on Azure Cloud Services.
+
+For the LLM layer, the solution uses Azure OpenAI.
+
+For voice-related capabilities, such as transcription and translation, Azure Whisper is used.
+
+At the data layer, PostgreSQL is used for structured claim-related data, while Azure Blob Storage is used for storing and processing claim evidence such as documents and images.
+
+The solution is also integrated with Guidewire, including PolicyCenter and ClaimCenter, allowing the AI-driven workflow to work with the existing insurance ecosystem rather than operating as an isolated platform.
+
+Overall Architecture
+
+At a high level, the architecture brings together the four key personas:
+
+Policyholder → Adjuster → SIU → Vendor
+
+Underneath these personas are the corresponding specialized AI agents.
+
+At the center of the architecture is the Orchestrator, which coordinates the overall claims journey.
+
+The MCP layer provides access to the underlying tools and services required by the agents.
+
+Below that is the LLM and AI services layer, including Azure OpenAI and Azure Whisper.
+
+The data and integration layer consists of PostgreSQL, Azure Blob Storage, and Guidewire, along with the supporting Azure services.
+
+This creates an end-to-end architecture where the AI agents are not simply generating responses. They are able to interact with enterprise systems, access relevant data, execute business operations, and contribute to the overall claims process.
+
+Solution Maturity
+
+In terms of solution maturity, the majority of the end-to-end claims journey has been implemented.
+
+The solution is not being positioned as 100% complete, since an enterprise platform can continuously evolve with additional enhancements, integrations, and features.
+
+For the current scope, approximately 85–95% of the solution has been implemented, covering the core claims journey and the major agent capabilities.
+
+And rather than only discussing the architecture, the next step is to see how the solution actually works in action.
+
+Let’s now take a look at the end-to-end demo.
