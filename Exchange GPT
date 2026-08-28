@@ -1,26 +1,45 @@
-can you consider this transcript that i gave for the demo but this needs polishing:
- 
-et's discuss on one of the submissions that we that we did for, you know, this thing is the agent words AI powered claims orchestration, I think. So, coming to the articulation and the overall picture standpoint of you, right? Like, before I delve into, you know, the complexity.
-Ramakrishna Mudavathi 19 minutes 57 seconds
-maturity architecture and all that part. So the main problem that we are kind of like, you know, facing in the claims business is, you know, the current issue is that, you know, that we have this incomplete epanol intake. I mean, it will be very difficult for the, it will be very difficult because here we have 4 personas altogether. Okay, one is the policy holder.
-Ramakrishna Mudavathi 20 minutes 17 seconds
-Another one is an adjuster, and another one is a SIU, and the last one is a vendor personnel. So, we have 4 personnel over here. Like, if you see the typical journey from the policy holder all the way to here, right? So, we see that you know it is very difficult for the things to kind of for the people, you know, to kind of do that like first notice of lost intake, like where sometimes it will be like incomplete.
-Ramakrishna Mudavathi 20 minutes 39 seconds
-Which would result in the claim not being created properly, or you know, some issues over it, and, like, you know, and we need to also go through the evidences, the manual document review, right? Like, when the evidences were uploaded as part of, you know, initial policy holder, you know, submission, so going through that manual document review will be very challenging, and there, at times, there can be, you know, multiple documents, multiple images.
-Ramakrishna Mudavathi 21 minutes 2 seconds
-So, not only from a document standpoint of even the images that the people are kind of uploading, right? So, trying, yeah.
-Ramakrishna Mudavathi 23 minutes
-And all that, and after he does the resolution, get back to the orchestrator, sorry, get back to the adjuster, and then if there is any further repair versus replacement scenario, right, because the damage item, replacement, we also have a vendor agent or vendor persona, wherein we will dispatch the agent and we'll do all sorts of that stuff, so we will kind of like, you know, take a journey into the end to one quickly, that part I will show that, and the good thing that we also have, we also...
-Ramakrishna Mudavathi 23 minutes 25 seconds
-Have an orchestrator which acts as a brain agent which communicates across all these things, and the technical stack that we have used is a Python and Landgraf for each of these things, and all agents are built upon MCP. MCP is the thing that we just use at the back end, and all the solution has been ported to the Azure Cloud Services.
-Ramakrishna Mudavathi 23 minutes 44 seconds
-So, for the for the allowance, we are using open AI and and you know those storage BLOB and all the corresponding services and all we are using, and the good point in our architecture is that you know there is also a human in the loop. It's not like I just click a button and rest all the things will agents will run and it'll happen. No, at some points we have the human in the loop, for example, for the fraud escalation review, we need to have that human in the loop and for damage assessment.
-Ramakrishna Mudavathi 24 minutes 7 seconds
-And for FNL, you know, reviewing that part, everything. So we have some required human in the loops, as well as, you know, some of the triaging and optional kind of like, you know, human in the loop concepts as well. So this is one thing. And this is a final, you know, the very high level architecture, you know, that's what I said. We have 4 personas and its corresponding, you know, agents. And we are having this MCP layer, you know, which talks about all the tools that underlying that we are kind of like using.
-Ramakrishna Mudavathi 24 minutes 32 seconds
-And for the LLM layer, as I told, we are using Azure Open AI and Azure Whisper for the voice translation and transcribing. So, on data layer, Postgres for the for the for the database and Azure Storage Blob for the evidence uploading, retrieving, processing, and all that all that sorts of these things. And Guideware, the good point that is that you know we have also integrated the solution to the Guideware based upon some of the requirements that we are getting in the market from the claims standpoint of view.
-Ramakrishna Mudavathi 24 minutes 56 seconds
-Because Guideware and Devrukhkar are the, they are the pillars right of the this thing, so we have integrated our solution to the Guideware policy centre as well as the Lane Center. So, yeah, this is the this is the architecture and the strategy behind it, and the solution maturity I have also already talked about, right? Like, basically, we were able to complete this all the way to the 100%. I mean, I...
-Ramakrishna Mudavathi 25 minutes 16 seconds
-I need not call it as 100% because still there will definitely be, you know, some enhancements and features that can be added upon. So it's almost all 85 to 95% it is already done. It is implemented. I have implemented everything. I will show it in the demo, in just one second. And, yeah, please
+Insurance claims today continue to face challenges throughout the claims life cycle, including lengthy first notice of loss processes, manual data collection, inconsistent claim information, delayed investigations, and limited customer visibility into claim progress. 
+
+Hexaware's Agentic AI claims solution transforms this experience by introducing intelligent AI agents across the entire claims journey, enabling faster claim reporting, AI-assisted data capture, intelligent validation, real-time claim tracking, and seamless collaboration between the policyholder, adjuster, and SIU investigator. 
+
+In this demonstration, we will focus on the policyholder interactive claim journey. 
+
+The journey begins with the policyholder entering the policy number and clicking the lookup button. The system verifies the policy in real time against Guidewire. 
+
+Once the policy is verified, the policyholder simply describes the incident using either voice or text. The customer reports. 
+
+A fire incident occurred today at around 4 P.M. while I was at home. The fire started in the kitchen and caused damage to the flooring and cabinets. 
+
+Before submitting the claim, the policyholder also enters the estimated damage amount and clicks Chat with AI. Behind the scenes, multiple AI agents begin working simultaneously. The voice-to-text intake agent processes the narration, while the duplicate claim check agent verifies whether a similar claim has already been reported. 
+
+During intake validation, the AI identifies any mandatory information that is still missing and asks contextual follow-up questions. 
+
+For example, it may ask, how would you describe your emotional state during or after the incident? After the policyholder answers all the required questions, the voice-to-text intake agent captures the complete information and generates a structured summary is generated for review, ensuring all mandatory claim details have been collected before submission. The policyholder can then upload supporting evidence by adding photographs and documents related to the damage. 
+
+As we scroll down, we can see the policy information in your Policy Information section, including details such as the policy number, insured name, property address, and policy period. 
+
+Below that, the AI displays all the information it has extracted from the policyholder's description, including fields such as the type of loss, cause of loss, and other claim attributes. Each field clearly indicates whether the value was extracted directly from the customer description or inferred by AI. 
+
+This being a human review process policyholder can edit any AI generated information The application also supports a human review process, allowing the policyholder to edit or correct any AI-generated information before submission. An overall AI Agent Confidence score is also presented, providing transparency into the extraction process. 
+
+Once the policyholder clicks Review and Confirm fields, any modifications made by the customer are updated in the structured claim data. the data is updated 
+
+Finally, the policyholder clicks Confirm and Submit, after which the claim is successfully created and a unique claim number is generated. Throughout this process, the duplicate claim check agent continues validating that no duplicate claim exists for the reported incident. 
+
+Now, navigating to Guidewire Claim Center and searching that particular claim under search section. 
+
+Claim-related information gets visible, such as policy number, insured name, adjuster. Clicking on that particular claim number navigates to the summary page, where additional data is visible, such as parties involved and planned activities. The Status section provides some data related to the status of that claim. 
+
+General policy information data is seen under the Policy section, which has data related to the insured, policy coverages, and more. 
+
+After submission, the policyholder can navigate to the My Claims section, where a consolidated summary of all submitted claims is available, including a brief description and the reported cause of loss. Under the Follow My Claims section, the policyholder can search for a specific claim and view the complete claim journey. This includes the claim readiness score, claim progress tracker, coverage status, and the current stage of claim processing. 
+
+The policyholder can also view the latest stage updates, such as claim intake validation, giving complete visibility into where the claim currently stands. If needed, the policyholder can submit feedback, which is processed by the feedback agent, or raise concerns and communicate directly through the communication agent for additional assistance. 
+
+The portal also provides the latest claim updates, estimated processing timeline, and a document sharing section where additional supporting documents can be uploaded whenever required. For convenience, the policyholder can download a claims summary or send an e-mail to request further assistance or escalate concerns. Any communication initiated by the policyholder is automatically recorded within the Latest Updates section, ensuring complete traceability. 
+
+Under the Document Hub, the policyholder can access and view all previously uploaded documents and evidence associated with the claim. From this point onward, the claim continues through the Intelligent Adjuster and SIU workflows, where AI-assisted assessment, fraud detection, and decision support accelerate claim handling while maintaining appropriate human oversight. 
+
+With Hexaware's Agentic AI claims solution, policyholders experience a faster, more intelligent, and transparent claims journey, from policy verification and AI-assisted claim intake to real-time claim tracking and continuous engagement throughout the claims lifecycle. 
+
  
