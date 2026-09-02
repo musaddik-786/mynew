@@ -1,3 +1,429 @@
+testsplitters
+
+# from langchain.document_loaders import PyPDFLoader, TextLoader
+from langchain_community.document_loaders import TextLoader
+loader = TextLoader("C:\\Users\\2000137378\\Desktop\\newproject\\RAG_PIPELINES\\mytext.txt",encoding ="utf-8")
+text = loader.load()
+
+print(text)
+
+
+# TextLoader
+# PyPDFLoader
+# CSVLoader
+# JSONLoader
+# DocxLoader
+
+# FLOW
+# file.txt
+#   ↓
+# read file
+#   ↓
+# convert text
+#   ↓
+# Document object
+
+# OUTPUT
+# documents is NOT text.
+# It is a list (array) of Document objects.documents is NOT text.
+# It is a list (array) of Document objects.
+
+# [
+# Document(
+# page_content="text inside file",
+# metadata={'source':'file.txt'}
+# )
+# ]
+
+
+
+# TEXT SPLITTING
+
+
+from langchain_text_splitters import (RecursiveCharacterTextSplitter, CharacterTextSplitter, TokenTextSplitter)
+from langchain_community.document_loaders import TextLoader
+
+
+loader = TextLoader("C:\\Users\\2000137378\\Desktop\\newproject\\RAG_PIPELINES\\mytext.txt",encoding ="utf-8")
+document = loader.load()
+
+# print(document)
+
+###Character text splitter
+text = document[0].page_content
+text_splitter = CharacterTextSplitter(separator="\n", chunk_size=100, chunk_overlap=20,length_function = len)
+#chunk size is characters 
+
+char_chunk = text_splitter.split_text(text)
+
+print(len(char_chunk))
+# print(f"first Chunk: {char_chunk[0][:100]}...")
+
+
+### Recursive character text splitter
+recursive_char_splitter = RecursiveCharacterTextSplitter(chunk_size=100, chunk_overlap=20)
+recursive_char_chunk = recursive_char_splitter.split_text(text)
+print(len(recursive_char_chunk))
+# print(f"first Chunk: {recursive_char_chunk[0][:100]}...")
+
+# 1️⃣ Example text (like your example)
+# Let’s create text like this:
+# text = """Short para.
+# This is a very long paragraph that contains many many words and keeps going on and on to simulate a big paragraph which should exceed the chunk size limit so that we can observe how recursive splitting works internally.
+# Another short para."""
+# Assume:
+# chunk_size = 50
+# chunk_overlap = 0
+
+# ⸻
+# 2️⃣ Code we run
+# from langchain_text_splitters import RecursiveCharacterTextSplitter
+# text = """Short para.
+# This is a very long paragraph that contains many many words and keeps going on and on to simulate a big paragraph which should exceed the chunk size limit so that we can observe how recursive splitting works internally.
+# Another short para."""
+
+# splitter = RecursiveCharacterTextSplitter(
+#    chunk_size=50,
+#    chunk_overlap=0
+# )
+
+# chunks = splitter.split_text(text)
+
+# for i, chunk in enumerate(chunks):
+#    print("Chunk", i+1)
+#    print(chunk)
+#    print("Length:", len(chunk))
+#    print()
+
+# ⸻
+# 3️⃣ Now let’s simulate what happens internally
+# Default separators:
+# ["\n\n", "\n", " ", ""]
+# Order matters.
+# ⸻
+# Step 1 — Try paragraph split (\n\n)
+# Text splits into:
+# Piece 1:
+# Short para.
+# Length:
+# 11 chars ✔
+# Good → becomes chunk.
+# ⸻
+# Piece 2:
+# This is a very long paragraph that contains many many words and keeps going on and on to simulate a big paragraph which should exceed the chunk size limit so that we can observe how recursive splitting works internally.
+# Length:
+# ~220 chars ❌
+# Too big.
+# So recursive splitting starts.
+# ⸻
+# Piece 3:
+# Another short para.
+# Length:
+# 20 chars ✔
+# Good → becomes chunk.
+# ⸻
+# 4️⃣ Now recursive splitting starts on Piece 2
+# Try next separator:
+# \n
+# But no newline inside.
+# Still ~220 ❌
+# Try next separator:
+# space
+# Now split into words:
+# This
+# is
+# a
+# very
+# long
+# paragraph
+# that
+# contains
+# many
+# many
+# words
+# ...
+
+# ⸻
+# 5️⃣ Now it starts building chunks under 50 chars
+# It starts combining words:
+# Build chunk:
+# This is a very long paragraph that contains many
+# Check length:
+# ~48 ✔
+# Chunk created.
+# ⸻
+# Next words:
+# many words and keeps going on and on to simulate
+# Length:
+# ~47 ✔
+# Chunk created.
+# ⸻
+# Next:
+# a big paragraph which should exceed the chunk
+# ~46 ✔
+# Chunk created.
+# ⸻
+# Next:
+# size limit so that we can observe how recursive
+# ~48 ✔
+# Chunk created.
+# ⸻
+# Next:
+# splitting works internally.
+# ~27 ✔
+# Chunk created.
+# ⸻
+# 6️⃣ Final result becomes:
+# Chunks:
+# Chunk 1:
+# Short para.
+# Chunk 2:
+# This is a very long paragraph that contains many
+# Chunk 3:
+# many words and keeps going on and on to simulate
+# Chunk 4:
+# a big paragraph which should exceed the chunk
+# Chunk 5:
+# size limit so that we can observe how recursive
+# Chunk 6:
+# splitting works internally.
+# Chunk 7:
+# Another short para.
+
+# ⸻
+# 7️⃣ What we learned from this example
+# Recursive splitter did:
+# Step 1:
+# Split by paragraph.
+# Short ✔
+# Long ❌
+# Short ✔
+# Step 2:
+# Long paragraph too big → try next separator.
+# Step 3:
+# Split by words.
+# Step 4:
+# Combine words until chunk_size reached.
+# ⸻
+# 8️⃣ The key insight (this is the main point)
+# Recursive splitter tries:
+# Keep structure if possible
+# But if structure violates chunk_size:
+# Break structure gradually
+# Meaning priority:
+# Structure first
+# Size enforcement second
+
+# ⸻
+# 9️⃣ Now let’s add overlap example
+# If:
+# chunk_overlap = 10
+# Then:
+# Chunk2:
+# This is a very long paragraph that contains many
+# Chunk3 would start with last 10 chars:
+# Example:
+# tains many words and keeps going on and on
+# Overlap part:
+# tains many
+# Repeated.
+# ⸻
+# 🔟 The simplest mental model (best way to remember)
+# Recursive splitter behaves like:
+# “I will try to cut nicely.
+# But if text is too big,
+# I will cut more aggressively.”
+# ⸻
+# 11️⃣ If you want the next thing that makes this crystal clear:
+# Next we should do:
+# Same text with CharacterTextSplitter vs RecursiveCharacterTextSplitter side-by-side
+# That comparison usually removes 100% confusion.
+# Just say:
+# “Compare both on same text”Perfect. Let’s take a real working example and trace exactly what RecursiveCharacterTextSplitter does internally. We will literally simulate its thinking.
+# ⸻
+# 1️⃣ Example text (like your example)
+# Let’s create text like this:
+# text = """Short para.
+# This is a very long paragraph that contains many many words and keeps going on and on to simulate a big paragraph which should exceed the chunk size limit so that we can observe how recursive splitting works internally.
+# Another short para."""
+# Assume:
+# chunk_size = 50
+# chunk_overlap = 0
+
+# ⸻
+# 2️⃣ Code we run
+# from langchain_text_splitters import RecursiveCharacterTextSplitter
+# text = """Short para.
+# This is a very long paragraph that contains many many words and keeps going on and on to simulate a big paragraph which should exceed the chunk size limit so that we can observe how recursive splitting works internally.
+# Another short para."""
+
+# splitter = RecursiveCharacterTextSplitter(
+#    chunk_size=50,
+#    chunk_overlap=0
+# )
+
+# chunks = splitter.split_text(text)
+
+# for i, chunk in enumerate(chunks):
+#    print("Chunk", i+1)
+#    print(chunk)
+#    print("Length:", len(chunk))
+#    print()
+
+# ⸻
+# 3️⃣ Now let’s simulate what happens internally
+# Default separators:
+# ["\n\n", "\n", " ", ""]
+# Order matters.
+# ⸻
+# Step 1 — Try paragraph split (\n\n)
+# Text splits into:
+# Piece 1:
+# Short para.
+# Length:
+# 11 chars ✔
+# Good → becomes chunk.
+# ⸻
+# Piece 2:
+# This is a very long paragraph that contains many many words and keeps going on and on to simulate a big paragraph which should exceed the chunk size limit so that we can observe how recursive splitting works internally.
+# Length:
+# ~220 chars ❌
+# Too big.
+# So recursive splitting starts.
+# ⸻
+# Piece 3:
+# Another short para.
+# Length:
+# 20 chars ✔
+# Good → becomes chunk.
+# ⸻
+# 4️⃣ Now recursive splitting starts on Piece 2
+# Try next separator:
+# \n
+# But no newline inside.
+# Still ~220 ❌
+# Try next separator:
+# space
+# Now split into words:
+# This
+# is
+# a
+# very
+# long
+# paragraph
+# that
+# contains
+# many
+# many
+# words
+# ...
+
+# ⸻
+# 5️⃣ Now it starts building chunks under 50 chars
+# It starts combining words:
+# Build chunk:
+# This is a very long paragraph that contains many
+# Check length:
+# ~48 ✔
+# Chunk created.
+# ⸻
+# Next words:
+# many words and keeps going on and on to simulate
+# Length:
+# ~47 ✔
+# Chunk created.
+# ⸻
+# Next:
+# a big paragraph which should exceed the chunk
+# ~46 ✔
+# Chunk created.
+# ⸻
+# Next:
+# size limit so that we can observe how recursive
+# ~48 ✔
+# Chunk created.
+# ⸻
+# Next:
+# splitting works internally.
+# ~27 ✔
+# Chunk created.
+# ⸻
+# 6️⃣ Final result becomes:
+# Chunks:
+# Chunk 1:
+# Short para.
+# Chunk 2:
+# This is a very long paragraph that contains many
+# Chunk 3:
+# many words and keeps going on and on to simulate
+# Chunk 4:
+# a big paragraph which should exceed the chunk
+# Chunk 5:
+# size limit so that we can observe how recursive
+# Chunk 6:
+# splitting works internally.
+# Chunk 7:
+# Another short para.
+
+# ⸻
+# 7️⃣ What we learned from this example
+# Recursive splitter did:
+# Step 1:
+# Split by paragraph.
+# Short ✔
+# Long ❌
+# Short ✔
+# Step 2:
+# Long paragraph too big → try next separator.
+# Step 3:
+# Split by words.
+# Step 4:
+# Combine words until chunk_size reached.
+# ⸻
+# 8️⃣ The key insight (this is the main point)
+# Recursive splitter tries:
+# Keep structure if possible
+# But if structure violates chunk_size:
+# Break structure gradually
+# Meaning priority:
+# Structure first
+# Size enforcement second
+
+# ⸻
+# 9️⃣ Now let’s add overlap example
+# If:
+# chunk_overlap = 10
+# Then:
+# Chunk2:
+# This is a very long paragraph that contains many
+# Chunk3 would start with last 10 chars:
+# Example:
+# tains many words and keeps going on and on
+# Overlap part:
+# tains many
+# Repeated.
+# ⸻
+# 🔟 The simplest mental model (best way to remember)
+# Recursive splitter behaves like:
+# “I will try to cut nicely.
+# But if text is too big,
+# I will cut more aggressively.”
+
+
+
+
+### Token text splitter
+token_text_splitter = TokenTextSplitter(chunk_size=100, chunk_overlap=20)
+token_chunk = token_text_splitter.split_text(text)
+print(len(token_chunk))
+# print(f"first Chunk: {token_chunk[0][:100]}...")
+
+
+loaders
+from langchain_community.document_loaders import PyPDFLoader
+loader = PyPDFLoader("C:\\Users\\2000137378\\Desktop\\newproject\\RAG_PIPELINES\\quote_20260325_114738.pdf")
+document = loader.load()
+print(document)
 
 
 
@@ -5,1562 +431,1451 @@
 
 
 
+# 1️⃣ First understand why multiple PDF loaders exist
+# PDF is a very messy format internally.
+# PDF does NOT store text like:
+# Line 1
+# Line 2
+# Instead it stores:
+# Text position
+# Font
+# Coordinates
+# Objects
+# Drawing instructions
+# So extracting text is hard.
+# Different libraries solve this differently.
+# That is why multiple loaders exist.
+# ⸻
+# 2️⃣ PyPDFLoader (simplest)
+# Uses:
+# pypdf library
+# Basic text extraction.
+# Example:
+# from langchain_community.document_loaders import PyPDFLoader
+# loader = PyPDFLoader("sample.pdf")
+# docs = loader.load()
+# print(docs[0].page_content)
+
+# ⸻
+# How PyPDFLoader works internally
+# Process:
+# PDF
+# ↓
+# pypdf reads page
+# ↓
+# Extract text
+# ↓
+# Create Document per page
+
+# ⸻
+# Advantages:
+# ✔ Simple
+# ✔ Lightweight
+# ✔ Fast
+# ✔ Good for clean PDFs
+# ⸻
+# Problems:
+# ❌ Bad with tables
+# ❌ Bad with complex layouts
+# ❌ Sometimes broken text order
+# Example bad extraction:
+# Instead of:
+# Name Age Policy
+# Ali   30  Health
+# You may get:
+# Name Policy Age Health 30 Ali
+# Layout lost.
+# ⸻
+# 3️⃣ PyMuPDFLoader (better extraction)
+# Uses:
+# PyMuPDF (fitz)
+# Much better parser.
+# Example:
+# from langchain_community.document_loaders import PyMuPDFLoader
+# loader = PyMuPDFLoader("sample.pdf")
+# docs = loader.load()
+
+# ⸻
+# Internal process:
+# PDF
+# ↓
+# PyMuPDF parsing engine
+# ↓
+# Better layout detection
+# ↓
+# Document per page
+
+# ⸻
+# Advantages:
+# ✔ Better text order
+# ✔ Faster than pypdf
+# ✔ Handles layouts better
+# ✔ Good for production
+# ⸻
+# Problems:
+# ❌ Still struggles with complex tables
+# ❌ No semantic structure understanding
+# ⸻
+# 4️⃣ UnstructuredPDFLoader (most advanced)
+# Uses:
+# Unstructured library
+# This is different.
+# It tries to understand:
+# Document structure
+# Not just text.
+# Example:
+# It detects:
+# Title
+# Paragraph
+# Table
+# Header
+# Footer
+# Lists
+# Example:
+# from langchain_community.document_loaders import UnstructuredPDFLoader
+# loader = UnstructuredPDFLoader("sample.pdf")
+# docs = loader.load()
+
+# ⸻
+# Internal process:
+# PDF
+# ↓
+# Unstructured parser
+# ↓
+# Layout detection
+# ↓
+# Element detection
+# ↓
+# Document objects
+
+# ⸻
+# Advantages:
+# ✔ Best text quality
+# ✔ Detects sections
+# ✔ Detects tables
+# ✔ Detects headings
+# ✔ Best for RAG ingestion
+# ⸻
+# Problems:
+# ❌ Slower
+# ❌ More dependencies
+# ❌ Heavier install
+# ⸻
+# 5️⃣ Side-by-side comparison
+# Loader Speed Quality Best use
+# PyPDFLoader Fast Basic Simple PDFs
+# PyMuPDFLoader Fast Good Most RAG systems
+# UnstructuredPDFLoader Slower Best Complex documents
+
+# ⸻
+# 6️⃣ Real engineer recommendation
+# Most RAG engineers choose:
+# Default choice:
+# PyMuPDFLoader
+# Because:
+# Good balance of speed + quality.
+# ⸻
+# If document complex:
+# UnstructuredPDFLoader
+# Example:
+# Insurance documents
+# Research papers
+# Contracts
+# Reports
+# ⸻
+# Rarely recommended:
+# PyPDFLoader
+# Only if simple PDF.
+# ⸻
+# 7️⃣ Important real world insight (this matters a lot)
+# Loader choice affects:
+# Extraction quality
+#     ↓
+# Chunk quality
+#     ↓
+# Embedding quality
+#     ↓
+# Retrieval quality
+#     ↓
+# LLM answers
+# Bad loader → bad RAG.
+# Most beginners ignore this.
+# ⸻
+# 8️⃣ Example difference (real effect)
+# Suppose policy says:
+# Coverage amount: 50000 USD
+# Bad loader may produce:
+# Coverage USD amount 50000
+# Embedding meaning changes.
+# Retrieval suffers.
+# ⸻
+# 9️⃣ What companies actually use
+# Production ingestion often uses:
+# Unstructured
+# PyMuPDF
+# PDFPlumber
+# Azure Document Intelligence
+# For enterprise data.
+# ⸻
+# 🔟 Simple decision rule
+# Use this:
+# If learning:
+# PyPDFLoader
+# If building RAG:
+# PyMuPDFLoader
+# If enterprise docs:
+# UnstructuredPDFLoader
+
+# ⸻
+# 11️⃣ One line summary
+# All three load PDFs but differ in text extraction quality, not functionality.
+# They all produce:
+# List[Document]
+# But content quality differs.
+
+
+
+embedding
+from langchain_chroma import Chroma
+from langchain_openai import AzureOpenAIEmbeddings
+from langchain_community.document_loaders import TextLoader
+from langchain_text_splitters import CharacterTextSplitter, RecursiveCharacterTextSplitter
+from dotenv import load_dotenv
+from langchain_core.documents import Document
+import os
+
+###split_text=--------------------------------------------------------------
+load_dotenv()
+
+# embeddings = AzureOpenAIEmbeddings(
+#     azure_deployment=os.getenv("AZURE_OPENAI_EMBEDDING_DEPLOYMENT_NAME"),
+#     openai_api_key=os.getenv("AZURE_OPENAI_API_KEY"),
+#     openai_api_version=os.getenv("AZURE_OPENAI_API_VERSION"),
+#     azure_endpoint=os.getenv("AZURE_OPENAI_ENDPOINT"),
+#     chunk_size=1024  # Adding required chunk_size parameter
+# )
+
+# text_splitter = RecursiveCharacterTextSplitter(
+#     chunk_size=int(os.getenv("CHUNK_SIZE", "800")),
+#     chunk_overlap=int(os.getenv("CHUNK_OVERLAP", "100")),
+#     length_function=len,
+# )
+
+# loader = TextLoader("C:\\Users\\2000137378\\Desktop\\newproject\\RAG_PIPELINES\\mytext.txt", encoding="utf-8")
+# documents = loader.load() #THIS GIVES US A LIST OF DOCUMENT OBJECTS BUT WE NEED STRING AS SPLIT_TEXT EXPECTS A STRING NOT A DOCUMENT OBJECT
+# document_text = documents[0].page_content #WE EXTRACT THE STRING FROM THE DOCUMENT OBJECT TO PASS IT TO SPLIT_TEXT
+
+# chunks = text_splitter.split_text(document_text) #THIS GIVES US A LIST OF STRINGS (CHUNKS) WHICH WE CAN THEN CONVERT TO DOCUMENT OBJECTS TO PASS TO CHROMA
+
+# my_dir = os.path.dirname(os.path.abspath(__file__))
+# print(f"Current directory: {my_dir}")
+
+
+# Now we have chunks as a list of strings. We need to convert them to Document objects to pass to Chroma.
+
+# docs = []
+# for chunk in chunks:
+#     docs.append(Document(page_content=chunk))
+
+# vectorstore = Chroma.from_documents(
+#     # documents=chunks, #WE CANNOT PASS THE LIST OF STRINGS (CHUNKS) TO CHROMA BECAUSE IT EXPECTS A LIST OF DOCUMENT OBJECTS. WE NEED TO CONVERT THE CHUNKS TO DOCUMENT OBJECTS FIRST.
+#     documents=docs,   #WE PASS THE LIST OF DOCUMENT OBJECTS TO CHROMA
+#     embedding=embeddings,
+#     collection_name="my_collection",
+#     persist_directory=my_dir
+#     )
 
 
 
 
 
+###------------------SPLIT DOCUMENT
+
+#below is the exact above code this time using SplitDocuments instead of split_text to directly get Document objects instead of strings which we then pass to Chroma without needing to convert them to Document objects again.
+
+load_dotenv()
+embeddings = AzureOpenAIEmbeddings(
+    azure_deployment=os.getenv("AZURE_OPENAI_EMBEDDING_DEPLOYMENT_NAME"),
+    openai_api_key=os.getenv("AZURE_OPENAI_API_KEY"),
+    openai_api_version=os.getenv("AZURE_OPENAI_API_VERSION"),
+    azure_endpoint=os.getenv("AZURE_OPENAI_ENDPOINT"),
+    chunk_size=1024  # Adding required chunk_size parameter
+)
+text_splitter = RecursiveCharacterTextSplitter(
+    chunk_size=int(os.getenv("CHUNK_SIZE", "800")),
+    chunk_overlap=int(os.getenv("CHUNK_OVERLAP", "100")),
+    length_function=len,
+)
+loader = TextLoader("C:\\Users\\2000137378\\Desktop\\newproject\\RAG_PIPELINES\\mytext.txt", encoding="utf-8")
+documents = loader.load() #THIS GIVES US A LIST OF DOCUMENT OBJECTS BUT WE NEED
+    # TO SPLIT THEM INTO CHUNKS AS DOCUMENT OBJECTS TO PASS TO CHROMA
+chunks = text_splitter.split_documents(documents)
+# my_dir = os.path.dirname(os.path.abspath(__file__))
+my_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "input")
+
+vectorstore = Chroma.from_documents(
+    documents=chunks, #NOW WE CAN PASS THE CHUNKS DIRECTLY TO CHROMA BECAUSE THEY ARE ALREADY DOCUMENT OBJECTS
+    embedding=embeddings,
+    collection_name="my_collection",
+    persist_directory=my_dir
+    )
 
 
+print(len(chunks))
+# print(f"first Chunk: {chunks[0][:100]}...")
+print(f"first Chunk: {chunks[0].page_content[:100]}...")
 
+retrievers
 
-
-classifiree.py
-import logging
+from langchain_chroma import Chroma
+from langchain_openai import AzureOpenAIEmbeddings
 from dotenv import load_dotenv
 import os
-from openai import AzureOpenAI  # Correct import for Azure OpenAI
-from common.phoenix_prompt import build_prompt
 
-logger = logging.getLogger(__name__)
+load_dotenv()
 
+embeddings = AzureOpenAIEmbeddings(
+    azure_deployment=os.getenv("AZURE_OPENAI_EMBEDDING_DEPLOYMENT_NAME"),
+    openai_api_key=os.getenv("AZURE_OPENAI_API_KEY"),
+    openai_api_version=os.getenv("AZURE_OPENAI_API_VERSION"),
+    azure_endpoint=os.getenv("AZURE_OPENAI_ENDPOINT"),      
+    # chunk_size=1024  # Adding required chunk_size parameter
+)
+
+
+my_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "input")
+
+vectorstore = Chroma(
+    collection_name="my_collection",
+    embedding_function=embeddings,
+    persist_directory=my_dir
+)
+
+query = input("Enter your query: ")
+
+results = vectorstore.similarity_search(query, k=3)
+
+print("Top 3 similar documents:")
+
+for doc in results:
+    print(doc.page_content)
+    print("-----")
+
+
+
+from langchain_chroma import Chroma
+from langchain_openai import AzureOpenAIEmbeddings
+from dotenv import load_dotenv
+import os
+
+import logging
+from typing import Dict, Any, List
+# from langchain.chains import LLMChain
+from langchain_classic.chains.llm import LLMChain
+# from langchain.prompts import PromptTemplate
+from langchain_core.prompts import PromptTemplate
+# from langchain_community.chat_models import AzureChatOpenAI
+from langchain_openai import AzureChatOpenAI, AzureOpenAIEmbeddings
+# from langchain_community.vectorstores import Chroma
+from langchain_chroma import Chroma
+# from langchain_community.embeddings import AzureOpenAIEmbeddings
+# from azure.storage.blob import BlobServiceClient, ContainerClient
+from azure.core.exceptions import ResourceExistsError
+import re
+# from datetime import datetime
+# from urllib.parse import urlparse, unquote
+# from Jarvis.MCP.common.phoenix_prompt import build_prompt
+
+import asyncio
 # Load environment variables
 load_dotenv()
 
-AZURE_OPENAI_ENDPOINT = os.getenv("AZURE_OPENAI_ENDPOINT")
-AZURE_OPENAI_API_VERSION = os.getenv("AZURE_OPENAI_API_VERSION")
-AZURE_OPENAI_API_KEY = os.getenv("AZURE_OPENAI_API_KEY")
-AZURE_OPENAI_CHAT_DEPLOYMENT = os.getenv("AZURE_OPENAI_CHAT_DEPLOYMENT")
-
-if not (AZURE_OPENAI_ENDPOINT and AZURE_OPENAI_API_VERSION and AZURE_OPENAI_API_KEY and AZURE_OPENAI_CHAT_DEPLOYMENT):
-    raise RuntimeError("Azure OpenAI env vars missing. Please set AZURE_OPENAI_ENDPOINT, AZURE_OPENAI_API_VERSION, AZURE_OPENAI_API_KEY and AZURE_OPENAI_CHAT_DEPLOYMENT")
-
-# ✅ Create Azure OpenAI client
-client = AzureOpenAI(
-    api_key=AZURE_OPENAI_API_KEY,
-    api_version=AZURE_OPENAI_API_VERSION,
-    azure_endpoint=AZURE_OPENAI_ENDPOINT,
-)
-
-def classify_document(document_content):
-    text = document_content.get("text", "")
-    logger.info("🔎 classify_document called: %d chars of text", len(text))
-    text_new = {text[:2000]}
-
-
-
-
-    prompt = build_prompt(
-
-        # "UHJvbXB0VmVyc2lvbjo1Ng==",
-        # "UHJvbXB0VmVyc2lvbjo2MQ==", #manual prompt 23 was working fine on 21/5/26 as Asset description but 22/5/26 it is giving as Trade Risk Submsion which is incorrect apart from this all other things are working fine
-        # "UHJvbXB0VmVyc2lvbjo2Mg==", #cluade prompt
-        # "UHJvbXB0VmVyc2lvbjo3MQ==", #cluade prompt added FINANCIAL_STATEMENT and SUBMISSION_APPLICATION in the existing layout detection prompt
-        # "UHJvbXB0VmVyc2lvbjo3Mg==",
-        #   "UHJvbXB0VmVyc2lvbjo3OQ==",
-
-        #   Enhanced the layout detection mcp prompt for the Broker Email Submission as it was not detecting the correct layout for the Home insurance use cases mail bodies.
-          "UHJvbXB0VmVyc2lvbjo4NQ==",
-        text_new=text_new,
-
-    )
-
-
-    logger.info("🤖 Calling LLM for document classification")
-    response = client.chat.completions.create(
-        model=AZURE_OPENAI_CHAT_DEPLOYMENT,
-        messages=[{"role": "user", "content": prompt}],
-        max_tokens=4,
-        temperature=0.0
-    )
-
-    try:
-        layout_type = response.choices[0].message.content.strip()
-    except Exception as e:
-        logger.warning("Failed to access message content via attribute, falling back: %s", e)
-        layout_type = getattr(response.choices[0].message, "content", "").strip()
-
-    logger.info("🏷️ Document classified as: %s", layout_type)
-    return layout_type
-
-
-document loader.py
-
-
-import io
-import logging
-from dotenv import load_dotenv
-import os
-
-from azure.ai.formrecognizer import DocumentAnalysisClient
-from azure.core.credentials import AzureKeyCredential
-
-import mammoth
-from weasyprint import HTML
-
+# Configure logging
+logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-load_dotenv()
-
-endpoint = os.getenv("LD_AZURE_FORMRECOG_ENDPOINT")
-key = os.getenv("LD_AZURE_FORMRECOG_KEY")
-
-client = DocumentAnalysisClient(
-    endpoint=endpoint,
-    credential=AzureKeyCredential(key)
+# Initialize Azure OpenAI embeddings
+embeddings = AzureOpenAIEmbeddings(
+    azure_deployment=os.getenv("AZURE_OPENAI_EMBEDDING_DEPLOYMENT_NAME"),
+    openai_api_key=os.getenv("AZURE_OPENAI_API_KEY"),
+    openai_api_version=os.getenv("AZURE_OPENAI_API_VERSION"),
+    azure_endpoint=os.getenv("AZURE_OPENAI_ENDPOINT"),
+    chunk_size=1024
 )
 
 
-def convert_docx_bytes_to_pdf_bytes(docx_bytes: bytes):
-    docx_stream = io.BytesIO(docx_bytes)
-
-    html = mammoth.convert_to_html(docx_stream).value
-
-    pdf_bytes = HTML(string=html).write_pdf()
-
-    return pdf_bytes
-
-
-async def load_pdf_document(blob_url: str, file_bytes: bytes):
+def query_documents(vectordb: Any, user_query: str) -> str:
     """
-    Existing PDF/DOCX processing logic using Form Recognizer.
-    """
-
-    extension = blob_url.split(".")[-1].lower()
-
-    logger.info(
-        " Analysing document: extension=%s size=%d bytes",
-        extension,
-        len(file_bytes)
-    )
-
-    if extension == "docx":
-        logger.info(" Converting DOCX → PDF")
-        file_bytes = convert_docx_bytes_to_pdf_bytes(file_bytes)
-
-    logger.info(" Sending to Azure Form Recognizer (prebuilt-read)")
-
-    poller = client.begin_analyze_document(
-        "prebuilt-read",
-        document=file_bytes
-    )
-
-    result = poller.result()
-
-    lines = [
-        line.content
-        for page in result.pages
-        for line in page.lines
-    ]
-
-    logger.info(
-        "Form Recognizer complete: %d pages, %d lines extracted",
-        len(result.pages),
-        len(lines)
-    )
-
-    return {
-        "text": "\n".join(lines)
-    }
-
-
-async def load_text_document(file_bytes: bytes):
-    """
-    NEW FUNCTION:
-    Load plain text file directly without Form Recognizer.
-    """
-
-    logger.info(" Processing TXT file")
-
-    try:
-        extracted_text = file_bytes.decode("utf-8")
-    except UnicodeDecodeError:
-        extracted_text = file_bytes.decode("latin-1")
-
-    logger.info(
-        " TXT file processed successfully: %d chars extracted",
-        len(extracted_text)
-    )
-
-    return {
-        "text": extracted_text
-    }
-
-
-async def load_document_from_bytes(blob_url: str, file_bytes: bytes):
-    """
-    Main dispatcher function.
-    Decides which loader to use.
-    """
-
-    extension = blob_url.split(".")[-1].lower()
-
-    if extension in ["pdf", "docx"]:
-        return await load_pdf_document(blob_url, file_bytes)
-
-    elif extension == "txt":
-        return await load_text_document(file_bytes)
-
-    else:
-        raise ValueError(
-            f"Unsupported file type: {extension}. "
-            f"Supported types are pdf, docx, txt"
-        )
-
-
-
-handler.py
-
-
-import os
-import json
-import logging
-from typing import Dict, Any
-
-from .service import _require_env
-
-logger = logging.getLogger(__name__)
-
-from .storage_utils import (
-    download_blob_bytes,
-    upload_text_to_blob
-)
-
-from .document_loader import load_document_from_bytes
-
-from .classifier import classify_document
-from .prompt_library_matcher import fetch_document_types_from_db, match_layout_type
-
-
-async def classify_blob_pdf_layout(blob_url: str) -> Dict[str, Any]:
-
-    logger.info(
-        " classify_blob_pdf_layout invoked: blob_url=%s",
-        blob_url
-    )
-
-    try:
-        blob_bytes = await download_blob_bytes(blob_url)
-
-        logger.info(
-            "Blob downloaded: %d bytes | url=%s",
-            len(blob_bytes),
-            blob_url
-        )
-
-    except Exception as e:
-
-        logger.error(
-            " Failed to fetch blob: %s | url=%s",
-            e,
-            blob_url
-        )
-
-        return {
-            "status": False,
-            "error": f"Failed to fetch blob: {e}"
-        }
-
-    try:
-
-        document_content = await load_document_from_bytes(
-            blob_url,
-            blob_bytes
-        )
-
-        char_count = len(document_content.get("text", ""))
-
-        logger.info(
-            " Document parsed: %d chars extracted | url=%s",
-            char_count,
-            blob_url
-        )
-
-    except Exception as e:
-
-        logger.error(
-            " Document parsing failed: %s | url=%s",
-            e,
-            blob_url
-        )
-
-        return {
-            "status": False,
-            "error": f"Document parsing failed: {e}"
-        }
-
-    extracted_text = document_content.get("text", "")
-
-    try:
-
-        text_blob_url = await upload_text_to_blob(
-            blob_url,
-            extracted_text
-        )
-
-        logger.info(
-            "Extracted text uploaded: %s",
-            text_blob_url
-        )
-
-    except Exception as e:
-
-        logger.error(
-            " Failed to upload extracted text: %s | url=%s",
-            e,
-            blob_url
-        )
-
-        return {
-            "status": False,
-            "error": f"Failed to upload extracted text: {e}"
-        }
-
-    try:
-
-        layout_type = classify_document(document_content)
-
-        logger.info(
-            " Classification complete: layout_type=%s | url=%s",
-            layout_type,
-            blob_url
-        )
-
-    except Exception as e:
-
-        logger.error(
-            " Classification failed: %s | url=%s",
-            e,
-            blob_url
-        )
-
-        return {
-            "status": False,
-            "error": f"Classification failed: {e}"
-        }
-
-    db_types = fetch_document_types_from_db()
-    matched_document_type = match_layout_type(layout_type, db_types)
-
-    return {
-        "status": True,
-        "layout_type": layout_type,
-        "matched_document_type": matched_document_type,
-        "URL": blob_url,
-        "text_blob_url": text_blob_url
-    }
-
-
-
-
-promptlibrarymatcher.py
-import re
-import logging
-import os
-import psycopg2
-from difflib import SequenceMatcher
-
-logger = logging.getLogger(__name__)
-
-MATCH_THRESHOLD = 0.5
-MIN_CHUNK_LEN = 2
-
-
-def fetch_document_types_from_db() -> list:
-    try:
-        conn = psycopg2.connect(
-            host=os.getenv("PGHOST_PROMPT"),
-            port=int(os.getenv("PGPORT_PROMPT", "5432")),
-            database=os.getenv("PGDATABASE_PROMPT"),
-            user=os.getenv("PGUSER_PROMPT"),
-            password=os.getenv("PGPASSWORD_PROMPT"),
-        )
-        with conn.cursor() as cur:
-            cur.execute("SELECT DISTINCT document_type FROM ref_prompt_library WHERE document_type IS NOT NULL")
-            rows = cur.fetchall()
-        conn.close()
-        return [row[0] for row in rows]
-    except Exception as e:
-        logger.warning("Could not fetch document types from DB: %s", e)
-        return []
-
-
-def _normalize(value: str) -> str:
-    """Strip separators and uppercase for clean comparison."""
-    return re.sub(r"[_\-\s]+", "", value.upper())
-
-
-def _coverage_score(raw: str, db_type: str, reverse: bool = False) -> float:
-    """
-    Greedy scan of raw (left-to-right or right-to-left) finding non-overlapping
-    substrings of length >= MIN_CHUNK_LEN that exist anywhere in db_type.
-    Score = total matched chars / len(raw).
-    """
-    if not raw or not db_type:
-        return 0.0
-
-    chars = list(raw) if not reverse else list(reversed(raw))
-    joined = "".join(chars)
-
-    matched = 0
-    i = 0
-    while i < len(joined):
-        found = False
-        for length in range(len(joined) - i, MIN_CHUNK_LEN - 1, -1):
-            chunk = joined[i:i + length]
-            if chunk in db_type:
-                matched += length
-                i += length
-                found = True
-                break
-        if not found:
-            i += 1
-
-    return matched / len(raw)
-
-
-def _score(raw: str, db_type: str) -> float:
-    """
-    Combine three scoring strategies and return the highest:
-      1. SequenceMatcher  — handles in-order partial/truncated matches
-      2. Coverage LTR     — handles out-of-order abbreviations, left to right
-      3. Coverage RTL     — same scan but right to left
-    """
-    if not raw or not db_type:
-        return 0.0
-
-    seq   = SequenceMatcher(None, raw, db_type).ratio()
-    c_ltr = _coverage_score(raw, db_type, reverse=False)
-    c_rtl = _coverage_score(raw, db_type, reverse=True)
-
-    return max(seq, c_ltr, c_rtl)
-
-
-def match_layout_type(raw_layout: str, db_types: list) -> str:
-    if not db_types:
-        return raw_layout
-
-    raw_norm = _normalize(raw_layout)
-
-    best_match = None
-    best_score = 0.0
-
-    for dt in db_types:
-        dt_norm = _normalize(dt)
-        score = _score(raw_norm, dt_norm)
-        logger.debug("Score '%s' vs '%s' = %.2f", raw_layout, dt, score)
-        if score > best_score:
-            best_score = score
-            best_match = dt
-
-    if best_match and best_score >= MATCH_THRESHOLD:
-        logger.info(
-            "Layout '%s' matched to '%s' (score=%.2f)",
-            raw_layout, best_match, best_score
-        )
-        return best_match
-
-    logger.warning(
-        "No confident match for layout '%s' (best score=%.2f), using raw value",
-        raw_layout, best_score
-    )
-    return raw_layout
-
-
-
-service.py
-# service.py
-#Working code 
-
-import os
-from urllib.parse import urlparse, unquote
-from dotenv import load_dotenv
-
-load_dotenv()
-
-AZURE_STORAGE_CONNECTION_STRING = os.environ.get("AZURE_STORAGE_CONNECTION_STRING", "")
-
-def _require_env() -> None:
-    """Ensure required environment variables exist."""
-    if not AZURE_STORAGE_CONNECTION_STRING:
-        raise RuntimeError("Missing AZURE_STORAGE_CONNECTION_STRING in environment/.env")
-
-def _parse_blob_url(url: str) -> tuple[str, str]:
-    """
-    Parse an Azure Blob URL and return (container_name, blob_path).
-    Example URL:
-      https://account.blob.core.windows.net/output-results/folder/name.pdf
-    Returns:
-      ("output-results", "folder/name.pdf")
-    """
-    parsed = urlparse(url)
-    if not parsed.scheme.startswith("http"):
-        raise ValueError("url must be a valid http(s) Azure Blob URL.")
-
-    path = parsed.path.lstrip("/")
-    if "/" not in path:
-        raise ValueError("url must include both container and blob path.")
-    parts = path.split("/", 1)
-    container = parts[0]
-    blob_path = parts[1]
-    return unquote(container), unquote(blob_path)
-
-
-
-storage_utils.py
-
-#Working code
-# storage_utils.py
-import os
-import logging
-import aiofiles
-from azure.storage.blob.aio import BlobServiceClient
-from azure.core.exceptions import ResourceNotFoundError, ResourceExistsError
-from .service import AZURE_STORAGE_CONNECTION_STRING, _parse_blob_url
-from urllib.parse import urlparse
-
-logger = logging.getLogger(__name__)
-
-# async def download_blob_to_input_folder(blob_url: str, input_folder: str = "input") -> str:
-#     """
-#     Downloads the blob at blob_url into input_folder (root-level) preserving filename.
-#     Returns the local path to the downloaded file.
-#     """
-#     if not AZURE_STORAGE_CONNECTION_STRING:
-#         raise RuntimeError("AZURE_STORAGE_CONNECTION_STRING not set")
-
-#     container, blob_path = _parse_blob_url(blob_url)
-#     filename = os.path.basename(blob_path)
-#     os.makedirs(input_folder, exist_ok=True)
-#     local_path = os.path.join(input_folder, filename)
-
-#     async with BlobServiceClient.from_connection_string(AZURE_STORAGE_CONNECTION_STRING) as service:
-#         container_client = service.get_container_client(container)
-#         blob_client = container_client.get_blob_client(blob_path)
-#         try:
-#             await blob_client.get_blob_properties()
-#         except ResourceNotFoundError:
-#             raise FileNotFoundError(f"Blob not found: container={container} blob={blob_path}")
-#         stream = await blob_client.download_blob()
-#         data = await stream.readall()
-
-#     # write file async
-#     async with aiofiles.open(local_path, "wb") as f:
-#         await f.write(data)
-
-#     return local_path
-
-
-TEXT_CONTAINER = "layout-detection-text-of-document"
-
-async def download_blob_bytes(blob_url: str):
-   container, blob_path = _parse_blob_url(blob_url)
-   async with BlobServiceClient.from_connection_string(
-       AZURE_STORAGE_CONNECTION_STRING
-   ) as service:
-       container_client = service.get_container_client(container)
-       blob_client = container_client.get_blob_client(blob_path)
-       try:
-           await blob_client.get_blob_properties()
-       except ResourceNotFoundError:
-           raise FileNotFoundError("Blob not found")
-       stream = await blob_client.download_blob()
-       data = await stream.readall()
-   return data
-
-async def upload_text_to_blob(blob_url: str, text: str):
-   parsed = urlparse(blob_url)
-   path = parsed.path.lstrip("/")
-   container, blob_path = path.split("/", 1)
-   filename = os.path.basename(blob_path)
-   base_name = os.path.splitext(filename)[0]
-   new_blob_name = f"{base_name}.txt"
-   async with BlobServiceClient.from_connection_string(
-       AZURE_STORAGE_CONNECTION_STRING
-   ) as blob_service:
-       # create container if not exists
-       container_client = blob_service.get_container_client(TEXT_CONTAINER)
-       try:
-           await container_client.create_container()
-       except ResourceExistsError:
-           pass
-       blob_client = container_client.get_blob_client(new_blob_name)
-       await blob_client.upload_blob(text, overwrite=True)
-   return f"{parsed.scheme}://{parsed.netloc}/{TEXT_CONTAINER}/{new_blob_name}"
-
-
-
-
-
-test_email_router.py
-
-class LayoutDetectRequest(BaseModel):
-    """
-    Payload:
-    {
-      "attachment_url": "https://<account>.blob.core.windows.net/<container>/<path>/file.pdf"
-    }
-    """
-    attachment_url: str = Field(..., description="Full Azure Blob URL of the PDF attachments returned by the 'email_attachment_mcp' having either 'ACORD' or 'Quote' keyword in the file name.")
-
-@router.post("/layout_detection_mcp", operation_id="layout_detection_mcp",
-             summary="Download PDF from blob, analyze layout using Form Recognizer, and classify layout")
-async def detect_layout(request: LayoutDetectRequest):
-
-
-
-    """
-    Detects the layout type of an insurance-related document so the
-    agent can route it through the correct downstream extraction path.
-
-    The tool automatically handles both PDF and TXT inputs based on
-    the file extension of the provided blob URL, so the agent does
-    not need to differentiate between them.
-
+    Answer user questions by querying vectorized document content.
+    
+    Performs semantic search on the vectorized content to find relevant chunks,
+    then uses LLM to generate a direct answer based on the context.
+    
     Args:
-        attachment_url (str):
-            The Azure Blob URL of the document to classify. Must be
-            either:
-            - A blob URL returned by email_attachment_mcp
-                (CASE A), or
-            - The 'body_bloburl' returned by email_reader_mcp
-                (CASE B).
-
+        vectordb: Loaded ChromaDB instance with embeddings
+        user_query: User's question as a string
+    
     Returns:
-        JSONResponse:
-            - status         : bool indicating success
-            - layout_type    : the detected layout classification
-            - URL            : the original input blob URL
-            - text_blob_url  : the blob URL of the extracted text,
-                                to be passed to downstream MCPs
+        Direct answer string (not structured JSON)
     """
- 
+    print(f"🔍 Processing query: {user_query}")
+    
+    llm = AzureChatOpenAI(
+        openai_api_key=os.getenv("AZURE_OPENAI_API_KEY"),
+        azure_endpoint=os.getenv("AZURE_OPENAI_ENDPOINT"),
+        openai_api_version=os.getenv("AZURE_OPENAI_API_VERSION"),
+        deployment_name=os.getenv("AZURE_OPENAI_CHAT_DEPLOYMENT"),
+        temperature=0,
+        top_p=1
+    )
+    
+    # Perform semantic search with large k value for better context
+    print(f"📚 Performing semantic search...")
+    relevant_chunks = vectordb.similarity_search(
+        user_query,
+        k=5  # Large k for comprehensive context
+    )
+    
+    if not relevant_chunks:
+        print("⚠️ No relevant chunks found in the document")
+        return "I could not find any relevant information in the document to answer your question."
+    
+    # Combine relevant chunks into context
+    context = "\n".join([chunk.page_content for chunk in relevant_chunks])
+    print("This is my context",context)
+    # Create prompt for question answering
+    qa_prompt = PromptTemplate(
+        input_variables=["context", "question"],
+        template="""You are an expert assistant for answering questions about documents.
+
+Based on the provided document context, answer the user's question accurately and concisely.
+
+QUESTION: {question}
+
+CONTEXT:
+{context}
+
+ANSWER:
+Provide a clear, direct answer based only on the context provided. 
+If the answer is not found in the context, explicitly state "Not found in documents."
+Do not guess or use external knowledge.
+Keep your answer concise and relevant to the question."""
+    )
+    
+    chain = LLMChain(llm=llm, prompt=qa_prompt)
+    
     try:
-        result = await classify_blob_pdf_layout(request.attachment_url)
-        return JSONResponse(content={"jsonrpc": "2.0", "id": 1, "result": result}, status_code=200)
+        print(f"Generating answer...")
+        answer = chain.run({
+            "context": context,
+            "question": user_query
+        }).strip()
+        
+        print(f"Answer generated successfully")
+        return answer
+        
     except Exception as e:
-        return JSONResponse(content={"jsonrpc": "2.0", "id": 1,
-                                     "result": {"status": False, "error": str(e)}}, status_code=200)
+        logger.error(f"Error generating answer: {e}")
+        return f"Error processing your query: {str(e)}"
 
 
-below is the prompt on phonix
+async def process_query_retrieval(vector_db_path: str, query: str) -> Dict[str, Any]:
+    """
+    Main processing function for query-based document retrieval.
+    
+    Takes a user query, performs semantic search on vectorized content,
+    and returns a direct answer without JSON extraction.
+    
+    Args:
+        vector_db_path: Can be either:
+            1. Local absolute path from pdf_vectorizer output: /home/jarvis/rohan/Document_Query_MCP/data/vec_db/pdf_name
+            2. Blob URL (fallback): https://... - will extract pdf name and construct local path
+        query: User's question as a string
+    
+    Returns:
+        Dict with answer and metadata
+    """
+    try:
+        # Handle both blob URLs and local paths
+        # if vector_db_path.startswith(("http://", "https://")):
+            # This is a blob URL - extract the PDF name and construct local path
+        #     logger.warning(f"Received blob URL instead of local path. Extracting PDF name...")
+        #     path = unquote(urlparse(vector_db_path).path)
+        #     file_name_with_ext = os.path.basename(path)
+        #     pdf_name = os.path.splitext(file_name_with_ext)[0]
+            
+        #     # Construct the local vector_db_path
+        #     vdb_base_path = os.getenv("QUERY_VDB_PATH", "./data/vec_db")
+        #     vector_db_path = os.path.abspath(os.path.join(vdb_base_path, pdf_name))
+        #     logger.info(f"Reconstructed local vector_db_path: {vector_db_path}")
+        # else:
+            # Ensure it's an absolute path
+        vector_db_path = os.path.abspath(vector_db_path)
+        
+        # Get safe collection name from vector_db_path
+        # ChromaDB only allows: [a-zA-Z0-9._-]
+        # safe_name = os.path.basename(vector_db_path).lower()
+        # safe_name = safe_name.replace(" ", "_").replace("-", "_").replace(".", "_")
+        # # Remove parentheses and other special characters
+        # safe_name = "".join(c if c.isalnum() or c in "._-" else "" for c in safe_name)
+        # # Ensure it starts and ends with alphanumeric
+        # safe_name = safe_name.strip("._-")
+        # collection_name = f"{safe_name}_collection"
+        # persist_directory = os.path.join(vector_db_path, "chroma_db", safe_name)
+        
+        # Verify the vector DB exists
+        if not os.path.exists(vector_db_path):
+            raise FileNotFoundError(f"Vector database not found at: {vector_db_path}")
+        
+        # Load the vector store
+        print(f"📚 Loading vector store from {vector_db_path}")
+        vectordb = Chroma(
+            embedding_function=embeddings,
+            persist_directory=vector_db_path,
+            collection_name="newbig_collection"
+        )
+        
+        # Get answer using semantic search and LLM
+        answer = query_documents(vectordb, query)
+        # Get PDF name for metadata
+        pdf_name = os.path.basename(vector_db_path)
+        
+        return {
+            "answer": answer,
+            "metadata": {
+                "is_error": False,
+                "error_message": None,
+                "query": query,
+                "source_pdf": pdf_name,
+                "vector_db_path": vector_db_path
+            }
+        }
+        
+    except Exception as e:
+        logger.exception("Error in query retrieval process")
+        return {
+            "answer": None,
+            "metadata": {
+                "is_error": True,
+                "error_message": str(e),
+                "query": query,
+                "source_pdf": None,
+                "vector_db_path": vector_db_path if 'vector_db_path' in locals() else None
+            }
+        }
+
+
+
+
+
+# if __name__ == "__main__":
+#     await process_query_retrieval("C:\\Users\\2000137378\\Desktop\\newproject\\RAG_PIPELINES\\input","What is Contact Number")
+    
+if __name__ == "__main__":
+    result = asyncio.run(process_query_retrieval(
+        r"C:\Users\2000137378\Desktop\newproject\RAG_PIPELINES\big_input",
+        "whose number is this +64 21 555 0198"
+    ))
+    print(result)    
+
+metadatafilterretrieval
+
+from langchain_chroma import Chroma
+from langchain_openai import AzureOpenAIEmbeddings
+from langchain_community.document_loaders import TextLoader
+from langchain_text_splitters import RecursiveCharacterTextSplitter
+from dotenv import load_dotenv
+import os
+load_dotenv()
+# Embedding model
+embeddings = AzureOpenAIEmbeddings(
+   azure_deployment=os.getenv("AZURE_OPENAI_EMBEDDING_DEPLOYMENT_NAME"),
+   openai_api_key=os.getenv("AZURE_OPENAI_API_KEY"),
+   openai_api_version=os.getenv("AZURE_OPENAI_API_VERSION"),
+   azure_endpoint=os.getenv("AZURE_OPENAI_ENDPOINT"),
+   chunk_size=1024
+)
+# Text splitter
+text_splitter = RecursiveCharacterTextSplitter(
+   chunk_size=800,
+   chunk_overlap=100
+)
+# Load document
+loader = TextLoader(
+   r"C:\Users\2000137378\Desktop\newproject\RAG_PIPELINES\mytext.txt",
+   encoding="utf-8"
+)
+documents = loader.load()
+# Split into chunks
+chunks = text_splitter.split_documents(documents)
+# ADD METADATA HERE
+for chunk in chunks:
+   chunk.metadata["doc_type"] = "insurance"
+   chunk.metadata["category"] = "underwriting"
+   chunk.metadata["source_file"] = "mytext.txt"
+
+# Directory to store vectors
+my_dir = os.path.join(
+   os.path.dirname(os.path.abspath(__file__)),
+   "input8.1"
+)
+# Create vector DB
+vectorstore = Chroma.from_documents(
+   documents=chunks,
+   embedding=embeddings,
+   collection_name="mynew_collection",
+   persist_directory=my_dir
+)
+print("\nTotal chunks:",len(chunks))
+print("\nFirst chunk text:")
+print(chunks[0].page_content[:150])
+print("\nFirst chunk metadata:")
+print(chunks[0].metadata)
+
+
+
+metadatafilteringretrival
+from langchain_chroma import Chroma
+from langchain_openai import AzureOpenAIEmbeddings, AzureChatOpenAI
+from langchain_core.prompts import PromptTemplate
+from langchain_classic.chains.llm import LLMChain
+from dotenv import load_dotenv
+import os
+import asyncio
+load_dotenv()
+# Embeddings
+embeddings = AzureOpenAIEmbeddings(
+   azure_deployment=os.getenv("AZURE_OPENAI_EMBEDDING_DEPLOYMENT_NAME"),
+   openai_api_key=os.getenv("AZURE_OPENAI_API_KEY"),
+   openai_api_version=os.getenv("AZURE_OPENAI_API_VERSION"),
+   azure_endpoint=os.getenv("AZURE_OPENAI_ENDPOINT"),
+   chunk_size=1024
+)
+
+def query_documents(vectordb, user_query):
+   print("\nProcessing query:",user_query)
+   llm = AzureChatOpenAI(
+       openai_api_key=os.getenv("AZURE_OPENAI_API_KEY"),
+       azure_endpoint=os.getenv("AZURE_OPENAI_ENDPOINT"),
+       openai_api_version=os.getenv("AZURE_OPENAI_API_VERSION"),
+       deployment_name=os.getenv("AZURE_OPENAI_CHAT_DEPLOYMENT"),
+       temperature=0
+   )
+   print("\nPerforming metadata filtered search...")
+   # METADATA FILTER HERE
+   relevant_chunks = vectordb.similarity_search(
+       user_query,
+       k=5,
+       filter={"doc_type":"insurance"}
+   )
+   print("\nChunks retrieved:",len(relevant_chunks))
+   if not relevant_chunks:
+       return "No relevant information found"
+   # Print metadata to confirm filtering
+   print("\nMetadata of retrieved chunks:")
+   for chunk in relevant_chunks:
+       print(chunk.metadata)
+   # Build context
+   context = "\n".join(
+       chunk.page_content for chunk in relevant_chunks
+   )
+   # Prompt
+   qa_prompt = PromptTemplate(
+       input_variables=["context","question"],
+       template="""
+Answer the question using only the context.
+QUESTION:
+{question}
+CONTEXT:
+{context}
+ANSWER:
 """
-You are an expert in insurance documentation and intelligent document processing.
-
-Your task is to classify a given insurance-related document into EXACTLY ONE of the following categories:
-
-1.  ACORD
-2.  SOV
-3.  LOSS_RUN
-4.  INSPECTION_REPORT
-5.  Property_Detailed_Report
-6.  Submission_Document
-7.  Submission_Report
-8.  Valuation_Report
-9.  MRC_Slip
-10. CORPORATE_PROFILE
-11. Asset_Description
-12. CONTRACT_DOCS
-13. Trade_Risk_Submission
-14. FINANCIAL
-15. SUBMISSION
-16. POLICYSCHEDULE
-17. UKLOSSRUN
-18. MLPUKSUBMISSION
-19. AULOSSRUN
-20. REPORTINGPACK
-21. MEDICALPROPOSAL
-22. BROKEREMAIL
-
-Definitions:
-
-ACORD:
-A standardized insurance form published by ACORD (Association for Cooperative Operations Research and Development),
-used for applications, certificates, or evidence of insurance.
-These documents usually:
-- Contain structured ACORD layouts and standardized fields
-- Include sections such as Producer, Insured, Certificate Holder, Policy Number
-- Serve as official insurance applications, certificates, or evidence forms
-
-
-SOV (Schedule / Statement of Values):
-A document that lists insured property values, primarily for property rating and underwriting.
-These documents usually:
-- Are titled "Schedule of Values" or "Statement of Values"
-- Present location-wise or building-wise values in tabular format
-- Include columns such as Location, Building, Description, ACV, RC, 100% Values, Rates
-- May be labeled as ACORD 139
-- Focus on valuation, not narrative underwriting analysis
-
-
-LOSS_RUN:
-A document that summarizes historical insurance claims experience.
-These documents usually:
-- Are titled "Loss Run Report" or similar
-- Include claim numbers, dates of loss, paid amounts, reserves, and total incurred
-- Cover prior policy periods
-- Focus on loss history rather than current property condition
-
-
-INSPECTION_REPORT:
-A document created after a physical or on-site property inspection for underwriting or risk evaluation.
-These documents usually:
-- Are titled "Inspection Report" or similar
-- Include inspection dates, report IDs, and inspector or broker details
-- Describe observed property condition, construction, occupancy, protection, and exposure (COPE)
-- Include sections on life safety, fire protection, security, utilities, roof, and operations
-- Provide observations and risk improvement recommendations
-- Focus on observed conditions at the time of inspection
-A document that provides detailed descriptive information about the physical condition,
-components, and systems of a property or building.
-These documents usually:
-- Organize information by building systems or structural components
-  such as roof, exterior, structure, interior, plumbing, electrical,
-  heating/cooling, ventilation, foundations, or site features
-- Describe observed conditions, deterioration, damage, risks, or maintenance needs
-- Provide commentary or explanations about property elements and how they function
-- Include technical or informational descriptions of building materials,
-  construction elements, or safety considerations
-- Focus on documenting or explaining the condition and characteristics
-  of a property and its building systems
-These documents are informational assessments of property condition
-rather than insurance forms, valuation schedules, claim histories,
-or underwriting submission packages.
-
-
-Property_Detailed_Report:
-Any insurance-related document that is NOT an ACORD form, SOV, Loss Run, or Inspection Report.
-This includes:
-- Quote documents
-- Property detail reports
-- Underwriting summaries
-- Exposure analyses
-- Proposals, narratives, internal reports, or supporting documentation
-- Documents that reference ACORD forms but are not themselves ACORD forms
-
-
-Submission_Document:
-A structured underwriting document used in the Commercial Property (LOB).
-A document assembled to formally present a risk to an insurer for underwriting, quotation, or binding.
-These documents usually:
-- Are explicitly titled or framed as "Underwriting Submission" or similar
-- Include broker details, producer codes, underwriting company information
-- Present requested terms, program structure, limits, valuation, and effective dates
-- Summarize the property, coverage intent, and underwriting rationale
-- May reference or attach other documents such as SOVs, Loss Runs, Inspection Reports, or Property Detailed Reports
-- Function as a submission package rather than a standalone property analysis
-
-
-Submission_Report:
-A structured underwriting report used in the Home Insurance line of business (LOB)
-to present a residential property and its associated risk information to an insurer
-for underwriting evaluation.
-These documents are specifically prepared for Home Insurance underwriting and usually:
-- Provide details about the homeowner or policyholder and the residential property
-  being considered for insurance
-- Describe property characteristics such as year built, construction type,
-  roof material, cladding, foundation, storeys, floor area, and renovations
-- Include insurance-related information relevant to Home Insurance such as
-  rebuild sum insured, occupancy type, property usage, and coverage considerations
-- Present risk information relevant to residential property underwriting including
-  hazards such as earthquake, flood, coastal exposure, or land slip
-- Describe security features, maintenance condition, or structural upgrades
-  affecting Home Insurance risk evaluation
-- May summarize claims history related to the residential property
-- Often reference supporting documents such as inspection reports,
-  engineering reports, weathertightness reports, rebuild estimates,
-  LIM reports, photographs, or maintenance records
-- Are intended to assist insurers in assessing and underwriting
-  residential properties under Home Insurance policies
-If the document presents residential property information for underwriting
-evaluation in the Home Insurance LOB, it should be classified as Submission_Report.
-
-
-Valuation_Report:
-A professional report prepared to determine the insurance value of a property
-or asset for insurance coverage purposes.
-These documents are typically used in home insurance underwriting
-to establish the appropriate insured value of buildings or assets.
-These documents usually:
-- Provide valuation estimates related to insurance coverage such as
-  reinstatement cost, replacement cost, indemnity value, or functional replacement value
-- Include valuation calculations or summaries used to determine the amount
-  required to rebuild or replace the insured property
-- Contain information about the property such as construction type,
-  age, asset description, land characteristics, or building specifications
-- Include provisions such as inflation allowances, demolition estimates,
-  depreciation, or cost adjustments
-- Are prepared by professional valuers, quantity surveyors, or valuation firms
-- May include valuation dates, valuation methodology, or professional declarations
-- Are specifically intended to establish insured values for insurance purposes
-  rather than documenting inspection findings or underwriting submissions
-
-
-MRC_Slip:
-A structured binding document used to place political risk insurance coverage in the London market,
-capturing the full terms agreed between a broker and subscribing underwriters for a specific insured risk.
-These documents usually:
-- Identify the insured party (typically a financial institution or lender) and define their interest
-  in a cross-border project or exposure being protected against sovereign or political risk
-- Describe the underlying project or transaction giving rise to the insurable exposure, including
-  the host country, counterparties, and the commercial agreements (e.g. offtake contracts, guarantees)
-  underpinning it
-- Specify the perils covered — such as sovereign non-payment, expropriation, or currency
-  inconvertibility — reflecting the political and regulatory risks specific to the host jurisdiction
-- Set out the financial terms of the coverage, including limits of liability, premium structure,
-  deductibles, and how the insured amount changes over the life of the policy
-- Define the conditions and obligations the insured must meet to maintain coverage and trigger a
-  valid claim, reflecting the underwriters' due diligence requirements
-- List exclusions that carve out commercial, force majeure, or sanctions-related losses that fall
-  outside the scope of political risk indemnification
-- Record the subscription structure across multiple underwriting syndicates, showing each market's
-  proportional share of the risk and identifying the lead underwriter
-- Represent a pre-contractual or contractual placement stage document that is legally binding upon
-  execution by the lead underwriter, typically governed by English law and London Market (LMA) standards
-
-
-CORPORATE_PROFILE:
-A structured corporate disclosure document prepared by a broker on behalf of an insured entity,
-providing comprehensive information about the insured's corporate identity, financial profile,
-business operations, and compliance posture for Political Risk or Trade Credit insurance underwriting.
-These documents usually:
-- Profile the insured legal entity — its registered name, incorporation details, LEI code,
-  ownership structure, ultimate parent/beneficial owner, and group corporate hierarchy
-- Present multi-year consolidated financial statements including revenue, EBITDA, net profit,
-  total assets, total equity, net debt, leverage ratios, and capital expenditure in tabular form
-- Describe the insured's business operations, industry sector, countries of operation,
-  and specific emerging market or political risk exposure relevant to the placement
-- Disclose prior political risk or trade credit insurance held, including insurer names,
-  policy numbers, limits, and claims history over the past five years
-- Include KYC, sanctions screening, and compliance information — covering OFAC, OFSI, EU,
-  and UN list screening results, PEP checks, anti-bribery policy confirmation, and
-  regulatory investigation status
-- Are prepared by the placing broker (e.g., Marsh, Aon, WTW) and include a signed
-  broker declaration confirming the accuracy of disclosures and authority place
-- Are titled or labelled as "Corporate Disclosure Profile", "Corporate Profile",
-  "Insured Corporate Profile", or similar
-- Cover the insured corporate group as a whole — not a single project or asset
-
-These documents are NOT:
-- Asset_Description: which describes a single project or asset's technical, contractual,
-  and political risk details — not the corporate group's financials and compliance posture
-- MRC_Slip: which is the binding insurance contract recording coverage terms, perils,
-  limits, premiums, deductibles, and syndicate subscription lines
-- Submission_Document: which presents commercial property risks for underwriting
-  quotation in property insurance lines
-
-
-Asset_Description:
-A structured pre-underwriting briefing document prepared by a broker, arranger,
-or lender to describe a SPECIFIC NAMED PROJECT, FINANCED ASSET, INDUSTRIAL FACILITY,
-MINE, OIL/GAS FIELD, POWER PLANT, LNG PROJECT, INFRASTRUCTURE ASSET, OR OPERATIONAL
-FACILITY that is the subject of a political risk, project finance, structured credit,
-or non-payment insurance placement.
-
-These documents are PROJECT-CENTRIC or ASSET-CENTRIC — the dominant subject matter
-is the operational, technical, ownership, and country-risk profile of a specific
-named asset or project, even when the document also contains insurance request
-language (limit, indemnity, tenor, waiting period, brokerage, non-payment cover).
-
-These documents usually:
-- Describe a SINGLE NAMED PROJECT OR ASSET — its technology, location, capacity,
-  production figures, reserves, ownership structure, sponsor equity, construction
-  or operational status, ramp-up schedule, or operational characteristics — as the
-  PRIMARY SUBJECT, rather than a single shipment, letter of credit, or commodity trade
-- Identify the specific physical or operational asset by name (e.g. a named oilfield,
-  a named mine, a named LNG plant, a named processing facility, a named pipeline)
-  and discuss its operational and technical profile in detail
-- Explain the revenue model and offtake structure of the project, identifying the
-  sovereign, state-linked, or corporate counterparty responsible for payments and
-  the contractual instruments (such as PPAs, concession agreements, gas supply
-  agreements, offtake agreements, or term loans) that underpin the revenue stream
-- Provide sponsor or parent company background, including financial track record,
-  prior similar transactions, equity contributions, shareholder loans, and group
-  corporate hierarchy of the project owner
-- Detail government support instruments in place — such as sovereign guarantees,
-  letters of support, regulatory approvals, or government backing — and assess
-  their legal enforceability where applicable
-- Assess country-level and project-specific political risk factors including sovereign
-  credit ratings, IMF programme status, historical treatment of foreign investors,
-  political stability, and physical or political violence exposure at the project site
-- Describe financial structures designed to protect debt service — such as excess
-  cash flow sweeps, escrow accounts, debt service reserve accounts, security
-  packages (mortgage liens, mineral rights, contract rights), or USD-denominated
-  payment mechanisms — relevant to the insurability of the financed asset
-- May be formatted as Q&A, narrative briefing, deal teaser, transaction summary,
-  or structured project description, often tagging answers to specific insurance
-  perils (sovereign non-payment, contract frustration, currency inconvertibility,
-  political violence, expropriation, deprivation, forced abandonment)
-- List or inventory key transaction documents available for underwriter review
-  such as PPAs, sovereign guarantees, EPC contracts, lease agreements, security
-  assessments, legal opinions, and financial models
-- Are prepared at the pre-bind stage by the placing broker, arranger bank, or
-  lender, and are specific to a single transaction or financed asset
-
-CRITICAL CLASSIFICATION RULE FOR Asset_Description:
-If the document contains BOTH (a) detailed description of a specific named project,
-financed asset, mine, oilfield, LNG plant, power station, infrastructure facility,
-or operational asset (including its production capacity, reserves, ownership,
-sponsor equity, security package, operational ramp-up, project economics, or
-offtake structure), AND (b) insurance request terms (limit, indemnity, tenor,
-non-payment cover, waiting period, brokerage), then the document MUST be classified
-as Asset_Description — NOT Trade_Risk_Submission.
-
-The presence of insurance request terms (limit, indemnity, tenor, waiting period,
-brokerage, non-payment, comprehensive cover, contract frustration, CCP, political
-violence) does NOT make the document a Trade_Risk_Submission when the dominant
-content is project/asset description.
-
-Common Asset_Description indicators include:
-- Named oilfields or gas fields with production figures (e.g. mmbbl, kbpd) and reserves (1P/2P)
-- Named mines with ore type, beneficiation, pelletising, or processing facilities
-- Named LNG projects, power plants, refineries, or industrial facilities with capacity figures
-- Construction equipment leases tied to a named infrastructure project
-- Sponsor equity contributions, shareholder loans, group ownership charts
-- Excess Cash Flow Sweep, mortgage liens on plant/equipment, mineral rights as security
-- Multi-year project economics (revenue, EBITDA, FCF) of the asset/project entity
-- Country-of-operations risk discussion (Mozambique LNG site security, Azerbaijan oil sector, etc.)
-- Project ramp-up schedules, construction status, or operational milestones
-
-These documents are NOT:
-- CORPORATE_PROFILE: which profiles the insured corporate entity's group-level financials,
-  multi-country operational footprint, and compliance posture — not a single project's
-  technical, contractual, and country risk details
-- MRC_Slip: which is the binding insurance contract recording coverage terms, perils insured,
-  limits of liability, premiums, deductibles, conditions, and syndicate subscription lines
-- Submission_Document: which presents commercial property risks for underwriting quotation
-  in property insurance lines rather than project finance political risk
-- INSPECTION_REPORT or Property_Detailed_Report: which assess the physical condition of
-  buildings or assets rather than the political and contractual risk profile of a financed project
-- Trade_Risk_Submission: which covers a SINGLE TRADE TRANSACTION — a letter of credit
-  confirmation, a single commodity shipment, an open account sale, or a short-tenor
-  payment obligation tied to a specific cargo or invoice — without the detailed
-  project/asset operational profiling that characterises Asset_Description
-
-CONTRACT DOCS:
-A structured legal summary document prepared by counsel and/or a broker, extracting
-and annotating the provisions of an underlying contract that are material to a
-political risk or specialty insurance placement in the London Market.
-These documents usually:
-- Identify the parties, execution date, governing law, contract term, and regulatory
-  registration of a specific underlying agreement — such as a production sharing
-  contract, concession agreement, power purchase agreement, or joint venture agreement
-  — rather than describing the insured entity or the insurance coverage terms
-- Extract and paraphrase key articles or clauses from the underlying contract,
-  organised by article number or topic, with each extract accompanied by an
-  explicit annotation of its relevance to the specific insurance perils being
-  placed (such as expropriation, currency inconvertibility, political violence,
-  or contract frustration)
-- Analyse contractual protections relevant to underwriting — such as stabilisation
-  clauses, foreign exchange and repatriation rights, force majeure definitions,
-  fiscal regime provisions, and dispute resolution mechanisms — explaining how
-  each provision affects the probability, trigger, or quantum of an insured loss
-- Assess the legal enforceability and limitations of key provisions, including
-  arbitration clauses, bilateral investment treaty protections, and government
-  undertakings, flagging residual legal risk that underwriters should factor into
-  their assessment
-- Include a document checklist listing the full suite of transaction documents
-  available for underwriter review, their execution status, and the conditions
-  under which they can be accessed
-- Are prepared by legal counsel (law firms) acting for the insured or arranger,
-  reviewed by the placing broker, and explicitly scoped for underwriting use —
-  not as general legal advice to underwriters
-- Cross-reference a specific MRC placement reference, identifying this abstract
-  as a companion document to a concurrent insurance slip for the same transaction
-- Are privileged and confidential documents specific to a single named transaction
-  or contract, not a corporate-level or portfolio-level summary
-
-These documents are NOT:
-- MRC_Slip: which is the binding insurance contract recording coverage terms,
-  perils, limits, premiums, deductibles, conditions, and syndicate subscription —
-  this document describes the underlying commercial contract, not the insurance policy
-- PROJECT_ASSET_DESCRIPTION: which describes the project's technology, offtake
-  structure, country risk, and physical security in a Q&A or briefing format —
-  this document is a legal clause-by-clause analysis of a specific contract
-- CORPORATE_DISCLOSURE_PROFILE: which profiles the insured entity's group
-  financials, multi-country portfolio, and compliance posture at the corporate level
-- Submission_Document: which presents commercial property risks for underwriting
-  quotation in property insurance lines
-- INSPECTION_REPORT or Property_Detailed_Report: which assess the physical
-  condition of buildings or assets
-
-Trade_Risk_Submission:
-A structured trade credit, commodity trade, contract frustration, non-payment,
-or letter of credit risk submission document prepared by a broker, trader,
-insured, or financial institution for insurance underwriting evaluation of a
-SHORT-TENOR, TRANSACTION-LEVEL TRADE EXPOSURE — typically a single shipment,
-a single letter of credit, an open account sale, or a single commodity contract.
-
-The DOMINANT subject matter of these documents is a TRADE TRANSACTION — a
-commodity sale, a letter of credit, a shipment, or a payment obligation — and
-the document focuses on the COMMERCIAL TERMS OF THAT TRADE (parties, instrument,
-goods, tenor, payment terms, pricing, delivery) rather than on the operational
-profile of a named project or asset.
-
-These documents usually:
-- Request insurance support, confirmation, participation, quotation, capacity,
-  or underwriting review for a TRADE FINANCE TRANSACTION or single commodity deal
-- Involve trade credit insurance, contract frustration insurance, non-payment
-  insurance on a specific trade, or letter of credit confirmation cover
-- Have as their primary subject a SPECIFIC TRADE INSTRUMENT — a letter of credit,
-  a standby LC, an open account sale, a single commodity sale contract, a
-  single shipment, or a short-tenor payment obligation
-- Include parties such as Applicant, Beneficiary, Buyer, Seller, Issuing Bank,
-  Confirming Bank, Obligor, Trader, Insured, or Financial Institution, framed
-  in their role within a trade instrument
-- Reference SHORT-TENOR exposures (typically days to a few months — e.g. 30
-  days after BoL, 60 days after COD, 90 days, 180 days) tied to a single
-  commodity movement or invoice
-- Include trade-transaction details such as shipment window, BoL date,
-  payment terms (e.g. days after BoL/COD), commodity type and grade, quantity
-  per cargo, pricing basis (e.g. ICE Brent, Platts), Incoterms (FOB, CIF, DAP),
-  loading terminal, governing law of the sale, and delivery structure
-- Frequently involve a single shipment or single LC of commodities such as
-  crude oil (WTI, Brent), gasoil, gasoline, LNG cargoes, metals, agricultural
-  products, or refined products
-- Contain underwriting request language such as "please confirm capacity",
-  "insurance need", "non-payment insurance", "contract frustration",
-  "LC confirmation", "refresh NBI", "quote request", or "support this risk"
-- Are typically formatted as broker emails, trade recaps, LC confirmation
-  requests, or transaction summaries
-- Focus on TRADE TRANSACTION RISK and payment/default exposure on a SINGLE
-  COMMERCIAL TRANSACTION — not on the operational profile of a financed
-  project or industrial asset
-
-CRITICAL CLASSIFICATION RULE FOR Trade_Risk_Submission:
-A document should be classified as Trade_Risk_Submission ONLY when its
-DOMINANT content is the description of a TRADE TRANSACTION (a letter of
-credit, a single commodity sale, a single shipment, or a short-tenor
-payment obligation) and there is NO detailed description of an underlying
-named project, financed asset, mine, oilfield, LNG plant, power plant,
-or operational facility.
-
-If the document contains detailed project or asset profiling (production
-capacity, reserves, ownership/sponsor equity, security package over plant
-or mineral rights, multi-year project economics, construction/ramp-up
-schedule, country-of-operations risk discussion of the asset), it is
-Asset_Description, NOT Trade_Risk_Submission — regardless of whether
-insurance limit, indemnity, tenor, brokerage, or non-payment cover terms
-are also present.
-
-Typical Trade_Risk_Submission indicators (absent significant project profiling):
-- Letter of Credit confirmation request with Issuing Bank, Applicant, Beneficiary,
-  goods, amount, tenor, and indemnity — and nothing more
-- Single-cargo non-payment / contract frustration cover with shipment window,
-  BoL terms, pricing formula, Incoterms, and the commodity contract itself
-- Short tenor (typically under 6 months) tied to a single shipment or invoice
-- The "obligor" is named only as a buyer/counterparty in the trade, without
-  any operational profile of that obligor's business or financed assets
-
-These documents are NOT:
-- Asset_Description: when the document primarily focuses on a single financed
-  project, industrial asset, mining operation, energy project, infrastructure
-  asset, or operational facility, including detailed discussion of:
-    - project operations and production capacity
-    - ownership structure and sponsor equity contribution
-    - collateral/security package over plant, equipment, or mineral rights
-    - repayment mechanics (cash flow sweep, amortising loans)
-    - project economics and operational ramp-up
-    - asset-backed financing structure
-    - country-of-operations political and regulatory environment
-  EVEN IF the document also includes non-payment cover, indemnity percentage,
-  tenor, policy limits, financing terms, lender participation, or structured
-  credit language. In such cases, the project/asset description is the
-  dominant content and the correct label is Asset_Description.
-- MRC_Slip: which is a binding London Market placement slip showing syndicate
-  subscription structure and formal coverage wording
-- CONTRACT_DOCS: which primarily analyse legal clauses of an underlying agreement
-- CORPORATE_PROFILE: which profiles a corporate group's financial and compliance information
-- Submission_Document: which relates to commercial property insurance underwriting
-
-
-DECISION HEURISTIC — Asset_Description vs Trade_Risk_Submission:
-
-Step 1: Identify the DOMINANT subject of the document.
-- Is it a SPECIFIC NAMED PROJECT / FINANCED ASSET / OPERATIONAL FACILITY
-  (oilfield, mine, LNG plant, power plant, infrastructure project, industrial
-  facility) being described in operational, technical, ownership, or country-risk
-  detail? → Asset_Description
-- Is it a SPECIFIC TRADE TRANSACTION (letter of credit, single commodity
-  shipment, open account sale, single cargo non-payment cover) being described
-  in trade-instrument detail (parties, goods, tenor, shipment, payment terms)?
-  → Trade_Risk_Submission
-
-Step 2: When BOTH project content and trade/insurance terms appear in the same
-document, apply the dominance rule:
-- If the document spends most of its length describing a named project/asset
-  (production figures, reserves, sponsor background, security package, country
-  risk, project ownership, ramp-up, equipment lease for a named project site)
-  → Asset_Description
-- If the document spends most of its length describing a trade instrument
-  (LC structure, shipment window, BoL, commodity grade, pricing formula,
-  Incoterms, payment terms after BoL/COD) with only minimal mention of the
-  underlying obligor's operations → Trade_Risk_Submission
-
-Step 3: Tenor and structure as supporting signals:
-- Multi-year tenors (3+ years) tied to project debt, amortising loans, term
-  loans, project finance, or reserve-based lending → favour Asset_Description
-- Short tenors (days to a few months) tied to a single shipment, single LC,
-  or single invoice → favour Trade_Risk_Submission
-
-Step 4: Security and repayment as supporting signals:
-- Security over plant, equipment, mineral rights, project accounts, contract
-  rights; repayment via Excess Cash Flow Sweep, project cash flows, offtake
-  proceeds over multi-year period → favour Asset_Description
-- Payment against shipping documents, LOI, BoL presentation, or a single
-  invoice payment → favour Trade_Risk_Submission
-
-
-FINANCIAL:
-A formal financial reporting document prepared by or on behalf of a company,
-containing audited, reviewed, or compiled financial statements prepared in
-accordance with US GAAP or equivalent accounting standards, submitted as a
-supporting document for insurance underwriting purposes.
-These documents usually:
-- Are prepared by a Certified Public Accountant (CPA) firm or internal finance team
-  and include an Independent Accountant's Review Report, Audit Opinion, or
-  Compilation Report signed by the CPA or accounting firm
-- Contain a structured set of financial statements including one or more of:
-  Balance Sheets, Statements of Operations (Income Statements), Statements of
-  Retained Earnings, Statements of Cash Flows, and Notes to Financial Statements
-- Present financial data for two or more fiscal years side by side in columnar format
-  covering assets, liabilities, shareholders' equity, revenues, expenses, and net income
-- Include supplementary schedules such as Schedules of Cost of Goods Sold or
-  Schedules of Selling, General, and Administrative Expenses
-- Describe the company's accounting policies, revenue recognition methods,
-  inventory valuation, depreciation methods, lease accounting, and other
-  significant accounting practices in the Notes to Financial Statements
-- Disclose related party transactions, concentrations of risk, commitments,
-  employee benefit plans, line of credit terms, and subsequent events
-- Are submitted to an insurer or underwriter as a required financial attachment
-  supporting a Management Liability, Directors & Officers, or similar insurance application
-- Are identifiable by the CPA firm's letterhead, the company name prominently
-  displayed, and section headers such as "Balance Sheet", "Statements of Operations",
-  "Notes to Financial Statements", or "Independent Accountant's Review Report"
-
-These documents are NOT:
-- SUBMISSION: which is the insurance application form itself —
-  Financial Statements are an attachment submitted alongside the application,
-  not the application itself
-- CORPORATE_PROFILE: which is a broker-prepared profile of corporate identity,
-  compliance posture, and political risk exposure — not a CPA-reviewed financial report
-- Property_Detailed_Report or Submission_Document: which relate to commercial
-  property underwriting rather than Management Liability or financial disclosure
-
-
-SUBMISSION:
-A structured insurance renewal or new business application form submitted by an
-insured entity or its broker to an insurance carrier, formally requesting coverage
-under one or more Management Liability lines including Directors & Officers (D&O),
-Employment Practices Liability (EPL), Fiduciary Liability, Crime, and related coverages.
-These documents usually:
-- Are titled "Private Company Renewal Application", "Management Liability Application",
-  "Directors & Officers Application", or similar carrier-specific application form titles
-- Are published by a named insurance carrier (such as The Hartford, Chubb, AIG, Travelers,
-  or similar) and carry the carrier's form number and copyright notice
-- Include a General Information section capturing the applicant company name, address,
-  nature of business, SIC or NAIC code, year of incorporation, and website
-- Contain a Coverage Selection table listing coverage lines being requested (D&O, EPL,
-  Fiduciary, Crime, Kidnap & Ransom, Cyber) with requested limits, current limits,
-  current retentions, and current carrier and premium information
-- Include coverage-specific questionnaire sections for each requested line, such as:
-  Directors Officers & Entity Liability section with ownership change and securities
-  offering questions; Employment Practices Liability section with employee counts,
-  involuntary terminations, layoffs, and HR practice questions; Fiduciary Liability
-  section with plan type, participants, assets, and benefit reduction questions;
-  Crime section with internal controls, wire transfer authorization, and
-  pre-employment screening questions; Cyber section with data handling and
-  security practice questions
-- Include a Prior Knowledge disclosure question asking whether any insured person
-  has knowledge of any matter that may give rise to a claim
-- Contain Applicant Information including financial summary data (current assets,
-  total assets, revenues, net income, retained earnings) for the most recent
-  and prior fiscal year ends
-- Include state-specific Fraud Warning Statements for multiple jurisdictions
-- Require signature by an authorized officer (CEO, CFO, Owner, Controller,
-  President, or Board Chairman) with printed name, title, and date
-- May include an Appendix with additional narrative disclosures on business
-  nature, downsizing details, or internal control explanations
-- May include a Certificate of Completion or e-signature audit trail from a
-  digital signing platform confirming the authorized signatory and signing timestamp
-
-These documents are NOT:
-- FINANCIAL: which is the CPA-prepared financial report attached as
-  a supporting document to the application — the application form itself is
-  SUBMISSION, not the financial statements
-- Submission_Document: which relates to Commercial Property insurance underwriting
-  submissions, not Management Liability application forms
-- LOSS_RUN: which summarizes historical claims experience rather than formally
-  requesting new or renewed insurance coverage
-
-
-POLICYSCHEDULE:
-A formal insurance policy schedule document issued by an insurer to the insured,
-confirming the terms, coverage modules, limits, excesses, endorsements, and premium
-of a bound insurance policy.
-These documents usually:
-- Are titled "Policy Schedule", "Management Liability Package Policy Schedule",
-  or similar, and are issued by a named insurer (such as Travelers, Chubb, AIG,
-  or similar) on the insurer's official letterhead
-- Identify the insured entity by name and registered address, and state the
-  policy number, the period of insurance (inception and expiry dates), and
-  the total premium including any applicable insurance premium tax (IPT)
-- List the coverage modules or products bound under the policy (e.g. Directors
-  and Officers, Corporate Legal Liability, Employment Practices Liability, Crime
-  Insurance, Pension Trustees Liability) with each module's specific limit of
-  indemnity and excess
-- Detail sublimits applicable to specific additional benefits or extensions
-  within each coverage module (e.g. Bail Bond Costs, Emergency Costs Access,
-  Attendance Compensation, Social Engineering Fraud, Funds Transfer Loss)
-- List all endorsements attaching to and forming part of the policy, identified
-  by endorsement reference number and title (e.g. Prior Acts Exclusion, Private
-  Equity Backer Endorsement, Territorial Limits Extension)
-- May include the full text of endorsement wordings as appended sections,
-  modifying or extending the standard policy terms
-- Include the full policy wording for each coverage module as appended sections,
-  containing insuring clauses, additional benefits, exclusions, excess provisions,
-  claims conditions, general conditions, definitions, and important information
-- Provide claims notification contact details, complaints procedure information,
-  and data protection / personal information usage notices
-- Are distinct from a proposal form, application, loss run, or underwriting
-  submission — they represent the confirmed, bound insurance contract issued
-  to the policyholder after underwriting acceptance
-
-These documents are NOT:
-- SUBMISSION or MLPUKSUBMISSION: which are proposal or application forms
-  submitted to request coverage — the policy schedule is the insurer's response
-  confirming bound coverage, not the application
-- UKLOSSRUN or LOSS_RUN: which summarise historical claims experience
-- FINANCIAL: which are CPA-prepared financial statements
-- REPORTINGPACK: which are internal management or financial reporting documents
-
-
-UKLOSSRUN:
-A structured claims experience or loss run report generated by a UK-based insurer
-or its systems, summarising historical claims activity across policy years for a
-named insured under a Management Liability or similar insurance programme.
-These documents usually:
-- Are titled "Commercial Premium & Claims Summary Reporting", "Claims Experience",
-  "Claims History Report", or similar, and identify the insured by name and policy number
-- Are generated or extracted from an insurer's claims management system and carry
-  the insurer's branding (e.g. Travelers) and a report creation date and creator name
-- Organise claims data by policy year, with each year broken out by coverage line
-  (e.g. Commercial Crime, D&O Private, Employment Practices Liability) and showing
-  individual claim entries or "No Claims" notation where no claims exist
-- Include for each claim: a claim number, claim status (e.g. F for finalised/closed),
-  date reported, date of loss, gross paid amount, recovery amount, net paid amount,
-  gross outstanding reserve, net outstanding reserve to the insurer, recovery estimate,
-  and net incurred amount — all expressed in the policy currency (e.g. GBP)
-- Present subtotals or totals per coverage line and per policy year, and may present
-  a grand total across all years at the end of the report
-- Are used by brokers, insureds, and underwriters as evidence of prior claims
-  experience when renewing or placing Management Liability or similar insurance
-- Are distinct from Australian or other jurisdiction loss run formats (see AULOSSRUN)
-  by their UK insurer branding, GBP currency, Travelers or similar UK insurer
-  system formatting, and coverage lines typical of UK Management Liability programmes
-
-These documents are NOT:
-- LOSS_RUN: which is the general category for claims history documents —
-  UKLOSSRUN is the specific classification for UK insurer-formatted claims
-  experience reports of this type
-- POLICYSCHEDULE: which is the bound policy document confirming coverage terms
-- SUBMISSION or MLPUKSUBMISSION: which are application or proposal forms
-- AULOSSRUN: which is an Australian-format claims history report
-
-
-MLPUKSUBMISSION:
-A structured proposal or application form used in the United Kingdom for Management
-Liability Package (MLP) insurance, submitted by an insured entity or its broker to
-a UK insurer (such as Travelers Insurance Company Limited) to apply for one or more
-Management Liability coverage lines.
-These documents usually:
-- Are titled "Management Liability Package Proposal Form", "Proposal Form (all products)",
-  or similar, and are published by a named UK insurer carrying the insurer's branding
-  and form reference number (e.g. TRV3039 12/19)
-- Include a General Information section capturing the company registration number,
-  company legal name, registered office address, and the coverage lines being applied
-  for (Directors & Officers, Corporate Liability, Employment Practices Liability,
-  Commercial Crime, Pension Trustees Liability) with requested limits and excesses
-- Contain an Insured Details section covering the main business activity, annual
-  turnover, year of incorporation, and company structure (e.g. UK Registered
-  Private Limited Company)
-- Include coverage-specific sections for each selected line, such as Employment
-  Practices Liability (number of employees, number of locations, HR procedures
-  confirmation), Commercial Crime (employee and location counts, stock value
-  confirmation, dual control and audit confirmations), and Pension Trustees
-  Liability (total plan assets, defined benefit plan details, actuarial compliance)
-- Contain an "Applicable to all covers" section with prior claims disclosure
-  questions, awareness of circumstances questions, subsidiary location disclosures,
-  and planned transaction disclosures (mergers, acquisitions, public offerings)
-- Require a signed Declaration by a Principal, Partner, Member, Director or
-  functional equivalent, confirming the accuracy and completeness of the information
-  provided and agreeing to notify the insurer of material changes
-- Include a "Using Personal Information" or data protection notice explaining
-  how the insurer will collect and process personal data in connection with the
-  application
-- Are used specifically for UK Management Liability Package placements and are
-  distinct from US-format SUBMISSION forms, which are typically carrier-specific
-  renewal application forms for US Management Liability lines
-
-These documents are NOT:
-- SUBMISSION: which is a US-format Management Liability application form
-  published by US carriers (The Hartford, Chubb, AIG, Travelers US) —
-  MLPUKSUBMISSION is the UK equivalent proposal form for the same class of business
-- POLICYSCHEDULE: which is the bound policy document issued after acceptance —
-  the proposal form is submitted before binding, not after
-- UKLOSSRUN: which summarises historical claims experience
-- FINANCIAL: which are CPA or auditor-prepared financial statements
-
-
-AULOSSRUN:
-A structured claims history report generated by an Australian insurer, underwriter,
-or their authorised representative, summarising historical claims activity for a
-named insured under a commercial insurance policy placed in the Australian market.
-These documents usually:
-- Are titled "Claims History Report" or similar, and prominently display a
-  "Date of Issue" confirming when the report was generated
-- Identify the insured by name (Insured Name field), the insurer (e.g. CGU Insurance
-  Limited), the policy number, the policy class (e.g. Commercial Insurance), and
-  the policy period (inception and expiry dates)
-- Include a disclaimer that details are current as at the date of issue only and
-  that gross outstanding amounts are indicative and subject to change
-- Organise claims into Open Claims and Closed Claims sections, with each claim
-  showing a claim number, date of loss, description of the loss event, total
-  claim paid amount, outstanding amount, and recovered amount
-- Present a "Nil" notation under Open Claims or Closed Claims where no claims
-  exist in that category
-- Are issued by or on behalf of Australian insurers or their authorised
-  representatives (e.g. 360 Commercial Pty Ltd as authorised representative
-  of 360 Underwriting Solutions Pty Ltd), and carry the issuing entity's
-  ABN, AFSL number, address, and contact details
-- Express monetary amounts in Australian dollars (AUD, $) or the applicable
-  local currency
-- Are used by brokers, insureds, and underwriters as evidence of prior claims
-  experience when renewing or placing commercial insurance in the Australian market
-- Are distinct from UK loss run formats (see UKLOSSRUN) by their Australian
-  insurer branding, AUD currency, ABN/AFSL regulatory references, and
-  Open/Closed claims structure typical of Australian commercial insurance reports
-
-These documents are NOT:
-- LOSS_RUN: which is the general category for claims history documents —
-  AULOSSRUN is the specific classification for Australian-format claims
-  history reports of this type
-- UKLOSSRUN: which is a UK insurer-formatted claims experience report
-- POLICYSCHEDULE: which is the bound policy document confirming coverage terms
-- SUBMISSION or MLPUKSUBMISSION: which are application or proposal forms
-
-
-REPORTINGPACK:
-An internal management or executive reporting pack prepared by or for a company's
-senior leadership team, presenting detailed financial and operational performance
-data across multiple business dimensions for a defined reporting period.
-These documents usually:
-- Are titled "Executive Reporting Pack", "Management Reporting Pack",
-  "Board Reporting Pack", or similar, and identify the company name, the
-  reporting period (e.g. fiscal period, weeks, months), and the issue date
-- Contain an Executive Summary or Headlines section presenting high-level
-  sales, profit before tax (PBT), and key performance indicators (KPIs)
-  for the current period and year-to-date, compared against last year (LY)
-  and/or budget, with variance amounts and percentages
-- Include a Consolidated Profit & Loss statement, Balance Sheet, and Cash
-  Flow statement presenting financial results in tabular format across
-  actual, flash, last year, and variance columns
-- Present detailed performance breakdowns by territory (e.g. UK, North
-  America, Europe, Rest of World), by channel (e.g. standalone stores,
-  concessions, ecommerce, wholesale, clearance), and by individual partner
-  or digital platform
-- Include site-by-site or store-by-store sales and contribution tables
-  listing individual store codes, store names, net sales, last year variance,
-  gross profit percentage, payroll costs, occupancy costs, distribution costs,
-  and EBITDA contribution
-- Cover gross margin analysis, channel cost and profitability analysis,
-  head office cost breakdowns, stock position commentary, cashflow and net
-  borrowings summary, and capital expenditure reporting
-- Are produced on a regular cadence (weekly, monthly, quarterly) for internal
-  management use and are not insurance application forms, policy documents,
-  claims reports, or underwriting submissions
-- May be accompanied by appendices containing detailed channel and territory
-  metrics, partner-level performance tables, and digital channel analytics
-
-These documents are NOT:
-- FINANCIAL: which are CPA or auditor-prepared formal financial statements
-  submitted for insurance underwriting purposes — REPORTINGPACK documents
-  are internal management reports, not audited financial statements
-- POLICYSCHEDULE: which is a bound insurance policy document
-- SUBMISSION, MLPUKSUBMISSION, or any underwriting application form
-- UKLOSSRUN or AULOSSRUN: which are claims history reports
-
-
-MEDICALPROPOSAL:
-A structured proposal or application form used to apply for Medical Malpractice
-or Medical Professional Liability insurance on behalf of a hospital, clinic,
-or other healthcare facility, submitted to a specialist medical malpractice
-underwriter or insurer.
-These documents usually:
-- Are titled "Medical Malpractice Proposal Form", "Medical Malpractice Hospitals
-  Proposal Form", or similar, and are published by a named specialist underwriter
-  or managing agent (e.g. Camargue Underwriting Managers) carrying the underwriter's
-  branding, FSP licence number, and Lloyd's coverholder PIN where applicable
-- Include a General Information section capturing the proposer's legal name,
-  trading name, physical and practice addresses, company registration number,
-  VAT number, date of establishment, contact details, and company legal constitution
-- Contain a Professional Services section covering changes to clinical services,
-  name changes, amalgamations or acquisitions, service locations, financial
-  information (gross revenue from fees and other sources across prior, current,
-  and estimated financial years), planned business changes, and product or
-  device sales activities
-- Include a detailed tick-box Services section listing all applicable medical
-  and surgical specialties and departments provided at the facility (e.g.
-  anaesthesiology, obstetrics, surgery, ICU, pharmacy, emergency services,
-  bariatric surgery, assisted conception, transplant surgery, telemedicine)
-  with follow-up sub-questions for each ticked specialty requiring additional
-  detail (e.g. number of procedures, supervision arrangements, consent protocols,
-  accreditation status)
-- Contain an Exposure Information section with tables capturing licensed and
-  occupied bed counts by bed type (acute, obstetric, paediatric, ICU, NICU,
-  psychiatric, etc.) across current and prior years, and patient visit or
-  procedure volumes by type (emergency department visits, inpatient surgeries,
-  outpatient surgeries, births, etc.)
-- Include a Staff Complement section listing full-time equivalent (FTE) counts
-  of registered medical practitioners by specialty (with employed, self-employed,
-  and locum/bank staff breakdowns) and other medical staff categories (registered
-  nurses, nurse practitioners, pharmacists, paramedics, etc.), along with
-  credentialing, supervision, and professional liability insurance confirmation questions
-- Contain a Risk Management and Quality Assurance section with yes/no questions
-  covering documented risk management programmes, clinical protocols, audit systems,
-  complaints procedures, adverse event reporting, health and safety policies,
-  medical records management, equipment maintenance, sterilisation procedures,
-  and clinical quality assurance
-- Include an Indemnity Information section detailing current insurance arrangements
-  (insurer, inception date, period of cover, limits, excesses, premium) and the
-  requested limit of indemnity and excess for the new placement
-- Contain a Claims History and Punitive Measures Declaration section asking
-  whether the proposer is aware of any claims, circumstances, complaints,
-  investigations, disciplinary actions, licence conditions, criminal offences,
-  or prior insurer declinatures
-- Require a signed Declaration by an authorised signatory (e.g. Hospital Manager)
-  confirming the accuracy of the information and including broker details
-- Are used specifically for medical malpractice or medical professional liability
-  insurance placements for hospitals and healthcare facilities, and are distinct
-  from general liability proposal forms, Management Liability application forms,
-  or commercial property submissions
-
-These documents are NOT:
-- SUBMISSION or MLPUKSUBMISSION: which are Management Liability application
-  forms for D&O, EPL, Crime, and related corporate liability coverages —
-  MEDICALPROPOSAL is specifically for medical malpractice / professional
-  liability insurance for healthcare facilities
-- POLICYSCHEDULE: which is the bound policy document issued after acceptance
-- UKLOSSRUN or AULOSSRUN: which are claims history reports
-- FINANCIAL: which are CPA or auditor-prepared formal financial statements
-
-
-BROKEREMAIL:
-⚠️ CRITICAL PRIORITY RULE — BROKEREMAIL:
-If the document satisfies ALL THREE of the following conditions, you MUST classify 
-it as BROKEREMAIL regardless of how detailed, structured, or technical the content is:
-  1. Begins with a personal salutation (e.g. "Dear", "Hi", "Hello", "To Whom")
-  2. Is written in a conversational or semi-formal broker-to-underwriter tone throughout
-  3. Closes with a sign-off block containing the sender's name, title, firm name, 
-     and contact details (email/phone)
-
-An email communication sent by an insurance broker, placing broker, or reinsurance
-broker to an underwriter, insurer, or market participant, presenting a new or renewal
-insurance or reinsurance risk for consideration, requesting terms, capacity, or
-support, or providing placement-related information and updates in connection with
-an insurance transaction.
-These documents usually:
-- Are formatted as email messages, identifiable by salutation (e.g. "Hi", "Dear"),
-  a conversational or semi-formal tone, sender sign-off with the broker's name,
-  title, firm, contact details, and regulatory footer disclosures (e.g. FCA
-  authorisation, registered company details, privacy notices)
-- Are authored by a named broker or placing professional at a recognised insurance
-  or reinsurance broking firm (e.g. Marsh, WTW, Lockton, Bowring Marsh, McGill
-  Partners, Aon, or similar) acting on behalf of an insured or cedant
-- Present a specific risk, account, or placement opportunity to the recipient
-  underwriter or market, using language such as "we are looking for your support",
-  "would this be of interest", "we are doing a remarket", "please see enclosed a
-  new submission", "we are seeking capacity", or "can you provide terms"
-- Describe the insured's business operations, industry sector, geographic footprint,
-  revenue, and other relevant underwriting information in narrative or bullet-point
-  format embedded within the email body
-- May include key underwriting data such as limits requested, program structure
-  (primary, excess, tower layers), premium indications or targets, deductibles,
-  sublimits, coverage lines sought (e.g. General Liability, Excess Liability,
-  Property, Auto, Umbrella, Political Risk, D&O), commission, and wording references
-- May summarise loss history or claims experience (e.g. total paid, total incurred,
-  largest single loss) in the email body as part of the risk presentation
-- May reference or list attached documents (e.g. submission pack, loss runs,
-  exposure workbooks, coverage requests, slip, financials, renewal slides) without
-  those attachments being part of the classified document itself
-- May relate to any class of insurance business including but not limited to:
-  Casualty/Liability (General Liability, Excess Liability, Umbrella, Auto),
-  Property (facultative reinsurance, all-risks, CAT), Political Risk, Trade Credit,
-  Directors & Officers, Professional Indemnity, or specialty lines
-- May cover new business placements, renewals, remarketing exercises, requests
-  for additional capacity, lineslip support, or facultative reinsurance placements
-- May include internal forwarding notes, log entries, or brief covering messages
-  from one broker to another within the same firm (e.g. "just for logging for now
-  whilst we await more information") that form part of the email chain related to
-  a placement
-
-These documents are NOT:
-- Submission_Document: which is a structured, standalone underwriting submission
-  package for Commercial Property risks — BROKEREMAIL is the informal email
-  communication that may accompany or reference such a submission, not the
-  submission itself
-- MRC_Slip: which is the formal binding placement slip recording agreed coverage
-  terms and syndicate subscription — BROKEREMAIL may reference or precede a slip
-  but is not itself the binding contract
-- Asset_Description or CORPORATE_PROFILE: which are structured pre-underwriting
-  briefing documents prepared in report or Q&A format — BROKEREMAIL is an email
-  communication that may transmit or summarise such documents
-- Trade_Risk_Submission: which is a structured document focused on a specific
-  trade transaction instrument — BROKEREMAIL may present trade risks but is
-  classified by its email format and broker-to-underwriter communication purpose
-- LOSS_RUN, UKLOSSRUN, or AULOSSRUN: which are structured claims history reports
-  — loss data summarised inline within a broker email does not make the email
-  itself a loss run document
-- POLICYSCHEDULE: which is a bound policy document issued by an insurer
-- MLPUKSUBMISSION or SUBMISSION: which are formal proposal or application forms
-
-
-Document Content:
-{text_new}
-
-IMPORTANT OUTPUT RULES:
-- You MUST reply with EXACTLY ONE value.
-- The value MUST MATCH one of the following ENUMS EXACTLY (character-for-character).
-- Do NOT shorten, modify, or partially return any label.
-- If the document matches "Trade_Risk_Submission", you MUST return:
-  "Trade_Risk_Submission" ONLY, so you should not miss the word "Submission"
-- Do NOT shorten, modify, or partially return any label, for eg if the document matches AULOSSRUN you MUST return: "AULOSSRUN" ONLY.
-
-Allowed outputs (EXACT ENUMS):
-ACORD
-SOV
-LOSS_RUN
-INSPECTION_REPORT
-Property_Detailed_Report
-Submission_Document
-Submission_Report
-Valuation_Report
-MRC_Slip
-CORPORATE_PROFILE
-Asset_Description
-CONTRACT_DOCS
-Trade_Risk_Submission
-FINANCIAL
-SUBMISSION
-POLICYSCHEDULE
-UKLOSSRUN
-MLPUKSUBMISSION
-AULOSSRUN
-REPORTINGPACK
-MEDICALPROPOSAL
-BROKEREMAIL
-
-Return ONLY the enum value. Do not add text, punctuation, or explanation.
+   )
+   chain = LLMChain(
+       llm=llm,
+       prompt=qa_prompt
+   )
+   answer = chain.run({
+       "context":context,
+       "question":user_query
+   })
+   return answer
+
+async def process_query():
+   vector_db_path = r"C:\Users\2000137378\Desktop\newproject\RAG_PIPELINES\big_input"
+   vectordb = Chroma(
+       embedding_function=embeddings,
+       persist_directory=vector_db_path,
+       collection_name="big_collection"
+   )
+   answer = query_documents(
+       vectordb,
+       "whose number is this +64 21 555 0198"
+   )
+   print("\nFinal Answer:\n")
+   print(answer)
+
+if __name__ == "__main__":
+   asyncio.run(process_query())
+
+
+metadafilterloader
+from langchain_chroma import Chroma
+from langchain_openai import AzureOpenAIEmbeddings
+from langchain_community.document_loaders import TextLoader
+from langchain_text_splitters import RecursiveCharacterTextSplitter
+from dotenv import load_dotenv
+import os
+load_dotenv()
+# ================= EMBEDDINGS =================
+embeddings = AzureOpenAIEmbeddings(
+   azure_deployment=os.getenv("AZURE_OPENAI_EMBEDDING_DEPLOYMENT_NAME"),
+   openai_api_key=os.getenv("AZURE_OPENAI_API_KEY"),
+   openai_api_version=os.getenv("AZURE_OPENAI_API_VERSION"),
+   azure_endpoint=os.getenv("AZURE_OPENAI_ENDPOINT"),
+   chunk_size=1024
+)
+# ================= SPLITTER =================
+text_splitter = RecursiveCharacterTextSplitter(
+   chunk_size=800,
+   chunk_overlap=100
+)
+# ================= LOADER =================
+loader = TextLoader(
+   r"C:\Users\2000137378\Desktop\newproject\RAG_PIPELINES\mytext.txt",
+   encoding="utf-8"
+)
+documents = loader.load()
+# ================= CHUNKING =================
+chunks = text_splitter.split_documents(documents)
+# ================= AUTO METADATA TAGGING =================
+for chunk in chunks:
+   text = chunk.page_content.lower()
+   chunk.metadata["doc_type"] = "insurance"
+   chunk.metadata["source_file"] = "mytext.txt"
+   # SECTION DETECTION
+   if "property overview" in text or "year built" in text:
+       chunk.metadata["section"] = "property"
+   elif "claims history" in text or "amount paid" in text:
+       chunk.metadata["section"] = "claims"
+   elif "construction" in text:
+       chunk.metadata["section"] = "construction"
+   elif "security features" in text:
+       chunk.metadata["section"] = "security"
+   elif "policyholder" in text:
+       chunk.metadata["section"] = "policyholder"
+   else:
+       chunk.metadata["section"] = "general"
+# ================= VECTOR DB =================
+my_dir = os.path.join(
+   os.path.dirname(os.path.abspath(__file__)),
+   "input9.1"
+)
+vectorstore = Chroma.from_documents(
+   documents=chunks,
+   embedding=embeddings,
+   collection_name="my9.1_collection",
+   persist_directory=my_dir
+)
+# ================= DEBUG =================
+print("\nTotal chunks:",len(chunks))
+print("\nExample chunk:")
+print(chunks[0].page_content[:150])
+print("\nMetadata:")
+print(chunks[0].metadata)
+
+
+
+metadatafilteringquery
+from langchain_chroma import Chroma
+from langchain_openai import AzureOpenAIEmbeddings, AzureChatOpenAI
+from langchain_core.prompts import PromptTemplate
+from langchain_classic.chains.llm import LLMChain
+from dotenv import load_dotenv
+import os
+load_dotenv()
+# ================= EMBEDDINGS =================
+embeddings = AzureOpenAIEmbeddings(
+   azure_deployment=os.getenv("AZURE_OPENAI_EMBEDDING_DEPLOYMENT_NAME"),
+   openai_api_key=os.getenv("AZURE_OPENAI_API_KEY"),
+   openai_api_version=os.getenv("AZURE_OPENAI_API_VERSION"),
+   azure_endpoint=os.getenv("AZURE_OPENAI_ENDPOINT"),
+   chunk_size=1024
+)
+# ================= LOAD VECTOR DB =================
+vector_db_path = r"C:\Users\2000137378\Desktop\newproject\RAG_PIPELINES\big_input"
+vectordb = Chroma(
+   embedding_function=embeddings,
+   persist_directory=vector_db_path,
+   collection_name="my_collection"
+)
+# ================= QUERY =================
+user_query = "+64 21 555 0198"
+# CHANGE SECTION TO TEST
+section_filter="general"
+print("\nQuery:",user_query)
+print("\nFiltering section:",section_filter)
+# ================= FILTERED SEARCH =================
+relevant_chunks = vectordb.similarity_search(
+   user_query,
+   k=5,
+   filter={
+      "$and":[ {"doc_type":"insurance"},
+       {"section":section_filter}
+   ]
+   }
+)
+print("\nChunks found:",len(relevant_chunks))
+# ================= SHOW RETRIEVED =================
+for chunk in relevant_chunks:
+   print("\nMetadata:",chunk.metadata)
+   print("Text:",chunk.page_content[:150])
+# ================= BUILD CONTEXT =================
+context="\n".join(
+   chunk.page_content for chunk in relevant_chunks
+)
+# ================= LLM =================
+llm = AzureChatOpenAI(
+   openai_api_key=os.getenv("AZURE_OPENAI_API_KEY"),
+   azure_endpoint=os.getenv("AZURE_OPENAI_ENDPOINT"),
+   openai_api_version=os.getenv("AZURE_OPENAI_API_VERSION"),
+   deployment_name=os.getenv("AZURE_OPENAI_CHAT_DEPLOYMENT"),
+   temperature=0
+)
+prompt=PromptTemplate(
+   input_variables=["context","question"],
+   template="""
+Answer only from context.
+QUESTION:
+{question}
+CONTEXT:
+{context}
+ANSWER:
 """
+)
+chain=LLMChain(
+   llm=llm,
+   prompt=prompt
+)
+answer=chain.run({
+   "context":context,
+   "question":user_query
+})
+print("\nFINAL ANSWER:\n")
+print(answer)
+
+
+metadatadynamicfiltering
+# (venv) PS C:\Users\2000137378\Desktop\newproject\RAG_PIPELINES> python .\9.1metadatafilteringloader.py
+
+
+from langchain_chroma import Chroma
+from langchain_openai import AzureOpenAIEmbeddings, AzureChatOpenAI
+from langchain_core.prompts import PromptTemplate
+from langchain_classic.chains.llm import LLMChain
+from dotenv import load_dotenv
+import os
+load_dotenv()
+# ================= EMBEDDINGS =================
+embeddings = AzureOpenAIEmbeddings(
+   azure_deployment=os.getenv("AZURE_OPENAI_EMBEDDING_DEPLOYMENT_NAME"),
+   openai_api_key=os.getenv("AZURE_OPENAI_API_KEY"),
+   openai_api_version=os.getenv("AZURE_OPENAI_API_VERSION"),
+   azure_endpoint=os.getenv("AZURE_OPENAI_ENDPOINT")
+)
+# ================= LOAD VECTOR DB =================
+vector_db_path = r"C:\Users\2000137378\Desktop\newproject\RAG_PIPELINES\big_input"
+vectordb = Chroma(
+   embedding_function=embeddings,
+   persist_directory=vector_db_path,
+   collection_name="big_collection"
+)
+# ================= LLM =================
+llm = AzureChatOpenAI(
+   openai_api_key=os.getenv("AZURE_OPENAI_API_KEY"),
+   azure_endpoint=os.getenv("AZURE_OPENAI_ENDPOINT"),
+   openai_api_version=os.getenv("AZURE_OPENAI_API_VERSION"),
+   deployment_name=os.getenv("AZURE_OPENAI_CHAT_DEPLOYMENT"),
+   temperature=0
+)
+# ================= USER QUERY =================
+user_query="whose number is this +64 21 555 0198"
+print("\nUser Query:",user_query)
+# ================= SECTION DETECTOR =================
+section_prompt = PromptTemplate(
+   input_variables=["question"],
+   template="""
+You are a document query classifier.
+Classify which section this question belongs to.
+Possible sections:
+property
+claims
+construction
+security
+policyholder
+general
+QUESTION:
+{question}
+Return ONLY the section name.
+"""
+)
+
+section_chain = LLMChain(
+   llm=llm,
+   prompt=section_prompt
+)
+
+section = section_chain.run({
+   "question":user_query
+}).strip().lower()
+print("\nDetected section:",section)
+# ================= RETRIEVAL =================
+
+relevant_chunks = vectordb.similarity_search(
+   user_query,
+   k=5,
+#    filter={
+#        "doc_type":"insurance",
+#        "section":section
+#    }
+
+
+  filter={
+      "$and":[ {"doc_type":"insurance"},
+       {"section":section}
+   ]
+    }
+)
+
+print("\nChunks retrieved:",len(relevant_chunks))
+# Debug retrieved chunks
+for chunk in relevant_chunks:
+   print("\nMetadata:",chunk.metadata)
+   print("Text:",chunk.page_content[:120])
+# ================= BUILD CONTEXT =================
+context="\n".join(
+   chunk.page_content for chunk in relevant_chunks
+)
+# ================= QA PROMPT =================
+qa_prompt=PromptTemplate(
+   input_variables=["context","question"],
+   template="""
+Answer using ONLY the context.
+QUESTION:
+{question}
+CONTEXT:
+{context}
+ANSWER:
+"""
+)
+qa_chain=LLMChain(
+   llm=llm,
+   prompt=qa_prompt
+)
+answer=qa_chain.run({
+   "context":context,
+   "question":user_query
+})
+print("\nFINAL ANSWER:\n")
+print(answer)
+
+
+hybridretrieval
+from langchain_chroma import Chroma
+from langchain_openai import AzureOpenAIEmbeddings, AzureChatOpenAI
+from langchain_core.prompts import PromptTemplate
+from langchain_classic.chains.llm import LLMChain
+from dotenv import load_dotenv
+import os
+
+load_dotenv()
+
+# ================= EMBEDDINGS =================
+
+embeddings = AzureOpenAIEmbeddings(
+
+    azure_deployment=os.getenv("AZURE_OPENAI_EMBEDDING_DEPLOYMENT_NAME"),
+
+    openai_api_key=os.getenv("AZURE_OPENAI_API_KEY"),
+
+    openai_api_version=os.getenv("AZURE_OPENAI_API_VERSION"),
+
+    azure_endpoint=os.getenv("AZURE_OPENAI_ENDPOINT")
+)
+
+# ================= VECTOR DB =================
+
+vector_db_path=r"C:\Users\2000137378\Desktop\newproject\RAG_PIPELINES\big_input"
+
+vectordb=Chroma(
+
+    embedding_function=embeddings,
+
+    persist_directory=vector_db_path,
+
+    collection_name="big_collection"
+)
+
+# ================= LLM =================
+
+llm=AzureChatOpenAI(
+
+    openai_api_key=os.getenv("AZURE_OPENAI_API_KEY"),
+
+    azure_endpoint=os.getenv("AZURE_OPENAI_ENDPOINT"),
+
+    openai_api_version=os.getenv("AZURE_OPENAI_API_VERSION"),
+
+    deployment_name=os.getenv("AZURE_OPENAI_CHAT_DEPLOYMENT"),
+
+    temperature=0
+)
+
+# ================= USER QUERY =================
+
+user_query="whose number is this +64 21 555 0198"
+
+print("\nUser Query:",user_query)
+
+# ================= VECTOR SEARCH =================
+
+print("\nRunning vector search...")
+
+vector_results=vectordb.similarity_search(
+
+    user_query,
+
+    k=3
+)
+
+# ================= KEYWORD SEARCH =================
+
+print("\nRunning keyword search...")
+
+all_docs=vectordb.get()
+
+keyword_results=[]
+
+for text,metadata in zip(
+
+        all_docs["documents"],
+        all_docs["metadatas"]
+):
+
+    if user_query.lower() in text.lower():
+
+        keyword_results.append(text)
+
+# ================= MERGE RESULTS =================
+
+combined_texts=[]
+
+# Add vector results
+for doc in vector_results:
+
+    combined_texts.append(doc.page_content)
+
+# Add keyword results
+for text in keyword_results:
+
+    if text not in combined_texts:
+
+        combined_texts.append(text)
+
+print("\nTotal combined chunks:",len(combined_texts))
+
+# ================= CONTEXT =================
+
+context="\n".join(combined_texts)
+
+# ================= QA PROMPT =================
+
+qa_prompt=PromptTemplate(
+
+    input_variables=["context","question"],
+
+    template="""
+Answer using ONLY this context.
+
+QUESTION:
+{question}
+
+CONTEXT:
+{context}
+
+ANSWER:
+"""
+)
+
+qa_chain=LLMChain(
+
+    llm=llm,
+
+    prompt=qa_prompt
+)
+
+answer=qa_chain.invoke({
+
+    "context":context,
+
+    "question":user_query
+
+})["text"]
+
+# ================= ANSWER =================
+
+print("\nFINAL ANSWER:\n")
+
+print(answer)
+
+
+embedding my querytopdf
+from langchain_chroma import Chroma
+from langchain_openai import AzureOpenAIEmbeddings
+from langchain_community.document_loaders import TextLoader
+from langchain_text_splitters import RecursiveCharacterTextSplitter
+from dotenv import load_dotenv
+import os
+import time
+
+load_dotenv()
+
+# ================= EMBEDDINGS =================
+
+embeddings = AzureOpenAIEmbeddings(
+
+    azure_deployment=os.getenv("AZURE_OPENAI_EMBEDDING_DEPLOYMENT_NAME"),
+
+    openai_api_key=os.getenv("AZURE_OPENAI_API_KEY"),
+
+    openai_api_version=os.getenv("AZURE_OPENAI_API_VERSION"),
+
+    azure_endpoint=os.getenv("AZURE_OPENAI_ENDPOINT"),
+
+    chunk_size=50,          # IMPORTANT → smaller batch
+
+    max_retries=10          # retry if rate limited
+)
+
+# ================= TEXT SPLITTER =================
+
+text_splitter = RecursiveCharacterTextSplitter(
+
+    chunk_size=800,
+
+    chunk_overlap=100
+)
+
+# ================= LOAD LARGE FILE =================
+
+loader = TextLoader(
+
+    r"C:\Users\2000137378\Desktop\newproject\RAG_PIPELINES\complex_realistic_corpus.txt",
+
+    encoding="utf-8"
+)
+
+documents = loader.load()
+
+print("\nDocuments loaded:",len(documents))
+
+# ================= SPLIT =================
+
+chunks = text_splitter.split_documents(documents)
+
+print("\nTotal chunks:",len(chunks))
+
+# ================= VECTOR DIRECTORY =================
+
+persist_dir = os.path.join(
+
+    os.path.dirname(os.path.abspath(__file__)),
+
+    "big_input"
+)
+
+# ================= CREATE EMPTY DB =================
+
+vectordb = Chroma(
+
+    embedding_function=embeddings,
+
+    persist_directory=persist_dir,
+
+    collection_name="newbig_collection"
+)
+
+# ================= BATCH INGESTION =================
+
+batch_size = 50
+
+print("\nStarting batched ingestion...")
+
+for i in range(0,len(chunks),batch_size):
+
+    batch = chunks[i:i+batch_size]
+
+    try:
+
+        vectordb.add_documents(batch)
+
+        print(f"Inserted batch {i} → {i+batch_size}")
+
+        # IMPORTANT → prevent rate limit
+        time.sleep(1)
+
+    except Exception as e:
+
+        print("Retrying batch due to:",e)
+
+        time.sleep(10)
+
+        vectordb.add_documents(batch)
+
+print("\nIngestion complete")
+
+print("\nVector DB stored at:",persist_dir)
+
+
+import random
+
+names=[
+"Alex Taylor","Jordan Smith","Chris Morgan",
+"Taylor Holdings","Morgan Risk Ltd",
+"Pacific Underwriters","Summit Brokers"
+]
+
+phones=[
+"+64 21 555 0198",
+"021-555-0198",
+"64 21 5550198",
+"+64 (21) 555 0198",
+"0215550198"
+]
+
+zips=[
+"95123","94107","10001","400001","20005"
+]
+
+years=[
+"1998","2001","2005","2010","2015"
+]
+
+noise_blocks=[
+
+"""
+Inspection notes:
+Minor wear observed.
+Previous claim ref CL8821.
+Surveyor comments archived.
+""",
+
+"""
+Maintenance log fragment:
+Roof inspection passed.
+Drainage acceptable.
+Engineer reference ENG9921.
+""",
+
+"""
+Broker internal note:
+Client prefers digital comms.
+Risk appetite moderate.
+Underwriting review pending.
+""",
+
+"""
+Document appendix:
+Photos archived separately.
+Structural review recommended.
+Policy subject to renewal review.
+"""
+]
+
+formats=[
+
+lambda n,p,z,y: f"""
+INSURANCE SUBMISSION
+
+Client: {n}
+
+Contact pathways:
+Primary mobile -> {p}
+
+Construction metadata:
+Property likely built circa {y}
+
+Geographic code:
+ZIP:{z}
+""",
+
+lambda n,p,z,y: f"""
+CLIENT DATA RECORD
+
+Holder : {n}
+
+Reach at:
+Tel number {p}
+
+Asset notes:
+Construction year believed {y}
+
+Postal marker {z}
+""",
+
+lambda n,p,z,y: f"""
+UNDERWRITING SNAPSHOT
+
+Entity name {n}
+
+Communication:
+Mobile contact = {p}
+
+Risk notes:
+Dwelling erected approx {y}
+
+Location identifier {z}
+""",
+
+lambda n,p,z,y: f"""
+RISK REPORT
+
+Policy customer {n}
+
+Phone listing:
+{p}
+
+Asset built year {y}
+
+Area code {z}
+"""
+]
+
+output="complex_realistic_corpus.txt"
+
+with open(output,"w",encoding="utf-8") as f:
+
+    for i in range(15000):
+
+        name=random.choice(names)+"_"+str(i)
+
+        phone=random.choice(phones)
+
+        zipc=random.choice(zips)
+
+        year=random.choice(years)
+
+        template=random.choice(formats)
+
+        doc=template(name,phone,zipc,year)
+
+        doc+=random.choice(noise_blocks)
+
+        # Add random garbage lines
+        if random.random()>0.6:
+
+            doc+=f"\nReference ID: REF{i}{random.randint(100,999)}"
+
+        if random.random()>0.5:
+
+            doc+=f"\nInternal code ZX-{random.randint(1000,9999)}"
+
+        f.write(doc+"\n\n")
+
+print("Complex corpus generated")
+
+
+
+creatingdatasettoseewhyhybrid
+import random
+import os
+
+base_text = """
+Home Insurance Underwriting Submission Report
+
+Policyholder: Alex Taylor
+Contact Number: +64 21 555 0198
+Email: alex.taylor@example.co.nz
+
+Property Overview:
+Year Built: 1998
+Construction: Timber frame
+Roof: Colorsteel
+Floors: 2
+
+Address:
+1234 Maple Ridge Lane
+San Jose
+California
+Zip: 95123
+
+Broker:
+Casey Morgan
+Harbour Risk Advisory
+
+Claim History:
+Water damage 2022
+Amount: 2480
+
+"""
+
+cities = [
+"San Jose","Auckland","Sydney","London",
+"Toronto","Melbourne","Dubai","Mumbai"
+]
+
+years=[1990,1995,1998,2001,2005,2010,2015,2020]
+
+zipcodes=["95123","94107","10001","20005","400001"]
+
+phones=[
+"+64 21 555 0198",
+"+61 488 555 111",
+"+1 408 777 222",
+"+91 98765 43210"
+]
+
+output_file="big_insurance_dataset.txt"
+
+with open(output_file,"w",encoding="utf-8") as f:
+
+    for i in range(20000):   # adjust number here
+
+        text=base_text
+
+        text=text.replace(
+            "Alex Taylor",
+            "Client_"+str(i)
+        )
+
+        text=text.replace(
+            "1998",
+            str(random.choice(years))
+        )
+
+        text=text.replace(
+            "San Jose",
+            random.choice(cities)
+        )
+
+        text=text.replace(
+            "95123",
+            random.choice(zipcodes)
+        )
+
+        text=text.replace(
+            "+64 21 555 0198",
+            random.choice(phones)
+        )
+
+        f.write(text+"\n\n")
+
+print("Dataset generated")
+
+
+
+
+
+
 
 
