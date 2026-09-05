@@ -1,167 +1,860 @@
-Now we have the vendor manager who... 
+"""
+agent_v1_naive.py
+─────────────────
+Claim intake triage agent, version 1.
 
-opens the vendor dashboard, and he... 
+    free-text note  ->  extract node (LLM)  ->  router  ->  decision node
 
-Goes to the overview section Of the vendor. 
+The parsing in extract_node is deliberately the SAME pattern used in the
+reserve_recommendation handler:
 
-And sees Related Data. 
+    content = response.content.strip().strip("`")
+    if content.startswith("json"):
+        content = content[4:]
+    try:
+        data = json.loads(content)
+    except Exception:
+        data = {}
 
-Now vendor manager moves into the vendor onboarding section. 
+The point of this file is not that the parsing is ugly. It is that the
+ROUTER has to make a real decision from whatever comes back, and when the
+parse degrades, the routing degrades with it - silently.
 
-Here, he can. 
+Run:
+    python agent_v1_naive.py
+"""
 
-Enter the vendor name, license number. 
+import json
+import os
+from typing import Optional, TypedDict
 
-Expiry date, zip code with other. 
+from dotenv import find_dotenv, load_dotenv
+from langchain_openai import AzureChatOpenAI
+from langgraph.graph import END, START, StateGraph
 
-Data and click on Submit Vendor Application. 
+from claims import CLAIMS
 
-in the pending approval section. 
+load_dotenv(find_dotenv())
 
-The vendor onboarding agent runs and we see the... 
 
-approve and reject button for that particular. 
+# ══════════════════════════════════════════════════════════════════════
+# STATE
+# ══════════════════════════════════════════════════════════════════════
 
-Onboarded vendor. 
+class State(TypedDict):
+    claim_id: str
+    note: str
+    extracted: dict
+    parse_failed: bool
+    route_reason: str
+    decision: str
 
-He proceeds with approving the vendor. 
 
-Once vendor is approved. 
+# ══════════════════════════════════════════════════════════════════════
+# MODEL
+# ══════════════════════════════════════════════════════════════════════
 
-Now, moving into the vendor directory page. 
+def get_llm():
+    return AzureChatOpenAI(
+        api_key=os.getenv("AZURE_OPENAI_API_KEY"),
+        api_version=os.getenv("AZURE_OPENAI_API_VERSION"),
+        azure_deployment=os.getenv("AZURE_OPENAI_CHAT_DEPLOYMENT"),
+        azure_endpoint=os.getenv("AZURE_OPENAI_ENDPOINT"),
+        temperature=0,
+    )
 
-He sees that particular vendor. 
 
-has been assigned A vendor ID. 
+EXTRACT_PROMPT = """You are a claims intake assistant.
 
-Along with other. 
+Read the adjuster's note below and extract the key fields.
 
-Data. 
+NOTE:
+{note}
 
-and status as active. 
+Respond ONLY as JSON, with exactly these keys:
 
-Location. 
+{{
+  "loss_type": "...",
+  "incident_date": "YYYY-MM-DD",
+  "estimated_amount": 0.0,
+  "severity": "Low" or "Medium" or "High" or "Critical",
+  "injuries_reported": true or false
+}}
 
-License expiry date, along with other information. 
+Respond ONLY as JSON. Do not include any other text.
+"""
 
-Now moving into that, just a persona. 
 
-Under Smart Vendor Match. 
+# ══════════════════════════════════════════════════════════════════════
+# NODE 1 - EXTRACT
+# ══════════════════════════════════════════════════════════════════════
 
-Adjuster selects particular claim and clicks on Smart Vendor Match. 
+def extract_node(state: State) -> dict:
+    llm = get_llm()
 
-Button. 
+    response = llm.invoke(EXTRACT_PROMPT.format(note=state["note"]))
 
-To get the best vendor match. 
+    # ---- the hand-rolled parsing, exactly as in the reserve handler ----
+    content = response.content.strip().strip("`")
+    if content.startswith("json"):
+        content = content[4:]
 
-and then he clicks on approve button. 
+    try:
+        data = json.loads(content)
+        parse_failed = False
+    except Exception:
+        data = {}
+        parse_failed = True
+    # -------------------------------------------------------------------
 
-After which? 
+    return {
+        "extracted": data,
+        "parse_failed": parse_failed,
+        # keep the raw text so the comparison script can show what came back
+        "_raw": response.content,
+    }
 
-That particular vendor is assigned. 
 
-Two. 
+# ══════════════════════════════════════════════════════════════════════
+# ROUTER - this is where the damage shows up
+# ══════════════════════════════════════════════════════════════════════
 
-The particular claim ID. 
+HIGH_VALUE_THRESHOLD = 10_000
 
-This data flows into the vendor manage. 
+SEVERITY_RANK = {"Low": 1, "Medium": 2, "High": 3, "Critical": 4}
 
-Jet Portal. 
 
-Under Vendor Assignment Monitors page. 
+def triage_router(state: State) -> str:
+    """
+    Business rule:
+        - anything over 10,000            -> manual review
+        - severity High or Critical       -> manual review
+        - injuries reported               -> manual review
+        - otherwise                       -> fast track
 
-Vendor manager sees the assigned vendor for that particular claim. 
+    The router has to work with whatever extract_node produced. Watch what
+    it has to do to survive that.
+    """
+    data = state.get("extracted") or {}
 
-Now, Vendor Manager. 
+    if state.get("parse_failed"):
+        return "needs_human"
 
-has this option of either he can dispatch this. 
+    amount = data.get("estimated_amount")
+    severity = data.get("severity")
+    injuries = data.get("injuries_reported")
 
-Vendor. 
+    # PROBLEM 1: amount might be a string like "$15,500.00" or "twelve thousand",
+    # or missing entirely. A bare comparison raises TypeError.
+    try:
+        if amount is not None and float(amount) > HIGH_VALUE_THRESHOLD:
+            return "manual_review"
+    except (TypeError, ValueError):
+        # We cannot compare it. So we... guess. This is the quiet failure.
+        return "needs_human"
 
-Dispatch an expert. 
+    # PROBLEM 2: severity might be "Moderate", "medium", "MEDIUM", or a
+    # sentence. A dict lookup on an unexpected label returns None.
+    if SEVERITY_RANK.get(severity, 0) >= 3:
+        return "manual_review"
 
-Or not. 
+    # PROBLEM 3: injuries might be the STRING "false", which is truthy.
+    if injuries:
+        return "manual_review"
 
-If... 
+    return "fast_track"
 
-vendor does not go with the dispatch button. 
 
-Two agents. 
+# ══════════════════════════════════════════════════════════════════════
+# DECISION NODES
+# ══════════════════════════════════════════════════════════════════════
 
-Run in the background, which is... 
+def fast_track_node(state: State) -> dict:
+    return {"decision": "FAST_TRACK", "route_reason": "under threshold, low severity"}
 
-Performance agent. Sorry, it is vendor performance agent. 
 
-And... 
+def manual_review_node(state: State) -> dict:
+    return {"decision": "MANUAL_REVIEW", "route_reason": "high value / severity / injuries"}
 
-SLA Compliance Agent. 
 
-Vendor Manager moves into the Vendor SLA Tracker. 
+def needs_human_node(state: State) -> dict:
+    return {"decision": "NEEDS_HUMAN", "route_reason": "could not read the extraction"}
 
-Beach. 
 
-where he sees a particular window name and the SLA compliance percentage along with the SLA status. 
+# ══════════════════════════════════════════════════════════════════════
+# GRAPH
+# ══════════════════════════════════════════════════════════════════════
 
-And in the window performance section. 
+def build_graph():
+    builder = StateGraph(State)
 
-The data is displayed for the. 
+    builder.add_node("extract", extract_node)
+    builder.add_node("fast_track", fast_track_node)
+    builder.add_node("manual_review", manual_review_node)
+    builder.add_node("needs_human", needs_human_node)
 
-Top vendors and their performance distribution. 
+    builder.add_edge(START, "extract")
 
-Now, if the vendor manager... 
+    builder.add_conditional_edges(
+        "extract",
+        triage_router,
+        {
+            "fast_track": "fast_track",
+            "manual_review": "manual_review",
+            "needs_human": "needs_human",
+        },
+    )
 
-Goes with... 
+    builder.add_edge("fast_track", END)
+    builder.add_edge("manual_review", END)
+    builder.add_edge("needs_human", END)
 
-Dispatching the expert. 
+    return builder.compile()
 
-Chooses an export, and... 
 
-gives a date and time. 
+# ══════════════════════════════════════════════════════════════════════
+# RUN
+# ══════════════════════════════════════════════════════════════════════
 
-And submits. 
+def run_one(graph, claim):
+    return graph.invoke({"claim_id": claim["id"], "note": claim["note"]})
 
-Now, expert is dispatched. 
 
-In this scenario. 
+if __name__ == "__main__":
+    graph = build_graph()
 
-There are multiple agents that run in the background. 
+    print("\n" + "=" * 78)
+    print("AGENT v1 - NAIVE JSON PARSING")
+    print("=" * 78)
 
-Which are dispatch agent, ETA agent, SLA compliance agent? 
+    for claim in CLAIMS:
+        result = run_one(graph, claim)
+        data = result.get("extracted") or {}
 
-Escalation agent. 
+        print(f"\n{claim['id']}  ->  {result.get('decision')}")
+        print(f"  parse_failed     : {result.get('parse_failed')}")
+        print(f"  estimated_amount : {data.get('estimated_amount')!r}"
+              f"   (type: {type(data.get('estimated_amount')).__name__})")
+        print(f"  severity         : {data.get('severity')!r}")
+        print(f"  incident_date    : {data.get('incident_date')!r}")
+        print(f"  injuries         : {data.get('injuries_reported')!r}"
+              f"   (type: {type(data.get('injuries_reported')).__name__})")
+        print(f"  raw response     : {str(result.get('_raw'))[:70]!r}...")
 
-and vendor performance agent. 
 
-After the expert. 
+"""
+agent_v2_structured.py
+──────────────────────
+The SAME agent, with one thing changed: the extract node uses a Pydantic
+schema instead of hand-parsed JSON.
 
-Is dispatched. 
+    free-text note  ->  extract node (LLM)  ->  router  ->  decision node
 
-He goes and assesses the situation. 
+Compare this file against agent_v1_naive.py side by side. The graph is
+identical. The prompt is shorter. The router is smaller. That shrinkage
+is the actual result.
 
-and the damage. 
+Run:
+    python agent_v2_structured.py
+"""
 
-And gives a loss estimation. 
+import os
+from typing import Literal, Optional, TypedDict
 
-After which... 
+from dotenv import find_dotenv, load_dotenv
+from langchain_openai import AzureChatOpenAI
+from langgraph.graph import END, START, StateGraph
+from pydantic import BaseModel, Field
 
-Trolling down. 
+from claims import CLAIMS
 
-The dispatch work orders section. 
+load_dotenv(find_dotenv())
 
-We get the expert estimates for repair. 
 
-and a replacement. 
+# ══════════════════════════════════════════════════════════════════════
+# THE SCHEMA - this replaces the prompt's format instructions
+# ══════════════════════════════════════════════════════════════════════
 
-This data then flows to the address of persona. 
+class ClaimIntake(BaseModel):
+    """Structured fields extracted from an adjuster's free-text intake note."""
 
-under repair versus replacement page. 
+    loss_type: str = Field(
+        description="Short category of loss, e.g. water, fire, theft, collision, storm."
+    )
 
-where we get the revised repair. 
+    incident_date: Optional[str] = Field(
+        default=None,
+        description=(
+            "Date of the incident in YYYY-MM-DD format. "
+            "Null if the note does not state a specific date - do NOT guess "
+            "from relative references like 'last Tuesday'."
+        ),
+    )
 
-Net payable and the revised replacement net payable. 
+    estimated_amount: Optional[float] = Field(
+        default=None,
+        description=(
+            "Best single estimate of the claim cost as a plain number, no currency "
+            "symbol or thousands separators. If several estimates are given, use the "
+            "one the adjuster is proceeding with. Null if no figure is stated."
+        ),
+    )
 
-Based on which? 
+    amount_is_approximate: bool = Field(
+        description=(
+            "True if the amount was stated vaguely (for example 'around twelve "
+            "thousand' or a range). False if a precise figure was given."
+        )
+    )
 
-The adjuster. 
+    severity: Literal["Low", "Medium", "High", "Critical"] = Field(
+        description=(
+            "Severity of the loss. Must be exactly one of: Low, Medium, High, Critical."
+        )
+    )
 
-Into that, just a persona. 
+    injuries_reported: bool = Field(
+        description="True only if the note states that someone was injured."
+    )
+
+
+# ══════════════════════════════════════════════════════════════════════
+# STATE
+# ══════════════════════════════════════════════════════════════════════
+
+class State(TypedDict):
+    claim_id: str
+    note: str
+    extracted: Optional[ClaimIntake]
+    parse_failed: bool
+    route_reason: str
+    decision: str
+
+
+def get_llm():
+    return AzureChatOpenAI(
+        api_key=os.getenv("AZURE_OPENAI_API_KEY"),
+        api_version=os.getenv("AZURE_OPENAI_API_VERSION"),
+        azure_deployment=os.getenv("AZURE_OPENAI_CHAT_DEPLOYMENT"),
+        azure_endpoint=os.getenv("AZURE_OPENAI_ENDPOINT"),
+        temperature=0,
+    )
+
+
+# Note what is NOT here any more: no key list, no example object,
+# no "Respond ONLY as JSON" (which appeared twice in v1).
+EXTRACT_PROMPT = """You are a claims intake assistant.
+
+Read the adjuster's note below and extract the key fields.
+
+NOTE:
+{note}
+"""
+
+
+# ══════════════════════════════════════════════════════════════════════
+# NODE 1 - EXTRACT
+# ══════════════════════════════════════════════════════════════════════
+
+def extract_node(state: State) -> dict:
+    llm = get_llm()
+
+    # include_raw=True so a failure returns a result instead of raising
+    structured_llm = llm.with_structured_output(ClaimIntake, include_raw=True)
+
+    result = structured_llm.invoke(EXTRACT_PROMPT.format(note=state["note"]))
+
+    parsed = result.get("parsed")
+    error = result.get("parsing_error")
+
+    if error is not None or parsed is None:
+        print(f"  [!] STRUCTURED_EXTRACT_FAILED {state['claim_id']}: {error}")
+        return {"extracted": None, "parse_failed": True, "_raw": result.get("raw")}
+
+    return {"extracted": parsed, "parse_failed": False, "_raw": result.get("raw")}
+
+
+# ══════════════════════════════════════════════════════════════════════
+# ROUTER - compare this with v1
+# ══════════════════════════════════════════════════════════════════════
+
+HIGH_VALUE_THRESHOLD = 10_000
+
+SEVERITY_RANK = {"Low": 1, "Medium": 2, "High": 3, "Critical": 4}
+
+
+def triage_router(state: State) -> str:
+    """
+    Same business rule as v1. No try/except, no type coercion, no guessing.
+
+    estimated_amount is a float or None - guaranteed.
+    severity is one of four strings - guaranteed.
+    injuries_reported is a bool - guaranteed.
+    """
+    if state.get("parse_failed"):
+        return "needs_human"
+
+    data: ClaimIntake = state["extracted"]
+
+    if data.estimated_amount is not None and data.estimated_amount > HIGH_VALUE_THRESHOLD:
+        return "manual_review"
+
+    if SEVERITY_RANK[data.severity] >= 3:
+        return "manual_review"
+
+    if data.injuries_reported:
+        return "manual_review"
+
+    # A genuine business decision that v1 could not even express:
+    # no figure yet, so there is nothing to fast-track on.
+    if data.estimated_amount is None:
+        return "needs_human"
+
+    return "fast_track"
+
+
+def fast_track_node(state: State) -> dict:
+    return {"decision": "FAST_TRACK", "route_reason": "under threshold, low severity"}
+
+
+def manual_review_node(state: State) -> dict:
+    return {"decision": "MANUAL_REVIEW", "route_reason": "high value / severity / injuries"}
+
+
+def needs_human_node(state: State) -> dict:
+    return {"decision": "NEEDS_HUMAN", "route_reason": "missing amount or failed extraction"}
+
+
+def build_graph():
+    builder = StateGraph(State)
+
+    builder.add_node("extract", extract_node)
+    builder.add_node("fast_track", fast_track_node)
+    builder.add_node("manual_review", manual_review_node)
+    builder.add_node("needs_human", needs_human_node)
+
+    builder.add_edge(START, "extract")
+
+    builder.add_conditional_edges(
+        "extract",
+        triage_router,
+        {
+            "fast_track": "fast_track",
+            "manual_review": "manual_review",
+            "needs_human": "needs_human",
+        },
+    )
+
+    builder.add_edge("fast_track", END)
+    builder.add_edge("manual_review", END)
+    builder.add_edge("needs_human", END)
+
+    return builder.compile()
+
+
+def run_one(graph, claim):
+    return graph.invoke({"claim_id": claim["id"], "note": claim["note"]})
+
+
+if __name__ == "__main__":
+    graph = build_graph()
+
+    print("\n" + "=" * 78)
+    print("AGENT v2 - STRUCTURED OUTPUT")
+    print("=" * 78)
+
+    for claim in CLAIMS:
+        result = run_one(graph, claim)
+        data: Optional[ClaimIntake] = result.get("extracted")
+
+        print(f"\n{claim['id']}  ->  {result.get('decision')}")
+        print(f"  parse_failed     : {result.get('parse_failed')}")
+
+        if data:
+            print(f"  estimated_amount : {data.estimated_amount!r}"
+                  f"   (type: {type(data.estimated_amount).__name__})")
+            print(f"  approximate?     : {data.amount_is_approximate}")
+            print(f"  severity         : {data.severity!r}")
+            print(f"  incident_date    : {data.incident_date!r}")
+            print(f"  injuries         : {data.injuries_reported!r}"
+                  f"   (type: {type(data.injuries_reported).__name__})")
+
+
+"""
+compare.py
+──────────
+Runs both agents over the same ten claims and puts the results side by side.
+
+This is the file that makes the point. Look for three things:
+
+  1  Rows where the two agents DISAGREE on the routing decision.
+     That is a claim being sent to the wrong queue.
+
+  2  The 'type' column for v1. Anything that is not 'float' means the
+     router had to coerce or guess.
+
+  3  The severity column for v1. Anything outside Low/Medium/High/Critical
+     means the SEVERITY_RANK lookup silently returned 0.
+
+Run:
+    python compare.py
+"""
+
+import agent_v1_naive as v1
+import agent_v2_structured as v2
+from claims import CLAIMS
+
+
+def truncate(value, width):
+    text = str(value)
+    return text if len(text) <= width else text[: width - 1] + "\u2026"
+
+
+def main():
+    graph_v1 = v1.build_graph()
+    graph_v2 = v2.build_graph()
+
+    rows = []
+    disagreements = 0
+    v1_type_problems = 0
+    v1_severity_problems = 0
+
+    valid_severities = {"Low", "Medium", "High", "Critical"}
+
+    for claim in CLAIMS:
+        print(f"running {claim['id']} ...")
+
+        r1 = graph_v1.invoke({"claim_id": claim["id"], "note": claim["note"]})
+        r2 = graph_v2.invoke({"claim_id": claim["id"], "note": claim["note"]})
+
+        d1 = r1.get("extracted") or {}
+        d2 = r2.get("extracted")
+
+        amt1 = d1.get("estimated_amount")
+        sev1 = d1.get("severity")
+
+        amt1_type = type(amt1).__name__
+        if amt1 is not None and not isinstance(amt1, (int, float)):
+            v1_type_problems += 1
+        if sev1 is not None and sev1 not in valid_severities:
+            v1_severity_problems += 1
+
+        decision1 = r1.get("decision")
+        decision2 = r2.get("decision")
+        if decision1 != decision2:
+            disagreements += 1
+
+        rows.append({
+            "id": claim["id"],
+            "v1_amt": amt1,
+            "v1_type": amt1_type,
+            "v1_sev": sev1,
+            "v1_decision": decision1,
+            "v2_amt": d2.estimated_amount if d2 else None,
+            "v2_sev": d2.severity if d2 else None,
+            "v2_decision": decision2,
+            "differs": decision1 != decision2,
+        })
+
+    # ── table ────────────────────────────────────────────────────────
+    print("\n" + "=" * 108)
+    print("SIDE BY SIDE")
+    print("=" * 108)
+
+    header = (f"{'CLAIM':<9} | {'v1 amount':<14} {'type':<7} {'v1 sev':<9} "
+              f"{'v1 decision':<14} | {'v2 amount':<11} {'v2 sev':<9} "
+              f"{'v2 decision':<14} |")
+    print(header)
+    print("-" * 108)
+
+    for r in rows:
+        flag = "  <-- DIFFERS" if r["differs"] else ""
+        print(
+            f"{r['id']:<9} | {truncate(r['v1_amt'], 14):<14} {r['v1_type']:<7} "
+            f"{truncate(r['v1_sev'], 9):<9} {truncate(r['v1_decision'], 14):<14} | "
+            f"{truncate(r['v2_amt'], 11):<11} {truncate(r['v2_sev'], 9):<9} "
+            f"{truncate(r['v2_decision'], 14):<14} |{flag}"
+        )
+
+    # ── summary ──────────────────────────────────────────────────────
+    print("\n" + "=" * 108)
+    print("SUMMARY")
+    print("=" * 108)
+    print(f"  claims run                            : {len(rows)}")
+    print(f"  routing decisions that DISAGREE       : {disagreements}")
+    print(f"  v1 amounts that were not numeric      : {v1_type_problems}")
+    print(f"  v1 severities outside the four labels : {v1_severity_problems}")
+    print()
+    print("  Every disagreement is a claim one of the two agents sent to the")
+    print("  wrong queue. Read the note for those claim ids and decide which")
+    print("  agent was right - that judgement is the whole exercise.")
+    print()
+
+
+if __name__ == "__main__":
+    main()
+
+
+"""
+claims.py
+─────────
+Ten free-text claim intake notes, of the kind an adjuster types in a hurry.
+
+These are NOT random. Each one is chosen to stress a specific weakness in
+"prompt for JSON and parse it yourself":
+
+  1  clean               - the happy path, so you can see it working
+  2  amount in words     - "around twelve thousand" -> not a number
+  3  two amounts         - which one is THE amount?
+  4  no amount at all    - a required field with nothing to fill it
+  5  currency formatting - "$15,500.00" -> a string, not a float
+  6  vague date          - "last Tuesday" -> not a date
+  7  severity wording    - invites "Moderate", which is not one of our labels
+  8  rambling            - long, unstructured, buries the facts
+  9  contains JSON       - text that looks like output, may confuse parsing
+ 10  says "json"         - the literal word appears in the claim text
+
+Run these through both agents and compare.
+"""
+
+CLAIMS = [
+    {
+        "id": "CLM-001",
+        "note": (
+            "Policyholder reports water damage to kitchen ceiling from a burst pipe "
+            "on 2024-03-14. Contractor estimate is 4200.00. No injuries. "
+            "Straightforward claim, single cause of loss."
+        ),
+    },
+    {
+        "id": "CLM-002",
+        "note": (
+            "Storm damage to roof. Adjuster walked the property and reckons the repair "
+            "will run to around twelve thousand dollars, maybe a bit more once they get "
+            "the tiles off. Incident was 2024-03-02."
+        ),
+    },
+    {
+        "id": "CLM-003",
+        "note": (
+            "Vehicle collision 2024-02-28. First body shop estimate was 8,000 but the "
+            "second quote came in at 15,500 after they found frame damage. Going with "
+            "the second one."
+        ),
+    },
+    {
+        "id": "CLM-004",
+        "note": (
+            "Customer called to report a break-in at the insured premises on 2024-03-11. "
+            "Police report filed. Inventory of stolen items has not been provided yet so "
+            "we have no figure. Awaiting documentation."
+        ),
+    },
+    {
+        "id": "CLM-005",
+        "note": (
+            "Fire damage to detached garage, incident date 2024-01-19. "
+            "Restoration company quoted $15,500.00 including debris removal. "
+            "Cause appears to be electrical."
+        ),
+    },
+    {
+        "id": "CLM-006",
+        "note": (
+            "Insured says the flooding happened last Tuesday after the storm came "
+            "through. Basement is a write-off. Remediation quoted at 9800. "
+            "Still waiting on the exact date from the customer."
+        ),
+    },
+    {
+        "id": "CLM-007",
+        "note": (
+            "Hail damage across the roof and two vehicles, 2024-03-05. Damage is "
+            "moderate to fairly serious in places, not catastrophic. "
+            "Combined estimates total 22000."
+        ),
+    },
+    {
+        "id": "CLM-008",
+        "note": (
+            "So the insured rang in this morning, quite distressed, apparently there was "
+            "an incident at the property over the weekend, she thinks Saturday which "
+            "would be 2024-03-09, involving the neighbour's tree coming down across the "
+            "boundary fence and taking out part of the conservatory roof as well as some "
+            "garden furniture and what she described as a fairly expensive barbecue. "
+            "She has had someone out to look at it who said it would be somewhere in the "
+            "region of 6500 to put right, though that did not include the barbecue. "
+            "She is also asking whether the neighbour's policy should be responding "
+            "instead of ours, which I said we would look into."
+        ),
+    },
+    {
+        "id": "CLM-009",
+        "note": (
+            'Claim submitted via API integration. Raw payload attached: '
+            '{"loss_type": "theft", "amount": 3200, "date": "2024-03-08"}. '
+            "Verified against policy records, appears valid."
+        ),
+    },
+    {
+        "id": "CLM-010",
+        "note": (
+            "Data feed issue - the json export from the broker portal was malformed so "
+            "this was keyed manually. Escape of water, 2024-02-22, estimate 7300, "
+            "kitchen and hallway affected."
+        ),
+    },
+]
+
+
+
+langchain-core>=0.3.0
+langchain-openai>=0.2.0
+langgraph>=0.2.0
+pydantic>=2.0
+python-dotenv>=1.0.0
+
+
+
+
+
+
+
+# Structured Output Lab — Claim Intake Triage Agent
+
+A small LangGraph agent that reads a free-text claim note, extracts fields,
+and **routes the claim to a queue based on what it extracted**.
+
+Two versions of the same agent:
+
+- `agent_v1_naive.py` — prompts for JSON, parses it by hand
+- `agent_v2_structured.py` — same graph, Pydantic schema instead
+
+The graph is identical in both. Only the extract node differs.
+
+---
+
+## Why routing, and not just extraction
+
+Extraction alone makes bad output look like a tidiness problem. Routing makes
+it a **correctness** problem: a claim that should go to manual review gets
+fast-tracked instead, and nothing errors.
+
+```
+free-text note  ->  extract (LLM)  ->  router  ->  fast_track
+                                                   manual_review
+                                                   needs_human
+```
+
+Business rule in both versions:
+
+| Condition | Route |
+|---|---|
+| amount > 10,000 | manual review |
+| severity High or Critical | manual review |
+| injuries reported | manual review |
+| otherwise | fast track |
+
+---
+
+## Setup
+
+```bash
+python -m venv venv
+source venv/bin/activate          # Windows: venv\Scripts\activate
+
+pip install -r requirements.txt
+```
+
+Your existing `.env` already has what this needs:
+
+```
+AZURE_OPENAI_API_KEY
+AZURE_OPENAI_API_VERSION
+AZURE_OPENAI_CHAT_DEPLOYMENT
+AZURE_OPENAI_ENDPOINT
+```
+
+---
+
+## Run it in this order
+
+**1. The naive agent on its own.**
+
+```bash
+python agent_v1_naive.py
+```
+
+Read the output before running anything else. For each claim look at the
+`type:` annotation on `estimated_amount` and the value of `severity`.
+
+**2. The structured agent.**
+
+```bash
+python agent_v2_structured.py
+```
+
+**3. Side by side.**
+
+```bash
+python compare.py
+```
+
+This is the one that matters. It flags every claim where the two agents
+routed differently.
+
+---
+
+## What to look for
+
+The ten claims in `claims.py` each stress something specific:
+
+| Claim | Stresses |
+|---|---|
+| CLM-001 | clean — the happy path |
+| CLM-002 | "around twelve thousand" — an amount that isn't a number |
+| CLM-003 | two amounts — which one is *the* amount? |
+| CLM-004 | no amount at all — a field with nothing to fill it |
+| CLM-005 | `$15,500.00` — currency symbol and separators |
+| CLM-006 | "last Tuesday" — a date that isn't a date |
+| CLM-007 | "moderate to fairly serious" — invites a label outside our four |
+| CLM-008 | long rambling note with the facts buried |
+| CLM-009 | note contains a JSON payload |
+| CLM-010 | the literal word "json" appears in the text |
+
+Three questions to answer from the output:
+
+1. **Did v1 ever return a non-float amount?** If so, the router hit its
+   `except (TypeError, ValueError)` branch and *guessed*.
+2. **Did v1 ever return a severity outside the four labels?** If so,
+   `SEVERITY_RANK.get(severity, 0)` silently returned `0` — meaning a
+   Critical claim scored the same as no severity at all.
+3. **Which claims did the two agents route differently, and which one was
+   right?** Read the note and decide. That judgement is the exercise.
+
+---
+
+## An honest note on what you might see
+
+A modern model at `temperature=0` is quite good at following "respond only
+as JSON". You may find v1 succeeds on most or even all ten claims on the
+first run.
+
+**That is not a failed experiment — it is the actual lesson.**
+
+The naive pattern doesn't fail loudly and often. It fails *occasionally*,
+which is exactly why it survives testing and ships. Things to try if v1
+looks clean:
+
+- Raise `temperature` to `0.7` in `agent_v1_naive.py` and run it several
+  times. Consistency is a big part of what the schema buys you.
+- Run `compare.py` a few times and watch whether v1's answers move between
+  runs while v2's stay put.
+- Add a claim of your own written to be maximally awkward.
+
+Then compare the two routers as code. `triage_router` in v1 needs a
+try/except, a type coercion, and a `.get()` with a default to survive
+input it cannot trust. In v2 it needs none of them, because the schema
+already guaranteed the types.
+
+**That shrinkage is the point, whether or not v1 fails on your run.**
