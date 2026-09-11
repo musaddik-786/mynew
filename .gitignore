@@ -1,0 +1,25 @@
+# dependencies
+node_modules/
+
+# environment variables
+.env
+.env.*
+
+# build output
+dist/
+build/
+
+# cache
+.cache/
+.vite/
+*.tsbuildinfo
+
+# logs
+*.log
+
+# VS Code
+.vscode/
+
+# OS files
+.DS_Store
+Thumbs.db
